@@ -193,3 +193,19 @@ class PitWallInSuiteTest(unittest.TestCase):
         with self.assertRaises(Exception):
             with wsc.connect("%s/view?token=wrong" % info["relay"], open_timeout=5) as ws:
                 ws.recv(timeout=3)
+
+
+class AppWindowApiTest(unittest.TestCase):
+    def test_api_exposes_only_its_functions(self):
+        """pywebview walks every public attribute of js_api recursively. A public
+        engine or window attribute made it crawl the event loop, threads and native
+        window objects, freezing the app. Only the page-callable functions may be
+        public."""
+        import inspect
+        from suite.app import Api
+        api = Api(engine=object())
+        api._window = object()
+        public = {n for n in dir(api) if not n.startswith("_")}
+        self.assertEqual(public, {"version", "pick_replay", "use_live"})
+        for n in public:
+            self.assertTrue(inspect.ismethod(getattr(api, n)), n)

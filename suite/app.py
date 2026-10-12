@@ -90,9 +90,13 @@ class Engine:
 class Api:
     """Functions the pages can call from the app window (window.pywebview.api)."""
 
+    # pywebview walks every public attribute of this object (recursively) to build
+    # window.pywebview.api. Keep the engine and the native window private, or it
+    # crawls the event loop, threads, iRacing reader and WinForms objects and the
+    # window freezes.
     def __init__(self, engine):
-        self.engine = engine
-        self.window = None
+        self._engine = engine
+        self._window = None
 
     def version(self):
         return __version__
@@ -100,18 +104,30 @@ class Api:
     def pick_replay(self):
         import webview
         kind = webview.FileDialog.OPEN if hasattr(webview, "FileDialog") else webview.OPEN_DIALOG
-        picked = self.window.create_file_dialog(kind, file_types=("iRacing telemetry (*.ibt)", "All files (*.*)"))
+        picked = self._window.create_file_dialog(kind, file_types=("iRacing telemetry (*.ibt)", "All files (*.*)"))
         if not picked:
             return {"ok": False}
         path = picked[0] if isinstance(picked, (list, tuple)) else picked
         try:
-            return {"ok": True, "file": self.engine.replay(path)}
+            return {"ok": True, "file": self._engine.replay(path)}
         except Exception as e:
             return {"ok": False, "error": "Could not open that file: %s" % e}
 
     def use_live(self):
-        self.engine.live()
+        self._engine.live()
         return {"ok": True}
+
+
+def quit_now(code=0):
+    """End the process. Background threads (iRacing reader, thread pools) must not
+    keep the app alive after its window is closed."""
+    try:
+        print("iRacing Suite closed.")
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(code)
 
 
 def fallback_window(url):
@@ -159,12 +175,17 @@ def main():
             api = Api(engine)
             window = webview.create_window("iRacing Suite", engine.url, js_api=api,
                                            width=1440, height=920, min_size=(900, 600))
-            api.window = window
+            api._window = window
+            try:
+                window.events.closed += lambda *a: quit_now(0)
+            except Exception:
+                pass
             webview.start()
-            return
+            quit_now(0)
         except Exception as e:
             print("App window unavailable (%s); opening in the browser instead." % e)
     fallback_window(engine.url)
+    quit_now(0)
 
 
 if __name__ == "__main__":
