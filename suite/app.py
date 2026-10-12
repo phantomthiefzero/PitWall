@@ -37,7 +37,7 @@ def redirect_output_when_windowed():
 class Engine:
     """Runs the bridge's server and data pump on a background thread."""
 
-    def __init__(self, rate=20, pitwall_source="live"):
+    def __init__(self, rate=60, pitwall_source="live"):
         self.loop = asyncio.new_event_loop()
         self.hub = Hub(LiveSource(), rate)
         self.pitwall = PitWallHost(pitwall_source)
@@ -155,7 +155,7 @@ def main():
     redirect_output_when_windowed()
     ap = argparse.ArgumentParser(description="iRacing Suite")
     ap.add_argument("--port", type=int, default=8123)
-    ap.add_argument("--rate", type=float, default=20)
+    ap.add_argument("--rate", type=float, default=60, help="updates per second (iRacing itself runs at 60)")
     ap.add_argument("--replay", metavar="FILE.ibt", help="start by replaying a telemetry file")
     ap.add_argument("--speed", type=float, default=1.0)
     ap.add_argument("--browser", action="store_true", help="use the web browser instead of the app window")
