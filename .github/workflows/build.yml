@@ -1,0 +1,63 @@
+name: Build iRacing Suite
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest pyinstaller
+
+      - name: Tests (PitWall pipeline and the suite app)
+        run: python -m pytest tests -q
+
+      - name: Build the app
+        run: >
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name "iRacing Suite"
+          --icon assets/icon.ico
+          --add-data "suite/web;suite/web"
+          --add-data "client;client"
+          --collect-submodules pitwall
+          --hidden-import relay.server
+          run_suite.py
+
+      - name: Check the build
+        shell: pwsh
+        run: |
+          $exe = "dist/iRacing Suite.exe"
+          if (!(Test-Path $exe)) { throw "Build output missing" }
+          "{0:N1} MB" -f ((Get-Item $exe).Length / 1MB)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iRacing-Suite
+          path: dist/iRacing Suite.exe
+
+      - name: Publish a release (pushes to master only)
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: iRacing Suite build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            Download **iRacing Suite.exe** below and double-click it.
+            First run: if Windows says "Windows protected your PC", click More info, then Run anyway (the app is not code-signed).
+          files: dist/iRacing Suite.exe
