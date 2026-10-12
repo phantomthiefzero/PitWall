@@ -1,4 +1,39 @@
-# Pitwall
+# iRacing Suite
+
+One Windows app for the iRacing tools, fed by a built-in telemetry bridge:
+
+| App | What it does |
+|---|---|
+| **Lap Analyzer** | Compare laps against your best or a reference, read the car setup in the iRacing garage layout, watch live graphs, and see each setup change's effect run by run |
+| **PitWall** | Engineer and spotter dashboard: track map, standings, flags, weather, car systems (everything below this section) |
+
+## Using the app
+
+1. Open this repo's **Releases** page and download **iRacing Suite.exe** from the newest build.
+2. Double-click it. The first time, Windows may say "Windows protected your PC" because the app isn't code-signed: click **More info**, then **Run anyway**.
+3. The suite opens in its own window. Start iRacing and get in the car; the home screen turns green when it's live.
+4. No iRacing handy? **Replay a telemetry file…** plays any `.ibt` back as if live (Lap Analyzer).
+
+Everything runs on this PC and only reads iRacing's telemetry. PitWall's relay runs inside the app on
+127.0.0.1 with fresh tokens each launch, so it is not reachable from other machines. Sharing PitWall
+with remote crew still uses a public relay as described below. A log is written to
+`%LOCALAPPDATA%\iRacingSuite\suite.log`.
+
+## How the app is put together
+
+| Path | Purpose |
+|---|---|
+| `suite/app.py` | the app: window (pywebview / Edge WebView2), runs everything on a background thread |
+| `suite/bridge.py` | the Lap Analyzer's bridge: live iRacing or `.ibt` replay, serves the pages and `/ws` (standard library only) |
+| `suite/pitwall_host.py` | runs PitWall's own `relay/server.py` and `pitwall/bridge.py`, unchanged, inside the app |
+| `suite/web/` | home screen and the Lap Analyzer (`analyzer/index.html`); PitWall's dashboard is served from `client/` |
+| `tests/test_suite.py` | replays a synthetic `.ibt`, streams PitWall's fake field through the in-app relay, checks pages and streams |
+| `.github/workflows/build.yml` | on every push to master: all tests, then builds `iRacing Suite.exe` on Windows and publishes it as a release |
+
+Run from source: `python -m pip install -r requirements.txt`, then `python -m suite`
+(`--browser` to use the browser, `--pitwall-source fake` for PitWall's fake field).
+
+# PitWall
 
 An engineer/spotter companion for iRacing. The driver's PC runs a **bridge** that
 reads iRacing's shared-memory telemetry and streams it to a **relay**; remote

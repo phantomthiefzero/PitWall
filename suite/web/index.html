@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iRacing Suite</title>
+<style>
+:root{--bg:#f4f4f2;--card:#fff;--fg:#1d2024;--mut:#6b7078;--ln:#dcdcd8;--acc:#d9a400;--good:#1a8f4c;--warn:#b87800;--blue:#2f6fd6}
+@media (prefers-color-scheme:dark){:root{--bg:#16181b;--card:#1f2226;--fg:#e8e9eb;--mut:#9aa0a8;--ln:#30343a;--acc:#e6b422;--good:#2fb36a;--warn:#e0a325;--blue:#4b8bf0}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 24px 40px}
+header{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--ln);padding-bottom:14px}
+h1{margin:0;font-size:26px;letter-spacing:.02em}h1 span{color:var(--acc)}.ver{color:var(--mut);font-size:13px}
+.status{margin-top:20px;background:var(--card);border:1px solid var(--ln);border-left:4px solid var(--mut);border-radius:10px;padding:16px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.status.live{border-left-color:var(--good)}.status.wait{border-left-color:var(--warn)}.status.replay{border-left-color:var(--blue)}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--mut);flex:none}.live .dot{background:var(--good);box-shadow:0 0 0 4px rgba(47,179,106,.18)}.wait .dot{background:var(--warn)}.replay .dot{background:var(--blue)}
+.st-main{flex:1;min-width:220px}.st-title{font-weight:700;font-size:16px}.st-sub{color:var(--mut);font-size:13px}
+button{font:inherit;font-size:14px;padding:7px 14px;border-radius:7px;border:1px solid var(--ln);background:var(--bg);color:var(--fg);cursor:pointer}button:hover{border-color:var(--fg)}
+.apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:22px}
+.app{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
+a.app:hover{border-color:var(--acc);transform:translateY(-2px)}.app h2{margin:0;font-size:19px}.app p{margin:0;color:var(--mut);font-size:14px}
+.tag{align-self:flex-start;font-size:12px;font-weight:600;padding:2px 9px;border-radius:10px;background:rgba(127,127,127,.15);color:var(--mut)}.tag.ok{background:rgba(47,179,106,.15);color:var(--good)}
+.open{margin-top:auto;font-weight:600;color:var(--acc)}
+footer{margin-top:28px;color:var(--mut);font-size:13px}
+</style></head><body><div class="wrap">
+<header><h1>iRacing <span>Suite</span></h1><span class="ver" id="ver"></span></header>
+<div class="status wait" id="status"><div class="dot"></div><div class="st-main"><div class="st-title" id="stTitle">Starting...</div><div class="st-sub" id="stSub"></div></div><div id="stBtns"></div></div>
+<div class="apps">
+<a class="app" href="/analyzer/"><span class="tag ok">Ready</span><h2>Lap Analyzer</h2><p>Compare laps against your best or a reference, read your car setup the way the iRacing garage shows it, and watch setup changes take effect live, run by run.</p><span class="open">Open →</span></a>
+<a class="app" href="/pitwall/" id="pwTile"><span class="tag" id="pwTag">Starting</span><h2>PitWall</h2><p>Engineer and spotter dashboard: track map, standings, flags, weather and car systems. Runs on this PC through the built-in bridge.</p><span class="open">Open →</span></a>
+</div>
+<footer>The suite only reads iRacing's telemetry. It never changes anything in the sim. Everything stays on this PC unless you choose to share it.</footer>
+</div>
+<script>
+const $=id=>document.getElementById(id);let info={mode:'live',connected:false},meta=null,lastTick=0;
+const esc=s=>String(s||'').replace(/[<>&"]/g,'');
+function metaFrom(y){const g=(re,s)=>{const q=re.exec(s);return q?q[1].trim():''},di=+(g(/DriverCarIdx:\s*(\d+)/,y)||0),m=new RegExp('CarIdx:\\s*'+di+'\\s*\\n\\s*UserName:\\s*(.+)').exec(y),blk=m?y.slice(m.index,m.index+3000):'';return{car:g(/CarScreenName:\s*([^\n]+)/,blk),track:g(/TrackDisplayName:\s*([^\n]+)/,y)}}
+const hasApi=()=>!!(window.pywebview&&window.pywebview.api);
+function render(){const s=$('status'),rep=info.mode==='replay';s.className='status '+(rep?'replay':info.connected?'live':'wait');
+$('stTitle').textContent=rep?'Replaying '+(info.file||'a telemetry file'):info.connected?'Live from iRacing':(info.sdk===false?'iRacing reader unavailable':'Waiting for iRacing');
+$('stSub').textContent=(meta&&meta.car&&(info.connected||rep))?esc(meta.car)+' at '+esc(meta.track):rep?'Played back as if it were live.':info.sdk===false?String(info.sdk_error||''):'Start iRacing and get in the car. This updates by itself.';
+const b=$('stBtns');b.innerHTML='';if(hasApi()){const btn=(t,f)=>{const e=document.createElement('button');e.textContent=t;e.onclick=f;e.style.marginLeft='8px';b.appendChild(e)};
+btn('Replay a telemetry file…',async()=>{const r=await window.pywebview.api.pick_replay();if(r&&r.ok){info.mode='replay';info.file=r.file;meta=null;render()}else if(r&&r.error)alert(r.error)});
+if(rep)btn('Back to live',async()=>{await window.pywebview.api.use_live();info.mode='live';info.connected=false;meta=null;render()})}}
+function connect(){let ws;try{ws=new WebSocket('ws://'+location.host+'/ws')}catch(e){return setTimeout(connect,2000)}
+ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.type==='hello'){$('ver').textContent='version '+m.bridge;info.mode=m.mode}else if(m.type==='status'){info.connected=!!m.connected;info.mode=m.source||info.mode;render()}else if(m.type==='session'&&typeof m.yaml==='string'){meta=metaFrom(m.yaml);render()}};
+ws.onclose=()=>setTimeout(connect,2000)}
+function pitwallTile(){const p=info.pitwall,t=$('pwTag'),a=$('pwTile');if(!p)return;if(p.ok){t.textContent='Ready';t.className='tag ok';a.href='/pitwall/?relay='+encodeURIComponent(p.relay)+'&token='+encodeURIComponent(p.token);a.title=''}else{t.textContent='Unavailable';t.className='tag';a.removeAttribute('href');a.title=p.error||''}}
+async function poll(){try{const r=await fetch('/api/info',{cache:'no-store'});Object.assign(info,await r.json());render();pitwallTile()}catch(e){}}
+window.addEventListener('pywebviewready',render);
+render();poll();setInterval(poll,3000);connect();
+</script></body></html>

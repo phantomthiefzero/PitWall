@@ -28,3 +28,13 @@ It has now been corrected five times -- the F2Time placeholder, gap monotonicity
 the mirrored yaw convention, impossible best laps, and single-class-only fields.
 When adding a derived value, make the fake reproduce the sim's awkward shape
 (placeholders, "carry over", mixed classes), not the convenient one.
+
+iRacing Suite app (suite/)
+- The suite hosts PitWall without changing it: `suite/pitwall_host.py` runs
+  `relay.server.Relay` and `pitwall.bridge.Bridge` in the app's event loop, bound
+  to 127.0.0.1 with random tokens. Keep PitWall usable on its own (run-local.ps1,
+  `python -m pitwall stream`); the suite is an extra way to run it.
+- The Lap Analyzer is one HTML file: `suite/web/analyzer/index.html`. No build step.
+- `suite/bridge.py` uses only the standard library (plus pyirsdk). Its replay reads
+  .ibt files; PitWall's replay reads its own .jsonl.gz captures. They are different.
+- `tests/test_suite.py` must pass along with `tests/test_pipeline.py`.
