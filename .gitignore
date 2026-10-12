@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.jsonl.gz
+*.bin
+.pitwall/
+.venv/
+venv/
+.scratch/

@@ -1,0 +1,1242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pitwall</title>
+<style>
+  :root {
+    --bg: #16213A;
+    --panel: #1E2B47;
+    --line: #2F3F63;
+    --text: #E8ECF4;
+    --muted: #8A97B3;
+    --dim: #5A6784;
+    --player: #FFB23F;
+    --green: #3DDC84;
+    --yellow: #FFD23F;
+    --red: #FF5A5A;
+    --blue: #6FA8FF;
+    --white: #FFFFFF;
+    --wet: #59C2E8;
+    font-size: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", Inter, system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums; line-height: 1.35; }
+  body { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+
+  /* header */
+  header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px;
+    padding: 10px 18px; border-bottom: 1px solid var(--line); }
+  header .track { font-size: 20px; font-weight: 600; }
+  header .track small { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 10px; }
+  header .flag { justify-self: center; padding: 6px 22px; border-radius: 6px; font-weight: 700;
+    font-size: 18px; background: var(--line); color: var(--text); min-width: 160px; text-align: center; }
+  header .flag[data-flag="green"] { background: var(--green); color: #0C2A1A; }
+  header .flag[data-flag="yellow"], header .flag[data-flag="caution"] { background: var(--yellow); color: #3A2E00; }
+  header .flag[data-flag="red"] { background: var(--red); color: #fff; }
+  header .flag[data-flag="checkered"] { background: repeating-linear-gradient(45deg,#fff 0 8px,#111 8px 16px); color: transparent; }
+  header .flag[data-flag="white"] { background: var(--white); color: #111; }
+  header .flag[data-flag="blue"] { background: var(--blue); color: #08203F; }
+  header .clock { text-align: right; font-size: 20px; font-weight: 600; }
+  header .right { justify-self: end; display: flex; align-items: center; gap: 14px; }
+  .unittoggle { background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+                border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 12px; font-weight: 600;
+                cursor: pointer; letter-spacing: .02em; }
+  .unittoggle:hover { color: var(--text); border-color: var(--muted); }
+  .unittoggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .unittoggle.mini { margin-left: auto; padding: 2px 7px; font-size: 11px; font-weight: 500; }
+  header .clock small { display: block; color: var(--muted); font-size: 13px; font-weight: 400; }
+
+  /* main grid */
+  /* Column widths go through custom properties so a collapsed panel can give its
+     horizontal space back instead of leaving a tall empty column. The media
+     queries below set grid-template-columns outright and still win. */
+  main { display: grid;
+    grid-template-columns: var(--c-track, minmax(320px, 1.1fr)) var(--c-standings, minmax(420px, 1.5fr)) minmax(300px, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 14px; padding: 14px 18px; min-height: 0; }
+  main[data-track="closed"] { --c-track: auto; }
+  main[data-standings="closed"] { --c-standings: auto; }
+  section { background: var(--panel); border-radius: 10px; padding: 12px 14px; min-height: 0;
+    display: flex; flex-direction: column; overflow: hidden; }
+  section h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  /* Collapsible panel. <details>/<summary> is used rather than a div + button so
+     the control is keyboard-operable and announces its expanded state natively. */
+  details.panel > summary { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted);
+                            cursor: pointer; user-select: none; display: flex; align-items: center;
+                            gap: 6px; list-style: none; }
+  details.panel > summary::-webkit-details-marker { display: none; }
+  details.panel > summary::before { content: ""; width: 0; height: 0; flex: none;
+                                    border-left: 5px solid currentColor;
+                                    border-top: 4px solid transparent;
+                                    border-bottom: 4px solid transparent;
+                                    transition: transform .15s ease; }
+  details.panel[open] > summary::before { transform: rotate(90deg); }
+  details.panel > summary:hover { color: var(--text); }
+  details.panel > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px;
+                                          border-radius: 3px; }
+  details.panel[open] > summary { margin-bottom: 8px; }
+  @media (prefers-reduced-motion: reduce) { details.panel > summary::before { transition: none; } }
+  /* Open panels must still drive the flex sizing their children rely on (#map and
+     .tbl both use flex: 1); collapsed ones shrink to the summary. */
+  details.panel { display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; }
+  details.panel[open] { flex: 1 1 auto; }
+  /* The panels that live in a grid column must CLIP, or an over-tall child (a
+     36-car standings table) spills out of the details box instead of being
+     bounded -- and a child that is never bounded never gets a height to scroll
+     within. The stacked column panels are content-sized and must not clip. */
+  #standings details.panel[open], #mapPanel details.panel[open] { overflow: hidden; }
+  section.collapsed { flex: 0 0 auto; align-self: start; }
+  .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+  .col section { flex: 0 0 auto; overflow: visible; }
+
+  /* provenance treatments: the point of this dashboard */
+  .derived { text-decoration: underline dotted var(--muted); text-underline-offset: 3px; cursor: help; }
+  .snapshot { color: var(--muted); }
+  .trend { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .trend h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .trend .row2 { display: grid; grid-template-columns: 1fr auto auto; align-items: center;
+                 gap: 8px; font-size: 12px; padding: 1px 0; }
+  .trend .row2 > span:first-child { color: var(--muted); }
+  .trend .delta { font-variant-numeric: tabular-nums; min-width: 62px; text-align: right; }
+  .gain { color: var(--green); }
+  .lose { color: var(--red); }
+  .flat { color: var(--muted); }
+  .trend .up { color: var(--red); }
+  .trend .down { color: var(--blue); }
+  .trend .flat { color: var(--muted); }
+  .spark polyline { fill: none; stroke: var(--muted); stroke-width: 1.3; }
+  /* Carcass temps were assumed live; verified NOT live (0 changes over 9 min spanning
+     a stop and an out-lap). Same snapshot rule as wear, so they get the same grey. */
+  .snapval { color: var(--muted); }
+  /* Verified NOT live: frozen across 9 min of driving in one car and 60 s in another.
+     But the update trigger is not characterised -- it is not pit-only (observed
+     changing mid-stint with no stop) and not per-lap (tested at a S/F crossing).
+     So the label says only "snapshot": that much is proven, a trigger is not.
+     Note also these are CARCASS temps, a different quantity from the tread temps
+     the in-car dash shows -- 35-37 C here vs 63-74 C on the dash, same moment. */
+  .snapshot::after { content: " · snapshot, not live"; font-size: 11px; color: var(--dim); }
+  .na { color: var(--dim); }
+
+  /* track map */
+  /* height:0 + flex-grow, not height:100%. A <canvas> carries an intrinsic aspect
+     ratio from its backing store, and once the panel became a <details> the
+     percentage had no definite parent height to resolve against -- so the browser
+     fell back to that ratio and grew the canvas to ~2000px tall. */
+  #map { width: 100%; height: 0; display: block; flex: 1 1 auto; min-height: 240px; }
+  /* Same height:0 + flex idiom as the map, and for the same reason: a canvas
+     carries an intrinsic aspect ratio from its backing store, which takes over
+     if a percentage height has no definite parent to resolve against. */
+  #gg { width: 100%; height: 0; display: block; flex: 1 1 auto; min-height: 190px; }
+  .mapnote { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* standings */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 6px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--panel); }
+  td { padding: 3px 6px; border-bottom: 1px solid #253457; white-space: nowrap; }
+  td.r, th.r { text-align: right; }
+  tr.player td { color: var(--player); font-weight: 600; }
+  tr.focus td { background: #1B2A4D; }
+  tr.focus td:first-child { box-shadow: inset 3px 0 0 var(--focus, #6FA8FF); }
+  #rows tr { cursor: pointer; }
+  .fkv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12px; }
+  .fkv dt { color: var(--muted); }
+  .fkv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .fhead { font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+  .fhead .fnum { display: inline-block; min-width: 22px; color: var(--muted); margin-right: 6px; }
+  /* Licence badge uses iRacing's own class colour, so it reads the way it does in
+     the sim. The colour is a light class tint, hence the dark text on top. */
+  .fhead .lic { display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px;
+                font-size: 11px; font-weight: 700; color: #10151F; vertical-align: 1px; }
+  .fhead .ir { margin-left: 6px; font-size: 11px; font-weight: 500; color: var(--muted);
+               vertical-align: 1px; font-variant-numeric: tabular-nums; }
+  tr.pit td { opacity: .55; }
+  td.driver { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+  /* Class position, shown beside the overall one only when the field is mixed. */
+  td.c-pos .cpos { color: var(--muted); font-size: 10px; margin-left: 4px; }
+  td.driver .num { display: inline-block; min-width: 22px; color: var(--muted);
+                   font-variant-numeric: tabular-nums; margin-right: 6px; }
+  td.r, th.r { font-variant-numeric: tabular-nums; }
+
+  /* Column priority. Twelve columns do not fit a narrow panel, and a horizontal
+     scrollbar in a glanceable table is worse than fewer columns -- an engineer
+     should not have to scroll to see who is catching whom. Columns drop in
+     reverse order of usefulness as the panel narrows, and Car drops whenever the
+     field is single-class, where it carries no information at all. */
+  /* Drop order, least useful first: Car (only if single-class), Best, Laps, Gap,
+     then Deg. Position, driver, interval, last lap, closing rate and stops are
+     the ones worth keeping down to the narrowest panel. */
+  #standings.one-class .c-car,
+  #standings[data-w="md"] .c-best, #standings[data-w="md"] .c-laps,
+  #standings[data-w="sm"] .c-best, #standings[data-w="sm"] .c-laps,
+  #standings[data-w="sm"] .c-gap,
+  #standings[data-w="xs"] .c-best, #standings[data-w="xs"] .c-laps,
+  #standings[data-w="xs"] .c-gap,  #standings[data-w="xs"] .c-deg { display: none; }
+  /* The driver name is the one elastic column, so it gives ground first. */
+  #standings[data-w="md"] td.driver { max-width: 120px; }
+  #standings[data-w="sm"] td.driver { max-width: 100px; }
+  #standings[data-w="xs"] td.driver { max-width: 95px; }
+  /* min-height:0 so the table can shrink below its content height; without it a
+     flex item refuses to go under min-content and the rows run off the panel. */
+  .tbl { overflow: auto; flex: 1 1 0%; min-height: 0; }
+  /* Keep the header visible while scrolling a long field. */
+  .tbl thead th { position: sticky; top: 0; z-index: 1; }
+  .empty { color: var(--muted); font-size: 12px; padding: 10px 6px; white-space: normal; cursor: default; }
+  .badge { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; background: var(--line); margin-left: 4px; }
+  .badge.black { background: #000; }
+  .badge.repair { background: #E67E22; color: #fff; }
+
+  /* player car */
+  .big { font-size: 34px; font-weight: 700; line-height: 1.1; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
+  .kv dt { color: var(--muted); margin: 0; }
+  .kv dd { margin: 0; text-align: right; }
+  .row { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--green); width: 0; }
+  .bar.brake i { background: var(--red); }
+  .tires { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 6px; }
+  .tire { background: #182540; border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  .tire b { display: block; color: var(--muted); font-weight: 500; }
+  .tire .temps span { display: inline-block; width: 30%; text-align: center; }
+  .tire .snapshot, .tire .na { font-size: 11px; }
+  .dc { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; font-size: 12px; }
+  .dc div { display: flex; justify-content: space-between; }
+  .dc div span:first-child { color: var(--muted); }
+  .warn { color: var(--red); font-weight: 600; }
+
+  /* weather */
+  .wx { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; font-size: 13px; }
+  .wx div span:first-child { color: var(--muted); display: block; font-size: 12px; }
+  .wx .wet { color: var(--wet); }
+
+  /* footer */
+  footer { display: flex; gap: 18px; align-items: center; padding: 8px 18px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--muted); }
+  footer .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 6px; }
+  footer .dot.on { background: var(--green); }
+  footer .legend span { margin-right: 14px; }
+  footer .legend .derived { color: var(--text); }
+
+  /* connect form */
+  #connect { position: fixed; inset: 0; background: rgba(22,33,58,.96); display: grid; place-items: center; }
+  #connect form { background: var(--panel); padding: 24px 28px; border-radius: 12px; width: min(420px, 92vw); }
+  #connect h1 { margin: 0 0 4px; font-size: 22px; }
+  #connect p { color: var(--muted); margin: 0 0 16px; font-size: 13px; }
+  #connect label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  #connect input { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font-size: 14px; }
+  #connect button { margin-top: 16px; width: 100%; padding: 10px; border: 0; border-radius: 6px;
+    background: var(--player); color: #2A1A00; font-weight: 700; font-size: 15px; cursor: pointer; }
+  #connect button:focus-visible, #connect input:focus-visible { outline: 2px solid var(--player); outline-offset: 2px; }
+  #connect .err { color: var(--red); margin: 12px 0 0; }
+  .hidden { display: none !important; }
+
+  /* Below the three-column width the page scrolls as a whole instead of
+     squeezing every panel into one viewport: at 900x700 the map and standings
+     were 279 px tall and the stacked column was a 255 px scroll strip; on a
+     phone the standings showed five rows. The two grid panels get a fixed,
+     usable height and the stacked panels flow below at their natural size. */
+  @media (max-width: 1100px) {
+    body { height: auto; min-height: 100vh; }
+    main { grid-template-columns: 1fr 1fr; grid-template-rows: none; grid-auto-rows: auto; }
+    #mapPanel, #standings { height: max(420px, 62vh); }
+    #mapPanel.collapsed, #standings.collapsed { height: auto; }
+    main > .col:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr;
+                             align-items: start; overflow: visible; }
+    footer { flex-wrap: wrap; row-gap: 4px; }
+  }
+  @media (max-width: 720px) {
+    main { grid-template-columns: minmax(0, 1fr); padding: 10px; gap: 10px; }
+    main > .col:last-child { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    #mapPanel { height: 340px; }
+    #standings { height: max(440px, 70vh); }
+    header { grid-template-columns: 1fr auto; gap: 8px 12px; padding: 8px 12px; }
+    header .track { grid-column: 1 / -1; font-size: 17px; }
+    header .flag { justify-self: start; min-width: 0; font-size: 15px; padding: 4px 14px; }
+    header .clock { font-size: 17px; }
+    footer { padding: 6px 12px; gap: 4px 12px; }
+    footer .legend { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="track"><span id="trackName">Waiting for the bridge</span><small id="sessionType"></small></div>
+  <div class="flag" id="flag" data-flag="">No flag</div>
+  <div class="right">
+    <button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button>
+    <div class="clock"><span id="remain">–</span><small id="lapline">–</small></div>
+  </div>
+</header>
+
+<main>
+  <section id="mapPanel">
+    <details class="panel" id="trackPanel" open>
+      <summary>Track
+        <button type="button" id="mapLabelToggle" class="unittoggle mini"
+                title="Switch the map markers between car numbers and running position">car #</button>
+      </summary>
+      <canvas id="map"></canvas>
+      <div class="mapnote" id="mapNote">Outline is built from your first clean lap and cached per track.</div>
+    </details>
+  </section>
+
+  <section id="standings">
+    <details class="panel" id="standingsPanel" open>
+      <summary>Standings</summary>
+      <div class="tbl">
+      <table>
+        <thead><tr>
+          <th class="r c-pos">P</th><th class="c-driver">Driver</th><th class="c-car">Car</th>
+          <th class="r c-int"><span class="derived" title="Computed here: this car's gap-to-leader minus the car ahead's">Int</span></th>
+          <th class="r c-delta"><span class="derived" title="Computed here: how fast this car is closing on the one ahead, in seconds per lap. Positive means catching. Hover a value for the catch estimate.">Δ/lap</span></th>
+          <th class="r c-gap">Gap</th><th class="r c-last">Last</th><th class="r c-best">Best</th><th class="r c-laps">Laps</th>
+          <th class="r c-deg"><span class="derived" title="Computed here: lap-time trend across this car's current stint, in seconds per lap. Positive = dropping off. Resets at every pit stop.">Deg</span></th>
+          <th class="c-stops"><span class="derived" title="Stops we have WATCHED since connecting. A car that stopped before you connected shows none, so this is never proof a car has yet to stop.">Stops</span></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      </div>
+    </details>
+  </section>
+
+  <div class="col">
+    <section id="car">
+      <details class="panel" id="carPanel" open>
+      <summary>Your car</summary>
+      <div class="row">
+        <div><div class="big" id="fuel">–</div><div style="color:var(--muted);font-size:12px"><span id="fuelUnit">gallons</span> of fuel</div></div>
+        <div><div class="big"><span class="derived" id="lapsFuel" title="Computed here from fuel used on the last completed laps">–</span></div>
+          <div style="color:var(--muted);font-size:12px">laps of fuel <span id="fuelSamples"></span></div></div>
+        <div><div class="big" id="pos">–</div><div style="color:var(--muted);font-size:12px">position</div></div>
+      </div>
+      <div id="fuelPlan" style="font-size:12px;margin:2px 0 0"></div>
+      <dl class="kv" style="margin:10px 0 6px">
+        <dt>Speed</dt><dd id="speed">–</dd>
+        <dt>Gear / rpm</dt><dd id="gear">–</dd>
+        <dt>Throttle</dt><dd><div class="bar"><i id="thr"></i></div></dd>
+        <dt>Brake</dt><dd><div class="bar brake"><i id="brk"></i></div></dd>
+        <dt>Last / best</dt><dd id="laps">–</dd>
+        <dt>Delta to best</dt><dd id="delta">–</dd>
+        <dt>Water / oil</dt><dd id="temps">–</dd>
+        <dt>Incidents</dt><dd id="inc">–</dd>
+        <dt>Warnings</dt><dd id="warn" class="na">none</dd>
+      </dl>
+      <div class="dc" id="dc"></div>
+      <div id="theo" style="font-size:12px;margin:6px 0 0"></div>
+      <div id="sectors" style="font-size:12px;margin:6px 0 0"></div>
+      <div class="tires" id="tires"></div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">Next stop: <span id="pitsv">–</span></div>
+      </details>
+    </section>
+
+    <section id="focusPanel">
+      <details class="panel" id="focusDetails" open>
+        <summary>Watching <span id="focusPinned" style="margin-left:auto;font-weight:500"></span></summary>
+        <div id="focus"></div>
+      </details>
+    </section>
+
+    <section id="ggPanel">
+      <details class="panel" id="ggDetails" open>
+        <summary>Grip</summary>
+        <canvas id="gg"></canvas>
+        <div class="mapnote" id="ggNote">Lateral against longitudinal g. The envelope fills in as the car is driven.</div>
+      </details>
+    </section>
+
+    <section id="weather">
+      <details class="panel" id="weatherPanel" open>
+        <summary>Weather</summary>
+        <div class="wx" id="wx"></div>
+        <div class="trend" id="wxTrend"></div>
+      </details>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <span><i class="dot" id="dotRelay"></i>Relay</span>
+  <span><i class="dot" id="dotBridge"></i>Bridge</span>
+  <span id="age">no data</span>
+  <span id="rate"></span>
+  <span id="rig" style="color:var(--muted)"></span>
+  <span class="legend" style="margin-left:auto">
+    <span>plain = reported by iRacing</span>
+    <span class="derived">dotted = computed here</span>
+    <span style="color:var(--muted)">grey = snapshot, not a live reading</span>
+  </span>
+</footer>
+
+<div id="connect">
+  <form id="connectForm">
+    <h1>Pitwall</h1>
+    <p>Connect to the relay the driver's bridge is streaming to.</p>
+    <label for="relay">Relay address</label>
+    <input id="relay" placeholder="wss://relay.example.com or ws://192.168.1.10:8765" required>
+    <label for="token">View token</label>
+    <input id="token" placeholder="the view token the relay was started with" required>
+    <p id="connectErr" class="err hidden" role="alert"></p>
+    <button type="submit">Connect</button>
+  </form>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // ---------------------------------------------------------------- state
+  const S = { session: null, map: null, state: null, cars: null, lastStateAt: 0, msgs: 0, bytes: 0,
+              rateAt: performance.now(), wx: [] };
+  // Observed weather history. iRacing publishes no forecast and no radar -- every
+  // weather variable is a single scalar for "right now" (verified: all count=1,
+  // and no variable name contains forecast/radar/grid). So this is not a
+  // prediction; it is what we have watched happen since connecting, and it is
+  // marked as computed here, never as something the sim reported.
+  const WX_EVERY_MS = 10000, WX_MAX = 90;   // ~15 minutes of samples
+  let wxLastAt = 0;
+  function recordWeather() {
+    if (!S.state || !S.state.weather) return;
+    const now = performance.now();
+    if (wxLastAt && now - wxLastAt < WX_EVERY_MS) return;
+    wxLastAt = now;
+    const w = S.state.weather;
+    S.wx.push({ t: now, airTempC: w.airTempC, trackTempC: w.trackTempC,
+                humidity: w.humidity, precipitationPct: w.precipitationPct, windMs: w.windMs });
+    if (S.wx.length > WX_MAX) S.wx.shift();
+  }
+  const $ = id => document.getElementById(id);
+  // Every string that came over the wire -- driver, team and car names, licence,
+  // session YAML text -- is escaped before it goes into innerHTML. Those strings
+  // are written by people outside the team, and an engineer's page may hold a
+  // token that can send pit commands.
+  const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  const esc = v => v == null ? "" : String(v).replace(/[&<>"']/g, ch => ESC[ch]);
+  // iRacing enum names as words: "get_in_car" -> "get in car". Its flag table
+  // spells one of them "servicible"; show the word, not the typo.
+  const words = v => v == null ? "" : String(v).replace(/_/g, " ").replace(/\bservicible\b/, "serviceable");
+  // Unit system. These are pure display conversions of values iRacing reported --
+  // no estimation, so the "plain = reported by iRacing" rule still holds. iRacing
+  // publishes SI throughout (m/s, C, litres, bar, metres); imperial is the default
+  // here because that is what this team works in.
+  const UNITS = {
+    imperial: {
+      label: "imperial",
+      speed: v => Math.round(v * 2.23694) + " mph",
+      temp:  v => Math.round(v * 9 / 5 + 32) + "°F",
+      tempN: v => Math.round(v * 9 / 5 + 32) + "°",
+      // A CHANGE in temperature scales but does not shift: 2 C of cooling is
+      // 3.6 F of cooling, not 35.6 F. Offsets belong to absolute values only.
+      tempDelta: v => (v * 9 / 5).toFixed(1) + "°F",
+      fuel:  (v, d = 1) => (v * 0.264172).toFixed(d),
+      fuelUnit: "gallons",
+      fuelAbbr: "gal",
+      press: v => (v * 14.5038).toFixed(1) + " psi",
+      wind:  v => Math.round(v * 2.23694) + " mph",
+      short: v => Math.round(v * 3.28084) + " ft",
+      long:  v => (v / 1609.344).toFixed(2) + " mi",
+    },
+    metric: {
+      label: "metric",
+      speed: v => Math.round(v * 3.6) + " km/h",
+      temp:  v => Math.round(v) + "°C",
+      tempN: v => Math.round(v) + "°",
+      tempDelta: v => v.toFixed(1) + "°C",
+      fuel:  (v, d = 1) => v.toFixed(d),
+      fuelUnit: "liters",
+      fuelAbbr: "L",
+      press: v => v.toFixed(1) + " bar",
+      wind:  v => v.toFixed(1) + " m/s",
+      short: v => Math.round(v) + " m",
+      long:  v => (v / 1000).toFixed(2) + " km",
+    },
+  };
+  let U = UNITS.imperial;
+  try { if (localStorage.getItem("pitwall.units") === "metric") U = UNITS.metric; } catch (e) { /* private mode */ }
+
+  function applyUnits() {
+    $("unitToggle").textContent = U.label;
+    $("fuelUnit").textContent = U.fuelUnit;
+    if (S.state) { renderCar(); renderWeather(); }
+    if (S.map) renderMapNote(S.map);
+  }
+
+  const fmt = {
+    lap(s) { if (s == null || s <= 0) return "–"; const m = Math.floor(s / 60), r = s - m * 60; return m + ":" + r.toFixed(3).padStart(6, "0"); },
+    gap(s) { if (s == null) return "–"; return s >= 0 ? "+" + s.toFixed(3) : s.toFixed(3); },
+    clock(s) { if (s == null || s < 0) return "–"; if (s > 86400 * 3) return "no limit"; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), r = Math.floor(s % 60); return (h ? h + ":" : "") + String(m).padStart(h ? 2 : 1, "0") + ":" + String(r).padStart(2, "0"); },
+    n(v, d = 1, suffix = "") { return v == null ? "–" : v.toFixed(d) + suffix; },
+    // iRating reads as "2.1k" above a thousand, the way the sim and the timing
+    // screens show it, and plain below.
+    irating(v) { return v == null ? "–" : (v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v)); },
+  };
+
+  // deep merge: dicts recurse, everything else replaces. null deletes nothing (it means "now unavailable").
+  function merge(into, from) {
+    for (const k of Object.keys(from)) {
+      const v = from[k];
+      if (v && typeof v === "object" && !Array.isArray(v) && into[k] && typeof into[k] === "object" && !Array.isArray(into[k])) merge(into[k], v);
+      else into[k] = v;
+    }
+    return into;
+  }
+
+  // ---------------------------------------------------------------- connection
+  let ws = null, retry = null;
+  function formError(text) {
+    const el = $("connectErr");
+    el.textContent = text || "";
+    el.classList.toggle("hidden", !text);
+  }
+  function connect(url, token) {
+    clearTimeout(retry);
+    // Detach the old socket before closing it. Its onclose would otherwise
+    // schedule a reconnect with the OLD address and token, which then closes
+    // this one, whose onclose reconnects with the new ones -- forever.
+    if (ws) { ws.onopen = ws.onclose = ws.onmessage = null; try { ws.close(); } catch (e) {} }
+    let full;
+    try { full = new URL(url.replace(/\/+$/, "") + "/view"); } catch (e) { full = null; }
+    if (!full || !/^wss?:$/.test(full.protocol)) {
+      formError("The relay address must start with ws:// or wss://");
+      $("connect").classList.remove("hidden");
+      return;
+    }
+    full.searchParams.set("token", token);
+    let sock;
+    try { sock = new WebSocket(full.href); } catch (e) {
+      formError("Could not open a connection to that address: " + e.message);
+      $("connect").classList.remove("hidden");
+      return;
+    }
+    ws = sock;
+    sock.onopen = () => { $("dotRelay").classList.add("on"); sock.send(JSON.stringify({ type: "resend" })); };
+    sock.onclose = ev => {
+      $("dotRelay").classList.remove("on"); $("dotBridge").classList.remove("on");
+      if (ev.code === 4001) {
+        // The relay accepted the socket, then refused the token. Retrying with
+        // the same token can never work, so stop and say why instead of sitting
+        // on an empty dashboard reconnecting every 3 s.
+        formError("The relay refused that token. Check it is the view (or engineer) token the relay was started with.");
+        $("connect").classList.remove("hidden");
+        return;
+      }
+      if (!$("connect").classList.contains("hidden")) {
+        formError("Cannot reach " + url + " — retrying every 3 s.");
+      }
+      // 4002: the relay dropped us for falling behind (a backgrounded tab, a bad
+      // link). Come straight back; the snapshot on reconnect resynchronises.
+      retry = setTimeout(() => connect(url, token), ev.code === 4002 ? 200 : 3000);
+    };
+    sock.onerror = () => {};
+    sock.onmessage = ev => {
+      S.msgs++; S.bytes += ev.data.length;
+      let m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      // The first message proves the token was accepted; only now hide the form.
+      if (!$("connect").classList.contains("hidden")) { $("connect").classList.add("hidden"); formError(""); }
+      try { handle(m); } catch (e) { console.error("pitwall: could not render a " + m.type + " message", e); }
+    };
+  }
+  function handle(m) {
+    switch (m.type) {
+      case "relay": $("dotBridge").classList.toggle("on", m.bridge === "connected"); break;
+      case "hello": $("dotBridge").classList.add("on"); break;
+      case "session":
+        S.session = m;
+        // A bridge on a different track (or a relay holding the last bridge's
+        // snapshot) leaves the old outline behind; drawing cars on another
+        // circuit's map is worse than the plain lap-distance ring.
+        if (S.map && !mapMatchesSession(S.map)) dropMap();
+        renderHeader(); break;
+      case "map":
+        if (S.session && !mapMatchesSession(m)) break;
+        S.map = m; renderMapNote(m); break;
+      // A delta is only meaningful on top of a keyframe. One arriving first
+      // (the keyframe was lost, or arrived before a reconnect) is dropped; the
+      // next keyframe is at most 5 s away.
+      case "state":
+        if (!m.full && !S.state) break;
+        S.state = m.full ? m : merge(S.state, m); S.lastStateAt = performance.now();
+        recordAccel(); recordWeather(); renderHeader(); renderCar(); renderWeather(); break;
+      case "cars":
+        if (!m.full && !S.cars) break;
+        S.cars = m.full ? m : merge(S.cars, m); renderStandings(); renderFocus(); break;
+      case "cmd_result": console.log("command result", m); break;
+    }
+  }
+
+  function mapMatchesSession(m) {
+    const t = S.session && S.session.track;
+    if (!t || m.trackId == null) return true;
+    return String(m.trackId) === String(t.TrackID) &&
+           (m.config || "default") === (t.TrackConfigName || "default");
+  }
+  function dropMap() {
+    S.map = null;
+    $("mapNote").textContent = "Outline is built from your first clean lap and cached per track.";
+  }
+
+  // ---------------------------------------------------------------- header
+  function renderHeader() {
+    const t = S.session && S.session.track;
+    if (t) $("trackName").textContent = (t.TrackDisplayName || t.TrackName || "Track") + (t.TrackConfigName ? " – " + t.TrackConfigName : "");
+    const st = S.state; if (!st) return;
+    const sess = S.session && S.session.sessions && S.session.sessions.find(x => x.SessionNum === st.session.num);
+    $("sessionType").textContent = sess ? sess.SessionType : words(st.session.state);
+    const flags = st.session.flags || [];
+    const prio = ["red", "checkered", "white", "caution", "yellow", "blue", "green"];
+    const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || "";
+    const el = $("flag"); el.dataset.flag = f;
+    const stateTxt = words(st.session.state);
+    el.textContent = f ? (f === "caution" ? "Full course yellow" : f[0].toUpperCase() + f.slice(1) + " flag")
+      : (stateTxt ? stateTxt[0].toUpperCase() + stateTxt.slice(1) : "No flag");
+    $("remain").textContent = st.session.timeRemainS != null ? fmt.clock(st.session.timeRemainS) : "–";
+    const lr = st.session.lapsRemain;
+    $("lapline").textContent = "Lap " + (st.player.lap ?? "–") + (lr != null && lr < 32767 ? " · " + lr + " to go" : "");
+  }
+
+  // Closing rate on the car ahead. Positive is catching. Needs ~20 s of trustworthy
+  // gap history before it says anything, so it stays blank early in a stint rather
+  // than swinging wildly off two samples.
+  function closingCell(c) {
+    const d = c.derived || {};
+    const r = d.closingSPerLap;
+    if (r == null) return "–";
+    if (r === 0) return `<span class="flat">level</span>`;
+    const cls = r > 0 ? "gain" : "lose";
+    const catchTxt = d.catchLaps != null ? `Catches in ${d.catchLaps} laps at this rate` : "Losing ground";
+    return `<span class="${cls}" title="${catchTxt}">${r > 0 ? "+" : ""}${r.toFixed(2)}</span>`;
+  }
+
+  // Pit / stops. Knowing who still has to stop reorders the race in your head --
+  // the car 8 s up the road who has not stopped is not really ahead. But we only
+  // see what happened while connected, so a blank means "none seen", never
+  // "none made", and the tooltip says so rather than leaving it implied.
+  function pitCell(c, pitState) {
+    if (pitState) return `<span class="lose">${pitState}</span>`;
+    const d = c.derived || {};
+    const n = d.stopsSeen;
+    if (!n) return `<span class="flat" title="No stop seen since connecting — it may have stopped before that">–</span>`;
+    const bits = [`${n} stop${n > 1 ? "s" : ""} seen since connecting`];
+    if (d.lastStopLap != null) bits.push(`last on lap ${d.lastStopLap}`);
+    if (d.lastStopS != null) bits.push(`${d.lastStopS.toFixed(1)} s stationary`);
+    if (d.lapsSincePit != null) bits.push(`${d.lapsSincePit} laps ago`);
+    return `<span title="${bits.join(", ")}">×${n}</span>`;
+  }
+
+  // Stint degradation: the usable stand-in for the tyre data iRacing will not
+  // give us. Needs a few laps in the stint before it means anything.
+  function degCell(c) {
+    const d = c.derived || {};
+    if (d.degSPerLap == null) return "–";
+    const v = d.degSPerLap;
+    const cls = v > 0.05 ? "lose" : v < -0.05 ? "gain" : "flat";
+    return `<span class="${cls}" title="${d.stintLaps} laps this stint, average ${d.stintAvgS != null ? d.stintAvgS.toFixed(3) + " s" : "?"}">${v > 0 ? "+" : ""}${v.toFixed(2)}</span>`;
+  }
+
+  // ---------------------------------------------------------------- standings
+  function renderStandings() {
+    if (!S.cars) return;
+    const cars = Object.values(S.cars.cars || {}).filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
+    const me = S.state && S.state.player.carIdx;
+    const focus = focusIdx();
+    const multi = isMulticlass();
+    const html = cars.map(c => {
+      const flags = (c.flags || []).filter(f => ["black", "repair", "furled", "disqualify"].includes(f)).map(f => `<span class="badge ${f}">${f}</span>`).join("");
+      const pit = c.onPitRoad ? "pit" : (c.surface === "in_pit_stall" ? "box" : "");
+      return `<tr data-idx="${c.idx}" class="${c.idx === me ? "player" : ""} ${c.idx === focus ? "focus" : ""} ${pit ? "pit" : ""}">
+        <td class="r c-pos"${multi && c.classColor != null ? ` style="box-shadow: inset 3px 0 0 ${classCss(c.classColor)}"` : ""}>${c.pos}${multi && c.classPos ? `<span class="cpos">${c.classPos}</span>` : ""}</td>
+        <td class="driver c-driver" title="${esc(c.name ?? "")}"><span class="num">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}${flags}</td>
+        <td class="c-car"${multi && c.classColor != null ? ` style="color:${classCss(c.classColor)}"` : ""}>${esc(c.className ?? c.car)}</td>
+        <td class="r c-int">${c.derived && c.derived.intervalS != null ? fmt.gap(c.derived.intervalS) : "–"}</td>
+        <td class="r c-delta">${closingCell(c)}</td>
+        <td class="r c-gap">${c.pos === 1 ? "leader" : (c.gapValid ? fmt.gap(c.f2TimeS) : "–")}</td>
+        <td class="r c-last">${fmt.lap(c.lastLapS)}</td><td class="r c-best">${fmt.lap(c.bestLapS)}</td>
+        <td class="r c-laps">${c.lapCompleted ?? "–"}</td><td class="r c-deg">${degCell(c)}</td>
+        <td class="c-stops">${pitCell(c, pit)}</td></tr>`;
+    }).join("");
+    $("rows").innerHTML = html || `<tr><td colspan="11" class="empty">` +
+      (Object.keys(S.cars.cars || {}).length
+        ? "No positions yet. iRacing scores the field once the session is under way."
+        : "No cars in the session yet.") + `</td></tr>`;
+    // The Car column only means something in a multi-class field. In a one-make
+    // race it is the same string on every row, so it is dropped rather than
+    // spending width on a constant.
+    $("standings").classList.toggle("one-class", !multi);
+  }
+
+  function renderMapNote(m) {
+    const len = m.lapLengthM != null ? U.long(m.lapLengthM) : "?";
+    const err = m.closureErrorM != null ? U.short(m.closureErrorM) : "?";
+    $("mapNote").textContent = "Outline from a recorded lap (" + len + ", closure error " + err + ").";
+  }
+
+  // ---------------------------------------------------------------- your car
+  function renderCar() {
+    const p = S.state.player, d = S.state.derived;
+    $("fuel").textContent = p.fuelL == null ? "–" : U.fuel(p.fuelL, 1);
+    $("lapsFuel").textContent = d.lapsOfFuel != null ? d.lapsOfFuel.toFixed(1) : "–";
+    $("fuelSamples").textContent = d.fuelPerLapSamples ? "(" + U.fuel(d.fuelPerLap, 2) + " " + U.fuelAbbr + "/lap over " + d.fuelPerLapSamples + ")" : "(needs a completed lap)";
+    $("pos").textContent = p.position || "–";
+    // Fuel to finish. Silent unless BOTH a measured burn rate and a known race
+    // length exist -- the two things it cannot be honestly guessed without.
+    (() => {
+      const el = $("fuelPlan");
+      if (d.fuelMarginL == null || d.lapsRemaining == null) { el.innerHTML = ""; return; }
+      const short = d.fuelMarginL < 0;
+      const mag = U.fuel(Math.abs(d.fuelMarginL), 1) + " " + U.fuelAbbr;
+      const est = d.lapsRemainingIsEstimate ? " (laps estimated from the clock)" : "";
+      el.innerHTML = `<span class="derived ${short ? "lose" : "gain"}" ` +
+        `title="Computed here: ${U.fuel(d.fuelToFinishL, 1)} ${U.fuelAbbr} needed for ${d.lapsRemaining} laps` +
+        ` at ${U.fuel(d.fuelPerLap, 2)} ${U.fuelAbbr}/lap.${est}">` +
+        `${short ? "short " + mag + " to finish" : mag + " in hand at the finish"}</span>` +
+        (short && d.fuelSavePerLapL != null
+          ? `<span class="derived lose" title="Computed here: the shortfall spread over the laps remaining."> · save ${U.fuel(d.fuelSavePerLapL, 2)} ${U.fuelAbbr}/lap</span>` : "") +
+        `<span style="color:var(--muted)"> · ${d.lapsRemaining} laps left${d.lapsRemainingIsEstimate ? " (est)" : ""}</span>`;
+    })();
+    $("speed").textContent = p.speedMs != null ? U.speed(p.speedMs) : "–";
+    $("gear").textContent = (p.gear === 0 ? "N" : p.gear === -1 ? "R" : p.gear ?? "–") + " · " + (p.rpm != null ? Math.round(p.rpm) : "–");
+    $("thr").style.width = ((p.throttle || 0) * 100) + "%";
+    $("brk").style.width = (Math.min(1, p.brake || 0) * 100) + "%";
+    $("laps").textContent = fmt.lap(p.lastLapS) + " / " + fmt.lap(p.bestLapS);
+    // iRacing says when a delta is meaningless (_OK false, before there is a
+    // reference lap) and it reports 0.0 in that state. Showing that as "+0.000"
+    // is a confident wrong number, so a null delta renders as a dash instead.
+    (() => {
+      if (p.deltaToBestS == null) { $("delta").textContent = "–"; $("delta").className = ""; return; }
+      const r = p.deltaToBestRate;
+      const arrow = r == null ? "" : r > 0.01 ? " ▲" : r < -0.01 ? " ▼" : "";
+      $("delta").textContent = fmt.gap(p.deltaToBestS) + arrow;
+      $("delta").className = p.deltaToBestS > 0 ? "lose" : p.deltaToBestS < 0 ? "gain" : "";
+      $("delta").title = r == null ? "" :
+        (r > 0 ? "Losing " : "Gaining ") + Math.abs(r).toFixed(3) + " s per second against your best lap";
+    })();
+    // Driver's machine and link. iRacing reports CPU, GPU and quality as 0-1
+    // despite labelling them %, so they are scaled here.
+    (() => {
+      const r = p.rig;
+      if (!r) { $("rig").textContent = ""; return; }
+      const bits = [];
+      if (r.fps != null) bits.push(Math.round(r.fps) + " fps");
+      if (r.latencyS != null) bits.push(Math.round(r.latencyS * 1000) + " ms");
+      if (r.qualityPct != null) bits.push("link " + Math.round(r.qualityPct * 100) + "%");
+      const el = $("rig");
+      el.textContent = bits.length ? " · " + bits.join(" · ") : "";
+      const bad = (r.fps != null && r.fps < 40) || (r.qualityPct != null && r.qualityPct < 0.95);
+      el.style.color = bad ? "var(--red)" : "var(--muted)";
+      el.title = `CPU ${r.cpuPct != null ? Math.round(r.cpuPct * 100) + "%" : "?"}` +
+                 ` · GPU ${r.gpuPct != null ? Math.round(r.gpuPct * 100) + "%" : "?"}` +
+                 ` · clock skew ${r.clockSkewS != null ? r.clockSkewS.toFixed(3) + " s" : "?"}`;
+    })();
+    $("temps").textContent = (p.waterTempC == null ? "–" : U.tempN(p.waterTempC)) + " / " + (p.oilTempC == null ? "–" : U.tempN(p.oilTempC)) + " · " + (p.oilPressBar == null ? "–" : U.press(p.oilPressBar));
+    $("inc").textContent = (p.incidents.my ?? "–") + "x";
+    const w = p.engineWarnings || [];
+    $("warn").textContent = w.length ? w.join(", ") : "none"; $("warn").className = w.length ? "warn" : "na";
+    const dcNames = { brakeBias: "Brake bias", abs: "ABS", tractionControl: "TC", antiRollFront: "ARB F", antiRollRear: "ARB R", fuelMixture: "Mix", weightJackerRight: "WJ R", wingFront: "Wing F", wingRear: "Wing R", mguk: "MGU-K" };
+    $("dc").innerHTML = Object.entries(dcNames).filter(([k]) => p.dc[k] != null).map(([k, n]) => `<div><span>${n}</span><span>${esc(p.dc[k])}</span></div>`).join("");
+    // Theoretical best: your own best sectors added together. The gap to your
+    // actual best lap is time you have already shown you can find.
+    (() => {
+      const el = $("theo");
+      const mine = S.cars && S.cars.cars ? Object.values(S.cars.cars).find(x => x.idx === p.carIdx) : null;
+      const d2 = mine && mine.derived;
+      if (!d2 || d2.theoreticalBestS == null) { el.innerHTML = ""; return; }
+      const left = d2.bestLapLeftS;
+      el.innerHTML = `<span class="derived" title="Computed here: the sum of your own best sector times. The gap to your best lap is time you have already driven, just not on one lap.">Theoretical</span> ` +
+        `<b>${fmt.lap(d2.theoreticalBestS)}</b>` +
+        (left != null && left > 0.001 ? `<span style="color:var(--muted)"> · ${left.toFixed(3)} s left on the table</span>` : "");
+    })();
+
+    // Sector times for your own car. Derived here from lap-distance crossings --
+    // iRacing publishes the boundaries but not the times. Purple = session best,
+    // green = this car's best.
+    (() => {
+      const el = $("sectors");
+      const mine = S.cars && S.cars.cars ? Object.values(S.cars.cars).find(x => x.idx === p.carIdx) : null;
+      const sec = mine && mine.derived ? mine.derived.sectorS : null;
+      if (!sec || !sec.some(v => v != null)) { el.innerHTML = ""; return; }
+      const best = (S.cars.derived && S.cars.derived.sessionBestSectorS) || [];
+      const mineBest = (mine.derived.bestSectorS) || [];
+      const cells = sec.map((v, i) => {
+        if (v == null) return `<span style="color:var(--muted)">–</span>`;
+        const isSession = best[i] != null && Math.abs(v - best[i]) < 0.0005;
+        const isOwn = mineBest[i] != null && Math.abs(v - mineBest[i]) < 0.0005;
+        const col = isSession ? "var(--purple, #B98BFF)" : isOwn ? "var(--green)" : "";
+        return `<span style="${col ? "color:" + col : ""}">${v.toFixed(2)}</span>`;
+      }).join(" <span style=\"color:var(--line)\">|</span> ");
+      el.innerHTML = `<span class="derived" title="Computed here from lap-distance crossings; iRacing publishes sector boundaries but not sector times. Purple = session best, green = your best.">Sectors</span> ${cells}`;
+    })();
+    $("tires").innerHTML = ["LF", "RF", "LR", "RR"].map(c => {
+      const t = p.tires[c]; const temps = t.carcassTempC.map(v => v == null ? "–" : U.tempN(v));
+      const wear = t.wearPct.every(v => v == null) ? null : t.wearPct.map(v => v == null ? "–" : Math.round(v * 100) + "%");
+      return `<div class="tire"><b>${c}</b><div class="temps snapval">${temps.map(v => `<span>${v}</span>`).join("")}</div>
+        <div class="${wear ? "snapshot" : "na"}">${wear ? wear.join(" ") : "wear –"}</div></div>`;
+    }).join("");
+    const sv = p.pitService;
+    $("pitsv").textContent = (sv.flags || []).length ? sv.flags.map(words).join(", ") + (sv.flags.includes("fuel") && sv.fuel != null ? " (" + U.fuel(sv.fuel, 0) + " " + U.fuelAbbr + ")" : "") : "nothing selected";
+  }
+
+  // Detail for the car being watched. Everything here is per-car data we already
+  // derive for the whole field; the panel just puts one car's worth in one place.
+  // Speed and inputs come from the player block, which while spectating follows
+  // the camera car -- so they are only shown when the focus IS the camera car,
+  // never against a pinned one they do not describe.
+  // The player block describes YOUR car. Spectating a live session leaves it
+  // entirely zero -- Speed 0, RPM at idle, Gear 0, accelerometers flat -- while
+  // the field around you is moving. (A recorded spectator session showed those
+  // channels alive, so it is not consistent; trust the flag, not the assumption.)
+  // Showing 0 mph beside a car doing 100 is exactly the wrong number worn
+  // confidently, so anything sourced from the player block is gated on this.
+  function playerBlockIsLive() {
+    const p = S.state && S.state.player;
+    if (!p) return false;
+    if (p.isOnTrack) return true;
+    return (p.speedMs || 0) > 0.5 || (p.rpm || 0) > 500;
+  }
+
+  function renderFocus() {
+    const el = $("focus");
+    const c = focusCar();
+    const p = S.state && S.state.player;
+    $("focusPinned").textContent = pinnedIdx != null ? "pinned · click row to release" : "";
+    if (!c) {
+      const cam = p ? p.camCarIdx : null;
+      el.innerHTML = `<div style="color:var(--muted);font-size:12px">` +
+        (cam != null && cam === (p && p.carIdx)
+          ? "The camera is not on a car in the field. Click a row in the standings to follow one."
+          : "Waiting for the field. Click a row in the standings to follow a car.") +
+        `</div>`;
+      return;
+    }
+    const d = c.derived || {};
+    const isCam = p && c.idx === p.camCarIdx;
+    const row = (k, v) => v == null || v === "" ? "" : `<dt>${k}</dt><dd>${v}</dd>`;
+    const sec = d.sectorS && d.sectorS.some(v => v != null)
+      ? d.sectorS.map(v => v == null ? "–" : v.toFixed(2)).join(" | ") : null;
+    const deg = d.degSPerLap == null ? null
+      : `<span class="${d.degSPerLap > 0.05 ? "lose" : d.degSPerLap < -0.05 ? "gain" : "flat"}">${d.degSPerLap > 0 ? "+" : ""}${d.degSPerLap.toFixed(2)} s/lap</span>`;
+    const closing = d.closingSPerLap == null ? null
+      : (d.closingSPerLap === 0 ? "level"
+         : `<span class="${d.closingSPerLap > 0 ? "gain" : "lose"}">${d.closingSPerLap > 0 ? "+" : ""}${d.closingSPerLap.toFixed(2)} s/lap</span>` +
+           (d.catchLaps != null ? `<span style="color:var(--muted)"> · ${d.catchLaps} laps</span>` : ""));
+    el.innerHTML =
+      `<div class="fhead"><span class="fnum">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}` +
+      (c.licString ? `<span class="lic"${c.licColor != null ? ` style="background:${classCss(c.licColor)}"` : ""}>${esc(c.licString)}</span>` : "") +
+      (c.iRating ? `<span class="ir" title="iRating">${fmt.irating(c.iRating)}</span>` : "") +
+      (isCam ? `<span style="color:var(--muted);font-weight:400"> · on camera</span>` : "") + `</div>` +
+      `<dl class="fkv">` +
+      row("Car", esc(c.car ?? c.className)) +
+      row("Position", c.pos ? c.pos + (c.classPos && c.classPos !== c.pos ? ` (class ${c.classPos})` : "") : null) +
+      row("Interval", d.intervalS != null ? fmt.gap(d.intervalS) : null) +
+      row("Gap to leader", c.gapValid ? fmt.gap(c.f2TimeS) : null) +
+      row("Closing", closing) +
+      row("Last lap", c.lastLapS > 0 ? fmt.lap(c.lastLapS) : null) +
+      row("Best lap", c.bestLapS > 0 ? fmt.lap(c.bestLapS) : null) +
+      row("Theoretical", d.theoreticalBestS != null ? fmt.lap(d.theoreticalBestS) +
+          (d.bestLapLeftS > 0.001 ? ` <span style="color:var(--muted)">(${d.bestLapLeftS.toFixed(3)} left)</span>` : "") : null) +
+      row("Sectors", sec) +
+      row("Stint", d.stintLaps ? `${d.stintLaps} laps` + (d.stintAvgS ? ` · avg ${fmt.lap(d.stintAvgS)}` : "") : null) +
+      row("Degradation", deg) +
+      row("Stops seen", d.stopsSeen ? `${d.stopsSeen}` + (d.lastStopS != null ? ` · ${d.lastStopS.toFixed(1)} s` : "") +
+          (d.lapsSincePit != null ? ` · ${d.lapsSincePit} laps ago` : "") : null) +
+      row("On track", c.surface ? esc(words(c.surface)) : null) +
+      row("Laps", c.lapCompleted != null && c.lapCompleted >= 0 ? c.lapCompleted : null) +
+      row("Gear / rpm", c.gear != null && c.gear >= 0 ? `${c.gear === 0 ? "N" : c.gear} · ${Math.round(c.rpm || 0)}` : null) +
+      (isCam && playerBlockIsLive() ? row("Speed", U.speed(p.speedMs)) : "") +
+      (c.flags && c.flags.length ? row("Flags", esc(c.flags.map(words).join(", "))) : "") +
+      `</dl>`;
+  }
+
+  // ---------------------------------------------------------------- weather
+  // Track rubber, as iRacing words it. Two things make this awkward to show
+  // honestly, and both are handled here rather than papered over:
+  //   1. It is the state at the START of the session, not now. With
+  //      TrackDynamicTrack on the surface evolves and the sim never reports the
+  //      evolved value, so it gets the grey "snapshot, not live" treatment.
+  //   2. Sessions after the first usually say "carry over", which describes
+  //      inheritance rather than condition. Showing that alone tells an engineer
+  //      nothing, so we walk back to the nearest earlier session that names a
+  //      real state and show both -- the sim's word, and where it came from.
+  function trackRubber() {
+    if (!S.session || !S.state) return null;
+    const list = S.session.sessions || [];
+    const num = S.state.session.num;
+    const i = list.findIndex(x => x.SessionNum === num);
+    if (i < 0) return null;
+    const raw = list[i].SessionTrackRubberState;
+    if (!raw) return null;
+    if (!/carry over/i.test(raw)) return { text: raw, from: null };
+    for (let j = i - 1; j >= 0; j--) {
+      const prev = list[j].SessionTrackRubberState;
+      if (prev && !/carry over/i.test(prev)) {
+        return { text: prev, from: list[j].SessionType || ("session " + list[j].SessionNum) };
+      }
+    }
+    return { text: raw, from: null };   // nothing earlier names a state; report it verbatim
+  }
+
+  function spark(vals, w = 62, h = 15) {
+    const ok = vals.filter(v => v != null);
+    if (ok.length < 2) return "";
+    const min = Math.min(...ok), max = Math.max(...ok), span = (max - min) || 1;
+    const pts = ok.map((v, i) => `${(i / (ok.length - 1) * w).toFixed(1)},${(h - (v - min) / span * h).toFixed(1)}`);
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">` +
+           `<polyline points="${pts.join(" ")}"/></svg>`;
+  }
+
+  // What the conditions have DONE since we connected. Not a forecast: iRacing
+  // publishes no future data at all, so this only ever looks backwards.
+  function renderTrend() {
+    const el = $("wxTrend");
+    if (S.wx.length < 2) {
+      el.innerHTML = `<h3>Trend</h3><div class="row2"><span>watching… needs a minute of data</span><span></span><span></span></div>`;
+      return;
+    }
+    const mins = Math.max(1, Math.round((S.wx[S.wx.length - 1].t - S.wx[0].t) / 60000));
+    const METRICS = [
+      ["Air",      "airTempC",         v => U.tempDelta(v)],
+      ["Track",    "trackTempC",       v => U.tempDelta(v)],
+      ["Humidity", "humidity",         v => (v * 100).toFixed(0) + "%"],
+      ["Rain",     "precipitationPct", v => (v * 100).toFixed(0) + "%"],
+      ["Wind",     "windMs",           v => U.wind(Math.abs(v)).replace(/^-/, "")],
+    ];
+    const rows = METRICS.map(([label, key, fmtD]) => {
+      const vals = S.wx.map(x => x[key]).filter(v => v != null);
+      if (vals.length < 2) return "";
+      const d = vals[vals.length - 1] - vals[0];
+      const eps = key === "windMs" ? 0.15 : (key.endsWith("TempC") ? 0.05 : 0.005);
+      const cls = d > eps ? "up" : d < -eps ? "down" : "flat";
+      const arrow = d > eps ? "▲" : d < -eps ? "▼" : "–";
+      const txt = Math.abs(d) <= eps ? "steady" : arrow + " " + fmtD(Math.abs(d));
+      return `<div class="row2"><span>${label}</span>${spark(vals)}<span class="delta ${cls}">${txt}</span></div>`;
+    }).join("");
+    el.innerHTML = `<h3><span class="derived" title="Computed here from what we have observed since connecting. iRacing publishes no forecast.">Trend over ${mins} min</span></h3>` + rows;
+  }
+
+  function renderWeather() {
+    const w = S.state.weather;
+    const c2f = c => c == null ? "–" : U.temp(c);
+    const wetCls = w.wetnessRaw > 1 ? "wet" : "";
+    $("wx").innerHTML = [
+      ["Air", c2f(w.airTempC)], ["Track", c2f(w.trackTempC)],
+      ["Wind", w.windMs != null ? U.wind(w.windMs) + (w.windDirRad != null ? " @ " + (((Math.round(w.windDirRad * 180 / Math.PI) % 360) + 360) % 360) + "°" : "") : "–"],
+      ["Humidity", w.humidity != null ? Math.round(w.humidity * 100) + "%" : "–"],
+      ["Skies", w.skies ? esc(words(w.skies)) : "–"],
+      ["Rain", w.precipitationPct != null ? Math.round(w.precipitationPct * 100) + "%" : "–"],
+      ["Track surface", `<span class="${wetCls}">${w.wetness ? esc(words(w.wetness)) : "–"}</span>`],
+      ["Track rubber", (() => {
+        const r = trackRubber();
+        if (!r) return "–";
+        const note = r.from ? ` (carried over from ${esc(r.from)})` : "";
+        const dyn = S.session.track && S.session.track.TrackDynamicTrack
+          ? "Track is dynamic, so the surface has evolved since." : "";
+        return `<span class="snapshot" title="At the start of this session. ${dyn}">${esc(r.text)}${note}</span>`;
+      })()],
+      ["Rain tires", w.declaredWet ? `<span class="wet">allowed</span>` : "not declared"],
+      ["Fog", w.fogPct != null ? Math.round(w.fogPct * 100) + "%" : "–"],
+      ["Air density", fmt.n(w.airDensity, 3)],
+    ].map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join("");
+    renderTrend();
+  }
+
+  // ---------------------------------------------------------------- map
+  const cv = $("map"), ctx = cv.getContext("2d");
+  // Which car the detail panel and the map highlight follow. Defaults to the
+  // camera car -- while spectating that is the only thing identifying what is
+  // being watched, since PlayerCarIdx is the spectator slot. Clicking a
+  // standings row pins a different car; clicking it again releases it.
+  // iRacing hands out a 24-bit RGB int per class. A single-make field gets
+  // white (0xFFFFFF) for everything, which carries no information, so class
+  // colouring only switches on when the field is genuinely mixed.
+  function classCss(v) {
+    if (v == null) return null;
+    return "#" + (v & 0xFFFFFF).toString(16).padStart(6, "0");
+  }
+  function isMulticlass() {
+    if (!S.cars || !S.cars.cars) return false;
+    const ids = new Set(Object.values(S.cars.cars).filter(c => c.pos > 0).map(c => c.classId));
+    ids.delete(null); ids.delete(undefined);
+    return ids.size > 1;
+  }
+
+  let pinnedIdx = null;
+  function carByIdx(i) {
+    if (i == null || !S.cars || !S.cars.cars) return null;
+    return Object.values(S.cars.cars).find(c => c.idx === i) || null;
+  }
+  // Preference order, first that actually EXISTS in the field: a pinned car, the
+  // camera car, then your own. The camera is not always on a car -- while
+  // spectating it can sit on the spectator slot itself (CamCarIdx 63, the same
+  // as PlayerCarIdx), which is in no standings row. Falling through rather than
+  // resolving to a car that is not there is what keeps the panel honest.
+  function focusCar() {
+    for (const i of [pinnedIdx,
+                     S.state && S.state.player ? S.state.player.camCarIdx : null,
+                     S.state && S.state.player ? S.state.player.carIdx : null]) {
+      const c = carByIdx(i);
+      if (c) return c;
+    }
+    return null;
+  }
+  function focusIdx() {
+    const c = focusCar();
+    return c ? c.idx : null;
+  }
+
+  const trackPanelEl = $("trackPanel");
+  const ggEl = $("gg"), ggCtx = ggEl.getContext("2d"), ggPanelEl = $("ggDetails");
+  // ~20 s of trace. State arrives around 15 Hz carrying six 360 Hz samples each,
+  // so this is roughly 90 samples a second.
+  const GG_MAX = 1800;
+  const gg = [];
+  let ggPeak = 0;
+  function recordAccel() {
+    const a = S.state && S.state.player && S.state.player.accel;
+    if (!a || !a.latG || !a.longG) return;
+    if (!playerBlockIsLive()) return;   // spectating: the channels are flat zeros
+    const n = Math.min(a.latG.length, a.longG.length);
+    for (let i = 0; i < n; i++) {
+      const lat = a.latG[i], lon = a.longG[i];
+      if (lat == null || lon == null) continue;
+      gg.push([lat, lon]);
+      const m = Math.hypot(lat, lon);
+      if (m > ggPeak) ggPeak = m;
+    }
+    while (gg.length > GG_MAX) gg.shift();
+  }
+
+  function drawGG() {
+    if (!ggPanelEl.open) return;
+    const r = ggEl.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (!r.width || !r.height) return;
+    if (ggEl.width !== Math.round(r.width * dpr) || ggEl.height !== Math.round(r.height * dpr)) {
+      ggEl.width = Math.round(r.width * dpr); ggEl.height = Math.round(r.height * dpr);
+    }
+    ggCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ggCtx.clearRect(0, 0, r.width, r.height);
+    const cx = r.width / 2, cy = r.height / 2;
+    const scale = (Math.min(r.width, r.height) / 2 - 14) / 2.0;   // full scale = 2.0 g
+    ggCtx.strokeStyle = "#2F3F63"; ggCtx.lineWidth = 1;
+    for (const g of [0.5, 1.0, 1.5, 2.0]) {
+      ggCtx.beginPath(); ggCtx.arc(cx, cy, g * scale, 0, 7); ggCtx.stroke();
+    }
+    ggCtx.beginPath(); ggCtx.moveTo(cx - scale * 2, cy); ggCtx.lineTo(cx + scale * 2, cy);
+    ggCtx.moveTo(cx, cy - scale * 2); ggCtx.lineTo(cx, cy + scale * 2); ggCtx.stroke();
+    ggCtx.fillStyle = "#5A6784"; ggCtx.font = "10px system-ui, sans-serif"; ggCtx.textAlign = "left";
+    ggCtx.fillText("1g", cx + scale + 3, cy - 3);
+    // Newest samples brightest, so the current corner reads out of the envelope.
+    for (let i = 0; i < gg.length; i++) {
+      const age = i / gg.length;
+      ggCtx.fillStyle = `rgba(111,168,255,${0.10 + age * 0.75})`;
+      // braking is negative long-g and should sit at the BOTTOM, so y is inverted
+      ggCtx.fillRect(cx + gg[i][0] * scale - 1, cy - gg[i][1] * scale - 1, 2, 2);
+    }
+    $("ggNote").textContent = ggPeak > 0.01
+      ? `Peak ${ggPeak.toFixed(2)} g · ${gg.length} samples at 360 Hz`
+      : (playerBlockIsLive()
+         ? "Lateral against longitudinal g. The envelope fills in as the car is driven."
+         : "No accelerometer data — these channels belong to your own car, and read zero while spectating.");
+  }
+  let mapLabelMode = "num";
+  try { if (localStorage.getItem("pitwall.mapLabel") === "pos") mapLabelMode = "pos"; } catch (e) { /* storage off */ }
+  function drawMap() {
+    // Skip entirely while the Track panel is collapsed. Drawing into a sliver of a
+    // canvas would also write a lopsided backing store, which used to poison the
+    // canvas aspect ratio on reopen.
+    if (!trackPanelEl.open) return;
+    const r = cv.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
+    if (!r.width || !r.height) return;
+    if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, r.width, r.height);
+    const pad = 26, size = Math.min(r.width, r.height) - pad * 2;
+    const ox = (r.width - size) / 2, oy = (r.height - size) / 2;
+    const pts = S.map ? S.map.points : null;
+    const P = pct => {
+      if (pts) { const i = Math.floor(((pct % 1) + 1) % 1 * pts.length) % pts.length, j = (i + 1) % pts.length; const f = ((pct * pts.length) % 1 + 1) % 1;
+        return [ox + (pts[i][0] + (pts[j][0] - pts[i][0]) * f) * size, oy + (pts[i][1] + (pts[j][1] - pts[i][1]) * f) * size]; }
+      const a = pct * Math.PI * 2 - Math.PI / 2; return [ox + size / 2 + Math.cos(a) * size / 2, oy + size / 2 + Math.sin(a) * size / 2];
+    };
+    // outline
+    ctx.lineWidth = pts ? 6 : 3; ctx.strokeStyle = pts ? "#3A4C75" : "#2F3F63"; ctx.lineJoin = "round"; ctx.beginPath();
+    for (let k = 0; k <= 360; k++) { const [x, y] = P(k / 360); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke();
+    if (!pts) { ctx.fillStyle = "#8A97B3"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillText("no outline yet", ox + size / 2, oy + size / 2 - 8); ctx.fillText("cars placed by lap distance", ox + size / 2, oy + size / 2 + 8); }
+    // start/finish
+    const [sx, sy] = P(0); ctx.fillStyle = "#E8ECF4"; ctx.fillRect(sx - 2, sy - 9, 4, 18);
+    // sectors
+    const sectors = S.session && S.session.sectors || [];
+    ctx.fillStyle = "#5A6784"; for (const s of sectors) { if (!s.SectorStartPct) continue; const [x, y] = P(s.SectorStartPct); ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+    // cars
+    if (!S.cars) return;
+    const me = S.state && S.state.player.carIdx;
+    const focus = focusIdx();
+    const multi = isMulticlass();
+    const cars = Object.values(S.cars.cars || {}).filter(c => c.pct != null && c.pct >= 0 && c.surface !== "not_in_world");
+    ctx.font = "bold 10px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (const c of cars.sort((a, b) => (a.idx === me) - (b.idx === me))) {
+      const [x, y] = P(c.pct); const mine = c.idx === me;
+      ctx.beginPath(); ctx.arc(x, y, mine ? 9 : 7, 0, 7);
+      ctx.fillStyle = mine ? "#FFB23F"
+        : c.onPitRoad ? "#5A6784"
+        : (multi && c.classColor != null ? classCss(c.classColor) : "#6FA8FF");
+      ctx.fill();
+      if (c.idx === focus) {   // ring the car being watched so it is findable at a glance
+        ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y, mine ? 12 : 10, 0, 7); ctx.stroke();
+      }
+      ctx.fillStyle = mine ? "#2A1A00" : "#08203F";
+      // In position mode an unscored car (pos 0 -- not yet classified, in the
+      // pits before the start, a spectator slot) gets no label rather than
+      // falling back to its car number, which would read as a position it does
+      // not have. The marker still shows where it is.
+      const label = mapLabelMode === "pos" ? (c.pos > 0 ? String(c.pos) : "") : String(c.num ?? c.idx);
+      if (label) ctx.fillText(label, x, y + 0.5);
+    }
+  }
+
+  // ---------------------------------------------------------------- loop
+  function loop() {
+    drawMap();
+    drawGG();
+    const now = performance.now();
+    if (S.lastStateAt) { const age = (now - S.lastStateAt) / 1000; $("age").textContent = age < 1.5 ? "live" : "last update " + age.toFixed(0) + " s ago"; $("age").style.color = age < 3 ? "" : "#FF5A5A"; }
+    // Divide by the real elapsed time, not a constant 2 s: this loop is driven by
+    // requestAnimationFrame, which browsers throttle to ~1 Hz or stop outright while
+    // the tab is in the background. An engineer's dashboard sits backgrounded behind
+    // the sim for minutes at a time, so the messages pile up and the first frame after
+    // refocus would report the whole backlog as a 2-second rate (observed: 5654 msg/s
+    // and 1855 KB/s against a relay actually doing 21 msg/s).
+    const dt = (now - S.rateAt) / 1000;
+    if (dt >= 2) { $("rate").textContent = (S.msgs / dt).toFixed(0) + " msg/s · " + (S.bytes / dt / 1024).toFixed(1) + " KB/s"; S.msgs = 0; S.bytes = 0; S.rateAt = now; }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // Width buckets for the column-priority rules. A ResizeObserver on the panel
+  // rather than a media query on the viewport, because the panel's width depends
+  // on which other panels are collapsed, not on the window.
+  (function () {
+    const el = $("standings");
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const bucket = w => w >= 600 ? "lg" : w >= 490 ? "md" : w >= 410 ? "sm" : "xs";
+    const tbl = el.querySelector(".tbl");
+    const det = $("standingsPanel");
+    // The flex chain cannot reach through <details>: the browser slots the
+    // non-summary content into an anonymous box that sizes to its content, so a
+    // 36-row table came out 909px tall inside a 570px panel and never scrolled --
+    // it just got clipped. Bounding the scroll container from the panel's own
+    // measured height sidesteps the slot entirely.
+    function sizeTable() {
+      if (!tbl || !det.open) return;
+      const summary = det.querySelector("summary");
+      const avail = el.clientHeight - (summary ? summary.offsetHeight : 0) - 14;
+      tbl.style.maxHeight = Math.max(80, avail) + "px";
+    }
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) el.dataset.w = bucket(e.contentRect.width);
+      sizeTable();
+    });
+    det.addEventListener("toggle", sizeTable);
+    window.addEventListener("resize", sizeTable);
+    sizeTable();
+    ro.observe(el);
+    el.dataset.w = bucket(el.getBoundingClientRect().width);
+  })();
+
+  // The map canvas has the same problem as the standings table: flex: 1 cannot
+  // reach through <details>, so the canvas sat at its 240 px minimum with the
+  // rest of a 600 px panel empty below the note. Same remedy, from the panel's
+  // own measured height.
+  (function () {
+    const sec = $("mapPanel"), det = $("trackPanel");
+    if (typeof ResizeObserver === "undefined") return;
+    function sizeMap() {
+      if (!det.open) return;
+      const summary = det.querySelector("summary"), note = $("mapNote");
+      const cs = getComputedStyle(sec);
+      const avail = sec.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+        - (summary ? summary.offsetHeight + 8 : 0) - (note ? note.offsetHeight + 6 : 0);
+      cv.style.height = Math.max(240, Math.floor(avail)) + "px";
+    }
+    new ResizeObserver(sizeMap).observe(sec);
+    det.addEventListener("toggle", sizeMap);
+    window.addEventListener("resize", sizeMap);
+    sizeMap();
+  })();
+
+  (function () {
+    const btn = $("mapLabelToggle");
+    const sync = () => { btn.textContent = mapLabelMode === "pos" ? "position" : "car #"; };
+    btn.addEventListener("click", e => {
+      // The button sits inside <summary>, where a click would otherwise collapse
+      // the panel as well as flipping the mode.
+      e.preventDefault();
+      e.stopPropagation();
+      mapLabelMode = mapLabelMode === "pos" ? "num" : "pos";
+      try { localStorage.setItem("pitwall.mapLabel", mapLabelMode); } catch (e2) { /* storage off */ }
+      sync();
+    });
+    sync();
+  })();
+
+  $("rows").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-idx]");
+    if (!tr) return;
+    const idx = Number(tr.dataset.idx);
+    pinnedIdx = (pinnedIdx === idx) ? null : idx;   // clicking the pinned car releases it
+    renderStandings();
+    renderFocus();
+  });
+
+  $("unitToggle").addEventListener("click", () => {
+    U = (U === UNITS.imperial) ? UNITS.metric : UNITS.imperial;
+    try { localStorage.setItem("pitwall.units", U.label); } catch (e) { /* private mode */ }
+    applyUnits();
+  });
+  applyUnits();
+
+  // Collapsible panels. Each remembers its own state under its element id, with
+  // the same storage discipline as the unit toggle: a private-mode browser gets
+  // the default and carries on. Collapsing a grid column also hands its width
+  // back via data attributes on <main>, so it does not leave a tall empty gap.
+  (function () {
+    const GRID = { trackPanel: "track", standingsPanel: "standings" };
+    const panels = [...document.querySelectorAll("details.panel")];
+    const main = document.querySelector("main");
+
+    function sync(panel) {
+      panel.closest("section").classList.toggle("collapsed", !panel.open);
+      const key = GRID[panel.id];
+      if (key) main.dataset[key] = panel.open ? "open" : "closed";
+    }
+
+    for (const panel of panels) {
+      try {
+        if (localStorage.getItem("pitwall." + panel.id) === "closed") panel.open = false;
+      } catch (e) { /* storage unavailable */ }
+      sync(panel);
+      panel.addEventListener("toggle", () => {
+        sync(panel);
+        try { localStorage.setItem("pitwall." + panel.id, panel.open ? "open" : "closed"); }
+        catch (e) { /* storage unavailable */ }
+      });
+    }
+  })();
+
+  // ---------------------------------------------------------------- boot
+  const q = new URLSearchParams(location.search);
+  const relayGuess = q.get("relay") || ((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
+  $("relay").value = q.get("relay") || (location.host ? relayGuess : "");
+  $("token").value = q.get("token") || "";
+  $("connectForm").addEventListener("submit", e => { e.preventDefault(); formError(""); connect($("relay").value.trim(), $("token").value.trim()); });
+  if (q.get("relay") && q.get("token")) connect(q.get("relay"), q.get("token"));
+})();
+</script>
+</body>
+</html>

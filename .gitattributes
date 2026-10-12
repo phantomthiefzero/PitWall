@@ -1,0 +1,31 @@
+# Line endings.
+#
+# This repo was authored on Linux (LF), is developed on Windows (CRLF), and the
+# relay is deployed to a Linux host. Without this file the behaviour depends on
+# each machine's core.autocrlf, which is a per-developer setting and not
+# recorded anywhere -- so the same checkout can differ between machines and
+# produce whole-file diffs that hide the real change.
+#
+# Policy: normalise everything to LF *in the repository*, check out native.
+# Windows working copies get CRLF, the Linux relay host gets LF, and the stored
+# blobs stay LF either way.
+* text=auto
+
+# Windows-native scripts: always CRLF in the working tree, whatever the host.
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+
+# Always LF, even on Windows -- these run on the Linux relay host.
+*.sh   text eol=lf
+
+# Binary: never convert, never diff as text.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.zip       binary
+*.gz        binary
+*.jsonl.gz  binary
+*.bin       binary
