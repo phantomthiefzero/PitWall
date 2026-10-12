@@ -1,12 +1,13 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><script>(function(){var t=null;try{t=localStorage.getItem('suite:theme')}catch(e){}if(!t&&true)t='dark';if(t)document.documentElement.setAttribute('data-theme',t)})()</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>iRacing Suite</title>
 <style>
 :root{--bg:#f4f4f2;--card:#fff;--fg:#1d2024;--mut:#6b7078;--ln:#dcdcd8;--acc:#d9a400;--good:#1a8f4c;--warn:#b87800;--blue:#2f6fd6}
-@media (prefers-color-scheme:dark){:root{--bg:#16181b;--card:#1f2226;--fg:#e8e9eb;--mut:#9aa0a8;--ln:#30343a;--acc:#e6b422;--good:#2fb36a;--warn:#e0a325;--blue:#4b8bf0}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#16181b;--card:#1f2226;--fg:#e8e9eb;--mut:#9aa0a8;--ln:#30343a;--acc:#e6b422;--good:#2fb36a;--warn:#e0a325;--blue:#4b8bf0}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
 .wrap{max-width:1040px;margin:0 auto;padding:28px 24px 40px}
 header{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--ln);padding-bottom:14px}
+.theme{margin-left:auto;font-size:13px;padding:4px 12px}
 h1{margin:0;font-size:26px;letter-spacing:.02em}h1 span{color:var(--acc)}.ver{color:var(--mut);font-size:13px}
 .status{margin-top:20px;background:var(--card);border:1px solid var(--ln);border-left:4px solid var(--mut);border-radius:10px;padding:16px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
 .status.live{border-left-color:var(--good)}.status.wait{border-left-color:var(--warn)}.status.replay{border-left-color:var(--blue)}
@@ -20,7 +21,7 @@ a.app:hover{border-color:var(--acc);transform:translateY(-2px)}.app h2{margin:0;
 .open{margin-top:auto;font-weight:600;color:var(--acc)}
 footer{margin-top:28px;color:var(--mut);font-size:13px}
 </style></head><body><div class="wrap">
-<header><h1>iRacing <span>Suite</span></h1><span class="ver" id="ver"></span></header>
+<header><h1>iRacing <span>Suite</span></h1><span class="ver" id="ver"></span><button class="theme" id="themeBtn" type="button"></button></header>
 <div class="status wait" id="status"><div class="dot"></div><div class="st-main"><div class="st-title" id="stTitle">Starting...</div><div class="st-sub" id="stSub"></div></div><div id="stBtns"></div></div>
 <div class="apps">
 <a class="app" href="/analyzer/"><span class="tag ok">Ready</span><h2>Lap Analyzer</h2><p>Compare laps against your best or a reference, read your car setup the way the iRacing garage shows it, and watch setup changes take effect live, run by run.</p><span class="open">Open →</span></a>
@@ -44,6 +45,8 @@ ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.type==='hel
 ws.onclose=()=>setTimeout(connect,2000)}
 function pitwallTile(){const p=info.pitwall,t=$('pwTag'),a=$('pwTile');if(!p)return;if(p.ok){t.textContent='Ready';t.className='tag ok';a.href='/pitwall/?relay='+encodeURIComponent(p.relay)+'&token='+encodeURIComponent(p.token);a.title=''}else{t.textContent='Unavailable';t.className='tag';a.removeAttribute('href');a.title=p.error||''}}
 async function poll(){try{const r=await fetch('/api/info',{cache:'no-store'});Object.assign(info,await r.json());render();pitwallTile()}catch(e){}}
+function themeLabel(){$('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'\u263E Dark mode':'\u2600 Light mode'}
+$('themeBtn').onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}themeLabel()};themeLabel();
 window.addEventListener('pywebviewready',render);
 render();poll();setInterval(poll,3000);connect();
 </script></body></html>
