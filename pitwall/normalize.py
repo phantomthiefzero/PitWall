@@ -187,7 +187,40 @@ def build_session(src: TelemetrySource) -> dict:
         "sessions": sessions,
         "sectors": sp.get("Sectors", []) or [],
         "cameras": _camera_groups(src.session_info("CameraInfo")),
+        "grid": _grid(src.session_info("QualifyResultsInfo"), si.get("Sessions") or []),
     }
+
+
+def _qual_rows(rows) -> list[dict]:
+    """QualifyResultsInfo/Results (or a session's QualifyPositions) as a grid.
+    iRacing numbers these positions from 0 (pole is Position 0); shown from 1.
+    The offset is applied only when a 0 is actually present, so a list that is
+    already 1-based is not pushed down a place."""
+    rows = [r for r in (rows or []) if isinstance(r, dict) and r.get("CarIdx") is not None]
+    if not rows:
+        return []
+    off = 1 if min((r.get("Position") if r.get("Position") is not None else 1) for r in rows) == 0 else 0
+    coff = 1 if min((r.get("ClassPosition") if r.get("ClassPosition") is not None else 1) for r in rows) == 0 else 0
+    out = []
+    for r in rows:
+        ft = r.get("FastestTime")
+        out.append({"pos": (r.get("Position") or 0) + off,
+                    "classPos": (r.get("ClassPosition") or 0) + coff if r.get("ClassPosition") is not None else None,
+                    "idx": r.get("CarIdx"),
+                    "timeS": ft if isinstance(ft, (int, float)) and ft > 0 else None,
+                    "lap": r.get("FastestLap")})
+    return sorted(out, key=lambda x: x["pos"])
+
+
+def _grid(qri, sessions) -> dict:
+    """The starting order for the race. A heat or a race with its own
+    QualifyPositions uses those; otherwise the event's qualifying results."""
+    for s in sessions:
+        if "race" in str(s.get("SessionType") or "").lower() and s.get("QualifyPositions"):
+            return {"source": "race_qualify_positions", "sessionNum": s.get("SessionNum"),
+                    "rows": _qual_rows(s.get("QualifyPositions"))}
+    rows = _qual_rows((qri or {}).get("Results"))
+    return {"source": "qualify_results", "sessionNum": None, "rows": rows} if rows else {"source": None, "rows": []}
 
 
 def _camera_groups(ci) -> list[dict]:

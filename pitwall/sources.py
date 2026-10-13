@@ -381,12 +381,13 @@ class FakeSource(TelemetrySource):
     def __init__(self, seed: int = 7, n_cars: int = 24, realtime: bool = True,
                  speed: float = 1.0, player_pit_lap: int | None = None, spectator: bool = False,
                  incidents: bool | None = None, incident_every_s: float = 25.0,
-                 hide_incident_counts: bool | None = None):
+                 hide_incident_counts: bool | None = None, parade_s: float = 0.0):
         # spectator=True behaves like a spectator slot, as observed live:
         # PlayerCarIdx is 63 (not a car), the session is a replay at speed 1,
         # kinematics follow the camera car, and private car state (fuel, tyres,
         # dc*, pit service, incidents) is absent.
         self.spectator = spectator
+        self.parade_s = parade_s
         self.cam = {"car": 0, "group": 11, "num": 1}
         self.replay_speed, self.replay_slow = 1, False
         self.replay_behind = 0.0
@@ -498,6 +499,16 @@ class FakeSource(TelemetrySource):
             out[i] = counters[cid]
         return out
 
+    def _qual_order(self):
+        order = sorted(self.cars, key=lambda c: c.base_lap)
+        seen = {}
+        out = []
+        for c in order:
+            cp = seen.get(c.cls["id"], 0)
+            seen[c.cls["id"]] = cp + 1
+            out.append((cp, c))
+        return out
+
     def _est_lap(self, i):
         # CarIdxEstTime runs against the CLASS reference lap, not the car's own.
         return self.cars[i].cls["lap"] if i < self.n_cars else 90.0
@@ -577,6 +588,11 @@ class FakeSource(TelemetrySource):
                  "Cameras": [{"CameraNum": k, "CameraName": f"Cam{name.replace(' ', '')}{k if k > 1 else ''}"}
                              for k in range(1, (6 if name.startswith("TV") else 2) + 1)]}
                 for n, name in self.CAMERA_GROUPS]},
+            # As iRacing writes it: positions from 0.
+            "QualifyResultsInfo": {"Results": [
+                {"Position": p, "ClassPosition": cp, "CarIdx": c.idx, "FastestLap": 3,
+                 "FastestTime": round(c.base_lap - 2.0, 3)}
+                for p, (cp, c) in enumerate(self._qual_order())]},
             "SplitTimeInfo": {"Sectors": [{"SectorNum": 0, "SectorStartPct": 0.0},
                                           {"SectorNum": 1, "SectorStartPct": 0.33},
                                           {"SectorNum": 2, "SectorStartPct": 0.66}]},
@@ -713,7 +729,7 @@ class FakeSource(TelemetrySource):
         self.fuel -= (fuel_rate_kg_h / 3600.0) * dt / 0.75  # kg/h -> l/s with ~0.75 kg/l
         x, y = self.pos_at(player.pct)
         v.update({
-            "SessionTime": self.t, "SessionNum": 1, "SessionState": 4,
+            "SessionTime": self.t, "SessionNum": 1, "SessionState": 3 if self.t < self.parade_s else 4,
             "SessionFlags": 0x0004, "SessionTimeRemain": 604800.0,
             "SessionLapsRemainEx": max(0, 25 - player.laps_completed),
             "SessionTimeOfDay": 14 * 3600 + self.t, "PlayerCarIdx": 0,

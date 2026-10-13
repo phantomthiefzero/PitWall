@@ -24,7 +24,8 @@ def _src(args):
     kw = {}
     if args.source == "fake":
         kw = {"realtime": not getattr(args, "fast", False),
-              "spectator": getattr(args, "spectator", False)}
+              "spectator": getattr(args, "spectator", False),
+              "parade_s": getattr(args, "parade", 0.0)}
     elif args.source == "replay":
         kw = {"realtime": not getattr(args, "fast", False),
               "speed": getattr(args, "speed", 1.0),
@@ -131,6 +132,8 @@ def main(argv=None):
                         help="fake/replay source: run as fast as possible instead of in real time")
         sp.add_argument("--speed", type=float, default=1.0, help="replay source: playback rate (2 = double)")
         sp.add_argument("--loop", action="store_true", help="replay source: restart at the end")
+        sp.add_argument("--parade", type=float, default=0.0,
+                        help="fake source: seconds of parade laps before the green (to see the starting grid)")
         sp.add_argument("--spectator", action="store_true",
                         help="fake source: behave like a spectator slot (PlayerCarIdx 63, no private car data)")
 

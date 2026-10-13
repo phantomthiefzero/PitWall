@@ -66,11 +66,12 @@ class PitWallHost:
             self.error = "PitWall could not load: %s: %s" % (type(e).__name__, e)
             self.log(self.error)
             return
-        relay = Relay(self._bridge_token, self.view_token, None, self.producer_token)
+        relay = Relay(self._bridge_token, self.view_token, None, self.producer_token,
+                      assets_dir=os.path.join(os.path.dirname(_token_file()), "broadcast_assets"))
         for p in range(port, port + 10):
             try:
                 self._server = await serve(relay.handler, "127.0.0.1", p, process_request=relay.process_request,
-                                           max_size=8 * 1024 * 1024, ping_interval=20)
+                                           max_size=40 * 1024 * 1024, ping_interval=20)
                 self.port = p
                 break
             except OSError:
