@@ -36,40 +36,56 @@ Run from source: `python -m pip install -r requirements.txt`, then `python -m su
 
 # Broadcast
 
-A broadcast overlay for races you spectate, built on PitWall's bridge and relay.
+A TV-style broadcast for races you spectate, built on PitWall's bridge and relay. The default
+look follows an IMSA-style broadcast; every colour, font, logo, text and the position and size of
+every graphic can be changed from the producer panel (Look tab), and saved to a file.
 
 | Graphic | What it shows |
 |---|---|
-| Timing tower | running order with interval, gap to leader, best or last lap, or stops seen; class colours; pit tag; the camera car highlighted; fastest lap in purple; rows slide on overtakes; keeps the camera car on the tower in a big field |
-| Session banner | track, laps or time left, the racing flag (start-light and service bits are left out), and a Replay / Paused / Slow-mo tag whenever the picture is not live |
-| Battle box | the closest fight, or one you pick: cars, gaps, and the closing trend when iRacing's gaps support one |
-| Driver card | whoever the camera is on (or a pinned driver): number, name, licence, iRating, car, class, position, last and best lap, stint and stops seen |
-| Track map | outline built from a lap, class-coloured cars, camera car and battle cars marked |
-| Race control | fastest laps, lead changes in every class, pit stops, incidents of 2x and up, flags, rain |
-| Standings board | the whole field, two columns, for breaks |
+| Timing tower | overall, or every class at once in its own section, or one class; live interval, gap, best/last lap, pit stops or incidents; class-coloured number plates; the car on camera highlighted; fastest lap per class; rows slide on overtakes |
+| Session banner | laps (from the leader: "Lap 12/30", "Final lap") or time left, formation and pre-race, the racing flag, track and event |
+| Replay bug | appears whenever the picture is behind live, paused or slowed, naming what is being replayed |
+| Battle box | the closest fight in a class, or one you pick: both cars, their liveries, the live gap and its trend |
+| Driver card | whoever the camera is on (or a pinned driver): livery, number, name, licence, iRating, car, position, laps, pit stops, official incidents after the finish |
+| Track map | smooth at 60 frames a second, class colours, camera and battle cars marked |
+| Race control | fastest laps, lead changes in every class, incidents, pit stops, flags, rain |
+| Standings board | every class side by side, or the whole field; "Results" at the flag |
+| Starting grid | automatically during the parade laps of a race: two-by-two from qualifying, with liveries, paging to the car on camera |
+| Stinger | a transition over every cut to and from a replay: a built-in wipe in your colours with your logo, or your own video |
 
-**Incidents.** The producer panel lists every car's incidents as they happen, newest first,
-and **Replay** on any of them rewinds iRacing to a few seconds before it (3, 5, 10 or 15 s,
-your choice), cuts to that car and plays; **Back to live** returns. The overlay shows a Replay
-tag naming the car while you are behind live. Points follow iRacing's table (Sporting Code
-3.5.1): light contact 0x, wheels off 1x, loss of control 2x, contact with an object 2x,
-heavy contact 4x (2x on dirt). Points come from iRacing's own count for each car; iRacing
-only says the total went up, so a 2x is labelled "loss of control or contact with an object",
-and a rise no single incident explains (3x) says so. Alongside the points, "Everything seen"
-adds off-tracks and sharp slowdowns read from every car's telemetry, which are not points
-but show where things happened; a counted incident replays from the off-track or slowdown
-that preceded it. Whether iRacing publishes other cars' counts to a spectator is the one
-thing still to confirm on a real race (see `docs/VARIABLES_TO_VERIFY.md`).
+**Incidents.** iRacing keeps other drivers' incident points hidden from a spectator until the
+race is over (they all appeared after the finish when this was first tried live). So the
+producer panel predicts incidents from what every car's telemetry does: leaving the track,
+spinning (rolling backwards, or off the track while losing its speed), losing its speed alone
+(loss of control or a wall), two cars losing it together side by side (contact), tows, and
+damage flags. Each gets the likely points from iRacing's table (0x light contact, 1x off track,
+2x loss of control or contact with an object, 4x heavy contact, 2x on dirt). **Replay** on any of
+them plays the stinger, rewinds to 3, 5, 10 or 15 s before it, cuts to the car and plays; **Back
+to live** returns. When the official counts arrive after the finish, the panel compares them with
+the prediction car by car. iRacing's own "next/previous incident" replay buttons are there too.
 
-The producer panel switches each graphic on and off, picks tower modes and classes, pins the
-driver card, puts a battle on air, cuts iRacing's camera to any driver in any camera group
-(or lets iRacing choose: most exciting, leader, incidents), and runs the replay (pause,
-slow motion, previous incident, back to live). Two people can use it at once; both always
-see the same state.
+**Cameras.** The auto-director picks the car from the race (a fresh incident, a battle, a pit
+stop, the leader, the start) and the camera from every group the track has: chase, rear chase
+(the chaser seen from the car ahead), gyro, chopper, blimp, onboards, trackside, pit lane, in
+Cinematic, Onboards or Classic TV style. Camera packs add more: the free community packs found
+(BIG EVIL Racing, RedneckTeck, forum and Discord sets) do not allow redistribution, so they are
+not bundled; download one and use **Install a camera pack** on the suite's Broadcast tile. Its
+groups show up in the panel marked ★ and the director uses them as trackside shots.
 
-Same accuracy rule as everything else here: numbers come from iRacing or are derived in
-`pitwall/normalize.py`, and derived ones have a dotted underline on air. Camera and replay
-control has NOT been run against the sim yet; see `docs/VARIABLES_TO_VERIFY.md`, "Broadcast".
+**Liveries.** Trading Paints delivers paints as textures that iRacing wraps around the car, so
+the livery people recognise only exists in iRacing's picture. The Liveries tab connects to OBS
+(Tools > WebSocket Server Settings > Enable; free, built in since OBS 28) and photographs each
+car from your iRacing capture in a chase view: all at once before the race, during the grid walk,
+or by itself the first time the camera holds a car in a chase view. Photos are kept for next time.
+Cars without one show their iRacing paint scheme colours.
+
+**Grid walk.** Before the start, the director can walk down the starting grid one car at a time
+in a chase camera, photographing each livery as it goes.
+
+Same accuracy rule as the rest of PitWall: numbers come from iRacing or are computed in
+`pitwall/normalize.py`. The producer panel marks computed ones with a dotted underline; the
+on-air overlay does not. What still needs checking against a real race is listed in
+`docs/VARIABLES_TO_VERIFY.md`, "Broadcast".
 
 ### In the suite (one PC)
 
@@ -80,7 +96,7 @@ control has NOT been run against the sim yet; see `docs/VARIABLES_TO_VERIFY.md`,
 3. **Open producer panel**. Turn graphics on, tap a driver to cut the camera to them.
 
 For separate OBS sources per graphic (to move or crop them in OBS), add `&only=tower` (or
-`banner`, `battle`, `card`, `map`, `ticker`, `board`) to the address.
+`banner`, `battle`, `card`, `map`, `ticker`, `board`, `grid`, `replay`, `stinger`) to the address.
 
 ### With a co-host
 

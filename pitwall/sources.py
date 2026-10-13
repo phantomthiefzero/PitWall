@@ -380,12 +380,14 @@ class FakeSource(TelemetrySource):
 
     def __init__(self, seed: int = 7, n_cars: int = 24, realtime: bool = True,
                  speed: float = 1.0, player_pit_lap: int | None = None, spectator: bool = False,
-                 incidents: bool | None = None, incident_every_s: float = 25.0):
+                 incidents: bool | None = None, incident_every_s: float = 25.0,
+                 hide_incident_counts: bool | None = None, parade_s: float = 0.0):
         # spectator=True behaves like a spectator slot, as observed live:
         # PlayerCarIdx is 63 (not a car), the session is a replay at speed 1,
         # kinematics follow the camera car, and private car state (fuel, tyres,
         # dc*, pit service, incidents) is absent.
         self.spectator = spectator
+        self.parade_s = parade_s
         self.cam = {"car": 0, "group": 11, "num": 1}
         self.replay_speed, self.replay_slow = 1, False
         self.replay_behind = 0.0
@@ -399,10 +401,13 @@ class FakeSource(TelemetrySource):
         # nothing yet. Their own RNG, so they do not disturb the field's.
         self.incidents_on = spectator if incidents is None else incidents
         self.incident_every_s = incident_every_s
+        # Spectators do not see other cars' counts until the race is over.
+        self.hide_incident_counts = spectator if hide_incident_counts is None else hide_incident_counts
         self.inc_rng = random.Random(seed + 101)
         self.inc_effect: dict[int, dict] = {}     # idx -> {"until", "speed", "off_until"}
         self.inc_pending: dict[int, dict] = {}    # idx -> {"at", "points"} awaiting the session update
         self.inc_log: list[dict] = []             # ground truth for tests: what really happened
+        self.inc_hidden: dict[int, int] = {}      # counted but not yet published
         self.rng = random.Random(seed)
         self.realtime = realtime
         # speed > 1 runs the race faster than real time (for looking at a whole
@@ -494,6 +499,20 @@ class FakeSource(TelemetrySource):
             out[i] = counters[cid]
         return out
 
+    def _qual_order(self):
+        order = sorted(self.cars, key=lambda c: c.base_lap)
+        seen = {}
+        out = []
+        for c in order:
+            cp = seen.get(c.cls["id"], 0)
+            seen[c.cls["id"]] = cp + 1
+            out.append((cp, c))
+        return out
+
+    def _est_lap(self, i):
+        # CarIdxEstTime runs against the CLASS reference lap, not the car's own.
+        return self.cars[i].cls["lap"] if i < self.n_cars else 90.0
+
     # --- session YAML stand-in ------------------------------------------------
     def _build_session_info(self) -> dict:
         drivers = []
@@ -508,6 +527,10 @@ class FakeSource(TelemetrySource):
                 "CarScreenNameShort": c.cls["name"],
                 "CarClassColor": c.cls["color"],
                 "CarClassRelSpeed": c.cls["rel"],
+                "CarClassEstLapTime": c.cls["lap"],
+                "CarDesignStr": ["0,ff3b30,ffffff,111111", "3,1c6dd0,f2c200,ffffff", "7,0b8f4d,ffffff,000000"][c.idx % 3],
+                "HelmetDesignStr": "1,ffffff,ff3b30,111111",
+                "CarID": 100 + c.cls["id"], "UserID": 300000 + c.idx, "TeamID": 0,
                 # Spread licences across classes with iRacing's own colours, so the
                 # badge path is exercised rather than assumed: A blue, B green,
                 # C yellow, D orange.
@@ -565,6 +588,11 @@ class FakeSource(TelemetrySource):
                  "Cameras": [{"CameraNum": k, "CameraName": f"Cam{name.replace(' ', '')}{k if k > 1 else ''}"}
                              for k in range(1, (6 if name.startswith("TV") else 2) + 1)]}
                 for n, name in self.CAMERA_GROUPS]},
+            # As iRacing writes it: positions from 0.
+            "QualifyResultsInfo": {"Results": [
+                {"Position": p, "ClassPosition": cp, "CarIdx": c.idx, "FastestLap": 3,
+                 "FastestTime": round(c.base_lap - 2.0, 3)}
+                for p, (cp, c) in enumerate(self._qual_order())]},
             "SplitTimeInfo": {"Sectors": [{"SectorNum": 0, "SectorStartPct": 0.0},
                                           {"SectorNum": 1, "SectorStartPct": 0.33},
                                           {"SectorNum": 2, "SectorStartPct": 0.66}]},
@@ -618,8 +646,8 @@ class FakeSource(TelemetrySource):
                 spd += math.sin(self.t * 0.5 + c.idx) * 0.8
                 eff = self.inc_effect.get(c.idx)
                 if eff and self.t < eff["until"]:
-                    spd *= eff["speed"]
-            new_pct = c.pct + spd * dt / self.length
+                    spd *= -0.25 if self.t < eff.get("back_until", 0) else eff["speed"]
+            new_pct = max(0.0, c.pct + spd * dt / self.length)
             if c.pit_phase is None and c.pit_planned and c.pct < self.PIT_IN_PCT <= new_pct:
                 c.pit_phase, c.pit_planned = "lane_in", False
             if new_pct >= 1.0:
@@ -701,7 +729,7 @@ class FakeSource(TelemetrySource):
         self.fuel -= (fuel_rate_kg_h / 3600.0) * dt / 0.75  # kg/h -> l/s with ~0.75 kg/l
         x, y = self.pos_at(player.pct)
         v.update({
-            "SessionTime": self.t, "SessionNum": 1, "SessionState": 4,
+            "SessionTime": self.t, "SessionNum": 1, "SessionState": 3 if self.t < self.parade_s else 4,
             "SessionFlags": 0x0004, "SessionTimeRemain": 604800.0,
             "SessionLapsRemainEx": max(0, 25 - player.laps_completed),
             "SessionTimeOfDay": 14 * 3600 + self.t, "PlayerCarIdx": 0,
@@ -741,7 +769,7 @@ class FakeSource(TelemetrySource):
             "CarIdxLap": laps, "CarIdxLapCompleted": lapsc, "CarIdxLapDistPct": pcts,
             "CarIdxPosition": pos, "CarIdxClassPosition": self._class_positions(pos),
             "CarIdxClass": [self.cars[i].cls["id"] if i < self.n_cars else 0 for i in range(64)],
-            "CarIdxF2Time": f2, "CarIdxEstTime": [p * 90.0 if p >= 0 else 0.0 for p in pcts],
+            "CarIdxF2Time": f2, "CarIdxEstTime": [p * self._est_lap(i) if p >= 0 else 0.0 for i, p in enumerate(pcts)],
             "CarIdxOnPitRoad": onpit, "CarIdxTrackSurface": surf,
             "CarIdxLastLapTime": last, "CarIdxBestLapTime": best, "CarIdxBestLapNum": lapsc,
             "CarIdxTireCompound": comp, "CarIdxSessionFlags": [0] * 64,
@@ -775,14 +803,15 @@ class FakeSource(TelemetrySource):
     def get(self, name: str) -> Any:
         return self._vars.get(name)
 
-    # Kinds of incident the fake field has: (name, points on pavement, speed
-    # factor while it lasts, seconds, seconds off the track)
+    # Kinds of incident the fake field has:
+    # (name, points on pavement, speed factor, seconds, seconds off track,
+    #  takes a second car with it, seconds rolling backwards first)
     FAKE_INCIDENTS = [
-        ("wheels_off", 1, 0.85, 1.5, 1.5),
-        ("spin", 2, 0.05, 3.0, 1.2),
-        ("wall", 2, 0.30, 2.5, 0.0),
-        ("heavy_contact", 4, 0.20, 2.5, 0.0),
-        ("light_contact", 0, 0.80, 0.6, 0.0),
+        ("wheels_off", 1, 0.85, 1.5, 1.5, False, 0.0),
+        ("spin", 2, 0.05, 3.0, 1.2, False, 0.8),
+        ("wall", 2, 0.30, 2.5, 0.0, False, 0.0),
+        ("heavy_contact", 4, 0.20, 2.5, 0.0, True, 0.0),
+        ("light_contact", 0, 0.80, 0.6, 0.0, True, 0.0),
     ]
     FAKE_INCIDENT_WEIGHTS = [45, 20, 10, 10, 15]
 
@@ -792,23 +821,50 @@ class FakeSource(TelemetrySource):
         if dt > 0 and self.t > 20 and r.random() < dt / self.incident_every_s:
             cands = [c for c in self.cars if c.pit_phase is None and c.idx not in self.inc_effect]
             if cands:
+                name, pts, speed, dur, off, pair, back = r.choices(self.FAKE_INCIDENTS, self.FAKE_INCIDENT_WEIGHTS)[0]
+                if pair:
+                    # contact needs two cars together: start from a car that has one
+                    def has_neighbour(x):
+                        return any(o is not x and abs((x.laps_completed + x.pct) - (o.laps_completed + o.pct)) < 0.003
+                                   for o in cands)
+                    cands = [x for x in cands if has_neighbour(x)]
+                    if not cands:
+                        return
                 c = r.choice(cands)
-                name, pts, speed, dur, off = r.choices(self.FAKE_INCIDENTS, self.FAKE_INCIDENT_WEIGHTS)[0]
-                self.inc_effect[c.idx] = {"until": self.t + dur, "speed": speed, "off_until": self.t + off}
-                self.inc_log.append({"t": self.t, "idx": c.idx, "kind": name, "points": pts})
-                if pts:
-                    p = self.inc_pending.get(c.idx)
-                    if p:   # concurrent with one still pending: only the most serious counts
-                        p["points"] = max(p["points"], pts)
-                    else:
-                        self.inc_pending[c.idx] = {"at": self.t + 1.5 + r.random() * 4.5, "points": pts}
+                who = [c]
+                if pair:
+                    # the car closest behind it on the road, if it is close enough to touch
+                    def behind(o):
+                        d = abs((c.laps_completed + c.pct) - (o.laps_completed + o.pct))
+                        return d if d < 0.003 else None
+                    near = [(behind(o), o) for o in cands if o is not c and behind(o) is not None]
+                    if not near:
+                        return
+                    who.append(min(near, key=lambda x: x[0])[1])
+                for car in who:
+                    self.inc_effect[car.idx] = {"until": self.t + dur, "speed": speed, "off_until": self.t + off,
+                                                "back_until": self.t + back}
+                    self.inc_log.append({"t": self.t, "idx": car.idx, "kind": name, "points": pts,
+                                         "with": [o.idx for o in who if o is not car]})
+                    if pts:
+                        p = self.inc_pending.get(car.idx)
+                        if p:   # concurrent with one still pending: only the most serious counts
+                            p["points"] = max(p["points"], pts)
+                        else:
+                            self.inc_pending[car.idx] = {"at": self.t + 1.5 + r.random() * 4.5, "points": pts}
         for i, eff in list(self.inc_effect.items()):
             if self.t < eff["off_until"] and surf[i] == 3:
                 surf[i] = 0                       # off_track
             if self.t >= eff["until"] and self.t >= eff["off_until"]:
                 del self.inc_effect[i]
-        # the session info catches up a few seconds later
+        # The session info catches up a few seconds later -- unless counts are
+        # hidden, as they are from a spectator during a race (observed live:
+        # every count arrived only after the finish).
         due = [i for i, p in self.inc_pending.items() if self.t >= p["at"]]
+        if due and self.hide_incident_counts:
+            for i in due:
+                self.inc_hidden[i] = self.inc_hidden.get(i, 0) + self.inc_pending.pop(i)["points"]
+            return
         if due:
             drivers = {d["CarIdx"]: d for d in self._session["DriverInfo"]["Drivers"]}
             for i in due:
@@ -817,6 +873,19 @@ class FakeSource(TelemetrySource):
                 d["TeamIncidentCount"] += p["points"]
                 d["CurDriverIncidentCount"] += p["points"]
             self._siu += 1
+
+    def publish_incident_counts(self):
+        """What iRacing does at the finish: every count appears at once."""
+        drivers = {d["CarIdx"]: d for d in self._session["DriverInfo"]["Drivers"]}
+        for i, p in self.inc_pending.items():
+            self.inc_hidden[i] = self.inc_hidden.get(i, 0) + p["points"]
+        for i, pts in self.inc_hidden.items():
+            drivers[i]["TeamIncidentCount"] += pts
+            drivers[i]["CurDriverIncidentCount"] += pts
+        self.inc_pending.clear()
+        self.inc_hidden.clear()
+        self.hide_incident_counts = False
+        self._siu += 1
 
     # A stand-in for iRacing's camera so the producer panel can be tried without
     # the sim. commands.py calls it in place of pyirsdk and marks the result

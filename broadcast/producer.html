@@ -5,108 +5,121 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Broadcast Producer</title>
 <!--
-  PitWall broadcast producer panel. For you and a co-host, from anywhere:
+  PitWall broadcast producer panel, for you and a co-host:
 
       https://<relay>/broadcast/producer.html?token=<producer token>
-      file:///.../broadcast/producer.html?relay=ws://127.0.0.1:8765&token=<producer token>
 
-  Graphics changes go to the relay's shared gfx state, so every producer and
-  every overlay sees the same thing. Camera and replay changes go to the bridge,
-  which only acts on them when it was started with --allow-camera.
+  Graphics and their look go to the relay's shared gfx state, so every producer
+  and every overlay sees the same thing. Camera, replay, director and livery
+  commands go to the bridge, which acts on them only when started with
+  --allow-camera (the suite does that).
+  Values computed by PitWall rather than reported by iRacing are underlined
+  with dots here, so the people running the show know which is which.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#0E151F; --panel:#162131; --panel2:#1E2B3E; --line:#2A3A51;
-  --fg:#F2EFE6; --mut:#93A1B5; --amber:#F5B841; --ink:#101824;
-  --good:#3FD08A; --bad:#FF5B5B;
-  --num:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
-  --txt:"Barlow","Segoe UI",system-ui,sans-serif;
-}
+:root{--bg:#0e1116;--panel:#161b23;--panel2:#1d2430;--line:#2a3443;--fg:#eef1f5;--mut:#93a0b2;--acc:#ffcc00;--ink:#0e1116;--good:#2fd27a;--bad:#ff5b5b;
+  --num:"Barlow Condensed","Arial Narrow",sans-serif;--txt:"Barlow","Segoe UI",system-ui,sans-serif}
 *{box-sizing:border-box}
 html{background:var(--bg)}
 body{margin:0;color:var(--fg);font:500 15px/1.4 var(--txt);background:var(--bg)}
-button,select,input{font:inherit;color:inherit}
-button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;min-height:36px}
+button,select,input,textarea{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 11px;cursor:pointer;min-height:34px}
 button:hover:not(:disabled){border-color:var(--fg)}
-button:focus-visible,select:focus-visible,input:focus-visible,.car:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
-button.on{background:var(--amber);color:var(--ink);border-color:var(--amber);font-weight:700}
+button:focus-visible,select:focus-visible,input:focus-visible,.car:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.on{background:var(--acc);color:var(--ink);border-color:var(--acc);font-weight:700}
+button.big{font-weight:700;min-height:40px}
+button.warn{background:var(--bad);border-color:var(--bad);color:#fff;font-weight:700}
 button:disabled{opacity:.45;cursor:not-allowed}
-select,input[type=text]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-height:36px}
-header{position:sticky;top:0;z-index:5;background:var(--ink);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-header h1{margin:0;font:800 26px/1 var(--num);letter-spacing:.02em}
+select,input[type=text],input[type=number],input[type=password]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-height:34px;min-width:0}
+input[type=color]{width:42px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);padding:2px}
+header{position:sticky;top:0;z-index:5;background:#07090c;border-bottom:1px solid var(--line);padding:8px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{margin:0;font:800 24px/1 var(--num);letter-spacing:.02em}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--bad);display:inline-block;margin-right:6px}
 .dot.on{background:var(--good)}
 .stat{color:var(--mut);font-size:14px;display:flex;align-items:center}
-.oncam{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:15px}
-.oncam b{font:800 22px/1 var(--num);color:var(--amber)}
-#me{width:120px}
-main{display:grid;grid-template-columns:minmax(280px,340px) minmax(340px,1fr) minmax(300px,380px);gap:14px;padding:14px 16px 40px;align-items:start}
-@media (max-width:1100px){main{grid-template-columns:1fr 1fr}#colField{grid-column:1 / -1;order:-1}}
-@media (max-width:720px){main{grid-template-columns:1fr}}
-section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px}
-h2{margin:0 0 10px;font:800 20px/1 var(--num);letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+.oncam{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.oncam b{font:800 20px/1 var(--num);color:var(--acc)}
+.badge{font:700 13px/1 var(--txt);padding:6px 9px;border-radius:5px;background:var(--good);color:var(--ink)}
+.badge.replay{background:var(--bad);color:#fff}
+#me{width:110px}
+main{display:grid;grid-template-columns:minmax(300px,360px) minmax(360px,1fr) minmax(320px,420px);gap:12px;padding:12px 14px 40px;align-items:start}
+@media (max-width:1150px){main{grid-template-columns:1fr 1fr}#colMid{grid-column:1/-1;order:-1}}
+@media (max-width:740px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:12px}
+h2{margin:0 0 9px;font:800 19px/1 var(--num);letter-spacing:.02em;display:flex;align-items:center;gap:8px}
 h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
+h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
 .note{color:var(--mut);font-size:13px;margin:6px 0 0}
-.warn{background:rgba(245,184,65,.12);border:1px solid rgba(245,184,65,.4);color:var(--fg);border-radius:8px;padding:8px 10px;font-size:14px;margin-bottom:10px}
-.tog{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)}
-.tog:first-of-type{border-top:0}
+.warn{background:rgba(255,204,0,.1);border:1px solid rgba(255,204,0,.35);border-radius:8px;padding:7px 9px;font-size:14px;margin-bottom:8px}
+.tabs{display:flex;gap:4px;margin-bottom:10px}
+.tabs button{flex:1}
+.tog{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line)}
+.tog:first-child{border-top:0}
 .tog label{flex:1;font-weight:600}
-.sw{position:relative;width:48px;height:28px;border-radius:14px;background:var(--panel2);border:1px solid var(--line);padding:0;min-height:0;flex:none}
-.sw::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:var(--mut);transition:transform .15s}
-.sw.on{background:var(--amber);border-color:var(--amber)}
+.sw{position:relative;width:46px;height:26px;border-radius:13px;background:var(--panel2);border:1px solid var(--line);padding:0;min-height:0;flex:none}
+.sw::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--mut);transition:transform .15s}
+.sw.on{background:var(--acc);border-color:var(--acc)}
 .sw.on::after{transform:translateX(20px);background:var(--ink)}
-.opts{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 8px}
-.opts button{min-height:30px;padding:4px 10px;font-size:14px}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chips button{min-height:32px;padding:4px 10px;font-size:14px}
-.field{max-height:calc(100vh - 230px);overflow:auto;border-top:1px solid var(--line)}
-.car{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:4px}
+.opts{display:flex;flex-wrap:wrap;gap:5px;padding:0 0 6px}
+.opts button{min-height:30px;padding:3px 9px;font-size:14px}
+.grid2{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center}
+.grid2 label{color:var(--mut);font-size:14px}
+.colors{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.colors label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut)}
+.pos3{display:grid;grid-template-columns:90px repeat(3,1fr);gap:4px 6px;align-items:center;font-size:13px}
+.pos3 input{width:100%;padding:3px 5px;min-height:28px}
+.field{max-height:calc(100vh - 380px);min-height:300px;overflow:auto;border-top:1px solid var(--line)}
+.car{display:flex;align-items:center;gap:7px;padding:5px 4px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:4px}
 .car:hover{background:var(--panel2)}
-.car.cam{background:rgba(245,184,65,.16)}
-.car .p{width:30px;text-align:right;font:800 20px/1 var(--num);font-variant-numeric:tabular-nums}
+.car.cam{background:rgba(255,204,0,.14)}
+.car .p{width:28px;text-align:right;font:800 19px/1 var(--num);font-variant-numeric:tabular-nums}
 .car .bar{width:4px;align-self:stretch;border-radius:2px}
-.car .n{width:44px;color:var(--mut);font:700 16px/1 var(--num)}
+.car .n{width:42px;color:var(--mut);font:700 15px/1 var(--num)}
 .car .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
-.car .g{width:70px;text-align:right;font-variant-numeric:tabular-nums;color:var(--mut)}
+.car .g{width:72px;text-align:right;font-variant-numeric:tabular-nums;color:var(--mut)}
 .car .pit{font-size:12px;font-weight:700;background:var(--mut);color:var(--ink);padding:1px 5px;border-radius:3px}
-.car button{min-height:28px;padding:2px 8px;font-size:13px}
+.car .lvok{width:14px;color:var(--good);font-size:12px}
+.car button{min-height:26px;padding:1px 7px;font-size:12px}
 .car button.on{background:var(--fg);color:var(--ink);border-color:var(--fg)}
-.d{border-bottom:2px dotted var(--amber)}
-.bt{border-top:1px solid var(--line);padding:9px 0}
+.d{border-bottom:2px dotted var(--acc)}
+.list{max-height:440px;overflow:auto;border-top:1px solid var(--line)}
+.ir{display:flex;align-items:center;gap:9px;padding:6px 2px;border-bottom:1px solid var(--line)}
+.ir .pts{font:800 18px/1 var(--num);width:44px;text-align:center;flex:none;border-radius:4px;padding:4px 0 3px}
+.ir .pts.p1{background:#34445c}.ir .pts.p2{background:#c48a00;color:var(--ink)}.ir .pts.p4{background:var(--bad);color:#fff}.ir .pts.p0{background:var(--panel2);color:var(--mut)}
+.ir .when{width:56px;flex:none;color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25}
+.ir .what{flex:1;min-width:0;font-size:14px;line-height:1.3}
+.ir .what b{font-weight:700}
+.ir .sub{color:var(--mut);font-size:12px}
+.ir button{min-height:28px;padding:2px 9px;font-size:13px;flex:none}
+.bt{border-top:1px solid var(--line);padding:8px 0}
 .bt:first-child{border-top:0}
 .bt .t{display:flex;align-items:baseline;gap:8px}
-.bt .t b{font:800 18px/1 var(--num)}
+.bt .t b{font:800 17px/1 var(--num)}
 .bt .t span{color:var(--mut);font-size:13px}
-.bt .who{margin:4px 0 7px;font-size:14px}
+.bt .who{margin:3px 0 6px;font-size:14px}
 .bt .act{display:flex;gap:6px;flex-wrap:wrap}
-.bt .act button{min-height:30px;padding:3px 10px;font-size:13px}
-.bt.live{box-shadow:inset 3px 0 0 var(--amber);padding-left:10px}
-.inc{max-height:420px;overflow:auto;border-top:1px solid var(--line)}
-.ir{display:flex;align-items:center;gap:10px;padding:7px 2px;border-bottom:1px solid var(--line)}
-.ir .when{width:66px;flex:none;color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums;line-height:1.25}
-.ir .what{flex:1;min-width:0;font-size:14px;line-height:1.3}
-.ir .what .who{font-weight:700;background:none;border:0;padding:0;min-height:0;color:inherit;cursor:pointer;text-align:left}
-.ir .what .who:hover{text-decoration:underline}
-.ir .pts{font:800 20px/1 var(--num);width:40px;text-align:center;flex:none;border-radius:4px;padding:3px 0 2px}
-.ir .pts.p1{background:#3A4A63}.ir .pts.p2{background:#B87800;color:var(--ink)}.ir .pts.p4{background:var(--bad);color:#fff}
-.ir .pts.obs{background:transparent;border:1px dashed var(--line);color:var(--mut);font:600 12px/1.1 var(--txt);padding:4px 0}
-.ir .sub{color:var(--mut);font-size:12px}
-.ir button.rp{min-height:30px;padding:3px 10px;font-size:13px;flex:none}
-.livebadge{font:700 13px/1 var(--txt);padding:5px 8px;border-radius:5px;background:var(--good);color:var(--ink)}
-.livebadge.replay{background:var(--bad);color:#fff}
-.car .inc-n{width:30px;text-align:right;font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums}
-.log{max-height:260px;overflow:auto;font-size:13px}
-.log div{padding:4px 0;border-top:1px solid var(--line);display:flex;gap:8px}
-.log time{color:var(--mut);flex:none;width:52px;font-variant-numeric:tabular-nums}
+.bt .act button{min-height:28px;padding:2px 9px;font-size:13px}
+.bt.live{box-shadow:inset 3px 0 0 var(--acc);padding-left:10px}
+.log{max-height:240px;overflow:auto;font-size:13px}
+.log div{padding:3px 0;border-top:1px solid var(--line);display:flex;gap:8px}
+.log time{color:var(--mut);flex:none;width:44px;font-variant-numeric:tabular-nums}
 .log .bad{color:var(--bad)}
 .urls code{display:block;background:var(--panel2);border-radius:6px;padding:6px 8px;margin:4px 0 8px;font-size:12px;word-break:break-all;user-select:all}
+.assets div{display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid var(--line);font-size:13px}
+.assets div span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assets img{width:40px;height:24px;object-fit:contain;background:#000;border-radius:3px}
+.tally td,.tally th{padding:3px 6px;text-align:right;font-size:13px;border-top:1px solid var(--line)}
+.tally th{color:var(--mut);font-weight:600}
+.tally td:first-child,.tally th:first-child{text-align:left}
+.progress{height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;margin:6px 0}
+.progress i{display:block;height:100%;background:var(--acc)}
 #connect{max-width:520px;margin:60px auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
 #connect label{display:block;margin:10px 0 4px;font-weight:600}
 #connect input{width:100%}
-#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--fg);color:var(--ink);padding:9px 14px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--fg);color:var(--ink);padding:9px 14px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;z-index:20}
 #toast.show{opacity:1}
 #toast.bad{background:var(--bad);color:#fff}
 .hide{display:none!important}
@@ -119,7 +132,12 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
   <span class="stat"><span class="dot" id="dRelay"></span>Relay</span>
   <span class="stat"><span class="dot" id="dBridge"></span>iRacing</span>
   <span class="stat" id="peers"></span>
-  <div class="oncam"><span class="livebadge hide" id="liveBadge">Live</span><span id="camTxt">No camera car yet</span><input type="text" id="me" placeholder="Your name" aria-label="Your name, shown to the co-host"></div>
+  <div class="oncam">
+    <span class="badge hide" id="liveBadge">Live</span>
+    <button class="warn hide" id="toLive">Back to live</button>
+    <span id="camTxt">No camera car yet</span>
+    <input type="text" id="me" placeholder="Your name" aria-label="Your name, shown to the co-host">
+  </div>
 </header>
 
 <div id="connect" class="hide">
@@ -127,49 +145,132 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
   <p class="note">Use the producer token. A view token can watch but cannot change anything.</p>
   <label for="cRelay">Relay address</label><input type="text" id="cRelay" placeholder="wss://relay.example.com">
   <label for="cTok">Producer token</label><input type="text" id="cTok">
-  <p class="note bad" id="cErr"></p>
+  <p class="note" id="cErr" style="color:var(--bad)"></p>
   <button id="cGo" style="margin-top:12px">Connect</button>
 </div>
 
 <main id="main" class="hide">
-  <div id="colAir">
-    <section>
-      <h2>On air</h2>
-      <div id="roleWarn" class="warn hide">This link uses a view-only token. Open the panel with the producer token to change graphics or cameras.</div>
-      <div id="toggles"></div>
-    </section>
-    <section>
-      <h2>Timing tower</h2>
-      <div class="note" style="margin:0 0 4px">Shows</div>
-      <div class="opts" id="towerMode"></div>
-      <div class="note" style="margin:0 0 4px">Class</div>
-      <div class="opts" id="towerClass"></div>
-      <div class="note" style="margin:0 0 4px">Rows</div>
-      <div class="opts" id="towerRows"></div>
-    </section>
-    <section>
-      <h2>Driver card</h2>
-      <div class="opts" id="cardFollow"></div>
-      <p class="note" id="cardNote"></p>
-    </section>
-    <section>
-      <h2>Replay</h2>
-      <div id="replayWarn" class="warn hide"></div>
-      <div class="chips" id="replay"></div>
-      <p class="note">Spectating is iRacing's replay at normal speed. "Back to live" returns to the live race; the overlay shows a Replay tag whenever you are not there.</p>
-    </section>
+  <div id="colLeft">
+    <div class="tabs"><button data-tab="show" class="on">Show</button><button data-tab="look">Look</button><button data-tab="liveries">Liveries</button></div>
+    <div data-pane="show">
+      <section><h2>On air</h2><div id="roleWarn" class="warn hide">This link uses a view-only token: open it with the producer token to make changes.</div><div id="toggles"></div></section>
+      <section>
+        <h2>Timing tower</h2>
+        <h3>Layout</h3><div class="opts" id="twLayout"></div>
+        <div id="twLayoutOpts"></div>
+        <h3>Shows</h3><div class="opts" id="twMode"></div>
+      </section>
+      <section><h2>Driver card</h2><div class="opts" id="cardFollow"></div><p class="note" id="cardNote"></p></section>
+      <section>
+        <h2>Starting grid</h2>
+        <div class="opts" id="gridMode"></div>
+        <p class="note">Automatic shows it during the parade laps of a race and takes it off at the green.</p>
+        <h3>Walk the grid</h3>
+        <div class="grid2"><label for="gwHold">Seconds per car</label><input type="number" id="gwHold" min="2" max="20" value="5">
+          <label for="gwSnap">Photograph liveries</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
+        <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button id="gwStop">Stop</button></div>
+      </section>
+      <section><h2>Race control</h2><div id="tickerOpts"></div></section>
+    </div>
+
+    <div data-pane="look" class="hide">
+      <section>
+        <h2>Style</h2>
+        <div class="opts" id="presets"></div>
+        <h3>Colours</h3><div class="colors" id="colors"></div>
+        <h3>Fonts</h3>
+        <div class="grid2">
+          <label for="fDisplay">Headlines</label><select id="fDisplay"></select>
+          <label for="fBody">Text</label><select id="fBody"></select>
+        </div>
+        <h3>Details</h3>
+        <div class="grid2">
+          <label>Names</label><div class="opts" id="nameStyle" style="padding:0"></div>
+          <label>Capitals</label><div class="opts" id="capsOpt" style="padding:0"></div>
+          <label for="radius">Corners</label><select id="radius"><option value="0">Square</option><option value="4">Slightly round</option><option value="10">Round</option></select>
+          <label for="rowH">Tower row height</label><input type="number" id="rowH" min="26" max="48" value="34">
+        </div>
+      </section>
+      <section>
+        <h2>Text and logos</h2>
+        <div class="grid2">
+          <label for="tSeries">Series name</label><input type="text" id="tSeries" placeholder="shown on the tower">
+          <label for="tEvent">Event name</label><input type="text" id="tEvent" placeholder="shown on the banner">
+          <label for="tGrid">Grid title</label><input type="text" id="tGrid" placeholder="Starting grid">
+          <label for="aLogo">Main logo</label><select id="aLogo"></select>
+          <label for="aBanner">Banner logo</label><select id="aBanner"></select>
+        </div>
+      </section>
+      <section>
+        <h2>Replay transition</h2>
+        <div class="grid2">
+          <label for="sVideo">Stinger</label><select id="sVideo"></select>
+          <label for="sLogo">Logo on the wipe</label><select id="sLogo"></select>
+          <label for="sDur">Length (ms)</label><input type="number" id="sDur" min="400" max="4000" step="50" value="900">
+          <label for="sCut">Cut at (ms)</label><input type="number" id="sCut" min="0" max="4000" step="50" value="420">
+        </div>
+        <p class="note">The camera jumps at the cut point, while the stinger covers the screen. For a video stinger, set the cut to the moment it fills the frame.</p>
+        <div class="opts" style="margin-top:6px"><button id="sTest">Test the stinger</button></div>
+      </section>
+      <section>
+        <h2>Positions</h2>
+        <div class="pos3" id="positions"></div>
+        <div class="opts" style="margin-top:8px"><button id="posReset">Reset all positions</button></div>
+        <h3>Livery framing</h3>
+        <div class="pos3"><span></span><span class="note">across %</span><span class="note">down %</span><span class="note">zoom</span>
+          <span>Photo</span><input type="number" id="lvX" step="1" value="50"><input type="number" id="lvY" step="1" value="58"><input type="number" id="lvZ" step="0.1" value="1.6"></div>
+      </section>
+      <section class="assets">
+        <h2>Files <small>logos, fonts, stingers</small></h2>
+        <input type="file" id="upload" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.webm,.mp4,.mov,.woff2,.woff,.ttf,.otf">
+        <div id="assetList"></div>
+        <p class="note">Up to 30 MB each. A WebM with transparency makes the best stinger.</p>
+      </section>
+      <section>
+        <h2>Save the look</h2>
+        <div class="opts"><button id="thExport">Download as a file</button><label class="note" style="align-self:center"><input type="file" id="thImport" accept=".json" style="width:190px"></label><button id="thReset">Back to default</button></div>
+      </section>
+    </div>
+
+    <div data-pane="liveries" class="hide">
+      <section>
+        <h2>Livery photos</h2>
+        <p class="note" style="margin-top:0">Each car's livery, Trading Paints included, photographed from your iRacing picture through OBS. In OBS: Tools &gt; WebSocket Server Settings &gt; Enable, then copy the password here.</p>
+        <div class="grid2" style="margin-top:8px">
+          <label for="oUrl">OBS address</label><input type="text" id="oUrl" value="ws://127.0.0.1:4455">
+          <label for="oPw">Password</label><input type="password" id="oPw" placeholder="unchanged">
+          <label for="oSrc">iRacing source</label><span><input type="text" id="oSrc" list="oSrcList" placeholder="pick after connecting"><datalist id="oSrcList"></datalist></span>
+          <label for="oGroup">Camera for photos</label><input type="text" id="oGroup" value="Chase">
+          <label for="oAuto">While on air</label><span><input type="checkbox" id="oAuto" checked> photograph a car the first time it is held in a chase camera</span>
+        </div>
+        <div class="opts" style="margin-top:8px"><button id="oSave" class="big">Connect to OBS</button></div>
+        <p class="note" id="oStatus"></p>
+        <h3>Photograph the field</h3>
+        <div class="opts"><button id="lvAll">Every car</button><button id="lvMissing">Only cars without one</button><button id="lvStop">Stop</button></div>
+        <div class="progress hide" id="lvProg"><i></i></div>
+        <p class="note">This cuts the camera to each car in turn, so do it before going live, or during the grid walk. Photos are kept for next time.</p>
+      </section>
+    </div>
   </div>
 
-  <div id="colField">
+  <div id="colMid">
     <section>
       <h2>Cameras <small id="camGroupName"></small></h2>
       <div id="camWarn" class="warn hide"></div>
-      <div class="chips" id="groups"></div>
-      <div class="note" style="margin:10px 0 4px">Let iRacing choose the car</div>
-      <div class="chips" id="focus"></div>
+      <h3 style="margin-top:0">Shots on the car on camera</h3>
+      <div class="opts" id="shots"></div>
+      <h3>All camera groups</h3>
+      <div class="opts" id="groups"></div>
+      <h3>Auto-director</h3>
+      <div class="opts" id="dirCtl"></div>
+      <p class="note" id="dirNow"></p>
+      <h3>Let iRacing choose</h3>
+      <div class="opts" id="focus"></div>
+      <h3>Replay</h3>
+      <div class="opts" id="replay"></div>
     </section>
     <section>
-      <h2>Field <small>Tap a driver to cut to them</small></h2>
+      <h2>Field <small>tap a driver to cut to them</small></h2>
       <div class="field" id="field"></div>
     </section>
   </div>
@@ -179,22 +280,17 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
       <h2>Incidents <small id="incCount"></small></h2>
       <div class="opts" id="incFilter"></div>
       <div class="opts" id="incPre"></div>
-      <div class="inc" id="incList"></div>
-      <p class="note">Points are iRacing's own count for each car; the cause is what its points table allows (0x light contact never shows, and incidents close together can arrive as one rise). <span class="d">Off track</span> and <span class="d">slowed</span> are what the telemetry shows, which is every car's, but not points. Replay jumps to the moment and cuts to the car; use Back to live when done.</p>
+      <div class="list" id="incList"></div>
+      <div id="tally"></div>
+      <p class="note">iRacing keeps other drivers' incident points hidden until the race ends, so these are <span class="d">predicted</span> from what every car's telemetry does: going off, spinning, losing its speed, two cars losing it together, tows and damage flags. The likely points follow iRacing's table. When the official counts appear after the finish, they are compared here car by car.</p>
     </section>
-    <section>
-      <h2>Battles <small id="btMode"></small></h2>
-      <div id="battles"></div>
-    </section>
-    <section>
-      <h2>Race control</h2>
-      <div class="log" id="log"></div>
-    </section>
+    <section><h2>Battles <small id="btMode"></small></h2><div id="battles"></div></section>
+    <section><h2>Race control</h2><div class="log" id="log"></div></section>
     <section class="urls">
       <h2>Overlay for OBS</h2>
-      <p class="note" style="margin-top:0">Add a Browser Source, 1920 × 1080, with this address. It uses the view token, not yours.</p>
+      <p class="note" style="margin-top:0">Browser Source, 1920 × 1080. It uses the view token, not yours.</p>
       <code id="obsUrl">Ask whoever runs the relay for the view token.</code>
-      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board) to put one graphic in its own source.</p>
+      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger) to give one graphic its own source.</p>
     </section>
   </div>
 </main>
@@ -205,21 +301,25 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
   "use strict";
   const $ = id => document.getElementById(id);
   const Q = new URLSearchParams(location.search);
-  const S = { session: null, state: null, cars: null, gfx: {}, hello: null, role: null, feed: { ready: false, seq: 0, events: [] } };
+  const S = { session: null, state: null, cars: null, gfx: {}, hello: null, role: null,
+              feed: { ready: false, seq: 0, events: [] }, director: null, lv: null, assets: [], liveries: new Set() };
   const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   const esc = v => v == null ? "" : String(v).replace(/[&<>"']/g, ch => ESC[ch]);
   const D = txt => `<span class="d">${txt}</span>`;
   function merge(into, from) {
     for (const k of Object.keys(from)) {
       const v = from[k];
+      if (v === null) { delete into[k]; continue; }
       if (v && typeof v === "object" && !Array.isArray(v) && into[k] && typeof into[k] === "object" && !Array.isArray(into[k])) merge(into[k], v);
       else into[k] = v;
     }
     return into;
   }
   const lap = s => { if (s == null || !(s > 0)) return "–"; const m = Math.floor(s / 60), r = s - m * 60; return (m ? m + ":" + (r < 10 ? "0" : "") : "") + r.toFixed(3); };
-  const gap = s => s == null ? "–" : "+" + s.toFixed(Math.abs(s) < 10 ? 3 : 1);
-  const classCss = v => v == null ? "transparent" : "#" + (Number(v) & 0xFFFFFF).toString(16).padStart(6, "0");
+  const gap = s => s == null ? "–" : "+" + s.toFixed(s < 10 ? 3 : 1);
+  const clock = s => { if (s == null) return ""; s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
+  const css = v => v == null ? "transparent" : "#" + (Number(v) & 0xFFFFFF).toString(16).padStart(6, "0");
   const allCars = () => S.cars && S.cars.cars ? Object.values(S.cars.cars) : [];
   const carByIdx = i => i == null ? null : allCars().find(c => c.idx === i) || null;
   const isRace = () => !!(S.cars && S.cars.derived && S.cars.derived.isRace);
@@ -236,6 +336,7 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
   }
   const canProduce = () => S.role === "producer";
   const canCamera = () => canProduce() && !!(S.hello && S.hello.camera);
+  const liveryKey = c => c && c.carId != null && (c.teamId || c.userId) ? c.carId + "_" + (c.teamId || c.userId) : null;
   let me = "";
   try { me = localStorage.getItem("pw.producer.name") || ""; } catch (e) {}
   $("me").value = me;
@@ -249,9 +350,8 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
   }
   const LOG = [];
   function log(html, bad) {
-    const d = new Date();
-    LOG.push({ t: d.toTimeString().slice(0, 5), html, bad });
-    if (LOG.length > 120) LOG.shift();
+    LOG.push({ t: new Date().toTimeString().slice(0, 5), html, bad });
+    if (LOG.length > 150) LOG.shift();
     $("log").innerHTML = LOG.slice().reverse().map(x => `<div class="${x.bad ? "bad" : ""}"><time>${x.t}</time><span>${x.html}</span></div>`).join("");
   }
 
@@ -263,129 +363,209 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
   }
   function setGfx(patch) {
     if (!canProduce()) { toast("This link is view-only", true); return; }
-    // Show the change at once; the relay's echo is the source of truth and
-    // replaces this a moment later.
     merge(S.gfx, JSON.parse(JSON.stringify(patch)));
-    renderControls();
+    dirty.ctl = true;
     send({ type: "gfx", set: patch, by: me || undefined });
+  }
+  const debounced = {};
+  function setGfxSoon(key, patch) {
+    clearTimeout(debounced[key]);
+    debounced[key] = setTimeout(() => setGfx(patch), 250);
   }
   const pending = [];
   function cmd(obj, label) {
-    if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return; }
-    if (send({ type: "cmd", ...obj })) pending.push(label);
-  }
-  function cutToCar(c) {
-    if (!c || c.num == null) return;
-    cmd({ cmd: "camera", action: "car", car: String(c.num), group: currentGroup(), camera: 0 }, "Camera on #" + c.num + " " + (c.name || ""));
+    if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return false; }
+    if (send({ type: "cmd", ...obj })) { pending.push(label); return true; }
+    return false;
   }
   function currentGroup() {
     const g = S.state && S.state.camera ? S.state.camera.group : null;
-    return g || preferredGroup() || 0;
+    if (g) return g;
+    const gs = (S.session && S.session.cameras) || [];
+    const tv = gs.find(x => /^TV/i.test(x.name || ""));
+    return tv ? tv.num : gs.length ? gs[0].num : 0;
   }
-  function preferredGroup() {
-    const g = (S.session && S.session.cameras) || [];
-    const tv = g.find(x => /^TV/i.test(x.name || ""));
-    return tv ? tv.num : g.length ? g[0].num : null;
+  function cutToCar(c, group) {
+    if (!c || c.num == null) return;
+    cmd({ cmd: "camera", action: "car", car: String(c.num), group: group || currentGroup(), camera: 0 }, "Camera on #" + c.num + " " + (c.name || ""));
   }
+  // A stinger first, then the camera move at its cut point, so the jump is hidden.
+  let stingerSeq = 0;
+  function withStinger(dir, fn) {
+    const useIt = G("stinger.enabled", true) !== false;
+    if (!useIt || !canProduce()) { fn(); return; }
+    stingerSeq = Math.max(stingerSeq, G("stinger.seq", 0)) + 1;
+    setGfx({ stinger: { seq: stingerSeq, dir, at: Date.now() } });
+    setTimeout(fn, Number(G("theme.stinger.cutMs", 420)) || 0);
+  }
+  function backToLive() {
+    withStinger("toLive", () => cmd({ cmd: "replay", action: "search", mode: "to_end" }, "Back to live"));
+  }
+  $("toLive").onclick = backToLive;
 
-  // ------------------------------------------------------------- controls
-  const LAYERS = [
-    ["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
-    ["battle", "Battle box", false], ["map", "Track map", false], ["ticker", "Race control", true], ["board", "Standings board", false],
-  ];
+  // ------------------------------------------------------------- tabs
+  document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
+    document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("on", x === b));
+    document.querySelectorAll("[data-pane]").forEach(p => p.classList.toggle("hide", p.dataset.pane !== b.dataset.tab));
+    try { localStorage.setItem("pw.producer.tab", b.dataset.tab); } catch (e) {}
+    if (b.dataset.tab === "look") renderLook();
+  });
+  try { const t = localStorage.getItem("pw.producer.tab"); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (e) {}
+
+  // ------------------------------------------------------------- Show tab
+  const LAYERS = [["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
+    ["battle", "Battle box", false], ["map", "Track map", false], ["ticker", "Race control", true],
+    ["board", "Standings board", false], ["replay", "Replay bug when behind live", true]];
+  const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
-    const prod = canProduce();
+    const prod = canProduce(), dis = prod ? "" : "disabled";
     $("roleWarn").classList.toggle("hide", prod || S.role == null);
-    $("toggles").innerHTML = LAYERS.map(([k, label, dflt]) => {
-      const on = !!G(k + ".show", dflt);
-      return `<div class="tog"><label for="sw-${k}">${label}</label><button class="sw${on ? " on" : ""}" id="sw-${k}" data-layer="${k}" role="switch" aria-checked="${on}" ${prod ? "" : "disabled"}></button></div>`;
-    }).join("") + `<div class="tog"><label for="sw-incs">Incidents (2x and up) in race control</label><button class="sw${G("ticker.incidents", true) ? " on" : ""}" id="sw-incs" data-incs="1" role="switch" aria-checked="${G("ticker.incidents", true)}" ${prod ? "" : "disabled"}></button></div><div class="tog"><label for="sw-pits">Pit stops in race control</label><button class="sw${G("ticker.pits", true) ? " on" : ""}" id="sw-pits" data-pits="1" role="switch" aria-checked="${G("ticker.pits", true)}" ${prod ? "" : "disabled"}></button></div>`;
-    const modes = [["interval", "Interval"], ["leader", "Gap to leader"], ["best", "Best lap"], ["last", "Last lap"], ["stops", "Stops seen"], ["incidents", "Incidents"]];
+    $("toggles").innerHTML = LAYERS.map(([k, label, d]) => sw("sw-" + k, G(k + ".show", d), `data-layer="${k}"`, label)).join("");
+    const lay = G("tower.layout", multi() ? "classes" : "overall");
+    $("twLayout").innerHTML = [["overall", "Overall"], ["classes", "Every class, split"], ["class", "One class"]]
+      .map(([k, l]) => `<button data-twl="${k}" class="${lay === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
+    if (lay === "classes") {
+      const per = G("tower.perClass", 5);
+      $("twLayoutOpts").innerHTML = `<h3>Cars per class</h3><div class="opts">${[3, 4, 5, 6, 8, 10].map(n => `<button data-per="${n}" class="${per === n ? "on" : ""}" ${dis}>${n}</button>`).join("")}</div>`;
+    } else if (lay === "class") {
+      const cl = G("tower.class", null);
+      $("twLayoutOpts").innerHTML = `<h3>Class</h3><div class="opts">${classes().map(c => `<button data-cls="${esc(c.id)}" class="${cl === c.id ? "on" : ""}" style="box-shadow:inset 4px 0 0 ${css(c.color)}" ${dis}>${esc(c.name)}</button>`).join("") || '<span class="note">Classes appear with the field.</span>'}</div>` +
+        `<h3>Rows</h3><div class="opts">${[10, 15, 20, 25].map(n => `<button data-rows="${n}" class="${G("tower.rows", 20) === n ? "on" : ""}" ${dis}>${n}</button>`).join("")}</div>`;
+    } else {
+      $("twLayoutOpts").innerHTML = `<h3>Rows</h3><div class="opts">${[10, 15, 20, 25, 30].map(n => `<button data-rows="${n}" class="${G("tower.rows", 20) === n ? "on" : ""}" ${dis}>${n}</button>`).join("")}</div>`;
+    }
     const mode = G("tower.mode", "interval");
-    $("towerMode").innerHTML = modes.map(([k, l]) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}" ${prod ? "" : "disabled"}>${l}</button>`).join("");
-    const cl = G("tower.class", null);
-    $("towerClass").innerHTML = `<button data-cls="" class="${cl == null ? "on" : ""}" ${prod ? "" : "disabled"}>All</button>` +
-      classes().map(c => `<button data-cls="${esc(c.id)}" class="${cl === c.id ? "on" : ""}" style="box-shadow:inset 4px 0 0 ${classCss(c.color)}" ${prod ? "" : "disabled"}>${esc(c.name)}</button>`).join("");
-    const rows = G("tower.rows", 20);
-    $("towerRows").innerHTML = [10, 15, 20, 25, 30].map(n => `<button data-rows="${n}" class="${n === rows ? "on" : ""}" ${prod ? "" : "disabled"}>${n}</button>`).join("");
+    $("twMode").innerHTML = [["interval", "Interval"], ["gap", "Gap to leader"], ["best", "Best lap"], ["last", "Last lap"], ["pits", "Pit stops"], ["incidents", "Incidents"]]
+      .map(([k, l]) => `<button data-mode="${k}" class="${mode === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
     const follow = G("card.follow", "camera");
-    $("cardFollow").innerHTML = `<button data-follow="camera" class="${follow === "camera" ? "on" : ""}" ${prod ? "" : "disabled"}>Follow the camera</button>` +
+    $("cardFollow").innerHTML = `<button data-follow="camera" class="${follow === "camera" ? "on" : ""}" ${dis}>Follow the camera</button>` +
       `<button data-follow="pinned" class="${follow === "pinned" ? "on" : ""}" ${prod && G("card.idx", null) != null ? "" : "disabled"}>Pinned driver</button>`;
     const pc = carByIdx(G("card.idx", null));
-    $("cardNote").textContent = follow === "pinned" && pc ? "Showing #" + pc.num + " " + pc.name + ". Use Card on a driver in the field to change it."
-      : "Shows whoever the camera is on. Use Card on a driver in the field to pin one.";
+    $("cardNote").textContent = follow === "pinned" && pc ? "Showing #" + pc.num + " " + pc.name + ". Use Card on a driver to change it." : "Use Card on a driver in the field to pin one.";
+    const gm = G("grid.mode", "auto");
+    $("gridMode").innerHTML = [["auto", "Automatic"], ["on", "Show now"], ["off", "Off"]].map(([k, l]) => `<button data-grid="${k}" class="${gm === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
+    $("gwSnapNote").textContent = S.lv && S.lv.config && S.lv.config.source ? "" : "(connect OBS in Liveries first)";
+    const minInc = G("ticker.minIncident", "spin");
+    $("tickerOpts").innerHTML = sw("sw-pits", G("ticker.pits", true), 'data-tk="pits"', "Pit stops") +
+      sw("sw-incs", G("ticker.incidents", true), 'data-tk="incidents"', "Incidents") +
+      `<h3>Smallest incident to show</h3><div class="opts">${[["off_track", "Off track"], ["lost_speed", "Off the pace"], ["spin", "Spins"], ["contact", "Contact only"]]
+        .map(([k, l]) => `<button data-minc="${k}" class="${minInc === k ? "on" : ""}" ${dis}>${l}</button>`).join("")}</div>` +
+      sw("sw-sting", G("stinger.enabled", true) !== false, 'data-sting="1"', "Transition stinger on replays");
     const bm = G("battle.mode", "auto");
-    $("btMode").innerHTML = `<button data-bmode="auto" class="${bm === "auto" ? "on" : ""}" style="min-height:26px;padding:2px 8px" ${prod ? "" : "disabled"}>Auto</button>`;
-    const camOk = canCamera();
-    const hasHello = !!S.hello;
-    const why = !prod ? "" : !hasHello ? "Waiting for the bridge." : "Camera and replay control is off. Start the bridge with --allow-camera (the suite does this for you).";
-    for (const id of ["camWarn", "replayWarn"]) { $(id).textContent = why; $(id).classList.toggle("hide", camOk || !why); }
-    renderCameraButtons();
+    $("btMode").innerHTML = `<button data-bmode="auto" class="${bm === "auto" ? "on" : ""}" style="min-height:24px;padding:1px 8px" ${dis}>Auto</button>`;
+    renderCameraButtons(true);
   }
+
+  // ------------------------------------------------------------- cameras
+  const SHOTS = [["Chase", ["chase"]], ["Rear chase", ["rear chase"]], ["Far chase", ["far chase"]], ["Onboard", ["cockpit", "roll bar"]],
+    ["Nose", ["nose"]], ["Gearbox", ["gearbox"]], ["Gyro", ["gyro"]], ["Chopper", ["chopper"]], ["Blimp", ["blimp"]],
+    ["Trackside", ["tv1", "tv2", "tv3"]], ["Pit lane", ["pit lane"]]];
   let camSig = "";
-  function renderCameraButtons() {
+  function renderCameraButtons(force) {
     const camOk = canCamera();
     const groups = (S.session && S.session.cameras) || [];
     const cur = S.state && S.state.camera ? S.state.camera.group : null;
-    const sig = [camOk, cur, groups.length, S.session && S.session.update].join("|");
-    if (sig === camSig) return;
+    const sig = [camOk, cur, groups.length, S.session && S.session.update, JSON.stringify(S.director && S.director.on), S.director && S.director.style].join("|");
+    if (sig === camSig && !force) return;
     camSig = sig;
-    const ordered = [...groups.filter(g => !g.scenic), ...groups.filter(g => g.scenic)];
-    $("groups").innerHTML = ordered.length ? ordered.map(g => `<button data-group="${esc(g.num)}" class="${g.num === cur ? "on" : ""}" ${camOk && !g.scenic ? "" : "disabled"} title="${g.scenic ? "Scenic cameras have no car to follow" : ""}">${esc(g.name || "Group " + g.num)}</button>`).join("")
-      : `<span class="note">Camera groups arrive with the session.</span>`;
+    const why = !canProduce() ? "" : !S.hello ? "Waiting for the bridge." : "Camera control is off: start the bridge with --allow-camera (the suite does this for you).";
+    $("camWarn").textContent = why; $("camWarn").classList.toggle("hide", camOk || !why);
+    const byName = n => groups.find(g => (g.name || "").toLowerCase() === n);
+    $("shots").innerHTML = SHOTS.map(([label, names]) => {
+      const gs = names.map(byName).filter(Boolean);
+      return gs.length ? `<button data-shot="${gs.map(g => g.num).join(",")}" ${camOk ? "" : "disabled"}>${label}</button>` : "";
+    }).join("") || '<span class="note">Camera groups arrive with the session.</span>';
+    // iRacing's own groups; anything else came from a camera pack (marked ★)
+    const known = new Set(["nose", "gearbox", "roll bar", "lf susp", "lr susp", "rf susp", "rr susp", "gyro", "cockpit",
+      "scenic", "tv1", "tv2", "tv3", "pit lane", "pit lane 2", "blimp", "chopper", "chase", "far chase", "rear chase"]);
+    $("groups").innerHTML = groups.map(g => `<button data-group="${esc(g.num)}" class="${g.num === cur ? "on" : ""}" ${camOk && !g.scenic ? "" : "disabled"}${known.has((g.name || "").toLowerCase()) ? "" : ' title="Added by a camera pack"'}>${esc(g.name || "Group " + g.num)}${known.has((g.name || "").toLowerCase()) ? "" : " ★"}</button>`).join("");
     const cg = groups.find(g => g.num === cur);
     $("camGroupName").textContent = cg ? "On " + cg.name : "";
+    const dir = S.director || {};
+    $("dirCtl").innerHTML = `<button data-dir="toggle" class="big ${dir.on && dir.mode === "race" ? "on" : ""}" ${camOk ? "" : "disabled"}>${dir.on && dir.mode === "race" ? "Director on" : "Director off"}</button>` +
+      (dir.styles || ["cinematic", "onboard", "tv"]).map(st => `<button data-dstyle="${st}" class="${dir.style === st ? "on" : ""}" ${camOk ? "" : "disabled"}>${{ cinematic: "Cinematic", onboard: "Onboards", tv: "Classic TV" }[st] || st}</button>`).join("") +
+      `<label class="note" style="align-self:center">hold <input type="number" id="dirHold" min="3" max="30" value="${dir.holdS || 8}" style="width:56px"> s</label>`;
     $("focus").innerHTML = [["exciting", "Most exciting"], ["leader", "Leader"], ["incident", "Incidents"]]
       .map(([k, l]) => `<button data-focus="${k}" ${camOk ? "" : "disabled"}>${l}</button>`).join("");
     $("replay").innerHTML = [["live", "Back to live"], ["pause", "Pause"], ["play", "Play"], ["slow", "Slow motion"],
-      ["prev_incident", "Previous incident"], ["next_incident", "Next incident"], ["prev_lap", "Previous lap"]]
+      ["prev_incident", "Previous iRacing incident"], ["next_incident", "Next iRacing incident"], ["prev_lap", "Previous lap"]]
       .map(([k, l]) => `<button data-replay="${k}" ${camOk ? "" : "disabled"}>${l}</button>`).join("");
   }
+  function renderDirector() {
+    const d = S.director;
+    if (!d) { $("dirNow").textContent = ""; return; }
+    const c = d.current && carByIdx(d.current.car);
+    $("dirNow").innerHTML = d.on ? (d.mode === "grid" ? `Walking the grid: ${d.gridLeft ?? 0} to go` : "Choosing shots from the race.") +
+      (d.current ? ` Now: #${esc(d.current.num)} ${esc(c ? c.name : "")} · ${esc(d.current.groupName || "")} · ${esc(d.current.reason)}` : "") : "Off: cameras are yours.";
+  }
 
+  // ------------------------------------------------------------- clicks
   document.addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b || b.disabled) return;
-    if (b.dataset.layer) { const k = b.dataset.layer, d = LAYERS.find(x => x[0] === k)[2]; setGfx({ [k]: { show: !G(k + ".show", d) } }); }
-    else if (b.dataset.pits) setGfx({ ticker: { pits: !G("ticker.pits", true) } });
-    else if (b.dataset.incs) setGfx({ ticker: { incidents: !G("ticker.incidents", true) } });
-    else if (b.dataset.mode) setGfx({ tower: { mode: b.dataset.mode } });
-    else if (b.dataset.cls !== undefined) setGfx({ tower: { class: b.dataset.cls === "" ? null : Number(b.dataset.cls) } });
-    else if (b.dataset.rows) setGfx({ tower: { rows: Number(b.dataset.rows) } });
-    else if (b.dataset.follow) setGfx({ card: { follow: b.dataset.follow } });
-    else if (b.dataset.bmode) setGfx({ battle: { mode: "auto", cars: null } });
-    else if (b.dataset.group) {
+    const ds = b.dataset;
+    if (ds.layer) { const d = LAYERS.find(x => x[0] === ds.layer)[2]; setGfx({ [ds.layer]: { show: !G(ds.layer + ".show", d) } }); }
+    else if (ds.twl) setGfx({ tower: { layout: ds.twl } });
+    else if (ds.per) setGfx({ tower: { perClass: Number(ds.per) } });
+    else if (ds.cls !== undefined) setGfx({ tower: { class: Number(ds.cls) } });
+    else if (ds.rows) setGfx({ tower: { rows: Number(ds.rows) } });
+    else if (ds.mode) setGfx({ tower: { mode: ds.mode } });
+    else if (ds.follow) setGfx({ card: { follow: ds.follow } });
+    else if (ds.grid) setGfx({ grid: { mode: ds.grid } });
+    else if (ds.tk) setGfx({ ticker: { [ds.tk]: !G("ticker." + ds.tk, true) } });
+    else if (ds.minc) setGfx({ ticker: { minIncident: ds.minc } });
+    else if (ds.sting) setGfx({ stinger: { enabled: G("stinger.enabled", true) === false } });
+    else if (ds.bmode) setGfx({ battle: { mode: "auto", cars: null } });
+    else if (ds.shot) {
+      const nums = ds.shot.split(",").map(Number), cur = S.state && S.state.camera ? S.state.camera.group : null;
+      const i = nums.indexOf(cur), g = nums[(i + 1) % nums.length];      // a second press moves to the next of the set
       const c = carByIdx(S.state && S.state.camera ? S.state.camera.carIdx : null);
-      const group = Number(b.dataset.group);
-      if (c && c.num != null) cmd({ cmd: "camera", action: "car", car: String(c.num), group, camera: 0 }, "Camera group changed");
-      else cmd({ cmd: "camera", action: "focus", focus: "exciting", group, camera: 0 }, "Camera group changed");
+      if (c) cutToCar(c, g); else cmd({ cmd: "camera", action: "focus", focus: "exciting", group: g, camera: 0 }, b.textContent);
     }
-    else if (b.dataset.focus) cmd({ cmd: "camera", action: "focus", focus: b.dataset.focus, group: currentGroup(), camera: 0 }, "iRacing chooses: " + b.textContent);
-    else if (b.dataset.replay) {
-      const k = b.dataset.replay;
-      const m = { live: { action: "search", mode: "to_end" }, pause: { action: "speed", speed: 0 }, play: { action: "speed", speed: 1 },
-                  slow: { action: "speed", speed: 2, slow: true }, prev_incident: { action: "search", mode: "prev_incident" },
-                  next_incident: { action: "search", mode: "next_incident" }, prev_lap: { action: "search", mode: "prev_lap" } }[k];
-      cmd({ cmd: "replay", ...m }, b.textContent);
+    else if (ds.group) {
+      const c = carByIdx(S.state && S.state.camera ? S.state.camera.carIdx : null);
+      if (c) cutToCar(c, Number(ds.group)); else cmd({ cmd: "camera", action: "focus", focus: "exciting", group: Number(ds.group), camera: 0 }, "Camera group");
     }
-    else if (b.dataset.pin) { e.stopPropagation(); const i = Number(b.dataset.pin);
-      setGfx({ card: { follow: "pinned", idx: i, show: true } }); }
-    else if (b.dataset.btshow) { const cars = b.dataset.btshow.split(",").map(Number);
-      setGfx({ battle: { mode: "pick", cars, show: true } }); }
-    else if (b.dataset.btcut) cutToCar(carByIdx(Number(b.dataset.btcut)));
-    else if (b.dataset.incf) { incFilter = b.dataset.incf; renderIncidents(); }
-    else if (b.dataset.inccar !== undefined) { incCar = b.dataset.inccar === "" ? null : Number(b.dataset.inccar); renderIncidents(); }
-    else if (b.dataset.pre) { preroll = Number(b.dataset.pre); try { localStorage.setItem("pw.producer.preroll", preroll); } catch (e2) {} renderIncidents(); }
-    else if (b.dataset.jump) { const e = S.feed.events.find(x => x.seq === Number(b.dataset.jump)); if (e) jumpTo(e); }
+    else if (ds.dir) {
+      const on = !(S.director && S.director.on && S.director.mode === "race");
+      cmd({ cmd: "director", action: "set", on, holdS: Number($("dirHold").value) || 8 }, on ? "Director on" : "Director off");
+    }
+    else if (ds.dstyle) cmd({ cmd: "director", action: "set", style: ds.dstyle }, "Director style");
+    else if (ds.focus) cmd({ cmd: "camera", action: "focus", focus: ds.focus, group: currentGroup(), camera: 0 }, "iRacing chooses: " + b.textContent);
+    else if (ds.replay) {
+      const k = ds.replay;
+      if (k === "live") { backToLive(); return; }
+      const m = { pause: { action: "speed", speed: 0 }, play: { action: "speed", speed: 1 }, slow: { action: "speed", speed: 2, slow: true },
+                  prev_incident: { action: "search", mode: "prev_incident" }, next_incident: { action: "search", mode: "next_incident" },
+                  prev_lap: { action: "search", mode: "prev_lap" } }[k];
+      if (k.endsWith("incident") || k === "prev_lap") withStinger("toReplay", () => cmd({ cmd: "replay", ...m }, b.textContent));
+      else cmd({ cmd: "replay", ...m }, b.textContent);
+    }
+    else if (ds.pin) { e.stopPropagation(); setGfx({ card: { follow: "pinned", idx: Number(ds.pin), show: true } }); }
+    else if (ds.snap) { e.stopPropagation(); cmd({ cmd: "livery", action: "snap", idx: Number(ds.snap) }, "Livery photo"); }
+    else if (ds.btshow) setGfx({ battle: { mode: "pick", cars: ds.btshow.split(",").map(Number), show: true } });
+    else if (ds.btcut) cutToCar(carByIdx(Number(ds.btcut)));
+    else if (ds.incf) { incFilter = ds.incf; dirty.inc = true; }
+    else if (ds.pre) { preroll = Number(ds.pre); try { localStorage.setItem("pw.producer.preroll", preroll); } catch (e2) {} dirty.inc = true; }
+    else if (ds.jump) { const ev = S.feed.events.find(x => x.seq === Number(ds.jump)); if (ev) jumpTo(ev); }
+    else if (ds.preset) setGfx({ theme: { preset: ds.preset, colors: null, fonts: null } });
+    else if (ds.names) setGfx({ theme: { names: ds.names } });
+    else if (ds.caps) setGfx({ theme: { caps: ds.caps === "1" } });
+    else if (ds.adel) { if (confirm("Delete " + ds.adel + "?")) send({ type: "asset_del", name: ds.adel }); }
+  });
+  document.addEventListener("change", e => {
+    if (e.target.id === "dirHold") cmd({ cmd: "director", action: "set", holdS: Number(e.target.value) || 8 }, "Director hold");
   });
   $("field").addEventListener("click", e => {
     if (e.target.closest("button")) return;
-    const r = e.target.closest(".car"); if (!r) return;
-    cutToCar(carByIdx(Number(r.dataset.idx)));
+    const r = e.target.closest(".car"); if (r) cutToCar(carByIdx(Number(r.dataset.idx)));
   });
   $("field").addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
     const r = e.target.closest(".car"); if (!r || e.target.closest("button")) return;
     e.preventDefault(); cutToCar(carByIdx(Number(r.dataset.idx)));
   });
+  $("gwStart").onclick = () => cmd({ cmd: "director", action: "grid_walk", holdS: Number($("gwHold").value) || 5, capture: $("gwSnap").checked }, "Walking the grid");
+  $("gwStop").onclick = () => cmd({ cmd: "director", action: "stop" }, "Director stopped");
 
   // ------------------------------------------------------------- live views
   function renderHeader() {
@@ -394,95 +574,37 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
     const g = cam && S.session ? (S.session.cameras || []).find(x => x.num === cam.group) : null;
     $("camTxt").innerHTML = c ? `On camera <b>#${esc(c.num)}</b> ${esc(c.name)}${g ? " · " + esc(g.name) : ""}` : "No car on camera";
     const le = S.state && S.state.derived && S.state.derived.liveEdge;
-    const lb = $("liveBadge");
-    lb.classList.toggle("hide", !le);
+    $("liveBadge").classList.toggle("hide", !le);
+    $("toLive").classList.toggle("hide", !le || le.atLive);
     if (le) {
-      lb.classList.toggle("replay", !le.atLive);
-      lb.innerHTML = le.atLive ? "Live" : "Replay" + (le.behindLiveS > 1 ? " " + D(clock(le.behindLiveS) + " behind") : "");
+      $("liveBadge").classList.toggle("replay", !le.atLive);
+      $("liveBadge").innerHTML = le.atLive ? "Live" : "Replay" + (le.behindLiveS > 1 ? " · " + D(clock(le.behindLiveS) + " behind") : "");
     }
   }
-  const clock = s => { if (s == null) return ""; s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
-    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
-
-  // ------------------------------------------------------------- incidents
-  const INC_KINDS = new Set(["car_incident", "off_track", "slowed"]);
-  let incFilter = "points", incCar = null, preroll = 5;
-  try { preroll = Number(localStorage.getItem("pw.producer.preroll")) || 5; } catch (e) {}
-  function incLabel(e) {
-    if (e.kind === "off_track") return D("Off track");
-    if (e.kind === "slowed") return D("Slowed sharply");
-    const cause = e.causes && e.causes.length ? e.causes.join(" or ") : "more than one incident";
-    return esc(cause);
-  }
-  function renderIncidents() {
-    let list = S.feed.events.filter(e => INC_KINDS.has(e.kind));
-    const counted = list.filter(e => e.kind === "car_incident").length;
-    $("incCount").textContent = counted ? counted + (counted === 1 ? " counted" : " counted") : "";
-    if (incFilter === "points") list = list.filter(e => e.kind === "car_incident");
-    if (incCar != null) list = list.filter(e => e.idx === incCar);
-    const fc = carByIdx(incCar);
-    $("incFilter").innerHTML = `<button data-incf="points" class="${incFilter === "points" ? "on" : ""}">Points</button>` +
-      `<button data-incf="all" class="${incFilter === "all" ? "on" : ""}">Everything seen</button>` +
-      (incCar != null ? `<button data-inccar="" class="on">#${esc(fc ? fc.num : incCar)} only ✕</button>` : "");
-    $("incPre").innerHTML = `<span class="note" style="align-self:center;margin:0 4px 0 0">Start replay</span>` +
-      [3, 5, 10, 15].map(n => `<button data-pre="${n}" class="${preroll === n ? "on" : ""}">${n} s before</button>`).join("");
-    if (!list.length) {
-      $("incList").innerHTML = `<p class="note">${S.feed.ready ? (incFilter === "points" ? "No incident points counted yet." : "Nothing seen yet.") : "Waiting for the bridge."}</p>`;
-      return;
-    }
-    $("incList").innerHTML = list.slice(-80).reverse().map(e => {
-      const c = carByIdx(e.idx);
-      const pts = e.kind === "car_incident"
-        ? `<span class="pts p${Math.min(4, e.points >= 4 ? 4 : e.points >= 2 ? 2 : 1)}">${esc(e.points)}x</span>`
-        : `<span class="pts obs">${e.kind === "off_track" ? "off" : "slow"}</span>`;
-      const sub = e.kind === "car_incident"
-        ? `${esc(e.total)}x total${e.limit != null ? " of " + esc(e.limit) : ""} · ` +
-          (e.anchor === "reported" ? "not seen on track: replays from 10 s before it was counted"
-            : `replays from the ${e.anchor === "off_track" ? "off-track" : "slowdown"}`)
-        : "not points";
-      const canJump = canCamera() && e.replayT != null && e.sessionNum != null;
-      return `<div class="ir">${pts}<div class="when">${e.lap != null ? "Lap " + esc(e.lap) + "<br>" : ""}${clock(e.replayT ?? e.t)}</div>` +
-        `<div class="what"><button class="who" data-inccar="${e.idx}" title="Show only this car">#${esc(c ? c.num : "?")} ${esc(c ? c.name : "car " + e.idx)}</button>` +
-        ` <span>${incLabel(e)}</span><div class="sub">${sub}</div></div>` +
-        `<button class="rp" data-jump="${e.seq}" ${canJump ? "" : "disabled"}>Replay</button></div>`;
-    }).join("");
-  }
-  function jumpTo(e) {
-    const c = carByIdx(e.idx);
-    const label = "Replay: #" + (c ? c.num + " " + c.name : e.idx) + (e.lap != null ? ", lap " + e.lap : "");
-    cmd({ cmd: "replay", action: "jump", session: e.sessionNum, timeS: e.replayT, preroll,
-          car: c && c.num != null ? String(c.num) : undefined, group: currentGroup() }, label);
-    // Tell the overlay what is being replayed. It only shows while the picture
-    // is actually behind live, so it clears itself on Back to live.
-    if (canCamera()) setGfx({ replay: { label: (c ? splitLast(c.name) : "Incident") + (e.lap != null ? " · lap " + e.lap : ""), car: e.idx } });
-  }
-  const splitLast = n => { const p = String(n || "").trim().split(/\s+/); return p.length > 1 ? p[0][0] + ". " + p.slice(1).join(" ") : p[0] || ""; };
   function renderField() {
-    let cars = allCars().filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
+    const cars = allCars().filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
     const unscored = allCars().filter(c => !(c.pos > 0) && c.surface !== "not_in_world");
     const cam = S.state && S.state.camera ? S.state.camera.carIdx : null;
     const pin = G("card.follow", "camera") === "pinned" ? G("card.idx", null) : null;
     const m = multi(), race = isRace();
     const row = c => {
       const d = c.derived || {};
-      const g = race ? (c.gapValid && !(c.f2TimeS > 0) ? "Leader" : d.intervalS != null ? D(gap(d.intervalS)) : "–") : lap(c.bestLapS);
+      const g = race ? (c.pos === 1 ? "Leader" : d.intervalLaps >= 1 ? "+" + d.intervalLaps + "L" : d.liveIntervalS != null ? D(gap(d.liveIntervalS)) : "–") : lap(c.bestLapS);
+      const has = S.liveries.has(liveryKey(c));
       return `<div class="car${c.idx === cam ? " cam" : ""}" data-idx="${c.idx}" tabindex="0" role="button" aria-label="Cut to ${esc(c.name)}">` +
-        `<span class="p">${c.pos > 0 ? esc(c.pos) : ""}</span><span class="bar" style="background:${m ? classCss(c.classColor) : "transparent"}"></span>` +
+        `<span class="p">${c.pos > 0 ? esc(c.pos) : ""}</span><span class="bar" style="background:${m ? css(c.classColor) : "transparent"}"></span>` +
         `<span class="n">#${esc(c.num ?? "")}</span><span class="nm">${esc(c.name || "car " + c.idx)}</span>` +
-        (c.onPitRoad ? `<span class="pit">PIT</span>` : "") +
-        `<span class="inc-n" title="Incident points">${c.incidents > 0 ? esc(c.incidents) + "x" : ""}</span>` +
-        `<span class="g">${g}</span><button data-pin="${c.idx}" class="${pin === c.idx ? "on" : ""}" ${canProduce() ? "" : "disabled"}>Card</button></div>`;
+        (c.onPitRoad ? `<span class="pit">PIT</span>` : "") + `<span class="lvok" title="${has ? "Livery photo taken" : ""}">${has ? "●" : ""}</span>` +
+        `<span class="g">${g}</span><button data-pin="${c.idx}" class="${pin === c.idx ? "on" : ""}" ${canProduce() ? "" : "disabled"}>Card</button>` +
+        `<button data-snap="${c.idx}" title="Photograph this car's livery now (camera must be on it)" ${canCamera() && S.lv && S.lv.config && S.lv.config.source ? "" : "disabled"}>Photo</button></div>`;
     };
-    $("field").innerHTML = cars.map(row).join("") + unscored.map(row).join("") ||
-      `<p class="note">The field appears once the bridge is streaming.</p>`;
+    $("field").innerHTML = cars.map(row).join("") + unscored.map(row).join("") || `<p class="note">The field appears once the bridge is streaming.</p>`;
   }
   function renderBattles() {
     const list = (S.cars && S.cars.derived && S.cars.derived.battles) || [];
-    if (!isRace()) { $("battles").innerHTML = `<p class="note">Battles are worked out during a race, from the gaps iRacing reports.</p>`; return; }
-    if (!list.length) { $("battles").innerHTML = `<p class="note">No two cars in the same class are within a second of each other right now.</p>`; return; }
-    const m = multi();
-    const auto = G("battle.mode", "auto") !== "pick";
-    const want = G("battle.cars", []) || [];
+    if (!isRace()) { $("battles").innerHTML = `<p class="note">Battles are found during a race.</p>`; return; }
+    if (!list.length) { $("battles").innerHTML = `<p class="note">No two cars of a class are within a second right now.</p>`; return; }
+    const m = multi(), auto = G("battle.mode", "auto") !== "pick", want = G("battle.cars", []) || [];
     const onAir = auto ? list[0] : list.find(b => want.length && want.every(i => b.cars.includes(i))) || list.find(b => want.some(i => b.cars.includes(i)));
     $("battles").innerHTML = list.slice(0, 8).map(b => {
       const lead = carByIdx(b.cars[0]);
@@ -498,18 +620,59 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
         `<button data-btcut="${b.cars[b.cars.length - 1]}" ${canCamera() ? "" : "disabled"}>Cut to the chaser</button></div></div>`;
     }).join("");
   }
+
+  // ------------------------------------------------------------- incidents
+  const WHAT = { contact: "Contact", spin: "Spin", lost_speed: "Lost speed (loss of control or a wall)", off_track: "Off track", tow: "Towed or reset", damage: "Damage (repair flag)" };
+  let incFilter = "all", preroll = 5;
+  try { preroll = Number(localStorage.getItem("pw.producer.preroll")) || 5; } catch (e) {}
   function carShort(i) { const c = carByIdx(i); return c ? "#" + esc(c.num) + " " + esc(c.name) : "car " + esc(i); }
+  function renderIncidents() {
+    let list = S.feed.events.filter(e => e.kind === "race_incident");
+    $("incCount").textContent = list.length ? list.length + " predicted" : "";
+    const filters = [["all", "All"], ["contact", "Contact"], ["spin", "Spins"], ["lost_speed", "Lost speed"], ["off_track", "Off track"]];
+    $("incFilter").innerHTML = filters.map(([k, l]) => `<button data-incf="${k}" class="${incFilter === k ? "on" : ""}">${l}</button>`).join("");
+    if (incFilter !== "all") list = list.filter(e => e.what === incFilter);
+    $("incPre").innerHTML = `<span class="note" style="align-self:center;margin-right:4px">Replay from</span>` +
+      [3, 5, 10, 15].map(n => `<button data-pre="${n}" class="${preroll === n ? "on" : ""}">${n} s before</button>`).join("");
+    if (!list.length) {
+      $("incList").innerHTML = `<p class="note">${S.feed.ready ? "Nothing yet." : "Waiting for the bridge."}</p>`;
+    } else {
+      const camOk = canCamera();
+      $("incList").innerHTML = list.slice(-100).reverse().map(e => {
+        const pts = e.likelyPoints || 0;
+        const who = carShort(e.idx) + (e.contactWith && e.contactWith.length ? " with " + e.contactWith.map(carShort).join(", ") : "");
+        return `<div class="ir"><span class="pts p${pts >= 4 ? 4 : pts >= 2 ? 2 : pts >= 1 ? 1 : 0}" title="Likely incident points">${D("~" + pts + "x")}</span>` +
+          `<div class="when">${e.lap != null ? "Lap " + esc(e.lap) + "<br>" : ""}${clock(e.replayT ?? e.t)}</div>` +
+          `<div class="what"><b>${esc(WHAT[e.what] || e.what)}</b><br>${who}<div class="sub">${esc(e.confidence)} confidence · ${esc((e.signals || []).join(", ").replace(/_/g, " "))}</div></div>` +
+          `<button data-jump="${e.seq}" ${camOk && e.replayT != null && e.sessionNum != null ? "" : "disabled"}>Replay</button></div>`;
+      }).join("");
+    }
+    // The official counts, once iRacing publishes them (after the finish)
+    const tally = S.feed.events.filter(e => e.kind === "official_incidents").pop();
+    if (tally) {
+      const rows = tally.cars.filter(r => r.official || r.predicted).sort((a, b) => b.official - a.official);
+      const exact = tally.cars.filter(r => r.official === r.predicted).length;
+      $("tally").innerHTML = `<h3>Official incident points</h3><p class="note" style="margin-top:0">${exact} of ${tally.cars.length} cars predicted exactly.</p>` +
+        `<table class="tally" style="width:100%;border-collapse:collapse"><tr><th>Car</th><th>Official</th><th>Predicted</th></tr>` +
+        rows.map(r => `<tr><td>${carShort(r.idx)}</td><td>${r.official}x</td><td>${D(r.predicted + "x")}</td></tr>`).join("") + `</table>`;
+    } else $("tally").innerHTML = "";
+  }
+  function jumpTo(e) {
+    const c = carByIdx(e.idx);
+    const label = (c ? (c.name || "").split(" ").slice(-1)[0] : "Incident") + (e.lap != null ? " · lap " + e.lap : "");
+    if (canCamera()) setGfx({ replay: { label, car: e.idx } });
+    withStinger("toReplay", () => cmd({ cmd: "replay", action: "jump", session: e.sessionNum, timeS: e.replayT, preroll,
+      car: c && c.num != null ? String(c.num) : undefined, group: currentGroup() }, "Replay: " + carShort(e.idx).replace(/<[^>]+>/g, "")));
+  }
   function feedText(e) {
     switch (e.kind) {
       case "fastest_lap": return `Fastest ${e.overall ? "" : "class "}lap: ${carShort(e.idx)} ${lap(e.lapS)}`;
       case "class_lead": return `${carShort(e.idx)} takes the lead`;
       case "pit_in": return `${carShort(e.idx)} into the pits`;
-      case "pit_out": return `${carShort(e.idx)} out of the pits` + (e.stationaryS != null ? ` (${D(e.stationaryS.toFixed(1) + " s")} stationary)` : "");
+      case "pit_out": return `${carShort(e.idx)} out of the pits`;
       case "flag": return `${esc(String(e.flag).replace(/_/g, " "))} flag`;
-      case "rain_start": return "Rain started";
-      case "rain_stop": return "Rain stopped";
-      case "declared_wet": return e.value ? "Wet declared" : "Wet declaration lifted";
-      case "car_incident": return `${carShort(e.idx)} +${esc(e.points)}x (${esc(e.total)}x)`;
+      case "race_incident": return e.what === "off_track" ? null : `${esc(WHAT[e.what] || e.what)}: ${carShort(e.idx)}`;
+      case "official_incidents": return "Official incident points published";
     }
     return null;
   }
@@ -517,18 +680,140 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
     const take = list => { for (const e of list || []) if (e.seq > S.feed.seq) { const t = feedText(e); if (t) log(t); } };
     if (m.full) {
       if (S.feed.ready) take(m.events);
-      // The incident list is the whole session so far, history included.
-      S.feed.events = (m.events || []).slice();
-      S.feed.ready = true; S.feed.seq = m.seq || 0;
+      S.feed.events = (m.events || []).slice(); S.feed.ready = true; S.feed.seq = m.seq || 0;
     } else {
       if (!S.feed.ready) return;
       take(m.events);
       for (const e of m.events || []) if (e.seq > S.feed.seq) S.feed.events.push(e);
       S.feed.seq = Math.max(S.feed.seq, m.seq || 0);
-      if (S.feed.events.length > 2000) S.feed.events.splice(0, S.feed.events.length - 2000);
+      if (S.feed.events.length > 3000) S.feed.events.splice(0, S.feed.events.length - 3000);
     }
     dirty.inc = true;
   }
+
+  // ------------------------------------------------------------- Look tab
+  const FONTS = ["Barlow Condensed", "Barlow", "Big Shoulders Display", "Saira Condensed", "Saira", "Oswald", "Roboto Condensed",
+    "Roboto", "Titillium Web", "Exo 2", "Rajdhani", "Teko", "Bebas Neue", "Archivo Narrow", "Archivo", "Inter", "Montserrat",
+    "Kanit", "Chakra Petch", "Orbitron", "Russo One", "Anton", "IBM Plex Sans Condensed", "Fira Sans Condensed"];
+  const PRESETS = { imsa: "IMSA style", pitboard: "Pit board", daylight: "Daylight" };
+  const PRESET_COLORS = {
+    imsa: { ink: "#111317", ink2: "#16191f", head: "#000000", headText: "#ffffff", text: "#ffffff", muted: "#9aa3ae", accent: "#ffcc00", accentText: "#000000", fl: "#a766ff", plate: "#2a2f38" },
+    pitboard: { ink: "#101824", ink2: "#162131", head: "#f2efe6", headText: "#101824", text: "#f2efe6", muted: "#98a5b8", accent: "#f5b841", accentText: "#101824", fl: "#a766ff", plate: "#24344c" },
+    daylight: { ink: "#ffffff", ink2: "#f1f3f6", head: "#0b2a5b", headText: "#ffffff", text: "#0d1320", muted: "#5c6b80", accent: "#e4002b", accentText: "#ffffff", fl: "#7b2fd6", plate: "#dfe4ea" } };
+  const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"] };
+  const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
+    accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
+  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid" };
+  const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
+  function renderLook() {
+    const th = S.gfx.theme || {}, preset = th.preset || "imsa";
+    $("presets").innerHTML = Object.entries(PRESETS).map(([k, l]) => `<button data-preset="${k}" class="${preset === k ? "on" : ""}">${l}</button>`).join("");
+    const cols = Object.assign({}, PRESET_COLORS[preset], th.colors || {});
+    $("colors").innerHTML = Object.entries(COLOR_LABELS).map(([k, l]) => `<label><input type="color" data-color="${k}" value="${cols[k]}">${l}</label>`).join("");
+    const fonts = th.fonts || {}, pf = PRESET_FONTS[preset];
+    const fontAssets = S.assets.filter(a => a.type.startsWith("font/"));
+    for (const [id, role, dflt] of [["fDisplay", "display", pf[0]], ["fBody", "body", pf[1]]]) {
+      const cur = (th.fontAssets && th.fontAssets[role]) ? "file:" + th.fontAssets[role] : (fonts[role] || dflt);
+      $(id).innerHTML = FONTS.map(f => `<option ${f === cur ? "selected" : ""}>${f}</option>`).join("") +
+        fontAssets.map(a => `<option value="file:${esc(a.name)}" ${"file:" + a.name === cur ? "selected" : ""}>Your file: ${esc(a.name)}</option>`).join("");
+    }
+    const names = th.names || "initial";
+    $("nameStyle").innerHTML = [["initial", "J. Smith"], ["last", "Smith"], ["full", "John Smith"]].map(([k, l]) => `<button data-names="${k}" class="${names === k ? "on" : ""}">${l}</button>`).join("");
+    const caps = th.caps ?? (preset !== "pitboard");
+    $("capsOpt").innerHTML = `<button data-caps="1" class="${caps ? "on" : ""}">ALL CAPS</button><button data-caps="0" class="${!caps ? "on" : ""}">As written</button>`;
+    $("radius").value = String(th.radius ?? (preset === "daylight" ? 4 : 0));
+    $("rowH").value = th.rowHeight || 34;
+    const tx = th.text || {};
+    $("tSeries").value = tx.series || ""; $("tEvent").value = tx.event || ""; $("tGrid").value = tx.gridTitle || "";
+    $("aLogo").innerHTML = assetOpts("image/", th.logo);
+    $("aBanner").innerHTML = assetOpts("image/", th.bannerLogo);
+    const st = th.stinger || {};
+    $("sVideo").innerHTML = `<option value="">Built-in wipe</option>` + S.assets.filter(a => a.type.startsWith("video/")).map(a => `<option ${a.name === st.video ? "selected" : ""}>${esc(a.name)}</option>`).join("");
+    $("sLogo").innerHTML = assetOpts("image/", st.logo);
+    $("sDur").value = st.durationMs || 900; $("sCut").value = st.cutMs ?? 420;
+    const lay = th.layout || {};
+    $("positions").innerHTML = `<span></span><span class="note">right px</span><span class="note">down px</span><span class="note">size</span>` +
+      Object.entries(POS_LABELS).map(([k, l]) => `<span>${l}</span>` + ["x", "y", "s"].map(a => `<input type="number" data-pos="${k}.${a}" step="${a === "s" ? 0.05 : 5}" value="${(lay[k] || {})[a] ?? (a === "s" ? 1 : 0)}">`).join("")).join("");
+    const lv = th.livery || {};
+    $("lvX").value = lv.x ?? 50; $("lvY").value = lv.y ?? 58; $("lvZ").value = lv.zoom ?? 1.6;
+    renderAssets();
+  }
+  function renderAssets() {
+    $("assetList").innerHTML = S.assets.length ? S.assets.map(a => `<div>${a.type.startsWith("image/") ? `<img src="${assetUrl(a.name)}" alt="">` : `<span class="note" style="flex:none;width:40px">${esc(a.type.split("/")[0])}</span>`}<span>${esc(a.name)}</span><span class="note" style="flex:none">${Math.max(1, Math.round(a.bytes / 1024))} KB</span><button data-adel="${esc(a.name)}" style="min-height:26px;padding:1px 7px">Delete</button></div>`).join("")
+      : `<p class="note">No files yet.</p>`;
+  }
+  function assetUrl(n) {
+    const r = Q.get("relay");
+    const base = location.protocol.startsWith("http") && !r ? location.origin : (r || relayUrl()).replace(/^ws/, "http").replace(/\/+$/, "");
+    return base + "/broadcast/assets/" + encodeURIComponent(n);
+  }
+  document.addEventListener("input", e => {
+    const t = e.target;
+    if (t.dataset.color) setGfxSoon("c" + t.dataset.color, { theme: { colors: { [t.dataset.color]: t.value } } });
+    else if (t.dataset.pos) { const [k, a] = t.dataset.pos.split("."); setGfxSoon("p" + t.dataset.pos, { theme: { layout: { [k]: { [a]: Number(t.value) } } } }); }
+    else if (t.id === "tSeries") setGfxSoon("ts", { theme: { text: { series: t.value } } });
+    else if (t.id === "tEvent") setGfxSoon("te", { theme: { text: { event: t.value } } });
+    else if (t.id === "tGrid") setGfxSoon("tg", { theme: { text: { gridTitle: t.value } } });
+    else if (t.id === "rowH") setGfxSoon("rh", { theme: { rowHeight: Number(t.value) || 34 } });
+    else if (["lvX", "lvY", "lvZ"].includes(t.id)) setGfxSoon("lv", { theme: { livery: { x: Number($("lvX").value), y: Number($("lvY").value), zoom: Number($("lvZ").value) } } });
+    else if (["sDur", "sCut"].includes(t.id)) setGfxSoon("st", { theme: { stinger: { durationMs: Number($("sDur").value), cutMs: Number($("sCut").value) } } });
+  });
+  document.addEventListener("change", e => {
+    const t = e.target;
+    if (t.id === "fDisplay" || t.id === "fBody") {
+      const role = t.id === "fDisplay" ? "display" : "body";
+      if (t.value.startsWith("file:")) setGfx({ theme: { fontAssets: { [role]: t.value.slice(5) } } });
+      else setGfx({ theme: { fonts: { [role]: t.value }, fontAssets: { [role]: null } } });
+    }
+    else if (t.id === "radius") setGfx({ theme: { radius: Number(t.value) } });
+    else if (t.id === "aLogo") setGfx({ theme: { logo: t.value || null } });
+    else if (t.id === "aBanner") setGfx({ theme: { bannerLogo: t.value || null } });
+    else if (t.id === "sVideo") setGfx({ theme: { stinger: { video: t.value || null } } });
+    else if (t.id === "sLogo") setGfx({ theme: { stinger: { logo: t.value || null } } });
+  });
+  $("sTest").onclick = () => withStinger("toReplay", () => toast("Cut point"));
+  $("posReset").onclick = () => setGfx({ theme: { layout: null } });
+  $("thReset").onclick = () => { if (confirm("Put every colour, font, logo and position back to the default?")) setGfx({ theme: null }); };
+  $("thExport").onclick = () => {
+    const blob = new Blob([JSON.stringify(S.gfx.theme || {}, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "broadcast-look.json"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  $("thImport").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { const th = JSON.parse(await f.text()); setGfx({ theme: null }); setTimeout(() => setGfx({ theme: th }), 200); toast("Look loaded"); }
+    catch (err) { toast("That file is not a saved look", true); }
+    e.target.value = "";
+  };
+  $("upload").onchange = async e => {
+    for (const f of e.target.files) {
+      if (f.size > 30 * 1024 * 1024) { toast(f.name + " is over 30 MB", true); continue; }
+      const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+      send({ type: "asset_put", name: f.name, data });
+    }
+    e.target.value = "";
+  };
+
+  // ------------------------------------------------------------- Liveries tab
+  function renderLiveries() {
+    const st = S.lv;
+    const cfg = (st && st.config) || {};
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest("[data-pane=liveries]")) {} else {
+      $("oUrl").value = cfg.url || $("oUrl").value; $("oSrc").value = cfg.source || ""; $("oGroup").value = cfg.group || "Chase";
+      $("oAuto").checked = cfg.auto !== false;
+      $("oPw").placeholder = cfg.hasPassword ? "saved (leave empty to keep)" : "none set";
+    }
+    $("oStatus").innerHTML = !st ? "Waiting for the bridge." : st.connected ? `Connected to OBS. ${S.liveries.size} livery photos so far.` :
+      st.error ? `<span style="color:var(--bad)">${esc(st.error)}</span>` : "Not connected yet.";
+    const p = $("lvProg");
+    p.classList.toggle("hide", !(st && st.sweeping));
+    if (st && st.sweeping) p.firstElementChild.style.width = (st.total ? 100 * st.done / st.total : 0) + "%";
+  }
+  $("oSave").onclick = () => cmd({ cmd: "livery", action: "setup", url: $("oUrl").value.trim(), password: $("oPw").value,
+    source: $("oSrc").value.trim(), group: $("oGroup").value.trim() || "Chase", auto: $("oAuto").checked }, "OBS settings");
+  $("lvAll").onclick = () => cmd({ cmd: "livery", action: "sweep" }, "Photographing every car");
+  $("lvMissing").onclick = () => cmd({ cmd: "livery", action: "sweep", missingOnly: true }, "Photographing the missing cars");
+  $("lvStop").onclick = () => cmd({ cmd: "livery", action: "stop" }, "Stopped");
 
   // ------------------------------------------------------------- connection
   function relayUrl() {
@@ -537,10 +822,7 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
     if (location.protocol === "http:" || location.protocol === "https:") return (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
     return "";
   }
-  function showConnect(err) {
-    $("connect").classList.remove("hide"); $("main").classList.add("hide");
-    $("cErr").textContent = err || "";
-  }
+  function showConnect(err) { $("connect").classList.remove("hide"); $("main").classList.add("hide"); $("cErr").textContent = err || ""; }
   function connect(relay, token) {
     if (ws) { ws.onclose = ws.onmessage = null; try { ws.close(); } catch (e) {} }
     let url;
@@ -559,44 +841,45 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
       $("connect").classList.add("hide"); $("main").classList.remove("hide");
       try { handle(m); } catch (e) { console.error("producer: could not handle " + m.type, e); }
     };
-    // The overlay link: same relay, but it needs the VIEW token, which a
-    // producer link does not carry. ?view= lets the host hand it over too.
     const view = Q.get("view");
     const base = location.protocol.startsWith("http") ? location.origin + location.pathname.replace(/producer\.html$/, "") : "";
     if (view && base) $("obsUrl").textContent = base + "overlay.html?token=" + encodeURIComponent(view) + (Q.get("relay") ? "&relay=" + encodeURIComponent(relay) : "");
   }
-  let dirty = { ctl: true, field: true, inc: true };
+  const dirty = { ctl: true, field: true, inc: true, cam: true, look: false, lv: true };
   function handle(m) {
     switch (m.type) {
       case "relay":
         $("dBridge").classList.toggle("on", m.bridge === "connected");
-        if (m.role) { S.role = m.role; dirty.inc = true; }
+        if (m.role) S.role = m.role;
         if (m.viewers != null) $("peers").textContent = m.viewers + (m.viewers === 1 ? " connection" : " connections");
-        dirty.ctl = true; break;
-      case "hello": S.hello = m; $("dBridge").classList.add("on"); dirty.ctl = true; dirty.inc = true; break;
+        dirty.ctl = dirty.inc = true; break;
+      case "hello": S.hello = m; $("dBridge").classList.add("on"); dirty.ctl = dirty.inc = dirty.field = true; break;
       case "session": S.session = m; dirty.ctl = true; break;
       case "state": if (!m.full && !S.state) return; S.state = m.full ? m : merge(S.state, m); dirty.cam = true; break;
-      case "cars": if (!m.full && !S.cars) return; if (m.full && !S.cars) dirty.inc = true; S.cars = m.full ? m : merge(S.cars, m); dirty.field = true; break;
+      case "cars": if (!m.full && !S.cars) return; if (m.full && !S.cars) dirty.inc = dirty.ctl = true; S.cars = m.full ? m : merge(S.cars, m); dirty.field = true; break;
       case "feed": handleFeed(m); break;
+      case "director": S.director = m; dirty.cam = true; renderCameraButtons(true); renderDirector(); break;
+      case "livery_status": S.lv = m; dirty.lv = true; dirty.ctl = true; break;
+      case "livery": if (m.key) S.liveries.add(m.key); dirty.lv = dirty.field = true; break;
+      case "assets": S.assets = m.files || []; renderAssets(); dirty.look = true; break;
+      case "asset_result": if (m.ok) toast(m.deleted ? "Deleted " + m.name : "Uploaded " + m.name); else toast(m.error, true); break;
       case "gfx": {
         const before = JSON.stringify(S.gfx);
         S.gfx = m.state || {};
-        if (m.by && m.by !== me && before !== JSON.stringify(S.gfx)) log(esc(m.by) + " changed the graphics");
-        dirty.ctl = true; dirty.field = true; break;
+        if (m.by && m.by !== me && before !== JSON.stringify(S.gfx)) { log(esc(m.by) + " changed the graphics"); dirty.look = true; }
+        dirty.ctl = dirty.field = true; break;
       }
       case "gfx_result": if (!m.ok) { toast(m.error, true); log(esc(m.error), true); } break;
       case "cmd_result": {
         const label = pending.shift() || "Command";
-        if (m.ok) toast(label + (m.simulated ? " (fake field)" : ""));
-        else { toast(m.error || "Command failed", true); log(esc(label + ": " + (m.error || "failed")), true); }
+        if (m.ok) {
+          toast(label + (m.simulated ? " (fake field)" : ""));
+          if (m.data && m.data.sources) $("oSrcList").innerHTML = m.data.sources.map(s => `<option value="${esc(s)}">`).join("");
+        } else { toast(m.error || "Command failed", true); log(esc(label + ": " + (m.error || "failed")), true); }
         break;
       }
     }
   }
-  // Paced redraw: the field list is rebuilt at most four times a second, which
-  // keeps it tappable on a phone while cars stream in at 8 Hz.
-  // Rebuilding a list between pointerdown and pointerup swallows the click, so
-  // hold redraws while a finger or button is down.
   let holding = false;
   addEventListener("pointerdown", () => { holding = true; }, true);
   addEventListener("pointerup", () => setTimeout(() => { holding = false; }, 0), true);
@@ -604,12 +887,14 @@ h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
   setInterval(() => {
     if (holding) return;
     if (dirty.ctl) { dirty.ctl = false; renderControls(); }
-    if (dirty.cam) { dirty.cam = false; renderHeader(); renderCameraButtons(); }
+    if (dirty.cam) { dirty.cam = false; renderHeader(); renderCameraButtons(); renderDirector(); }
     if (dirty.field) { dirty.field = false; renderField(); renderBattles(); }
     if (dirty.inc) { dirty.inc = false; renderIncidents(); }
+    if (dirty.lv) { dirty.lv = false; renderLiveries(); }
+    if (dirty.look && !document.querySelector("[data-pane=look]").classList.contains("hide") &&
+        !(document.activeElement && document.activeElement.closest("[data-pane=look]"))) { dirty.look = false; renderLook(); }
   }, 250);
 
-  // Opened from the suite's home screen: give the app window a way back.
   const home = Q.get("home");
   if (home && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/$/.test(home)) { $("home").href = home; $("home").classList.remove("hide"); }
   const relay = relayUrl(), token = Q.get("token");

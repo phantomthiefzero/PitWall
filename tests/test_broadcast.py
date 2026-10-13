@@ -360,77 +360,144 @@ def _icar(idx, inc, surface="on_track", pct=0.5, lapc=3, pit=False):
             "lapCompleted": lapc, "lap": lapc + 1, "onPitRoad": pit}
 
 
-def test_counted_incidents_are_seeded_silently_and_anchored_to_what_was_seen():
-    d = Deriver()
-    d.incidents([_icar(1, 3), _icar(2, -1)], _edge(100), 2)
-    assert not d.feed_events, "a count already on the board is history, not news"
-    d.incidents([_icar(1, 3, surface="off_track")], _edge(101), 2)          # leaves the track at 101
-    d.incidents([_icar(1, 3)], _edge(103), 2)
-    d.incidents([_icar(1, 4)], _edge(105.5), 2)                             # session info catches up
-    ev = [e for e in d.feed_events if e["kind"] == "car_incident"]
-    assert len(ev) == 1
-    e = ev[0]
-    assert e["points"] == 1 and e["total"] == 4 and e["anchor"] == "off_track" and e["replayT"] == 101
-    assert e["sessionNum"] == 2 and e["causes"] == ["wheels off the racing surface"]
-    # nothing seen in the telemetry: fall back to well before the count moved
-    d.incidents([_icar(1, 8)], _edge(200), 2)
-    e = [e for e in d.feed_events if e["kind"] == "car_incident"][-1]
-    assert e["points"] == 4 and e["anchor"] == "reported" and e["replayT"] == 200 - Deriver.INC_FALLBACK_S
-    # an unpublished count (-1) never produces an incident, and a drop re-seeds
-    d.incidents([_icar(2, -1), _icar(1, 2)], _edge(210), 2)
-    d.incidents([_icar(1, 3)], _edge(220), 2)
-    assert [e["points"] for e in d.feed_events if e["kind"] == "car_incident"] == [1, 4, 1]
+def _settle(d, cars_fn, t0, t1, step=0.125, live=True):
+    t = t0
+    while t < t1:
+        d.incidents(cars_fn(t), _edge(t, live), 1)
+        t += step
+    return t
 
 
-def test_off_tracks_are_reported_once_and_never_from_a_replay():
+def _races(d):
+    return [e for e in d.feed_events if e["kind"] == "race_incident"]
+
+
+def test_an_off_track_becomes_one_predicted_1x_incident_and_never_from_a_replay():
     d = Deriver()
-    seq = [("on_track", 10), ("off_track", 10.2), ("on_track", 10.5), ("off_track", 11.0), ("on_track", 11.3)]
-    for surf, t in seq:
-        d.incidents([_icar(5, 0, surface=surf)], _edge(t), 1)
-    offs = [e for e in d.feed_events if e["kind"] == "off_track"]
-    assert len(offs) == 1, "kerb-hopping inside 5 s is one event"
+    surf = lambda t: "off_track" if 10.2 <= t < 10.5 or 11.0 <= t < 11.3 else "on_track"
+    _settle(d, lambda t: [_icar(5, None, surface=surf(t))], 10, 20)
+    inc = _races(d)
+    assert len(inc) == 1, "kerb-hopping inside a few seconds is one incident"
+    assert inc[0]["what"] == "off_track" and inc[0]["likelyPoints"] == 1 and inc[0]["confidence"] == "high"
+    assert abs(inc[0]["replayT"] - 10.2) < 0.2
     d2 = Deriver()
-    for surf, t in seq:
-        d2.incidents([_icar(5, 0, surface=surf)], _edge(t, live=False), 1)
-    assert not [e for e in d2.feed_events if e["kind"] == "off_track"], "a replay must not re-report"
+    _settle(d2, lambda t: [_icar(5, None, surface=surf(t))], 10, 20, live=False)
+    assert not _races(d2), "watching a replay must not re-report"
 
 
-def test_slowed_sharply_compares_with_the_field_at_the_same_point_of_the_lap():
-    d = Deriver()
-    t, pos = 0.0, {i: i * 0.04 for i in range(10)}
-    # a slow corner at 40-50% of the lap: everyone at a third of normal speed there
+def _field_run(d, special, steps=6000, n=10, start_step=4000, gap=0.04):
+    """Ten cars lapping a track with a slow corner at 40-50% of the lap.
+    special(i, t, t_event) -> speed override or None."""
+    t, pos = 0.0, {i: i * gap for i in range(n)}
     def speed(p):
         return 0.004 if 0.4 <= p % 1 < 0.5 else 0.012
-    stalled = None
+    t_event = None
+    for step in range(steps):
+        t += 0.125
+        if step == start_step:
+            t_event = t
+        cars = []
+        for i in range(n):
+            v = speed(pos[i])
+            if t_event is not None:
+                o = special(i, t, t_event)
+                if o is not None:
+                    v = o
+            pos[i] += v * 0.125
+            cars.append(_icar(i, None, pct=pos[i] % 1, lapc=int(pos[i])))
+        d.incidents(cars, _edge(t), 1)
+    return t_event
+
+
+def test_a_slow_corner_is_not_an_incident_but_a_car_losing_its_speed_is():
+    d = Deriver()
+    t_ev = _field_run(d, lambda i, t, te: 0.0005 if i == 3 and t < te + 3 else None)
+    inc = _races(d)
+    assert len(inc) == 1, f"the slow corner must not count; got {inc}"
+    assert inc[0]["idx"] == 3 and inc[0]["what"] == "lost_speed" and inc[0]["likelyPoints"] == 2
+    assert abs(inc[0]["t"] - t_ev) < 0.5
+
+
+def test_a_car_rolling_backwards_is_a_spin():
+    d = Deriver()
+    _field_run(d, lambda i, t, te: (-0.004 if t < te + 0.6 else 0.0005) if i == 3 and t < te + 3 else None)
+    inc = _races(d)
+    assert len(inc) == 1 and inc[0]["what"] == "spin" and "backwards" in inc[0]["signals"]
+
+
+def test_two_cars_slowing_together_side_by_side_is_contact():
+    d = Deriver()
+    # cars 3 and 4 run nose to tail; both lose their speed at the same moment
+    t_ev = _field_run(d, lambda i, t, te: 0.0008 if i in (3, 4) and t < te + 2.5 else None,
+                      n=10, gap=0.04)
+    inc = _races(d)
+    assert len(inc) == 2 and all(e["what"] == "lost_speed" and not e["contactWith"] for e in inc), \
+        "0.04 laps apart is not alongside: two separate slowdowns, not contact"
+    d = Deriver()
+    def special(i, t, te):
+        return 0.0008 if i in (3, 4) and t < te + 2.5 else None
+    t, pos = 0.0, {i: i * 0.04 for i in range(10)}
+    pos[4] = pos[3] - 0.002                       # right behind car 3
+    t_ev = None
     for step in range(6000):
         t += 0.125
+        if step == 4000:
+            t_ev = t
         cars = []
         for i in range(10):
-            v = speed(pos[i])
-            if i == 3 and stalled is not None and t < stalled + 3:
-                v = 0.0005                                  # car 3 spins and nearly stops
+            v = 0.004 if 0.4 <= pos[i] % 1 < 0.5 else 0.012
+            if t_ev is not None and special(i, t, t_ev) is not None:
+                v = special(i, t, t_ev)
             pos[i] += v * 0.125
-            cars.append(_icar(i, 0, pct=pos[i] % 1, lapc=int(pos[i])))
-        if step == 4000:
-            stalled = t
+            cars.append(_icar(i, None, pct=pos[i] % 1, lapc=int(pos[i])))
         d.incidents(cars, _edge(t), 1)
-    slowed = [e for e in d.feed_events if e["kind"] == "slowed"]
-    assert len(slowed) == 1, f"the slow corner must not count; got {slowed}"
-    assert slowed[0]["idx"] == 3 and abs(slowed[0]["t"] - stalled) < 0.5
+    inc = _races(d)
+    assert {e["idx"] for e in inc} == {3, 4}
+    assert all(e["what"] == "contact" and e["likelyPoints"] == 4 for e in inc)
+    assert inc[0]["contactWith"] in ([3], [4])
 
 
-def test_fake_incidents_are_found_without_inventing_any():
-    """Every observed event matches something that really happened in the fake,
-    counted points add up to the truth, and the replay anchor lands on the
-    incident. (The fake mirrors iRacing's shape -- session-info lag, concurrent
-    incidents counting once, invisible 0x -- but it was written alongside the
-    detector, so the real check is a spectated race; see VARIABLES_TO_VERIFY.)"""
-    src = FakeSource(realtime=False, spectator=True)
+def test_contact_is_2x_on_dirt():
+    from pitwall.normalize import Deriver as Dv
+    assert Dv.LIKELY_POINTS["dirt"]["contact"] == 2 and Dv.LIKELY_POINTS["paved"]["contact"] == 4
+
+
+def test_official_counts_after_the_finish_are_compared_with_the_prediction():
+    d = Deriver()
+    cars = [_icar(i, 0) for i in range(6)]
+    d.incidents(cars, _edge(10), 1)                                      # all published as 0
+    # one car's count rises mid-race (a non-spectator view): a counted incident
+    cars[1] = _icar(1, 2)
+    d.incidents(cars, _edge(20), 1)
+    assert [e["kind"] for e in d.feed_events] == ["car_incident"]
+    # then the whole field steps at once: the post-race publication
+    d._incst()["predicted"].update({2: 3, 3: 1})
+    cars = [_icar(i, n) for i, n in enumerate([0, 2, 4, 1, 2, 7])]
+    d.incidents(cars, _edge(900), 1)
+    tally = [e for e in d.feed_events if e["kind"] == "official_incidents"]
+    assert len(tally) == 1
+    rows = {r["idx"]: r for r in tally[0]["cars"]}
+    assert rows[2] == {"idx": 2, "official": 4, "predicted": 3}
+    assert rows[5]["official"] == 7 and rows[5]["predicted"] == 0
+    assert len([e for e in d.feed_events if e["kind"] == "car_incident"]) == 1, "the tally is not 5 incidents"
+
+
+def test_fake_incidents_are_classified_and_the_official_tally_matches():
+    """On the fake: every predicted incident matches one that happened, with the
+    right kind, none are missed (0x light contact is correctly invisible), and
+    the post-race official counts equal the prediction. The fake was written
+    alongside the detector, so this proves the logic, not iRacing; the real check
+    is the official-vs-predicted tally after a spectated race."""
+    src = FakeSource(realtime=False, spectator=True, incident_every_s=15)
     src.connect()
     d = Deriver()
     sess, siu = None, None
-    for k in range(60 * 600):
+    for k in range(60 * 900):
         src.tick()
+        if k == 60 * 860:
+            src.incidents_on = False          # let the last ones settle before the finish
+        if k == 60 * 880:
+            src.publish_incident_counts()
         if src.session_info_update != siu:
             sess, siu = build_session(src), src.session_info_update
         if k % 4 == 0:
@@ -438,18 +505,81 @@ def test_fake_incidents_are_found_without_inventing_any():
         if k % 8 == 0:
             build_cars(src, sess, d)
     truth = src.inc_log
-    ev = d.feed_events
-    observed = [e for e in ev if e["kind"] in ("off_track", "slowed")]
-    assert observed
-    for e in observed:
-        assert any(x["idx"] == e["idx"] and abs(x["t"] - e["t"]) < 3 and x["kind"] != "light_contact"
-                   for x in truth), f"observed event with nothing behind it: {e}"
-    counted = [e for e in ev if e["kind"] == "car_incident"]
-    drivers = src.session_info("DriverInfo")["Drivers"]
-    assert sum(e["points"] for e in counted) == sum(dr["TeamIncidentCount"] for dr in drivers)
-    for e in counted:
-        before = [x for x in truth if x["idx"] == e["idx"] and x["points"] > 0 and x["t"] <= e["t"]]
-        assert before and abs(e["replayT"] - before[-1]["t"]) < 1.0 or e["anchor"] == "reported"
+    expect = {"wheels_off": "off_track", "spin": "spin", "wall": "lost_speed", "heavy_contact": "contact"}
+    inc = _races(d)
+    assert len(inc) > 10
+    for e in inc:
+        m = [x for x in truth if x["idx"] == e["idx"] and abs(x["t"] - e["t"]) < 3]
+        assert m and expect.get(m[0]["kind"]) == e["what"], f"{e['what']} for {m}"
+    for x in truth:
+        if x["points"] and x["t"] < src.t - 10:
+            assert any(e["idx"] == x["idx"] and abs(e["t"] - x["t"]) < 3 for e in inc), f"missed {x}"
+    tally = [e for e in d.feed_events if e["kind"] == "official_incidents"][-1]
+    assert sum(r["official"] for r in tally["cars"]) == sum(r["predicted"] for r in tally["cars"])
+
+
+# --------------------------------------------------------------------- live gaps / race length
+
+from pitwall.normalize import gap_between, race_length  # noqa: E402
+
+
+def _gcar(cls, lap, pct, est, est_lap=90.0):
+    return {"classId": cls, "lap": lap, "pct": pct, "estTimeS": est, "classEstLapS": est_lap}
+
+
+def test_live_gap_uses_est_time_within_a_class_and_counts_whole_laps():
+    a, b = _gcar(1, 5, 0.50, 45.0), _gcar(1, 5, 0.45, 40.6)
+    assert gap_between(a, b) == (4.4, 0)
+    # straddling the line: a just crossed, b about to
+    a, b = _gcar(1, 6, 0.01, 0.9), _gcar(1, 5, 0.98, 88.0)
+    assert gap_between(a, b) == (2.9, 0)
+    # a full lap and a bit ahead: +1 lap
+    s, laps = gap_between(_gcar(1, 7, 0.50, 45.0), _gcar(1, 6, 0.40, 36.0))
+    assert laps == 1 and abs(s - 99.0) < 1e-6
+    # another class: no shared time curve, the behind car's lap scales the fraction
+    s, laps = gap_between(_gcar(1, 5, 0.50, 40.0, 80.0), _gcar(2, 5, 0.40, 40.0, 100.0))
+    assert laps == 0 and abs(s - 10.0) < 1e-6
+    # nonsense in, nothing out
+    assert gap_between(_gcar(1, 5, -1, 0), _gcar(1, 5, 0.4, 36)) == (None, None)
+
+
+def test_live_intervals_track_iracings_own_gaps_on_the_fake():
+    src = FakeSource(realtime=False, spectator=True, incidents=False)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    diffs = []
+    for k in range(60 * 600):
+        src.tick()
+        if k % 8:
+            continue
+        build_state(src, d)
+        for c in build_cars(src, sess, d)["cars"]:
+            dd = c["derived"]
+            if dd.get("intervalS") is not None and dd.get("liveIntervalS") is not None and dd.get("intervalLaps") == 0:
+                diffs.append(abs(dd["liveIntervalS"] - dd["intervalS"]))
+    diffs.sort()
+    assert diffs and diffs[len(diffs) // 2] < 0.5
+
+
+def test_a_lap_limited_race_counts_down_the_leaders_laps_not_the_clock():
+    sess = {"sessions": [{"SessionNum": 2, "SessionType": "Race", "SessionLaps": 30, "SessionTime": "unlimited"}]}
+    leader = {"idx": 1, "lapCompleted": 12, "lap": 13}
+    r = race_length(sess, 2, [leader], 604800.0, None, ["green"])
+    assert r["endsBy"] == "laps" and r["lapsToGo"] == 18 and r["leaderLap"] == 13 and r["totalLaps"] == 30
+
+    class P:
+        def pace(self, i):
+            return 100.0
+    sess = {"sessions": [{"SessionNum": 2, "SessionType": "Race", "SessionLaps": "unlimited",
+                          "SessionTime": "2400.0000 sec"}]}
+    r = race_length(sess, 2, [leader], 450.0, P(), [])
+    assert r["endsBy"] == "time" and r["timeRemainS"] == 450.0 and r["lapsByTime"] == 5
+    # both limits: whichever comes first
+    sess = {"sessions": [{"SessionNum": 2, "SessionType": "Race", "SessionLaps": 20,
+                          "SessionTime": "2400.0000 sec"}]}
+    assert race_length(sess, 2, [leader], 450.0, P(), [])["endsBy"] == "time"      # 8 to go, 5 by time
+    assert race_length(sess, 2, [leader], 2000.0, P(), [])["endsBy"] == "laps"     # 8 to go, 20 by time
 
 
 # --------------------------------------------------------------------- replay jump

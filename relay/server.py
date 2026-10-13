@@ -39,7 +39,7 @@ from websockets.asyncio.server import serve
 from websockets.datastructures import Headers
 from websockets.http11 import Response
 
-SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed")
+SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director", "livery_status")
 
 # Messages a viewer may have queued before it is judged too slow and dropped.
 # At ~20 msg/s this is ~10 s of stream. Each viewer drains its own queue, so a
@@ -52,11 +52,39 @@ VIEWER_QUEUE = 200
 CLOSE_TOO_SLOW = 4002
 
 # Which viewer role may send which command kind on to the bridge.
-CMD_ROLE = {"pit": "engineer", "camera": "producer", "replay": "producer"}
+CMD_ROLE = {"pit": "engineer", "camera": "producer", "replay": "producer",
+            "director": "producer", "livery": "producer"}
 
 # A graphics patch is a few toggles and car indexes; anything bigger is a bug or
 # abuse, and the merged state is copied to every viewer.
-GFX_MAX_BYTES = 16 * 1024
+GFX_MAX_BYTES = 64 * 1024
+
+# Producer uploads (logos, fonts, stinger videos) and the bridge's livery photos.
+ASSET_MAX_BYTES = 30 * 1024 * 1024
+ASSET_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+               ".gif": "image/gif", ".svg": "image/svg+xml", ".webm": "video/webm", ".mp4": "video/mp4",
+               ".mov": "video/quicktime", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
+               ".otf": "font/otf"}
+LIVERY_MAX = 200
+WS_MAX_BYTES = 40 * 1024 * 1024
+
+
+def default_assets_dir() -> str:
+    return os.path.join(os.path.expanduser("~"), ".pitwall", "broadcast_assets")
+
+
+def safe_asset_name(name) -> str | None:
+    """A plain file name with an allowed extension, or None. No folders, no dots
+    at the front, nothing that could step outside the assets folder."""
+    if not isinstance(name, str):
+        return None
+    base = os.path.basename(name.replace("\\", "/")).strip()
+    stem, ext = os.path.splitext(base)
+    if not stem or base.startswith(".") or ext.lower() not in ASSET_TYPES or len(base) > 120:
+        return None
+    if any(ch in base for ch in '<>:"|?*') or any(ord(ch) < 32 for ch in base):
+        return None
+    return stem + ext.lower()
 
 # Next to relay/ in the repo; inside the suite's .exe, in the unpacked bundle.
 BROADCAST_DIR = os.path.join(getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -92,7 +120,9 @@ def msg_is_full(raw: str) -> bool:
 
 class Relay:
     def __init__(self, bridge_token: str, view_token: str, engineer_token: str | None,
-                 producer_token: str | None = None):
+                 producer_token: str | None = None, assets_dir: str | None = None):
+        self.assets_dir = assets_dir or default_assets_dir()
+        self.liveries: dict[str, str] = {}      # key -> raw "livery" message, newest kept
         self.bridge_token = bridge_token
         self.view_token = view_token
         self.engineer_token = engineer_token
@@ -150,6 +180,17 @@ class Relay:
                     continue
                 if t in SNAPSHOT_TYPES and (t not in ("state", "cars", "feed") or msg_is_full(raw)):
                     self.snapshot[t] = raw
+                elif t == "livery":
+                    # One photo per car, kept so an OBS source that reloads gets them all.
+                    try:
+                        key = str(json.loads(raw).get("key"))
+                    except Exception:
+                        key = None
+                    if key:
+                        self.liveries.pop(key, None)
+                        self.liveries[key] = raw
+                        while len(self.liveries) > LIVERY_MAX:
+                            self.liveries.pop(next(iter(self.liveries)))
                 await self._fanout(raw)
                 # Messages already buffered from the bridge are read without
                 # suspending, so without this a burst never lets the viewer
@@ -174,12 +215,26 @@ class Relay:
         # they arrive in order and the writer task is the only thing sending.
         q.put_nowait(json.dumps({"type": "relay", "bridge": "connected" if self.bridge else "disconnected",
                                  "engineer": engineer, "role": role, "viewers": len(self.viewers) + 1}))
-        for t in ("hello", "session", "map", "state", "cars", "feed"):
+        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status"):
             if t in self.snapshot:
                 q.put_nowait(self.snapshot[t])
         q.put_nowait(self._gfx_message())
+        q.put_nowait(self._assets_message())
         self.viewers[ws] = q
+        # Livery photos are large; they go after the live stream has started,
+        # through the same queue, a few at a time so a slow link is not dropped.
+        pending_liveries = list(self.liveries.values())
         writer = asyncio.ensure_future(self._writer(ws, q))
+
+        async def send_liveries():
+            for raw in pending_liveries:
+                while q.qsize() > VIEWER_QUEUE // 2:
+                    await asyncio.sleep(0.05)
+                try:
+                    q.put_nowait(raw)
+                except asyncio.QueueFull:
+                    return
+        lv_task = asyncio.ensure_future(send_liveries())
         print(f"[relay] viewer connected ({role}), {len(self.viewers)} total")
 
         def reply(obj):
@@ -195,7 +250,15 @@ class Relay:
                     continue
                 if not isinstance(msg, dict):
                     continue
-                if msg.get("type") == "gfx":
+                if msg.get("type") in ("asset_put", "asset_del"):
+                    if role != "producer":
+                        reply({"type": "asset_result", "ok": False, "error": "only the producer token can change assets"})
+                    else:
+                        r = self._asset_op(msg)
+                        reply(r)
+                        if r.get("ok"):
+                            await self._fanout(self._assets_message())
+                elif msg.get("type") == "gfx":
                     if role != "producer":
                         reply({"type": "gfx_result", "ok": False, "error": "only the producer token can change graphics"})
                     elif not isinstance(msg.get("set"), dict) or len(raw) > GFX_MAX_BYTES:
@@ -222,6 +285,7 @@ class Relay:
             pass
         finally:
             writer.cancel()
+            lv_task.cancel()
             self.viewers.pop(ws, None)
             print(f"[relay] viewer left, {len(self.viewers)} total")
 
@@ -241,12 +305,71 @@ class Relay:
         else:
             await ws.close(code=4001, reason="bad path or token")
 
+    # ------------------------------------------------------------ assets
+    def _asset_list(self) -> list[dict]:
+        try:
+            names = sorted(os.listdir(self.assets_dir))
+        except OSError:
+            return []
+        out = []
+        for n in names:
+            if safe_asset_name(n) == n:
+                try:
+                    out.append({"name": n, "bytes": os.path.getsize(os.path.join(self.assets_dir, n)),
+                                "type": ASSET_TYPES[os.path.splitext(n)[1].lower()]})
+                except OSError:
+                    pass
+        return out
+
+    def _assets_message(self) -> str:
+        return json.dumps({"type": "assets", "files": self._asset_list()})
+
+    def _asset_op(self, msg: dict) -> dict:
+        import base64
+        name = safe_asset_name(msg.get("name"))
+        if not name:
+            return {"type": "asset_result", "ok": False,
+                    "error": "use a plain file name ending in " + ", ".join(sorted(ASSET_TYPES))}
+        path = os.path.join(self.assets_dir, name)
+        if msg["type"] == "asset_del":
+            try:
+                os.remove(path)
+            except OSError as e:
+                return {"type": "asset_result", "ok": False, "error": str(e)}
+            return {"type": "asset_result", "ok": True, "name": name, "deleted": True}
+        data = msg.get("data")
+        if isinstance(data, str) and data.startswith("data:"):
+            data = data.split(",", 1)[-1]
+        try:
+            blob = base64.b64decode(data or "", validate=True)
+        except Exception:
+            return {"type": "asset_result", "ok": False, "error": "data must be base64"}
+        if not blob or len(blob) > ASSET_MAX_BYTES:
+            return {"type": "asset_result", "ok": False, "error": f"files must be under {ASSET_MAX_BYTES // 2**20} MB"}
+        os.makedirs(self.assets_dir, exist_ok=True)
+        with open(path + ".part", "wb") as f:
+            f.write(blob)
+        os.replace(path + ".part", path)
+        return {"type": "asset_result", "ok": True, "name": name, "bytes": len(blob)}
+
     async def process_request(self, connection, request):
         if request.path.startswith("/health"):
             body = json.dumps({"bridge": self.bridge is not None, "viewers": len(self.viewers),
                                "uptime_s": int(time.time() - self.stats["started"]), **{k: v for k, v in self.stats.items() if k != "started"}})
             return connection.respond(http.HTTPStatus.OK, body + "\n")
-        page = BROADCAST_PAGES.get(request.path.split("?")[0])
+        path = request.path.split("?")[0]
+        if path.startswith("/broadcast/assets/") and request.headers.get("Upgrade") is None:
+            name = safe_asset_name(urllib.parse.unquote(path[len("/broadcast/assets/"):]))
+            full = os.path.join(self.assets_dir, name) if name else None
+            if not full or not os.path.isfile(full):
+                return connection.respond(http.HTTPStatus.NOT_FOUND, "no such asset\n")
+            with open(full, "rb") as f:
+                body = f.read()
+            headers = Headers([("Content-Type", ASSET_TYPES[os.path.splitext(name)[1].lower()]),
+                               ("Content-Length", str(len(body))), ("Cache-Control", "no-cache"),
+                               ("Access-Control-Allow-Origin", "*")])
+            return Response(200, "OK", headers, body)
+        page = BROADCAST_PAGES.get(path)
         if page and request.headers.get("Upgrade") is None:
             try:
                 with open(os.path.join(BROADCAST_DIR, page), "rb") as f:
@@ -262,9 +385,10 @@ class Relay:
 
 
 async def main_async(args):
-    relay = Relay(args.bridge_token, args.view_token, args.engineer_token, args.producer_token)
+    relay = Relay(args.bridge_token, args.view_token, args.engineer_token, args.producer_token,
+                  assets_dir=args.assets_dir)
     async with serve(relay.handler, args.host, args.port, process_request=relay.process_request,
-                     max_size=8 * 1024 * 1024, ping_interval=20):
+                     max_size=WS_MAX_BYTES, ping_interval=20):
         print(f"[relay] listening on ws://{args.host}:{args.port}  (health: http://{args.host}:{args.port}/health)")
         await asyncio.Future()
 
@@ -277,6 +401,8 @@ def main():
     p.add_argument("--view-token", required=True)
     p.add_argument("--engineer-token", help="viewers with this token may send pit commands (phase 2)")
     p.add_argument("--producer-token", help="viewers with this token may cut cameras and run broadcast graphics")
+    p.add_argument("--assets-dir", help="where producer uploads (logos, stingers, fonts) are kept "
+                                        "(default ~/.pitwall/broadcast_assets)")
     args = p.parse_args()
     try:
         asyncio.run(main_async(args))

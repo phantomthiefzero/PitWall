@@ -42,10 +42,21 @@ iRacing Suite app (suite/)
 
 Broadcast (broadcast/)
 - `overlay.html` (OBS source) and `producer.html` (you + co-host) are single files, no build
-  step, same provenance rule as the client: derived values carry the dotted underline.
+  step. Same provenance rule for what is COMPUTED (only in normalize.py, under `derived`),
+  but the on-air overlay does not mark derived values: the dotted underline was distracting
+  on a stream. The producer panel still marks them for the people running the show.
+- Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
+  iRacing's timing catches up with a car, which froze the tower for most of a lap.
+- Race length comes from the leader and SessionLaps (normalize.race_length), never from
+  SessionLapsRemainEx, which is the player's own count (a spectator has none).
+- Other cars' incident counts are hidden from a spectator until the finish (observed), so
+  the live incident list is predicted from telemetry (Deriver.incidents); the official counts
+  are compared with the prediction when they appear.
+- Director (pitwall/director.py) and livery photos (pitwall/liveries.py, pitwall/obs.py) only
+  move the camera through CommandGate, under --allow-camera.
+- `tests/test_broadcast.py` and `tests/test_broadcast2.py` must pass with the others.
 - Graphics state ("gfx") lives in the relay, not the bridge. Camera/replay commands go
   through the bridge under `--allow-camera` and the producer token, separate from pit.
 - The relay serves both pages at /broadcast/. The suite runs the bridge with camera control
   on and keeps the view/producer tokens in %LOCALAPPDATA%\iRacingSuite\broadcast.json so the
   OBS source address survives restarts.
-- `tests/test_broadcast.py` must pass with the others.
