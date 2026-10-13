@@ -23,13 +23,14 @@ from .sources import TelemetrySource
 
 class Bridge:
     def __init__(self, src: TelemetrySource, relay_url: str, token: str,
-                 state_hz: float = 15.0, cars_hz: float = 8.0, allow_commands: bool = False, log=print):
+                 state_hz: float = 15.0, cars_hz: float = 8.0, allow_commands: bool = False,
+                 allow_camera: bool = False, log=print):
         self.src = src
         self.relay_url = relay_url
         self.token = token
         self.state_dt = 1.0 / state_hz
         self.cars_dt = 1.0 / cars_hz
-        self.gate = CommandGate(allow_commands)
+        self.gate = CommandGate(allow_commands, camera=allow_camera)
         self.log = log
         self.deriver = Deriver()
         self._src_restarts = 0
@@ -79,7 +80,8 @@ class Bridge:
         p = state["player"]
         g = self.src.get
         lap = self._collector.push(state["t"], p["lapPct"], g("VelocityX"), g("VelocityY"), g("YawNorth"),
-                                   on_track=bool(p["isOnTrack"]), on_pit=bool(p["onPitRoad"]))
+                                   on_track=bool(p["isOnTrack"]), on_pit=bool(p["onPitRoad"]),
+                                   car=(state.get("camera") or {}).get("carIdx"))
         if lap:
             tm = trackmap.build_from_lap(lap, self._map_key[0], self._map_key[1] or "default")
             trackmap.save(tm)
@@ -194,7 +196,8 @@ class Bridge:
                 async with websockets.connect(self._ws_url(), max_size=8 * 1024 * 1024, ping_interval=20) as ws:
                     self.log(f"connected to relay {self.relay_url}")
                     await ws.send(json.dumps({"type": "hello", "role": "bridge", "schema": 1,
-                                              "source": self.src.name, "commands": self.gate.enabled}))
+                                              "source": self.src.name, "commands": self.gate.enabled,
+                                              "camera": self.gate.camera}))
                     # force session/map resend and fresh keyframes on every (re)connect
                     self._last_siu = None
                     self.delta.reset()

@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Broadcast Producer</title>
+<!--
+  PitWall broadcast producer panel. For you and a co-host, from anywhere:
+
+      https://<relay>/broadcast/producer.html?token=<producer token>
+      file:///.../broadcast/producer.html?relay=ws://127.0.0.1:8765&token=<producer token>
+
+  Graphics changes go to the relay's shared gfx state, so every producer and
+  every overlay sees the same thing. Camera and replay changes go to the bridge,
+  which only acts on them when it was started with --allow-camera.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0E151F; --panel:#162131; --panel2:#1E2B3E; --line:#2A3A51;
+  --fg:#F2EFE6; --mut:#93A1B5; --amber:#F5B841; --ink:#101824;
+  --good:#3FD08A; --bad:#FF5B5B;
+  --num:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --txt:"Barlow","Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;color:var(--fg);font:500 15px/1.4 var(--txt);background:var(--bg)}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;min-height:36px}
+button:hover:not(:disabled){border-color:var(--fg)}
+button:focus-visible,select:focus-visible,input:focus-visible,.car:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+button.on{background:var(--amber);color:var(--ink);border-color:var(--amber);font-weight:700}
+button:disabled{opacity:.45;cursor:not-allowed}
+select,input[type=text]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-height:36px}
+header{position:sticky;top:0;z-index:5;background:var(--ink);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header h1{margin:0;font:800 26px/1 var(--num);letter-spacing:.02em}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--bad);display:inline-block;margin-right:6px}
+.dot.on{background:var(--good)}
+.stat{color:var(--mut);font-size:14px;display:flex;align-items:center}
+.oncam{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:15px}
+.oncam b{font:800 22px/1 var(--num);color:var(--amber)}
+#me{width:120px}
+main{display:grid;grid-template-columns:minmax(280px,340px) minmax(340px,1fr) minmax(300px,380px);gap:14px;padding:14px 16px 40px;align-items:start}
+@media (max-width:1100px){main{grid-template-columns:1fr 1fr}#colField{grid-column:1 / -1;order:-1}}
+@media (max-width:720px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+h2{margin:0 0 10px;font:800 20px/1 var(--num);letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
+.note{color:var(--mut);font-size:13px;margin:6px 0 0}
+.warn{background:rgba(245,184,65,.12);border:1px solid rgba(245,184,65,.4);color:var(--fg);border-radius:8px;padding:8px 10px;font-size:14px;margin-bottom:10px}
+.tog{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)}
+.tog:first-of-type{border-top:0}
+.tog label{flex:1;font-weight:600}
+.sw{position:relative;width:48px;height:28px;border-radius:14px;background:var(--panel2);border:1px solid var(--line);padding:0;min-height:0;flex:none}
+.sw::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:var(--mut);transition:transform .15s}
+.sw.on{background:var(--amber);border-color:var(--amber)}
+.sw.on::after{transform:translateX(20px);background:var(--ink)}
+.opts{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 8px}
+.opts button{min-height:30px;padding:4px 10px;font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{min-height:32px;padding:4px 10px;font-size:14px}
+.field{max-height:calc(100vh - 230px);overflow:auto;border-top:1px solid var(--line)}
+.car{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:4px}
+.car:hover{background:var(--panel2)}
+.car.cam{background:rgba(245,184,65,.16)}
+.car .p{width:30px;text-align:right;font:800 20px/1 var(--num);font-variant-numeric:tabular-nums}
+.car .bar{width:4px;align-self:stretch;border-radius:2px}
+.car .n{width:44px;color:var(--mut);font:700 16px/1 var(--num)}
+.car .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.car .g{width:70px;text-align:right;font-variant-numeric:tabular-nums;color:var(--mut)}
+.car .pit{font-size:12px;font-weight:700;background:var(--mut);color:var(--ink);padding:1px 5px;border-radius:3px}
+.car button{min-height:28px;padding:2px 8px;font-size:13px}
+.car button.on{background:var(--fg);color:var(--ink);border-color:var(--fg)}
+.d{border-bottom:2px dotted var(--amber)}
+.bt{border-top:1px solid var(--line);padding:9px 0}
+.bt:first-child{border-top:0}
+.bt .t{display:flex;align-items:baseline;gap:8px}
+.bt .t b{font:800 18px/1 var(--num)}
+.bt .t span{color:var(--mut);font-size:13px}
+.bt .who{margin:4px 0 7px;font-size:14px}
+.bt .act{display:flex;gap:6px;flex-wrap:wrap}
+.bt .act button{min-height:30px;padding:3px 10px;font-size:13px}
+.bt.live{box-shadow:inset 3px 0 0 var(--amber);padding-left:10px}
+.log{max-height:260px;overflow:auto;font-size:13px}
+.log div{padding:4px 0;border-top:1px solid var(--line);display:flex;gap:8px}
+.log time{color:var(--mut);flex:none;width:52px;font-variant-numeric:tabular-nums}
+.log .bad{color:var(--bad)}
+.urls code{display:block;background:var(--panel2);border-radius:6px;padding:6px 8px;margin:4px 0 8px;font-size:12px;word-break:break-all;user-select:all}
+#connect{max-width:520px;margin:60px auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
+#connect label{display:block;margin:10px 0 4px;font-weight:600}
+#connect input{width:100%}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--fg);color:var(--ink);padding:9px 14px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+#toast.show{opacity:1}
+#toast.bad{background:var(--bad);color:#fff}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <a id="home" class="hide" style="color:var(--mut);text-decoration:none;font-weight:600">&larr; Suite</a>
+  <h1>Producer</h1>
+  <span class="stat"><span class="dot" id="dRelay"></span>Relay</span>
+  <span class="stat"><span class="dot" id="dBridge"></span>iRacing</span>
+  <span class="stat" id="peers"></span>
+  <div class="oncam"><span id="camTxt">No camera car yet</span><input type="text" id="me" placeholder="Your name" aria-label="Your name, shown to the co-host"></div>
+</header>
+
+<div id="connect" class="hide">
+  <h2>Connect to the relay</h2>
+  <p class="note">Use the producer token. A view token can watch but cannot change anything.</p>
+  <label for="cRelay">Relay address</label><input type="text" id="cRelay" placeholder="wss://relay.example.com">
+  <label for="cTok">Producer token</label><input type="text" id="cTok">
+  <p class="note bad" id="cErr"></p>
+  <button id="cGo" style="margin-top:12px">Connect</button>
+</div>
+
+<main id="main" class="hide">
+  <div id="colAir">
+    <section>
+      <h2>On air</h2>
+      <div id="roleWarn" class="warn hide">This link uses a view-only token. Open the panel with the producer token to change graphics or cameras.</div>
+      <div id="toggles"></div>
+    </section>
+    <section>
+      <h2>Timing tower</h2>
+      <div class="note" style="margin:0 0 4px">Shows</div>
+      <div class="opts" id="towerMode"></div>
+      <div class="note" style="margin:0 0 4px">Class</div>
+      <div class="opts" id="towerClass"></div>
+      <div class="note" style="margin:0 0 4px">Rows</div>
+      <div class="opts" id="towerRows"></div>
+    </section>
+    <section>
+      <h2>Driver card</h2>
+      <div class="opts" id="cardFollow"></div>
+      <p class="note" id="cardNote"></p>
+    </section>
+    <section>
+      <h2>Replay</h2>
+      <div id="replayWarn" class="warn hide"></div>
+      <div class="chips" id="replay"></div>
+      <p class="note">Spectating is iRacing's replay at normal speed. "Back to live" returns to the live race; the overlay shows a Replay tag whenever you are not there.</p>
+    </section>
+  </div>
+
+  <div id="colField">
+    <section>
+      <h2>Cameras <small id="camGroupName"></small></h2>
+      <div id="camWarn" class="warn hide"></div>
+      <div class="chips" id="groups"></div>
+      <div class="note" style="margin:10px 0 4px">Let iRacing choose the car</div>
+      <div class="chips" id="focus"></div>
+    </section>
+    <section>
+      <h2>Field <small>Tap a driver to cut to them</small></h2>
+      <div class="field" id="field"></div>
+    </section>
+  </div>
+
+  <div id="colRight">
+    <section>
+      <h2>Battles <small id="btMode"></small></h2>
+      <div id="battles"></div>
+    </section>
+    <section>
+      <h2>Race control</h2>
+      <div class="log" id="log"></div>
+    </section>
+    <section class="urls">
+      <h2>Overlay for OBS</h2>
+      <p class="note" style="margin-top:0">Add a Browser Source, 1920 × 1080, with this address. It uses the view token, not yours.</p>
+      <code id="obsUrl">Ask whoever runs the relay for the view token.</code>
+      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board) to put one graphic in its own source.</p>
+    </section>
+  </div>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const Q = new URLSearchParams(location.search);
+  const S = { session: null, state: null, cars: null, gfx: {}, hello: null, role: null, feed: { ready: false, seq: 0, events: [] } };
+  const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  const esc = v => v == null ? "" : String(v).replace(/[&<>"']/g, ch => ESC[ch]);
+  const D = txt => `<span class="d">${txt}</span>`;
+  function merge(into, from) {
+    for (const k of Object.keys(from)) {
+      const v = from[k];
+      if (v && typeof v === "object" && !Array.isArray(v) && into[k] && typeof into[k] === "object" && !Array.isArray(into[k])) merge(into[k], v);
+      else into[k] = v;
+    }
+    return into;
+  }
+  const lap = s => { if (s == null || !(s > 0)) return "–"; const m = Math.floor(s / 60), r = s - m * 60; return (m ? m + ":" + (r < 10 ? "0" : "") : "") + r.toFixed(3); };
+  const gap = s => s == null ? "–" : "+" + s.toFixed(Math.abs(s) < 10 ? 3 : 1);
+  const classCss = v => v == null ? "transparent" : "#" + (Number(v) & 0xFFFFFF).toString(16).padStart(6, "0");
+  const allCars = () => S.cars && S.cars.cars ? Object.values(S.cars.cars) : [];
+  const carByIdx = i => i == null ? null : allCars().find(c => c.idx === i) || null;
+  const isRace = () => !!(S.cars && S.cars.derived && S.cars.derived.isRace);
+  function classes() {
+    const m = new Map();
+    for (const c of allCars()) if (c.classId != null && c.pos > 0 && !m.has(c.classId)) m.set(c.classId, { id: c.classId, name: c.className || "Class " + c.classId, color: c.classColor, rel: c.classRelSpeed || 0 });
+    return [...m.values()].sort((a, b) => b.rel - a.rel);
+  }
+  const multi = () => classes().length > 1;
+  function G(path, dflt) {
+    let v = S.gfx;
+    for (const k of path.split(".")) { if (v == null || typeof v !== "object") return dflt; v = v[k]; }
+    return v === undefined ? dflt : v;
+  }
+  const canProduce = () => S.role === "producer";
+  const canCamera = () => canProduce() && !!(S.hello && S.hello.camera);
+  let me = "";
+  try { me = localStorage.getItem("pw.producer.name") || ""; } catch (e) {}
+  $("me").value = me;
+  $("me").addEventListener("change", () => { me = $("me").value.trim().slice(0, 24); try { localStorage.setItem("pw.producer.name", me); } catch (e) {} });
+
+  // ------------------------------------------------------------- toast + log
+  let toastT = null;
+  function toast(msg, bad) {
+    const t = $("toast"); t.textContent = msg; t.className = "show" + (bad ? " bad" : "");
+    clearTimeout(toastT); toastT = setTimeout(() => { t.className = ""; }, bad ? 4500 : 1800);
+  }
+  const LOG = [];
+  function log(html, bad) {
+    const d = new Date();
+    LOG.push({ t: d.toTimeString().slice(0, 5), html, bad });
+    if (LOG.length > 120) LOG.shift();
+    $("log").innerHTML = LOG.slice().reverse().map(x => `<div class="${x.bad ? "bad" : ""}"><time>${x.t}</time><span>${x.html}</span></div>`).join("");
+  }
+
+  // ------------------------------------------------------------- sending
+  let ws = null;
+  function send(obj) {
+    if (!ws || ws.readyState !== 1) { toast("Not connected to the relay", true); return false; }
+    ws.send(JSON.stringify(obj)); return true;
+  }
+  function setGfx(patch) {
+    if (!canProduce()) { toast("This link is view-only", true); return; }
+    // Show the change at once; the relay's echo is the source of truth and
+    // replaces this a moment later.
+    merge(S.gfx, JSON.parse(JSON.stringify(patch)));
+    renderControls();
+    send({ type: "gfx", set: patch, by: me || undefined });
+  }
+  const pending = [];
+  function cmd(obj, label) {
+    if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return; }
+    if (send({ type: "cmd", ...obj })) pending.push(label);
+  }
+  function cutToCar(c) {
+    if (!c || c.num == null) return;
+    cmd({ cmd: "camera", action: "car", car: String(c.num), group: currentGroup(), camera: 0 }, "Camera on #" + c.num + " " + (c.name || ""));
+  }
+  function currentGroup() {
+    const g = S.state && S.state.camera ? S.state.camera.group : null;
+    return g || preferredGroup() || 0;
+  }
+  function preferredGroup() {
+    const g = (S.session && S.session.cameras) || [];
+    const tv = g.find(x => /^TV/i.test(x.name || ""));
+    return tv ? tv.num : g.length ? g[0].num : null;
+  }
+
+  // ------------------------------------------------------------- controls
+  const LAYERS = [
+    ["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
+    ["battle", "Battle box", false], ["map", "Track map", false], ["ticker", "Race control", true], ["board", "Standings board", false],
+  ];
+  function renderControls() {
+    const prod = canProduce();
+    $("roleWarn").classList.toggle("hide", prod || S.role == null);
+    $("toggles").innerHTML = LAYERS.map(([k, label, dflt]) => {
+      const on = !!G(k + ".show", dflt);
+      return `<div class="tog"><label for="sw-${k}">${label}</label><button class="sw${on ? " on" : ""}" id="sw-${k}" data-layer="${k}" role="switch" aria-checked="${on}" ${prod ? "" : "disabled"}></button></div>`;
+    }).join("") + `<div class="tog"><label for="sw-pits">Pit stops in race control</label><button class="sw${G("ticker.pits", true) ? " on" : ""}" id="sw-pits" data-pits="1" role="switch" aria-checked="${G("ticker.pits", true)}" ${prod ? "" : "disabled"}></button></div>`;
+    const modes = [["interval", "Interval"], ["leader", "Gap to leader"], ["best", "Best lap"], ["last", "Last lap"], ["stops", "Stops seen"]];
+    const mode = G("tower.mode", "interval");
+    $("towerMode").innerHTML = modes.map(([k, l]) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}" ${prod ? "" : "disabled"}>${l}</button>`).join("");
+    const cl = G("tower.class", null);
+    $("towerClass").innerHTML = `<button data-cls="" class="${cl == null ? "on" : ""}" ${prod ? "" : "disabled"}>All</button>` +
+      classes().map(c => `<button data-cls="${esc(c.id)}" class="${cl === c.id ? "on" : ""}" style="box-shadow:inset 4px 0 0 ${classCss(c.color)}" ${prod ? "" : "disabled"}>${esc(c.name)}</button>`).join("");
+    const rows = G("tower.rows", 20);
+    $("towerRows").innerHTML = [10, 15, 20, 25, 30].map(n => `<button data-rows="${n}" class="${n === rows ? "on" : ""}" ${prod ? "" : "disabled"}>${n}</button>`).join("");
+    const follow = G("card.follow", "camera");
+    $("cardFollow").innerHTML = `<button data-follow="camera" class="${follow === "camera" ? "on" : ""}" ${prod ? "" : "disabled"}>Follow the camera</button>` +
+      `<button data-follow="pinned" class="${follow === "pinned" ? "on" : ""}" ${prod && G("card.idx", null) != null ? "" : "disabled"}>Pinned driver</button>`;
+    const pc = carByIdx(G("card.idx", null));
+    $("cardNote").textContent = follow === "pinned" && pc ? "Showing #" + pc.num + " " + pc.name + ". Use Card on a driver in the field to change it."
+      : "Shows whoever the camera is on. Use Card on a driver in the field to pin one.";
+    const bm = G("battle.mode", "auto");
+    $("btMode").innerHTML = `<button data-bmode="auto" class="${bm === "auto" ? "on" : ""}" style="min-height:26px;padding:2px 8px" ${prod ? "" : "disabled"}>Auto</button>`;
+    const camOk = canCamera();
+    const hasHello = !!S.hello;
+    const why = !prod ? "" : !hasHello ? "Waiting for the bridge." : "Camera and replay control is off. Start the bridge with --allow-camera (the suite does this for you).";
+    for (const id of ["camWarn", "replayWarn"]) { $(id).textContent = why; $(id).classList.toggle("hide", camOk || !why); }
+    renderCameraButtons();
+  }
+  let camSig = "";
+  function renderCameraButtons() {
+    const camOk = canCamera();
+    const groups = (S.session && S.session.cameras) || [];
+    const cur = S.state && S.state.camera ? S.state.camera.group : null;
+    const sig = [camOk, cur, groups.length, S.session && S.session.update].join("|");
+    if (sig === camSig) return;
+    camSig = sig;
+    const ordered = [...groups.filter(g => !g.scenic), ...groups.filter(g => g.scenic)];
+    $("groups").innerHTML = ordered.length ? ordered.map(g => `<button data-group="${esc(g.num)}" class="${g.num === cur ? "on" : ""}" ${camOk && !g.scenic ? "" : "disabled"} title="${g.scenic ? "Scenic cameras have no car to follow" : ""}">${esc(g.name || "Group " + g.num)}</button>`).join("")
+      : `<span class="note">Camera groups arrive with the session.</span>`;
+    const cg = groups.find(g => g.num === cur);
+    $("camGroupName").textContent = cg ? "On " + cg.name : "";
+    $("focus").innerHTML = [["exciting", "Most exciting"], ["leader", "Leader"], ["incident", "Incidents"]]
+      .map(([k, l]) => `<button data-focus="${k}" ${camOk ? "" : "disabled"}>${l}</button>`).join("");
+    $("replay").innerHTML = [["live", "Back to live"], ["pause", "Pause"], ["play", "Play"], ["slow", "Slow motion"],
+      ["prev_incident", "Previous incident"], ["next_incident", "Next incident"], ["prev_lap", "Previous lap"]]
+      .map(([k, l]) => `<button data-replay="${k}" ${camOk ? "" : "disabled"}>${l}</button>`).join("");
+  }
+
+  document.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b || b.disabled) return;
+    if (b.dataset.layer) { const k = b.dataset.layer, d = LAYERS.find(x => x[0] === k)[2]; setGfx({ [k]: { show: !G(k + ".show", d) } }); }
+    else if (b.dataset.pits) setGfx({ ticker: { pits: !G("ticker.pits", true) } });
+    else if (b.dataset.mode) setGfx({ tower: { mode: b.dataset.mode } });
+    else if (b.dataset.cls !== undefined) setGfx({ tower: { class: b.dataset.cls === "" ? null : Number(b.dataset.cls) } });
+    else if (b.dataset.rows) setGfx({ tower: { rows: Number(b.dataset.rows) } });
+    else if (b.dataset.follow) setGfx({ card: { follow: b.dataset.follow } });
+    else if (b.dataset.bmode) setGfx({ battle: { mode: "auto", cars: null } });
+    else if (b.dataset.group) {
+      const c = carByIdx(S.state && S.state.camera ? S.state.camera.carIdx : null);
+      const group = Number(b.dataset.group);
+      if (c && c.num != null) cmd({ cmd: "camera", action: "car", car: String(c.num), group, camera: 0 }, "Camera group changed");
+      else cmd({ cmd: "camera", action: "focus", focus: "exciting", group, camera: 0 }, "Camera group changed");
+    }
+    else if (b.dataset.focus) cmd({ cmd: "camera", action: "focus", focus: b.dataset.focus, group: currentGroup(), camera: 0 }, "iRacing chooses: " + b.textContent);
+    else if (b.dataset.replay) {
+      const k = b.dataset.replay;
+      const m = { live: { action: "search", mode: "to_end" }, pause: { action: "speed", speed: 0 }, play: { action: "speed", speed: 1 },
+                  slow: { action: "speed", speed: 2, slow: true }, prev_incident: { action: "search", mode: "prev_incident" },
+                  next_incident: { action: "search", mode: "next_incident" }, prev_lap: { action: "search", mode: "prev_lap" } }[k];
+      cmd({ cmd: "replay", ...m }, b.textContent);
+    }
+    else if (b.dataset.pin) { e.stopPropagation(); const i = Number(b.dataset.pin);
+      setGfx({ card: { follow: "pinned", idx: i, show: true } }); }
+    else if (b.dataset.btshow) { const cars = b.dataset.btshow.split(",").map(Number);
+      setGfx({ battle: { mode: "pick", cars, show: true } }); }
+    else if (b.dataset.btcut) cutToCar(carByIdx(Number(b.dataset.btcut)));
+  });
+  $("field").addEventListener("click", e => {
+    if (e.target.closest("button")) return;
+    const r = e.target.closest(".car"); if (!r) return;
+    cutToCar(carByIdx(Number(r.dataset.idx)));
+  });
+  $("field").addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const r = e.target.closest(".car"); if (!r || e.target.closest("button")) return;
+    e.preventDefault(); cutToCar(carByIdx(Number(r.dataset.idx)));
+  });
+
+  // ------------------------------------------------------------- live views
+  function renderHeader() {
+    const cam = S.state && S.state.camera;
+    const c = carByIdx(cam ? cam.carIdx : null);
+    const g = cam && S.session ? (S.session.cameras || []).find(x => x.num === cam.group) : null;
+    $("camTxt").innerHTML = c ? `On camera <b>#${esc(c.num)}</b> ${esc(c.name)}${g ? " · " + esc(g.name) : ""}` : "No car on camera";
+  }
+  function renderField() {
+    let cars = allCars().filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
+    const unscored = allCars().filter(c => !(c.pos > 0) && c.surface !== "not_in_world");
+    const cam = S.state && S.state.camera ? S.state.camera.carIdx : null;
+    const pin = G("card.follow", "camera") === "pinned" ? G("card.idx", null) : null;
+    const m = multi(), race = isRace();
+    const row = c => {
+      const d = c.derived || {};
+      const g = race ? (c.gapValid && !(c.f2TimeS > 0) ? "Leader" : d.intervalS != null ? D(gap(d.intervalS)) : "–") : lap(c.bestLapS);
+      return `<div class="car${c.idx === cam ? " cam" : ""}" data-idx="${c.idx}" tabindex="0" role="button" aria-label="Cut to ${esc(c.name)}">` +
+        `<span class="p">${c.pos > 0 ? esc(c.pos) : ""}</span><span class="bar" style="background:${m ? classCss(c.classColor) : "transparent"}"></span>` +
+        `<span class="n">#${esc(c.num ?? "")}</span><span class="nm">${esc(c.name || "car " + c.idx)}</span>` +
+        (c.onPitRoad ? `<span class="pit">PIT</span>` : "") +
+        `<span class="g">${g}</span><button data-pin="${c.idx}" class="${pin === c.idx ? "on" : ""}" ${canProduce() ? "" : "disabled"}>Card</button></div>`;
+    };
+    $("field").innerHTML = cars.map(row).join("") + unscored.map(row).join("") ||
+      `<p class="note">The field appears once the bridge is streaming.</p>`;
+  }
+  function renderBattles() {
+    const list = (S.cars && S.cars.derived && S.cars.derived.battles) || [];
+    if (!isRace()) { $("battles").innerHTML = `<p class="note">Battles are worked out during a race, from the gaps iRacing reports.</p>`; return; }
+    if (!list.length) { $("battles").innerHTML = `<p class="note">No two cars in the same class are within a second of each other right now.</p>`; return; }
+    const m = multi();
+    const auto = G("battle.mode", "auto") !== "pick";
+    const want = G("battle.cars", []) || [];
+    const onAir = auto ? list[0] : list.find(b => want.length && want.every(i => b.cars.includes(i))) || list.find(b => want.some(i => b.cars.includes(i)));
+    $("battles").innerHTML = list.slice(0, 8).map(b => {
+      const lead = carByIdx(b.cars[0]);
+      const names = b.cars.map(i => { const c = carByIdx(i); return c ? "#" + esc(c.num) + " " + esc((c.name || "").split(" ").slice(-1)[0]) : "?"; });
+      const parts = [names[0]];
+      b.gapsS.forEach((g, k) => parts.push(`<span class="note">${D(g.toFixed(2))}</span>`, names[k + 1]));
+      const k = b.closingSPerLap.length - 1, rate = k >= 0 ? b.closingSPerLap[k] : null;
+      const trend = rate == null ? "" : rate > 0 ? ` · ${D("closing " + rate.toFixed(2) + " s/lap")}` : rate < 0 ? ` · ${D("opening " + Math.abs(rate).toFixed(2) + " s/lap")}` : ` · ${D("holding")}`;
+      const live = onAir === b && G("battle.show", false);
+      return `<div class="bt${live ? " live" : ""}"><div class="t"><b>For ${m && lead && lead.className ? esc(lead.className) + " " : ""}P${esc(b.forClassPos)}</b><span>${b.cars.length} cars${trend}</span></div>` +
+        `<div class="who">${parts.join(" ")}</div><div class="act">` +
+        `<button data-btshow="${b.cars.join(",")}" ${canProduce() ? "" : "disabled"}>${live ? "On air" : "Show this battle"}</button>` +
+        `<button data-btcut="${b.cars[b.cars.length - 1]}" ${canCamera() ? "" : "disabled"}>Cut to the chaser</button></div></div>`;
+    }).join("");
+  }
+  function carShort(i) { const c = carByIdx(i); return c ? "#" + esc(c.num) + " " + esc(c.name) : "car " + esc(i); }
+  function feedText(e) {
+    switch (e.kind) {
+      case "fastest_lap": return `Fastest ${e.overall ? "" : "class "}lap: ${carShort(e.idx)} ${lap(e.lapS)}`;
+      case "class_lead": return `${carShort(e.idx)} takes the lead`;
+      case "pit_in": return `${carShort(e.idx)} into the pits`;
+      case "pit_out": return `${carShort(e.idx)} out of the pits` + (e.stationaryS != null ? ` (${D(e.stationaryS.toFixed(1) + " s")} stationary)` : "");
+      case "flag": return `${esc(String(e.flag).replace(/_/g, " "))} flag`;
+      case "rain_start": return "Rain started";
+      case "rain_stop": return "Rain stopped";
+      case "declared_wet": return e.value ? "Wet declared" : "Wet declaration lifted";
+    }
+    return null;
+  }
+  function handleFeed(m) {
+    const take = list => { for (const e of list || []) if (e.seq > S.feed.seq) { const t = feedText(e); if (t) log(t); } };
+    if (m.full) { if (S.feed.ready) take(m.events); S.feed.ready = true; S.feed.seq = m.seq || 0; return; }
+    if (!S.feed.ready) return;
+    take(m.events); S.feed.seq = Math.max(S.feed.seq, m.seq || 0);
+  }
+
+  // ------------------------------------------------------------- connection
+  function relayUrl() {
+    const q = Q.get("relay");
+    if (q) return q;
+    if (location.protocol === "http:" || location.protocol === "https:") return (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
+    return "";
+  }
+  function showConnect(err) {
+    $("connect").classList.remove("hide"); $("main").classList.add("hide");
+    $("cErr").textContent = err || "";
+  }
+  function connect(relay, token) {
+    if (ws) { ws.onclose = ws.onmessage = null; try { ws.close(); } catch (e) {} }
+    let url;
+    try { url = new URL(relay.replace(/\/+$/, "") + "/view"); } catch (e) { url = null; }
+    if (!url || !/^wss?:$/.test(url.protocol)) { showConnect("The relay address must start with ws:// or wss://"); return; }
+    url.searchParams.set("token", token);
+    const sock = new WebSocket(url.href); ws = sock;
+    sock.onopen = () => { $("dRelay").classList.add("on"); sock.send(JSON.stringify({ type: "resend" })); };
+    sock.onclose = ev => {
+      $("dRelay").classList.remove("on"); $("dBridge").classList.remove("on");
+      if (ev.code === 4001) { showConnect("The relay refused that token."); return; }
+      setTimeout(() => connect(relay, token), ev.code === 4002 ? 200 : 3000);
+    };
+    sock.onmessage = ev => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      $("connect").classList.add("hide"); $("main").classList.remove("hide");
+      try { handle(m); } catch (e) { console.error("producer: could not handle " + m.type, e); }
+    };
+    // The overlay link: same relay, but it needs the VIEW token, which a
+    // producer link does not carry. ?view= lets the host hand it over too.
+    const view = Q.get("view");
+    const base = location.protocol.startsWith("http") ? location.origin + location.pathname.replace(/producer\.html$/, "") : "";
+    if (view && base) $("obsUrl").textContent = base + "overlay.html?token=" + encodeURIComponent(view) + (Q.get("relay") ? "&relay=" + encodeURIComponent(relay) : "");
+  }
+  let dirty = { ctl: true, field: true };
+  function handle(m) {
+    switch (m.type) {
+      case "relay":
+        $("dBridge").classList.toggle("on", m.bridge === "connected");
+        if (m.role) S.role = m.role;
+        if (m.viewers != null) $("peers").textContent = m.viewers + (m.viewers === 1 ? " connection" : " connections");
+        dirty.ctl = true; break;
+      case "hello": S.hello = m; $("dBridge").classList.add("on"); dirty.ctl = true; break;
+      case "session": S.session = m; dirty.ctl = true; break;
+      case "state": if (!m.full && !S.state) return; S.state = m.full ? m : merge(S.state, m); dirty.cam = true; break;
+      case "cars": if (!m.full && !S.cars) return; S.cars = m.full ? m : merge(S.cars, m); dirty.field = true; break;
+      case "feed": handleFeed(m); break;
+      case "gfx": {
+        const before = JSON.stringify(S.gfx);
+        S.gfx = m.state || {};
+        if (m.by && m.by !== me && before !== JSON.stringify(S.gfx)) log(esc(m.by) + " changed the graphics");
+        dirty.ctl = true; dirty.field = true; break;
+      }
+      case "gfx_result": if (!m.ok) { toast(m.error, true); log(esc(m.error), true); } break;
+      case "cmd_result": {
+        const label = pending.shift() || "Command";
+        if (m.ok) toast(label + (m.simulated ? " (fake field)" : ""));
+        else { toast(m.error || "Command failed", true); log(esc(label + ": " + (m.error || "failed")), true); }
+        break;
+      }
+    }
+  }
+  // Paced redraw: the field list is rebuilt at most four times a second, which
+  // keeps it tappable on a phone while cars stream in at 8 Hz.
+  // Rebuilding a list between pointerdown and pointerup swallows the click, so
+  // hold redraws while a finger or button is down.
+  let holding = false;
+  addEventListener("pointerdown", () => { holding = true; }, true);
+  addEventListener("pointerup", () => setTimeout(() => { holding = false; }, 0), true);
+  addEventListener("pointercancel", () => { holding = false; }, true);
+  setInterval(() => {
+    if (holding) return;
+    if (dirty.ctl) { dirty.ctl = false; renderControls(); }
+    if (dirty.cam) { dirty.cam = false; renderHeader(); renderCameraButtons(); }
+    if (dirty.field) { dirty.field = false; renderField(); renderBattles(); }
+  }, 250);
+
+  // Opened from the suite's home screen: give the app window a way back.
+  const home = Q.get("home");
+  if (home && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/$/.test(home)) { $("home").href = home; $("home").classList.remove("hide"); }
+  const relay = relayUrl(), token = Q.get("token");
+  $("cRelay").value = relay; $("cTok").value = token || "";
+  $("cGo").onclick = () => connect($("cRelay").value.trim(), $("cTok").value.trim());
+  if (relay && token) connect(relay, token); else showConnect();
+})();
+</script>
+</body>
+</html>

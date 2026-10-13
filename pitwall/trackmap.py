@@ -69,8 +69,19 @@ class LapCollector:
         self._buf: list[LapSample] = []
         self._last_pct: float | None = None
         self._armed = False  # becomes True once we have seen a S/F crossing
+        self._car = None
 
-    def push(self, t, pct, vx, vy, yaw, on_track=True, on_pit=False) -> list[LapSample] | None:
+    def push(self, t, pct, vx, vy, yaw, on_track=True, on_pit=False, car=None) -> list[LapSample] | None:
+        # While spectating, the kinematics follow the CAMERA car. A camera cut
+        # mid-lap would splice two cars into one "lap" and cache a garbage
+        # outline for the track, permanently -- and a broadcast cuts constantly.
+        # So a change of camera car voids the lap in progress, exactly like a
+        # pit visit does.
+        if car != self._car:
+            self._car = car
+            self._buf.clear()
+            self._armed = False
+            self._last_pct = None
         if pct is None or vx is None or yaw is None or not on_track or on_pit:
             # a pit visit or leaving the track invalidates the lap in progress
             self._buf.clear()

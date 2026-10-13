@@ -369,8 +369,24 @@ class FakeSource(TelemetrySource):
     PIT_OUT_PCT = 0.045
     PIT_LANE_MS = 16.7          # 60 km/h limiter
 
+    # Camera groups in iRacing's CameraInfo shape. Real group numbers differ by
+    # track, which is why the producer panel reads them from the session.
+    CAMERA_GROUPS = [
+        (1, "Nose"), (2, "Gearbox"), (3, "Roll Bar"), (4, "LF Susp"), (5, "LR Susp"), (6, "Gyro"),
+        (7, "RF Susp"), (8, "RR Susp"), (9, "Cockpit"), (10, "Scenic"), (11, "TV1"), (12, "TV2"),
+        (13, "TV3"), (14, "Pit Lane"), (15, "Pit Lane 2"), (16, "Blimp"), (17, "Chopper"),
+        (18, "Chase"), (19, "Far Chase"), (20, "Rear Chase"),
+    ]
+
     def __init__(self, seed: int = 7, n_cars: int = 24, realtime: bool = True,
-                 speed: float = 1.0, player_pit_lap: int | None = None):
+                 speed: float = 1.0, player_pit_lap: int | None = None, spectator: bool = False):
+        # spectator=True behaves like a spectator slot, as observed live:
+        # PlayerCarIdx is 63 (not a car), the session is a replay at speed 1,
+        # kinematics follow the camera car, and private car state (fuel, tyres,
+        # dc*, pit service, incidents) is absent.
+        self.spectator = spectator
+        self.cam = {"car": 0, "group": 11, "num": 1}
+        self.replay_speed, self.replay_slow = 1, False
         self.rng = random.Random(seed)
         self.realtime = realtime
         # speed > 1 runs the race faster than real time (for looking at a whole
@@ -526,6 +542,11 @@ class FakeSource(TelemetrySource):
                      "SessionTime": "unlimited", "SessionTrackRubberState": "carry over"},
                 ]
             },
+            "CameraInfo": {"Groups": [
+                {"GroupNum": n, "GroupName": name, **({"IsScenic": True} if name == "Scenic" else {}),
+                 "Cameras": [{"CameraNum": k, "CameraName": f"Cam{name.replace(' ', '')}{k if k > 1 else ''}"}
+                             for k in range(1, (6 if name.startswith("TV") else 2) + 1)]}
+                for n, name in self.CAMERA_GROUPS]},
             "SplitTimeInfo": {"Sectors": [{"SectorNum": 0, "SectorStartPct": 0.0},
                                           {"SectorNum": 1, "SectorStartPct": 0.33},
                                           {"SectorNum": 2, "SectorStartPct": 0.66}]},
@@ -646,6 +667,10 @@ class FakeSource(TelemetrySource):
                 # Verified against a live replay (Daytona, GR86 race, lap 1).
                 f2[c.idx] = round(0.001 * (p - 1), 4)
         player = self.cars[0]
+        if self.spectator:
+            # Kinematics follow the camera car; there is no car of our own.
+            player = self.cars[self.cam["car"]] if self.cam["car"] < self.n_cars else self.cars[0]
+        self._pos = pos
         speed = (0.0 if player.pit_phase == "box" else self.PIT_LANE_MS if player.on_pit
                  else (self.length / player.base_lap) * self.curvature_speed_factor(player.pct) / 0.83)
         heading = self.heading_at(player.pct)
@@ -699,7 +724,23 @@ class FakeSource(TelemetrySource):
             "CarIdxTireCompound": comp, "CarIdxSessionFlags": [0] * 64,
             "CarIdxFastRepairsUsed": fr, "CarIdxP2P_Status": [False] * 64, "CarIdxP2P_Count": [0] * 64,
             "CarIdxGear": gear, "CarIdxRPM": rpm, "CarIdxSteer": [0.0] * 64, "CarIdxPaceFlags": [0] * 64,
+            "CamCarIdx": self.cam["car"] if self.spectator else 0,
+            "CamGroupNumber": self.cam["group"], "CamCameraNumber": self.cam["num"],
+            "CamCameraState": 0x0051 if self.spectator else 0x0000,
+            "ReplayPlaySpeed": self.replay_speed, "ReplayPlaySlowMotion": self.replay_slow,
+            "ReplaySessionNum": 1, "ReplaySessionTime": self.t, "ReplayFrameNumEnd": 1,
         })
+        if self.spectator:
+            v.update({"PlayerCarIdx": 63, "IsReplayPlaying": True, "IsInGarage": False})
+            for k in ("FuelLevel", "FuelLevelPct", "FuelUsePerHour", "PlayerCarPosition",
+                      "PlayerCarClassPosition", "PlayerCarMyIncidentCount", "PlayerCarTeamIncidentCount",
+                      "PlayerCarDriverIncidentCount", "PitSvFlags", "PitSvFuel", "dcBrakeBias", "dcABS",
+                      "dcTractionControl", "dcAntiRollFront", "dcAntiRollRear", "dcFuelMixture",
+                      "LapLastLapTime", "LapBestLapTime", "LapCurrentLapTime", "LapDeltaToBestLap",
+                      "LapDeltaToSessionBestLap", "PlayerCarInPitStall"):
+                v[k] = None
+            self._vars = v
+            return
         for c in ("LF", "RF", "LR", "RR"):
             for p, base in (("CL", 84), ("CM", 88), ("CR", 86)):
                 v[f"{c}temp{p}"] = base + math.sin(self.t / 20 + hash(c) % 7) * 4
@@ -710,6 +751,37 @@ class FakeSource(TelemetrySource):
 
     def get(self, name: str) -> Any:
         return self._vars.get(name)
+
+    # A stand-in for iRacing's camera so the producer panel can be tried without
+    # the sim. commands.py calls it in place of pyirsdk and marks the result
+    # "simulated"; it is never reported as reaching iRacing. Unknown car numbers
+    # raise here, where the real sim would silently ignore them.
+    def simulate_broadcast(self, method: str, args: tuple):
+        if method in ("cam_switch_num", "cam_switch_pos"):
+            who, group, cam = args
+            car = None
+            if method == "cam_switch_pos":
+                car = next((c.idx for c in self.cars if self._pos[c.idx] == who), None)
+            elif isinstance(who, int) and who < 0:
+                if who == -2:        # leader
+                    car = next((c.idx for c in self.cars if self._pos[c.idx] == 1), None)
+                else:                # most exciting / incident: iRacing's choice; the fake keeps the car
+                    car = self.cam["car"]
+            else:
+                drivers = self._session["DriverInfo"]["Drivers"]
+                car = next((d["CarIdx"] for d in drivers if d["CarNumber"] == str(who)), None)
+            if car is None:
+                raise ValueError(f"no car for {method} {who!r} in the fake field")
+            if group and group not in {n for n, _ in self.CAMERA_GROUPS}:
+                raise ValueError(f"no camera group {group}")
+            self.cam = {"car": car, "group": group or self.cam["group"], "num": cam or 1}
+        elif method == "replay_set_play_speed":
+            self.replay_speed, self.replay_slow = args[0], bool(args[1])
+        elif method == "replay_search":
+            if args[0] == "to_end":
+                self.replay_speed, self.replay_slow = 1, False
+        else:
+            raise ValueError(f"fake source cannot simulate {method}")
 
     def var_headers(self) -> list[dict]:
         return list(self._headers)

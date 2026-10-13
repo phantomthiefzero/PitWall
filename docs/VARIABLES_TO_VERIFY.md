@@ -67,6 +67,25 @@ Recordings needed (each ~10–20 min, `--hz 10` is plenty for classification):
 | traffic meeting | lap-fraction gap / (1/your pace - 1/their pace) | Constant-pace arithmetic; the place is approximate because speed varies around a lap. Unit-tested. |
 | events (`feed.events`) | transitions in the values above and in `SessionFlags`, incidents, `EngineWarnings`, `PlayerCarTowTime`, weather | Seeded silently on first sight, so only what is watched happening is reported. Pit limiter and rev limiter warnings are routine and skipped. A flag is not repeated within 20 s. |
 
+## Broadcast (camera, replay, battles) — added Oct 2026, NOT yet run against the sim
+
+| Item | Claim | Evidence so far | Check on the sim PC |
+|---|---|---|---|
+| `CamCarIdx` | follows every camera cut while spectating | 62 distinct changes in `spectate-race-vir` (the analyzer labelled it `pit-only`, an artefact of when cuts happened) | cut cameras in the producer panel; the tower highlight and driver card follow |
+| `CamGroupNumber`, `CamCameraNumber` | index `CameraInfo/Groups` | present in both spectate and replay captures | the panel's highlighted group matches iRacing's camera screen |
+| `CamCameraState` | 81 (0x51) while spectating = session screen + auto shot + key acceleration | observed value 81 in both captures | none needed for display |
+| `ReplayPlaySpeed`, `ReplayPlaySlowMotion` | 1 / false at the live edge while spectating | static 1 / false across 900 s spectated | pause, slow-mo, play from the panel; the overlay shows Paused / Slow-mo / nothing |
+| `ReplayFrameNumEnd` | frames from the end of the tape | ~1200 while spectating at speed 1 | **not displayed**: what the live edge reads as is unknown |
+| `cam_switch_num(car, group, cam)` | cuts to that car number | pyirsdk API only | tap drivers in the field list |
+| `cam_switch_num(-1/-2/-3, ...)` | iRacing chooses: most exciting / leader / incident (irsdk_csMode) | pyirsdk API only | the three "Let iRacing choose" buttons |
+| `replay_set_play_speed`, `replay_search` | speed 0 pauses, `to_end` returns to live, `prev/next_incident` jump | pyirsdk API only | Replay buttons; "Back to live" must land at speed 1 |
+| `derived.battles` | class neighbours under 1.0 s (held to 1.5 s) | unit-tested; fake race checked rule by rule | watch a real multiclass race: no cross-class "battles", no flicker at 1.0 s |
+| `class_lead` event | every class, no player car needed | unit-tested | spectate a race with a lead change |
+
+Two traps found while building it. Camera cuts splice the spectator kinematics from two cars,
+so the map builder now voids its lap on any `CamCarIdx` change (tested). And `lead_change`
+needed a player car, so a spectator never saw a lead change; `class_lead` covers that.
+
 ## Group D — believed unavailable (do not fake)
 
 Other cars' fuel, tire state, damage, pedal inputs, setup. Player damage as a

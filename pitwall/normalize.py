@@ -43,7 +43,12 @@ PIT_SV_BITS = {
     0x01: "lf_tire", 0x02: "rf_tire", 0x04: "lr_tire", 0x08: "rr_tire",
     0x10: "fuel", 0x20: "windshield", 0x40: "fast_repair",
 }
-TRACK_SURFACE = {-1: "not_in_world", 0: "off_track", 1: "in_pit_stall", 2: "approaching_pits", 3: "on_track"}
+CAMERA_STATE_BITS = {
+    0x0001: "session_screen", 0x0002: "scenic_active", 0x0004: "cam_tool_active",
+    0x0008: "ui_hidden", 0x0010: "auto_shot_selection", 0x0020: "temporary_edits",
+    0x0040: "key_acceleration", 0x0080: "key10x_acceleration", 0x0100: "mouse_aim_mode",
+}
+TRACK_SURFACE = {-1:"not_in_world", 0: "off_track", 1: "in_pit_stall", 2: "approaching_pits", 3: "on_track"}
 SESSION_STATE = {0: "invalid", 1: "get_in_car", 2: "warmup", 3: "parade_laps", 4: "racing", 5: "checkered", 6: "cool_down"}
 TRACK_WETNESS = {0: "unknown", 1: "dry", 2: "mostly_dry", 3: "very_lightly_wet", 4: "lightly_wet",
                  5: "moderately_wet", 6: "very_wet", 7: "extremely_wet"}
@@ -127,7 +132,26 @@ def build_session(src: TelemetrySource) -> dict:
         "drivers": drivers,
         "sessions": sessions,
         "sectors": sp.get("Sectors", []) or [],
+        "cameras": _camera_groups(src.session_info("CameraInfo")),
     }
+
+
+def _camera_groups(ci) -> list[dict]:
+    """CameraInfo/Groups as the broadcast panel needs it: the group numbers are
+    what a camera command takes, and they differ by track, so they are read from
+    the session rather than hard-coded. Copied, not interpreted."""
+    out = []
+    for gr in ((ci or {}).get("Groups") or []):
+        if not isinstance(gr, dict) or gr.get("GroupNum") is None:
+            continue
+        out.append({
+            "num": gr.get("GroupNum"),
+            "name": gr.get("GroupName"),
+            "scenic": bool(gr.get("IsScenic")),
+            "cameras": [{"num": c.get("CameraNum"), "name": c.get("CameraName")}
+                        for c in (gr.get("Cameras") or []) if isinstance(c, dict)],
+        })
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -855,6 +879,14 @@ class Deriver:
             if best_all is None or b < best_all - 1e-4:
                 ev["best"]["all"] = best_all = b
         ev["bestSeeded"] = True
+        # Leader of EVERY class, for the broadcast. lead_change below only covers
+        # the player's class and needs a player car, which a spectator does not
+        # have. Held for 5 s, the same as lead_change, so a pass and re-pass
+        # inside one corner is not two headlines.
+        for cid in {c.get("classId") for c in cars if c.get("classPos")}:
+            leader_c = next((c["idx"] for c in cars if c.get("classPos") == 1 and c.get("classId") == cid), None)
+            self._stable(ev, ("class_lead", cid), leader_c, t, 5.0,
+                         lambda old, new, cid=cid: self.event(t, "class_lead", idx=new, prevIdx=old, classId=cid))
         if me is None:
             return
         # someone closing on you, or you on them (class rivals, once per approach)
@@ -945,6 +977,68 @@ class Deriver:
             if ev["declaredWet"] is not None and bool(dw) != ev["declaredWet"]:
                 self.event(t, "declared_wet", value=bool(dw))
             ev["declaredWet"] = bool(dw)
+
+    # Battles, for the broadcast. A pair of cars is in a battle when they are
+    # next to each other IN THEIR CLASS and the gap between their F2Times is under
+    # BATTLE_ENTER_S; it stays one until the gap opens past BATTLE_LEAVE_S, so a
+    # gap hovering at 1.0 s does not make the graphic flicker on and off. Pairs
+    # that touch become one group (a train). Overall-adjacent is the wrong test
+    # in a multiclass race: a GT4 0.5 s behind a GT3 is traffic, not a battle.
+    BATTLE_ENTER_S = 1.0
+    BATTLE_LEAVE_S = 1.5
+
+    def battles(self, cars: list, ahead_of: dict, is_race: bool) -> list:
+        if not is_race:
+            self._battle_pairs = set()
+            return []
+        live = getattr(self, "_battle_pairs", set())
+        by_class: dict = {}
+        for c in cars:
+            if c.get("classPos") and c["classPos"] > 0:
+                by_class.setdefault(c.get("classId"), []).append(c)
+        links = []                         # (ahead, behind, gap)
+        keep = set()
+        for cls_cars in by_class.values():
+            cls_cars.sort(key=lambda c: c["classPos"])
+            for a, b in zip(cls_cars, cls_cars[1:]):
+                # Both gaps must be ones we trust, and neither car may be in the
+                # pit lane: a car in the lane is not racing the one beside it.
+                if not (a.get("gapValid") and b.get("gapValid")):
+                    continue
+                if a.get("onPitRoad") or b.get("onPitRoad"):
+                    continue
+                gap = b["f2TimeS"] - a["f2TimeS"]
+                if gap < 0:
+                    continue
+                pair = (a["idx"], b["idx"])
+                limit = self.BATTLE_LEAVE_S if pair in live else self.BATTLE_ENTER_S
+                if gap <= limit:
+                    links.append((a, b, round(gap, 3)))
+                    keep.add(pair)
+        self._battle_pairs = keep
+        groups: list[dict] = []
+        tail = {}                          # idx of the last car in a group -> that group
+        for a, b, gap in sorted(links, key=lambda x: (x[0].get("classId") or 0, x[0]["classPos"])):
+            grp = tail.pop(a["idx"], None)
+            if grp is None:
+                grp = {"classId": a.get("classId"), "cars": [a["idx"]], "gapsS": [],
+                       "closingSPerLap": [], "catchLaps": [],
+                       "forClassPos": a["classPos"], "forPos": a.get("pos")}
+                groups.append(grp)
+            # The closing rate is the behind car's trend on the car directly
+            # ahead OVERALL. It only describes this pair when the two are also
+            # adjacent overall; otherwise it is about some other car, so null.
+            same_pair = ahead_of.get(b["idx"]) == a["idx"]
+            d = b.get("derived") or {}
+            grp["cars"].append(b["idx"])
+            grp["gapsS"].append(gap)
+            grp["closingSPerLap"].append(d.get("closingSPerLap") if same_pair else None)
+            grp["catchLaps"].append(d.get("catchLaps") if same_pair else None)
+            tail[b["idx"]] = grp
+        for grp in groups:
+            grp["id"] = f"{grp['classId']}:{grp['cars'][0]}"
+        groups.sort(key=lambda g: (g["forClassPos"], g["forPos"] or 999))
+        return groups
 
     def session_best_sectors(self) -> list:
         return list(self._sect_best)
@@ -1125,13 +1219,33 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
         "lapsRemain": _num(g("SessionLapsRemainEx")), "timeOfDayS": _num(g("SessionTimeOfDay")),
         "paceMode": _num(g("PaceMode")),
     }
+    # What the broadcast is looking at. CamCarIdx is confirmed live while
+    # spectating (62 changes in the VIR race capture, following each camera cut);
+    # group/camera numbers index session.cameras. Replay speed matters because
+    # spectating IS a replay (speed 1 at the live edge): anything else means the
+    # picture is behind the race and the overlay must say so.
+    cam_state = g("CamCameraState")
+    camera = {
+        "carIdx": _num(g("CamCarIdx")),
+        "group": _num(g("CamGroupNumber")),
+        "num": _num(g("CamCameraNumber")),
+        "state": decode_bits(cam_state, CAMERA_STATE_BITS), "stateRaw": _num(cam_state),
+        "replaySpeed": _num(g("ReplayPlaySpeed")),
+        "replaySlowMotion": _num(g("ReplayPlaySlowMotion")),
+        "replaySessionNum": _num(g("ReplaySessionNum")),
+        "replaySessionTimeS": _num(g("ReplaySessionTime")),
+        # Frames from the end of the tape. NOT a delay to show: while spectating
+        # at speed 1 it sat around 1200 (~20 s) in the VIR capture, so what
+        # "at the live edge" reads as is not yet characterised.
+        "replayFramesFromEnd": _num(g("ReplayFrameNumEnd")),
+    }
     derived = deriver.fuel(player["lapCompleted"], player["fuelL"],
                            laps_remain_ex=_num(g("SessionLapsRemainEx")),
                            time_remain_s=_num(g("SessionTimeRemain")),
                            lap_time_s=_num(g("LapLastLapTime")))
     deriver.state_events(session["timeS"], session, player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
-            "session": session, "weather": weather, "player": player, "derived": derived}
+            "session": session, "weather": weather, "player": player, "camera": camera, "derived": derived}
 
 
 # --------------------------------------------------------------------------- #
@@ -1369,6 +1483,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "rejoin": deriver.rejoin(cars, player_idx) if is_race and me is not None else None,
             "undercut": deriver.undercut(cars, player_idx, now) if is_race and me is not None else [],
             "traffic": deriver.traffic(cars, player_idx),
+            "battles": deriver.battles(cars, ahead_of, is_race),
         }
         deriver.field_events(cars, now, player_idx, deriver._stops_tick)
     return out

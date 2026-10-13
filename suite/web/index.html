@@ -25,9 +25,12 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <div class="status wait" id="status"><div class="dot"></div><div class="st-main"><div class="st-title" id="stTitle">Starting...</div><div class="st-sub" id="stSub"></div></div><div id="stBtns"></div></div>
 <div class="apps">
 <a class="app" href="/analyzer/"><span class="tag ok">Ready</span><h2>Lap Analyzer</h2><p>Compare laps against your best or a reference, read your car setup the way the iRacing garage shows it, and watch setup changes take effect live, run by run.</p><span class="open">Open →</span></a>
+<div class="app" id="bcTile"><span class="tag" id="bcTag">Starting</span><h2>Broadcast</h2><p>TV-style overlay for streaming a race you spectate: timing tower, battles, driver card, track map and race control. You and a co-host run it from the producer panel.</p>
+<p style="margin-top:6px">OBS Browser Source, 1920 × 1080:</p><code id="bcObs" style="display:block;font-size:12px;background:var(--bg);border:1px solid var(--ln);border-radius:6px;padding:6px 8px;word-break:break-all;user-select:all">–</code>
+<div style="display:flex;gap:8px;margin-top:auto;padding-top:8px"><button type="button" id="bcCopy" style="white-space:nowrap">Copy OBS address</button><a class="open" id="bcOpen" style="align-self:center;margin-left:auto;text-decoration:none;white-space:nowrap">Open producer panel →</a></div></div>
 <a class="app" href="/pitwall/" id="pwTile"><span class="tag" id="pwTag">Starting</span><h2>PitWall</h2><p>Engineer and spotter dashboard: track map, standings, flags, weather and car systems. Runs on this PC through the built-in bridge.</p><span class="open">Open →</span></a>
 </div>
-<footer>The suite only reads iRacing's telemetry. It never changes anything in the sim. Everything stays on this PC unless you choose to share it.</footer>
+<footer>The suite reads iRacing's telemetry. The only thing it ever changes in the sim is the replay camera, and only when you use the Broadcast producer panel. Everything stays on this PC unless you choose to share it.</footer>
 </div>
 <script>
 const $=id=>document.getElementById(id);let info={mode:'live',connected:false},meta=null,lastTick=0;
@@ -44,7 +47,9 @@ function connect(){let ws;try{ws=new WebSocket('ws://'+location.host+'/ws')}catc
 ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.type==='hello'){$('ver').textContent='version '+m.bridge;info.mode=m.mode}else if(m.type==='status'){info.connected=!!m.connected;info.mode=m.source||info.mode;render()}else if(m.type==='session'&&typeof m.yaml==='string'){meta=metaFrom(m.yaml);render()}};
 ws.onclose=()=>setTimeout(connect,2000)}
 function pitwallTile(){const p=info.pitwall,t=$('pwTag'),a=$('pwTile');if(!p)return;if(p.ok){t.textContent='Ready';t.className='tag ok';a.href='/pitwall/?relay='+encodeURIComponent(p.relay)+'&token='+encodeURIComponent(p.token);a.title=''}else{t.textContent='Unavailable';t.className='tag';a.removeAttribute('href');a.title=p.error||''}}
-async function poll(){try{const r=await fetch('/api/info',{cache:'no-store'});Object.assign(info,await r.json());render();pitwallTile()}catch(e){}}
+function broadcastTile(){const p=info.pitwall,t=$('bcTag');if(!p)return;const b=p.broadcast;if(b){t.textContent='Ready';t.className='tag ok';$('bcObs').textContent=b.overlay;$('bcOpen').href=b.producer+'&home='+encodeURIComponent(location.origin+'/')}else{t.textContent='Unavailable';t.className='tag';$('bcObs').textContent=p.error||'–';$('bcOpen').removeAttribute('href')}}
+$('bcCopy').onclick=async()=>{const v=$('bcObs').textContent;try{await navigator.clipboard.writeText(v);$('bcCopy').textContent='Copied'}catch(e){const r=document.createRange();r.selectNodeContents($('bcObs'));const s=getSelection();s.removeAllRanges();s.addRange(r);$('bcCopy').textContent='Press Ctrl+C'}setTimeout(()=>{$('bcCopy').textContent='Copy OBS address'},2000)};
+async function poll(){try{const r=await fetch('/api/info',{cache:'no-store'});Object.assign(info,await r.json());render();pitwallTile();broadcastTile()}catch(e){}}
 function themeLabel(){$('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'\u263E Dark mode':'\u2600 Light mode'}
 $('themeBtn').onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}themeLabel()};themeLabel();
 window.addEventListener('pywebviewready',render);

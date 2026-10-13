@@ -34,6 +34,7 @@ jobs:
           --icon assets/icon.ico
           --add-data "suite/web;suite/web"
           --add-data "client;client"
+          --add-data "broadcast;broadcast"
           --collect-submodules pitwall
           --hidden-import relay.server
           run_suite.py
