@@ -120,6 +120,10 @@ def build_session(src: TelemetrySource) -> dict:
                                               "DriverCarSLBlinkRPM", "DriverCarRedLine", "DriverCarFuelKgPerLtr",
                                               "DriverCarEstLapTime", "DriverPitTrkPct", "DriverCarIdleRPM",
                                               "DriverCarGearNumForward", "DriverSetupName")},
+        # Race rules the booth needs: the incident limit (a number, or
+        # "unlimited") and the fast-repair allowance.
+        "options": {k: (wk.get("WeekendOptions") or {}).get(k)
+                    for k in ("IncidentLimit", "FastRepairsLimit", "StandingStart", "NumStarters")},
         "drivers": drivers,
         "sessions": sessions,
         "sectors": sp.get("Sectors", []) or [],
@@ -150,10 +154,30 @@ class Deriver:
         self._fuel_per_lap_samples: list[float] = []
         self._gap_hist: dict[int, list[tuple[float, float]]] = {}
         self._gap_ahead: dict[int, int | None] = {}
+        self._gap_slope: dict[int, float | None] = {}
+        self._tp_slope: dict[int, float | None] = {}
         self._pit: dict[int, dict] = {}
         self._stint: dict[int, dict] = {}
         self._sect: dict[int, dict] = {}
         self._sect_best: list[float | None] = []
+        # booth
+        self._lapst: dict[int, dict] = {}
+        self._laps: dict[int, list[dict]] = {}
+        self._lap_finished: list[dict] = []
+        self._loss: list[dict] = []
+        self._stops_tick: dict[int, dict] = {}
+        self._tp_hist: dict[int, list[tuple[float, float]]] = {}
+        self._tp_ref: dict[int, int | None] = {}
+        self._uc: dict[int, dict] = {}
+        self._uc_inpit: dict[int, bool] = {}
+        self._player_lap = None
+        self.incident_limit: int | None = None
+        self.feed_seq = 0
+        self.feed_laps: list[dict] = []
+        self.feed_events: list[dict] = []
+        self._ev = {"pit": {}, "best": {}, "bestSeeded": False, "closing": {}, "stable": {},
+                    "flags": None, "flagAt": {}, "inc": None, "warn": None, "tow": None,
+                    "wet": None, "rain": None, "declaredWet": None}
 
     # Closing rate. A static gap says nothing about whether a pass is coming; the
     # RATE is what an engineer acts on ("gaining 0.4s a lap, catch him in seven").
@@ -167,6 +191,22 @@ class Deriver:
     # road racing closes at tens of seconds per lap; anything that large means the
     # series was not continuous, so say nothing instead.
     GAP_MAX_RATE_S_PER_LAP = 15.0
+
+    # Samples closer together than this add nothing to a 90 s trend but cost a
+    # full least-squares pass each, on the driver's PC, beside the sim. Keeping
+    # one every half second bounds the window at ~180 samples, and the slope is
+    # only recomputed when a sample is added.
+    GAP_SAMPLE_S = 0.5
+
+    @staticmethod
+    def _slope(hist):
+        n = len(hist)
+        mt = sum(h[0] for h in hist) / n
+        mg = sum(h[1] for h in hist) / n
+        denom = sum((h[0] - mt) ** 2 for h in hist)
+        if denom <= 0:
+            return None
+        return sum((h[0] - mt) * (h[1] - mg) for h in hist) / denom
 
     def closing(self, idx, t, interval_s, lap_time_s, ahead_idx=None) -> dict:
         out = {"closingSPerLap": None, "catchLaps": None}
@@ -183,19 +223,19 @@ class Deriver:
         if interval_s is None:
             hist.clear()          # gap not trustworthy: drop the thread, do not bridge it
             return out
-        hist.append((t, interval_s))
-        cutoff = t - self.GAP_WINDOW_S
-        while hist and hist[0][0] < cutoff:
-            hist.pop(0)
-        if len(hist) < self.GAP_MIN_SAMPLES or (hist[-1][0] - hist[0][0]) < self.GAP_MIN_SPAN_S:
+        if hist and t - hist[-1][0] < self.GAP_SAMPLE_S:
+            slope = self._gap_slope.get(idx)
+        else:
+            hist.append((t, interval_s))
+            cutoff = t - self.GAP_WINDOW_S
+            while hist and hist[0][0] < cutoff:
+                hist.pop(0)
+            slope = None
+            if len(hist) >= self.GAP_MIN_SAMPLES and (hist[-1][0] - hist[0][0]) >= self.GAP_MIN_SPAN_S:
+                slope = self._slope(hist)                      # gap-seconds per second
+            self._gap_slope[idx] = slope
+        if slope is None:
             return out
-        n = len(hist)
-        mt = sum(h[0] for h in hist) / n
-        mg = sum(h[1] for h in hist) / n
-        denom = sum((h[0] - mt) ** 2 for h in hist)
-        if denom <= 0:
-            return out
-        slope = sum((h[0] - mt) * (h[1] - mg) for h in hist) / denom   # gap-seconds per second
         if not lap_time_s or lap_time_s <= 0:
             return out
         closing = -slope * lap_time_s                                  # +ve = catching
@@ -204,6 +244,7 @@ class Deriver:
             return out
         if abs(closing) > self.GAP_MAX_RATE_S_PER_LAP:
             hist.clear()                                               # series was not continuous
+            self._gap_slope[idx] = None
             return out
         out["closingSPerLap"] = round(closing, 3)
         if closing > 0 and interval_s > 0:
@@ -212,7 +253,7 @@ class Deriver:
                 out["catchLaps"] = round(laps, 1)
         return out
 
-    def pit(self, idx, t, on_pit_road, in_box, lap) -> dict:
+    def pit(self, idx, t, on_pit_road, in_box, lap, pct=None) -> dict:
         """Competitor stop tracking, from CarIdxOnPitRoad and CarIdxTrackSurface.
 
         Knowing who still has to stop changes the effective order more than any
@@ -246,16 +287,30 @@ class Deriver:
             return out
         if on_pit_road and not st["onRoad"]:                 # entered the lane
             st["enterT"], st["enterLap"], st["boxS"] = t, lap, None
+            st["enterPct"], st["bad"] = pct, False
+        elif on_pit_road and pct is not None and pct >= 0 and st.get("lastPct") is not None:
+            # A reset or tow puts the car in its box without driving the lane.
+            # That looks like a stop to the counters, but timing it as lane loss
+            # would be nonsense, so a jump in position voids the loss sample.
+            step = (pct - st["lastPct"]) % 1.0
+            if 0.05 < step < 0.995:
+                st["bad"] = True
+        if pct is not None and pct >= 0:
+            st["lastPct"] = pct
         if in_box and not st["inBox"]:                       # stopped in the box
             st["boxT"] = t
         if st["inBox"] and not in_box and st["boxT"] is not None:
             st["boxS"] = t - st["boxT"]                      # stationary time
+            st["lastBoxS"] = round(st["boxS"], 1)
             st["boxT"] = None
         if st["onRoad"] and not on_pit_road:                 # left the lane
             if st["enterT"] is not None:                     # ...and we saw it arrive
                 st["stops"] += 1
                 st["lastStopS"] = round(st["boxS"] if st["boxS"] is not None else t - st["enterT"], 1)
                 st["lastStopLap"] = st["enterLap"]
+                rec = self._pit_lane_sample(idx, st, t, pct, st["boxS"])
+                if rec is not None:
+                    self._stops_tick[idx] = rec
             st["enterT"] = st["enterLap"] = st["boxS"] = None
         st["onRoad"], st["inBox"] = on_pit_road, in_box
 
@@ -365,6 +420,531 @@ class Deriver:
         out["bestSectorS"] = list(st["best"])
         out["sectorIdx"] = cur
         return out
+
+    # ------------------------------------------------------------------ #
+    # Race engineer booth: lap history, pace, gaps to you, pit loss,
+    # rejoin, undercut watch, traffic, and the event feed.
+    # ------------------------------------------------------------------ #
+
+    # How long to wait for CarIdxLastLapTime to change after the lap counter
+    # ticks. The player's LapLastLapTime is known to lag the crossing (the Lap
+    # Analyzer had to correct for exactly that); whether the per-car array does
+    # is not verified, so both orders are handled: a value that already changed
+    # is taken at once, one that has not is waited for.
+    LAP_TIME_WAIT_S = 10.0
+    PACE_LAPS = 5
+    FEED_MAX_LAPS = 6000
+    FEED_MAX_EVENTS = 300
+
+    def _feed_add(self, kind: str, item: dict):
+        self.feed_seq += 1
+        item["seq"] = self.feed_seq
+        lst = self.feed_laps if kind == "lap" else self.feed_events
+        lst.append(item)
+        cap = self.FEED_MAX_LAPS if kind == "lap" else self.FEED_MAX_EVENTS
+        if len(lst) > cap:
+            del lst[: len(lst) - cap]
+
+    def feed_since(self, seq: int) -> dict:
+        return {"laps": [x for x in self.feed_laps if x["seq"] > seq],
+                "events": [x for x in self.feed_events if x["seq"] > seq]}
+
+    def event(self, t, kind: str, **fields):
+        item = {"t": None if t is None else round(t, 2), "kind": kind, "lap": self._player_lap}
+        item.update(fields)
+        self._feed_add("event", item)
+
+    def record_lap(self, c: dict, t) -> dict | None:
+        """Per-car lap entries, taken at the line. Returns the entry when one is
+        finalised this tick (its lap time known or given up on), else None."""
+        idx, lc, last = c.get("idx"), c.get("lapCompleted"), c.get("lastLapS")
+        if idx is None or lc is None or t is None or lc < 0:
+            return None
+        st = self._lapst.get(idx)
+        if st is None:
+            # First sight: the current LastLapTime belongs to a lap we did not
+            # watch. Remember it so it is never credited to the next one.
+            self._lapst[idx] = {"lc": lc, "final": last, "pend": None, "pendT": None,
+                                "stale": None, "pit": bool(c.get("onPitRoad"))}
+            return None
+        if c.get("onPitRoad"):
+            st["pit"] = True
+        done = None
+        if lc > st["lc"]:
+            if st["pend"] is not None:          # the previous lap never got a time
+                done = self._finish_lap(idx, st)
+            d = c.get("derived") or {}
+            st["pend"] = {"idx": idx, "lap": lc, "lapS": None, "pos": c.get("pos"),
+                          "classPos": c.get("classPos"),
+                          "gapS": c.get("f2TimeS") if c.get("gapValid") else None,
+                          "classGapS": d.get("classGapS"), "toPlayerS": d.get("toPlayerS"),
+                          "pit": st["pit"] or bool(c.get("onPitRoad")),
+                          "jump": lc - st["lc"] != 1, "t": round(t, 2)}
+            st["pendT"], st["stale"], st["lc"] = t, st["final"], lc
+            st["pit"] = bool(c.get("onPitRoad"))
+        pend = st["pend"]
+        if pend is not None:
+            if last is not None and last > 0 and last != st["stale"]:
+                if not pend["jump"]:
+                    pend["lapS"] = round(last, 3)
+                st["final"] = last
+                done = self._finish_lap(idx, st)
+            elif t - st["pendT"] >= self.LAP_TIME_WAIT_S:
+                done = self._finish_lap(idx, st)   # no new time: leave lapS None
+        return done
+
+    def _finish_lap(self, idx, st) -> dict:
+        e = st["pend"]
+        st["pend"] = None
+        e.pop("jump", None)
+        lst = self._laps.setdefault(idx, [])
+        lst.append(e)
+        del lst[:-200]
+        self._feed_add("lap", e)
+        self._lap_finished.append(e)
+        return e
+
+    def pace(self, idx) -> float | None:
+        """Median of this car's recent racing laps: no in- or out-laps, no
+        unknown times. Two laps minimum, so one lap cannot stand for a pace."""
+        laps = [e["lapS"] for e in self._laps.get(idx, []) if e["lapS"] and not e["pit"]]
+        laps = laps[-self.PACE_LAPS:]
+        if len(laps) < 2:
+            return None
+        s = sorted(laps)
+        n = len(s)
+        return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+    # Player-relative trend: d(toPlayerS)/lap. Positive is GOOD for the player
+    # whichever side the other car is on: a car ahead (negative toPlayerS)
+    # coming back towards zero, or a car behind (positive) dropping further back.
+    def to_player_trend(self, idx, t, to_player_s, lap_time_s, player_idx) -> dict:
+        out = {"youGainSPerLap": None, "youCatchLaps": None, "catchesYouLaps": None}
+        if idx is None or t is None:
+            return out
+        if self._tp_ref.get(idx) != player_idx:
+            self._tp_hist.pop(idx, None)
+            self._tp_ref[idx] = player_idx
+        hist = self._tp_hist.setdefault(idx, [])
+        if to_player_s is None:
+            hist.clear()
+            return out
+        if hist and t - hist[-1][0] < self.GAP_SAMPLE_S:
+            slope = self._tp_slope.get(idx)
+        else:
+            hist.append((t, to_player_s))
+            cutoff = t - self.GAP_WINDOW_S
+            while hist and hist[0][0] < cutoff:
+                hist.pop(0)
+            slope = None
+            if len(hist) >= self.GAP_MIN_SAMPLES and (hist[-1][0] - hist[0][0]) >= self.GAP_MIN_SPAN_S:
+                slope = self._slope(hist)
+            self._tp_slope[idx] = slope
+        if slope is None or not lap_time_s or lap_time_s <= 0:
+            return out
+        gain = slope * lap_time_s
+        if abs(gain) > self.GAP_MAX_RATE_S_PER_LAP:
+            hist.clear()
+            self._tp_slope[idx] = None
+            return out
+        if abs(gain) < 0.02:
+            out["youGainSPerLap"] = 0.0
+            return out
+        out["youGainSPerLap"] = round(gain, 3)
+        if to_player_s < 0 < gain:
+            laps = -to_player_s / gain
+            if laps < 999:
+                out["youCatchLaps"] = round(laps, 1)
+        elif to_player_s > 0 > gain:
+            laps = to_player_s / -gain
+            if laps < 999:
+                out["catchesYouLaps"] = round(laps, 1)
+        return out
+
+    # ---- pit loss ------------------------------------------------------------
+    @staticmethod
+    def _median(vals):
+        s = sorted(vals)
+        if not s:
+            return None
+        n = len(s)
+        return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+    def pit_loss(self) -> dict:
+        """Lane loss measured from stops we watched from entry to exit:
+        time between the pit-road lines, minus the stationary time, minus the
+        time that car takes to cover the same stretch of track at its own pace.
+        The stationary part depends on the service, so it is kept separate."""
+        lane = [s["laneLossS"] for s in self._loss]
+        boxes = [s["boxS"] for s in self._loss if s["boxS"] is not None and s["boxS"] > 1.0]
+        med = self._median(lane)
+        bmed = self._median(boxes)
+        return {"laneLossS": None if med is None else round(med, 2), "samples": len(lane),
+                "boxMedianS": None if bmed is None else round(bmed, 1), "boxSamples": len(boxes)}
+
+    def _pit_lane_sample(self, idx, st, t, pct, box_s):
+        """Called when a car leaves the lane after a stop we watched."""
+        if st.get("bad") or st.get("enterPct") is None or pct is None or pct < 0:
+            return None
+        pace = self.pace(idx)
+        if not pace:
+            return None
+        frac = (pct - st["enterPct"]) % 1.0
+        lane_t = t - st["enterT"]
+        loss = lane_t - (box_s or 0.0) - frac * pace
+        if not (frac < 0.3 and 0.0 < loss < 120.0):
+            return None
+        rec = {"idx": idx, "laneLossS": round(loss, 2), "boxS": box_s, "laneS": round(lane_t, 1)}
+        self._loss.append(rec)
+        del self._loss[:-30]
+        return rec
+
+    # ---- rejoin --------------------------------------------------------------
+    def predict_rejoin(self, cars: list, idx: int, loss_s: float) -> dict | None:
+        """Where car idx would be if it lost loss_s right now. Race order only,
+        from CarIdxF2Time (time behind the leader): the car's virtual gap is its
+        gap plus the loss, and every car with a smaller gap is ahead of it.
+        Only cars whose F2Time passed the placeholder/order checks take part."""
+        me = next((c for c in cars if c.get("idx") == idx), None)
+        if me is None or not me.get("gapValid"):
+            return None
+        v = me["f2TimeS"] + loss_s
+        others = [c for c in cars if c.get("gapValid") and c.get("idx") != idx]
+        ahead = [c for c in others if c["f2TimeS"] < v]
+        same = [c for c in others if c.get("classId") == me.get("classId")]
+        c_ahead = [c for c in same if c["f2TimeS"] < v]
+        c_behind = [c for c in same if c["f2TimeS"] >= v]
+        a = max(c_ahead, key=lambda c: c["f2TimeS"]) if c_ahead else None
+        b = min(c_behind, key=lambda c: c["f2TimeS"]) if c_behind else None
+        out = {"lossS": round(loss_s, 1), "pos": len(ahead) + 1, "classPos": len(c_ahead) + 1,
+               "ahead": {"idx": a["idx"], "gapS": round(v - a["f2TimeS"], 1)} if a else None,
+               "behind": {"idx": b["idx"], "gapS": round(b["f2TimeS"] - v, 1)} if b else None,
+               "traffic": []}
+        # Who is physically near on track as the car comes out, lapped cars
+        # included: race-time separation folded into one lap of this car's pace.
+        pace = self.pace(idx)
+        if pace:
+            near = []
+            for c in others:
+                if c.get("onPitRoad"):
+                    continue
+                sep = ((c["f2TimeS"] - v + pace / 2) % pace) - pace / 2
+                if abs(sep) <= 2.0:
+                    near.append({"idx": c["idx"], "onTrackS": round(sep, 1)})
+            out["traffic"] = sorted(near, key=lambda x: abs(x["onTrackS"]))[:3]
+        return out
+
+    def rejoin(self, cars: list, player_idx) -> dict | None:
+        pl = self.pit_loss()
+        out = {**pl, "options": []}
+        if pl["laneLossS"] is None or player_idx is None:
+            return out
+        opts = [("zero_stationary", 0.0)]
+        if pl["boxMedianS"] is not None:
+            opts.append(("typical_stop", pl["boxMedianS"]))
+        own = self._pit.get(player_idx, {}).get("lastBoxS")
+        if own:
+            opts.append(("your_last_stop", own))
+        for kind, s in opts:
+            r = self.predict_rejoin(cars, player_idx, pl["laneLossS"] + s)
+            if r is None:
+                return out
+            r["kind"], r["stationaryS"] = kind, round(s, 1)
+            out["options"].append(r)
+        return out
+
+    def typical_loss(self) -> float | None:
+        pl = self.pit_loss()
+        if pl["laneLossS"] is None:
+            return None
+        return pl["laneLossS"] + (pl["boxMedianS"] or 0.0)
+
+    # ---- undercut / overcut ------------------------------------------------
+    UC_RANGE_S = 40.0
+    UC_LAPS = 6
+
+    def undercut(self, cars: list, player_idx, t) -> list:
+        """Pit battles with the cars around you in your class.
+
+        they_stopped: a rival stopped and you have not. afterYourStopS is where
+          you would be against them if you stopped now (toPlayerS minus the
+          typical loss); positive means you would still come out ahead.
+        you_stopped: you stopped and the rival has not. afterTheirStopS is where
+          they would be against you if they stopped now; positive = behind you.
+        series holds that number at each of the stopping car's lap crossings.
+        """
+        by = {c["idx"]: c for c in cars}
+        me = by.get(player_idx)
+        loss = self.typical_loss()
+        if me is None:
+            return []
+        my_cls = me.get("classId")
+        in_pit = {i: bool(c.get("onPitRoad")) for i, c in by.items()}
+        prev = self._uc_inpit
+        for i, c in by.items():
+            entered = in_pit[i] and not prev.get(i, in_pit[i])
+            if not entered:
+                continue
+            if i == player_idx:
+                for j, o in by.items():
+                    if j == player_idx:
+                        continue
+                    rec = self._uc.get(j)
+                    if rec and rec["kind"] == "they_stopped" and rec["settled"] is None:
+                        rec["secondStopT"] = t      # you answered their stop
+                        continue
+                    tp = (o.get("derived") or {}).get("toPlayerS")
+                    if (o.get("classId") == my_cls and tp is not None
+                            and abs(tp) < self.UC_RANGE_S and not in_pit.get(j)):
+                        self._uc[j] = {"kind": "you_stopped", "pre": tp, "t0": t,
+                                       "stopLap": me.get("lapCompleted"), "series": [], "settled": None}
+            else:
+                tp = (c.get("derived") or {}).get("toPlayerS")
+                rec = self._uc.get(i)
+                if rec and rec["kind"] == "you_stopped" and rec["settled"] is None:
+                    rec["secondStopT"] = t          # they answered: settle when out
+                elif (c.get("classId") == my_cls and tp is not None and abs(tp) < self.UC_RANGE_S
+                        and not in_pit.get(player_idx) and not self._recently_stopped(player_idx, me)):
+                    self._uc[i] = {"kind": "they_stopped", "pre": tp, "t0": t,
+                                   "stopLap": c.get("lapCompleted"), "series": [], "settled": None}
+        self._uc_inpit = in_pit
+
+        # lap crossings feed the series
+        for e in self._lap_finished:
+            for j, rec in self._uc.items():
+                stopper = j if rec["kind"] == "they_stopped" else player_idx
+                # Only laps after the stopper is back on track: a crossing made in
+                # the lane measures the stop in progress, not the battle.
+                if e["idx"] == stopper and rec["settled"] is None and not in_pit.get(stopper):
+                    v = self._uc_value(rec, by.get(j), loss)
+                    if v is not None:
+                        rec["series"].append(round(v, 2))
+                        del rec["series"][:-self.UC_LAPS]
+
+        out = []
+        for j, rec in list(self._uc.items()):
+            c = by.get(j)
+            if c is None:
+                continue
+            tp = (c.get("derived") or {}).get("toPlayerS")
+            # settle once both cars have stopped and are both out of the lane
+            if rec.get("secondStopT") is not None and rec["settled"] is None \
+                    and not in_pit.get(j) and not in_pit.get(player_idx) and tp is not None:
+                rec["settled"] = round(tp, 2)
+                rec["settledT"] = t
+                self.event(t, "pit_battle", idx=j, preS=round(rec["pre"], 2), nowS=rec["settled"],
+                           first="them" if rec["kind"] == "they_stopped" else "you")
+            stopper = c if rec["kind"] == "they_stopped" else me
+            laps_since = None
+            if stopper.get("lapCompleted") is not None and rec["stopLap"] is not None:
+                laps_since = stopper["lapCompleted"] - rec["stopLap"]
+            if (laps_since is not None and laps_since > self.UC_LAPS) or \
+                    (rec.get("settledT") is not None and t - rec["settledT"] > 240):
+                del self._uc[j]
+                continue
+            item = {"idx": j, "kind": rec["kind"], "stopLap": rec["stopLap"], "lapsSince": laps_since,
+                    "preStopToPlayerS": round(rec["pre"], 2),
+                    "toPlayerS": None if tp is None else round(tp, 2),
+                    "inPit": in_pit.get(j) if rec["kind"] == "they_stopped" else in_pit.get(player_idx),
+                    "series": list(rec["series"]), "settledToPlayerS": rec["settled"],
+                    # change between the last two crossings. Both series use the
+                    # toPlayerS sign (+ = they are behind you), so + is in your
+                    # favour for either kind of battle.
+                    "trendSPerLap": None}
+            if len(rec["series"]) >= 2:
+                step = rec["series"][-1] - rec["series"][-2]
+                item["trendSPerLap"] = round(step, 2)
+            v = self._uc_value(rec, c, loss)
+            item["afterYourStopS" if rec["kind"] == "they_stopped" else "afterTheirStopS"] = \
+                None if v is None or rec["settled"] is not None else round(v, 2)
+            out.append(item)
+        return out
+
+    def _recently_stopped(self, idx, car) -> bool:
+        """True within UC_LAPS laps of this car's last watched stop: a rival
+        stopping then is answering that stop, not opening a new battle."""
+        last = self._pit.get(idx, {}).get("lastStopLap")
+        lap = (car or {}).get("lap")
+        return last is not None and lap is not None and lap - last <= self.UC_LAPS
+
+    @staticmethod
+    def _uc_value(rec, c, loss):
+        tp = (c.get("derived") or {}).get("toPlayerS") if c else None
+        if tp is None or loss is None:
+            return None
+        return tp - loss if rec["kind"] == "they_stopped" else tp + loss
+
+    # ---- traffic -----------------------------------------------------------
+    TRAFFIC_HORIZON_S = 90.0
+    TRAFFIC_MIN_DIFF_S = 0.5
+
+    def traffic(self, cars: list, player_idx) -> list:
+        """When you will meet slower cars ahead, and faster cars from behind,
+        at everyone's current pace. Constant-pace arithmetic on track position:
+        the gap in lap fraction closes at (1/your pace - 1/their pace) laps per
+        second. Speeds vary around a lap, so the place is approximate."""
+        me = next((c for c in cars if c.get("idx") == player_idx), None)
+        if me is None or me.get("surface") != "on_track" or me.get("pct") is None or me["pct"] < 0:
+            return []
+        pp = self.pace(player_idx)
+        if not pp:
+            return []
+        out = []
+        for c in cars:
+            if c.get("idx") == player_idx or c.get("surface") != "on_track":
+                continue
+            if c.get("pct") is None or c["pct"] < 0:
+                continue
+            pc = self.pace(c["idx"])
+            if not pc:
+                continue
+            if pc > pp + self.TRAFFIC_MIN_DIFF_S:            # slower car: you catch it
+                d = (c["pct"] - me["pct"]) % 1.0
+                rate = 1.0 / pp - 1.0 / pc
+                tm = d / rate
+                if tm <= self.TRAFFIC_HORIZON_S:
+                    out.append({"idx": c["idx"], "kind": "you_catch", "inS": round(tm, 1),
+                                "atPct": round((me["pct"] + tm / pp) % 1.0, 4)})
+            elif pc < pp - self.TRAFFIC_MIN_DIFF_S:          # faster car: it catches you
+                d = (me["pct"] - c["pct"]) % 1.0
+                rate = 1.0 / pc - 1.0 / pp
+                tm = d / rate
+                if tm <= self.TRAFFIC_HORIZON_S:
+                    out.append({"idx": c["idx"], "kind": "catches_you", "inS": round(tm, 1),
+                                "atPct": round((me["pct"] + tm / pp) % 1.0, 4)})
+        return sorted(out, key=lambda x: x["inS"])[:6]
+
+    # ---- events from the field ---------------------------------------------
+    CLOSING_EVENT_GAIN = 0.3
+    CLOSING_EVENT_GAP = 3.0
+
+    def field_events(self, cars: list, t, player_idx, stops: dict):
+        ev = self._ev
+        by = {c["idx"]: c for c in cars}
+        me = by.get(player_idx)
+        # pit in / out
+        for i, c in by.items():
+            onr = bool(c.get("onPitRoad"))
+            was = ev["pit"].get(i)
+            ev["pit"][i] = onr
+            if was is None:
+                continue
+            if onr and not was:
+                self.event(t, "pit_in", idx=i, carLap=c.get("lapCompleted"))
+            elif was and not onr:
+                d = c.get("derived") or {}
+                s = stops.get(i)
+                self.event(t, "pit_out", idx=i, stationaryS=d.get("lastStopS") if d.get("stopsSeen") else None,
+                           laneLossS=s["laneLossS"] if s else None)
+        # fastest laps, overall and per class. Seeded silently from what is
+        # already on the board: only an improvement we watched is news.
+        best_all = ev["best"].get("all")
+        for c in cars:
+            b = c.get("bestLapS")
+            if not b or b <= 0:
+                continue
+            key = ("cls", c.get("classId"))
+            cb = ev["best"].get(key)
+            seeded = ev["bestSeeded"]
+            if cb is None or b < cb - 1e-4:
+                if seeded and cb is not None:
+                    overall = best_all is None or b < best_all - 1e-4
+                    self.event(t, "fastest_lap", idx=c["idx"], lapS=round(b, 3),
+                               classId=c.get("classId"), overall=overall)
+                ev["best"][key] = b
+            if best_all is None or b < best_all - 1e-4:
+                ev["best"]["all"] = best_all = b
+        ev["bestSeeded"] = True
+        if me is None:
+            return
+        # someone closing on you, or you on them (class rivals, once per approach)
+        for i, c in by.items():
+            if i == player_idx or c.get("classId") != me.get("classId"):
+                continue
+            d = c.get("derived") or {}
+            tp, gain = d.get("toPlayerS"), d.get("youGainSPerLap")
+            key = None
+            if tp is not None and gain is not None:
+                if 0 < tp < self.CLOSING_EVENT_GAP and gain <= -self.CLOSING_EVENT_GAIN:
+                    key = "behind_closing"
+                elif -self.CLOSING_EVENT_GAP < tp < 0 and gain >= self.CLOSING_EVENT_GAIN:
+                    key = "you_closing"
+            prevk = ev["closing"].get(i)
+            if key and key != prevk:
+                self.event(t, key, idx=i, gapS=round(abs(tp), 2), rateSPerLap=round(abs(gain), 2))
+            if key or (gain is not None and abs(gain) < 0.1) or tp is None:
+                ev["closing"][i] = key
+        # your class position, once it has held for 3 s
+        cp = me.get("classPos") or None
+        self._stable(ev, "pos", cp, t, 3.0, lambda old, new: self.event(t, "position", fromPos=old, toPos=new))
+        # class leader changes, held for 5 s
+        leader = next((c["idx"] for c in cars if c.get("classPos") == 1 and c.get("classId") == me.get("classId")), None)
+        self._stable(ev, "lead", leader, t, 5.0, lambda old, new: self.event(t, "lead_change", idx=new, prevIdx=old))
+
+    @staticmethod
+    def _stable(ev, key, value, t, hold, emit):
+        st = ev["stable"].setdefault(key, {"val": value, "cand": value, "since": t})
+        if value is None:
+            return
+        if value != st["cand"]:
+            st["cand"], st["since"] = value, t
+        if st["cand"] != st["val"] and t - st["since"] >= hold:
+            old, st["val"] = st["val"], st["cand"]
+            if old is not None:
+                emit(old, st["val"])
+
+    # ---- events from your car, the session and the weather ------------------
+    FLAG_EVENTS = ("green", "yellow", "caution", "red", "white", "checkered", "black",
+                   "repair", "disqualify", "blue", "furled")
+    FLAG_REPEAT_S = 20.0
+    QUIET_WARNINGS = {"pit_speed_limiter", "rev_limiter"}
+
+    def state_events(self, t, session: dict, player: dict, weather: dict):
+        ev = self._ev
+        self._player_lap = player.get("lap")
+        if t is None:
+            return
+        flags = set(session.get("flags") or [])
+        if ev["flags"] is not None:
+            for f in self.FLAG_EVENTS:
+                if f in flags and f not in ev["flags"]:
+                    last = ev["flagAt"].get(f)
+                    if last is None or t - last >= self.FLAG_REPEAT_S:
+                        self.event(t, "flag", flag=f)
+                    ev["flagAt"][f] = t
+        ev["flags"] = flags
+        inc = (player.get("incidents") or {}).get("my")
+        if inc is not None:
+            if ev["inc"] is not None and inc > ev["inc"]:
+                self.event(t, "incident", delta=inc - ev["inc"], total=inc, limit=self.incident_limit)
+            ev["inc"] = inc
+        warn = set(player.get("engineWarnings") or []) - self.QUIET_WARNINGS
+        if ev["warn"] is not None:
+            new = sorted(warn - ev["warn"])
+            if new:
+                self.event(t, "engine", warnings=new)
+        ev["warn"] = warn
+        tow = player.get("towTimeS")
+        if tow is not None:
+            if ev["tow"] is not None and tow > 0 and not ev["tow"] > 0:
+                self.event(t, "tow", towS=round(tow, 1))
+            ev["tow"] = tow
+        wet = weather.get("wetness")
+        if wet is not None:
+            if ev["wet"] is not None and wet != ev["wet"]:
+                self.event(t, "track_wetness", value=wet, prev=ev["wet"])
+            ev["wet"] = wet
+        rain = weather.get("precipitationPct")
+        if rain is not None:
+            raining = rain > 0.005
+            if ev["rain"] is not None and raining != ev["rain"]:
+                self.event(t, "rain_start" if raining else "rain_stop", value=round(rain, 3))
+            ev["rain"] = raining
+        dw = weather.get("declaredWet")
+        if dw is not None:
+            if ev["declaredWet"] is not None and bool(dw) != ev["declaredWet"]:
+                self.event(t, "declared_wet", value=bool(dw))
+            ev["declaredWet"] = bool(dw)
 
     def session_best_sectors(self) -> list:
         return list(self._sect_best)
@@ -549,6 +1129,7 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
                            laps_remain_ex=_num(g("SessionLapsRemainEx")),
                            time_remain_s=_num(g("SessionTimeRemain")),
                            lap_time_s=_num(g("LapLastLapTime")))
+    deriver.state_events(session["timeS"], session, player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
             "session": session, "weather": weather, "player": player, "derived": derived}
 
@@ -700,8 +1281,40 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         c.setdefault("derived", {"intervalS": None})
         c.setdefault("gapValid", False)
 
+    # Gaps that only mean something in a race, where F2Time is time behind the
+    # leader: to your car (positive = that car is behind you) and to the leader
+    # of the car's own class. Both are differences of two F2Times that each
+    # passed the checks above; anything else stays null.
+    session_num = _num(g("SessionNum"))
+    is_race = _is_race(session_msg, session_num)
+    player_idx = _num(g("PlayerCarIdx"))
+    by_idx = {c["idx"]: c for c in cars}
+    me = by_idx.get(player_idx)
+    class_leader = {}
+    for c in ordered:
+        if c["gapValid"] and c.get("classPos") == 1:
+            class_leader[c.get("classId")] = c
+    for c in cars:
+        d = c["derived"]
+        d["toPlayerS"] = None
+        d["classGapS"] = None
+        if not is_race or not c["gapValid"]:
+            continue
+        lead = class_leader.get(c.get("classId"))
+        if lead is not None:
+            d["classGapS"] = round(c["f2TimeS"] - lead["f2TimeS"], 3)
+        if me is not None and me["gapValid"] and c is not me:
+            d["toPlayerS"] = round(c["f2TimeS"] - me["f2TimeS"], 3)
+
     if deriver is not None:
         now = _num(g("SessionTime"))
+        deriver._lap_finished = []
+        deriver._stops_tick = {}
+        limit = ((session_msg or {}).get("options") or {}).get("IncidentLimit")
+        try:
+            deriver.incident_limit = int(str(limit).split()[0]) if limit is not None else None
+        except ValueError:
+            deriver.incident_limit = None        # the YAML says unlimited
         sector_starts = [s.get("SectorStartPct") for s in ((session_msg or {}).get("sectors") or [])
                          if s.get("SectorStartPct") is not None]
         ahead_of = {}                      # carIdx -> idx of the car it is measured against
@@ -718,7 +1331,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                 ahead_idx=ahead_of.get(c.get("idx"))))
             c["derived"].update(deriver.pit(
                 c.get("idx"), now, c.get("onPitRoad"),
-                c.get("surface") == "in_pit_stall", c.get("lap")))
+                c.get("surface") == "in_pit_stall", c.get("lap"), pct=c.get("pct")))
             c["derived"].update(deriver.stint(
                 c.get("idx"), c.get("lapCompleted"), c.get("lastLapS"),
                 c["derived"].get("stopsSeen")))
@@ -737,5 +1350,32 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
 
     out = {"type": "cars", "schema": SCHEMA_VERSION, "t": _num(g("SessionTime")), "cars": cars}
     if deriver is not None:
-        out["derived"] = {"sessionBestSectorS": deriver.session_best_sectors()}
+        for c in cars:
+            deriver.record_lap(c, now)
+        my_lap = deriver.pace(player_idx) if me is not None else None
+        if my_lap is None and me is not None and me.get("lastLapS") and me["lastLapS"] > 0:
+            my_lap = me["lastLapS"]
+        for c in cars:
+            p = deriver.pace(c["idx"])
+            c["derived"]["paceS"] = None if p is None else round(p, 3)
+            if c is me:
+                continue
+            c["derived"].update(deriver.to_player_trend(
+                c["idx"], now, c["derived"].get("toPlayerS"), my_lap, player_idx))
+        out["derived"] = {
+            "sessionBestSectorS": deriver.session_best_sectors(),
+            "isRace": is_race,
+            "pitLoss": deriver.pit_loss(),
+            "rejoin": deriver.rejoin(cars, player_idx) if is_race and me is not None else None,
+            "undercut": deriver.undercut(cars, player_idx, now) if is_race and me is not None else [],
+            "traffic": deriver.traffic(cars, player_idx),
+        }
+        deriver.field_events(cars, now, player_idx, deriver._stops_tick)
     return out
+
+
+def _is_race(session_msg: dict | None, session_num) -> bool:
+    for s in (session_msg or {}).get("sessions") or []:
+        if s.get("SessionNum") == session_num:
+            return "race" in str(s.get("SessionType") or "").lower()
+    return False

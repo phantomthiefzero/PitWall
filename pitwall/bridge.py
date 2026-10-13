@@ -43,6 +43,11 @@ class Bridge:
         self.stats = {"sent": 0, "frames": 0, "reconnects": 0, "frame_errors": 0}
         self._last_err = None
         self._next_state = self._next_cars = 0.0
+        # The feed (lap history + events) is append-only. Viewers get it whole
+        # on connect, on a resend and after a reset, and only the new entries
+        # otherwise; feed_seq says how far each viewer has been sent.
+        self._feed_sent = 0
+        self._feed_full_due = True
 
     def _ws_url(self) -> str:
         sep = "&" if "?" in self.relay_url else "?"
@@ -127,11 +132,13 @@ class Bridge:
                 self._src_restarts = restarts
                 self._session_num = session_num
                 self.deriver = Deriver()
+                self._feed_full_due = True
                 self.log("source restarted; derived history reset")
             elif session_num is not None and session_num != self._session_num:
                 prev, self._session_num = self._session_num, session_num
                 if prev is not None:
                     self.deriver = Deriver()
+                    self._feed_full_due = True
                     self.log(f"session {prev} -> {session_num}; derived history reset")
             st = build_state(self.src, self.deriver)
             self._maybe_build_map(st, outbox)
@@ -143,7 +150,23 @@ class Bridge:
             enc = self.delta.encode(cars_to_wire(build_cars(self.src, self.session_msg, self.deriver)), now)
             if enc:
                 outbox.append(enc)
+            feed = self._feed_message()
+            if feed:
+                outbox.append(feed)
         return outbox
+
+    def _feed_message(self) -> dict | None:
+        d = self.deriver
+        if self._feed_full_due:
+            self._feed_full_due = False
+            self._feed_sent = d.feed_seq
+            return {"type": "feed", "full": True, "seq": d.feed_seq,
+                    "laps": list(d.feed_laps), "events": list(d.feed_events)}
+        if d.feed_seq > self._feed_sent:
+            out = {"type": "feed", "full": False, "seq": d.feed_seq, **d.feed_since(self._feed_sent)}
+            self._feed_sent = d.feed_seq
+            return out
+        return None
 
     async def _consumer(self, ws):
         async for raw in ws:
@@ -161,6 +184,7 @@ class Bridge:
                     if m:
                         await ws.send(json.dumps(m, separators=(",", ":")))
                 self.delta.reset()
+                self._feed_full_due = True
 
     async def run(self):
         if not self.src.connect():
@@ -174,6 +198,7 @@ class Bridge:
                     # force session/map resend and fresh keyframes on every (re)connect
                     self._last_siu = None
                     self.delta.reset()
+                    self._feed_full_due = True
                     await asyncio.gather(self._producer(ws), self._consumer(ws))
             except (OSError, websockets.exceptions.WebSocketException) as e:
                 # The relay accepts one bridge and closes the previous one with

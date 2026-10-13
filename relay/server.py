@@ -23,7 +23,7 @@ import urllib.parse
 import websockets
 from websockets.asyncio.server import serve
 
-SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello")
+SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed")
 
 # Messages a viewer may have queued before it is judged too slow and dropped.
 # At ~20 msg/s this is ~10 s of stream. Each viewer drains its own queue, so a
@@ -99,7 +99,7 @@ class Relay:
                     t = json.loads(raw).get("type")
                 except Exception:
                     continue
-                if t in SNAPSHOT_TYPES and (t not in ("state", "cars") or msg_is_full(raw)):
+                if t in SNAPSHOT_TYPES and (t not in ("state", "cars", "feed") or msg_is_full(raw)):
                     self.snapshot[t] = raw
                 await self._fanout(raw)
                 # Messages already buffered from the bridge are read without
@@ -120,7 +120,7 @@ class Relay:
         # they arrive in order and the writer task is the only thing sending.
         q.put_nowait(json.dumps({"type": "relay", "bridge": "connected" if self.bridge else "disconnected",
                                  "engineer": engineer, "viewers": len(self.viewers) + 1}))
-        for t in ("hello", "session", "map", "state", "cars"):
+        for t in ("hello", "session", "map", "state", "cars", "feed"):
             if t in self.snapshot:
                 q.put_nowait(self.snapshot[t])
         self.viewers[ws] = q
