@@ -274,6 +274,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       <div class="opts" id="shots"></div>
       <h3>All camera groups</h3>
       <div class="opts" id="groups"></div>
+      <div id="packs" class="note"></div>
       <h3>Auto-director</h3>
       <div class="opts" id="dirCtl"></div>
       <p class="note" id="dirNow"></p>
@@ -495,6 +496,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     const known = new Set(["nose", "gearbox", "roll bar", "lf susp", "lr susp", "rf susp", "rr susp", "gyro", "cockpit",
       "scenic", "tv1", "tv2", "tv3", "pit lane", "pit lane 2", "blimp", "chopper", "chase", "far chase", "rear chase"]);
     $("groups").innerHTML = groups.map(g => `<button data-group="${esc(g.num)}" class="${g.num === cur ? "on" : ""}" ${camOk && !g.scenic ? "" : "disabled"}${known.has((g.name || "").toLowerCase()) ? "" : ' title="Added by a camera pack"'}>${esc(g.name || "Group " + g.num)}${known.has((g.name || "").toLowerCase()) ? "" : " ★"}</button>`).join("");
+    renderPacks(groups, known);
     const cg = groups.find(g => g.num === cur);
     $("camGroupName").textContent = cg ? "On " + cg.name : "";
     const dir = S.director || {}, dOn = directorOn();
@@ -507,6 +509,28 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       ["prev_incident", "Previous iRacing incident"], ["next_incident", "Next iRacing incident"], ["prev_lap", "Previous lap"]]
       .map(([k, l]) => `<button data-replay="${k}" ${camOk ? "" : "disabled"}>${l}</button>`).join("");
   }
+  // Camera packs: what is on disk for this track (pitwall/camerapacks.py)
+  // against the groups iRacing is actually offering. Installed is not loaded.
+  function renderPacks(groups, known) {
+    const p = S.packs, el = $("packs");
+    if (!p || !p.track) { el.innerHTML = ""; return; }
+    const extra = groups.filter(g => !g.scenic && !known.has((g.name || "").toLowerCase()));
+    const tname = esc(p.track.name || "this track");
+    let h;
+    if (extra.length) {
+      h = `<b style="color:var(--good)">Camera pack in use:</b> iRacing is offering ${extra.length} extra group${extra.length === 1 ? "" : "s"} (★) for ${tname}: ${extra.map(g => esc(g.name)).join(", ")}. The director uses them.`;
+    } else if (p.track.folder) {
+      h = `<b style="color:var(--acc)">Camera pack installed, not loaded:</b> ${p.track.files.length} camera file${p.track.files.length === 1 ? "" : "s"} for ${tname} in <code>tracks\\${esc(p.track.folder)}</code>` +
+        (p.track.files.length ? ` (${p.track.files.slice(0, 4).map(esc).join(", ")}${p.track.files.length > 4 ? "…" : ""})` : "") +
+        `, but iRacing is only offering its standard groups. In iRacing press <b>Ctrl+F12</b>, open the Camera tab, click <b>Load track</b> and pick the file, then close the tool. (A pack that only reworks the standard TV groups shows no ★ but is still used once loaded.)`;
+    } else {
+      h = `No camera pack installed for ${tname}` + (p.trackCount ? ` (packs for ${p.trackCount} other track${p.trackCount === 1 ? "" : "s"} are installed)` : "") +
+        `. Install one from the suite's Broadcast tile; files go in <code>${esc(p.dir)}\\tracks</code>.`;
+    }
+    if (p.cars && p.cars.length) h += ` Car camera files found for: ${p.cars.map(c => esc(c.folder)).join(", ")} (load with <b>Load car</b>).`;
+    el.innerHTML = h;
+  }
+
   // Exactly one owner moves the camera (pitwall/director.py): you, the
   // director, the grid walk, or a followed battle. A cut by hand takes it back.
   const owner = () => (S.director && S.director.owner) || (S.director && S.director.on ? S.director.mode : "you");
@@ -915,6 +939,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
         else if (was !== now && m.note) log(esc(m.note));
         dirty.cam = dirty.ctl = dirty.field = true; renderCameraButtons(true); renderDirector(); break;
       }
+      case "camera_packs": S.packs = m; renderCameraButtons(true); break;
       case "livery_status": S.lv = m; dirty.lv = true; dirty.ctl = true; break;
       case "livery": {
         const car = m.car || String(m.key || "").split(":")[0];

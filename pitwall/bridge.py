@@ -20,6 +20,7 @@ import websockets
 from . import trackmap
 from .delta import DeltaEncoder, cars_to_wire
 from .commands import CommandGate
+from .camerapacks import packs_message
 from .carrender import CarRenderer, render_key
 from .director import Director
 from .liveries import LiveryCapture, LiveryStore, livery_key
@@ -59,6 +60,9 @@ class Bridge:
         # iRacing's own picture of every car with its paint (Trading Paints included)
         self.renderer = CarRenderer(self.livery_store.base, self._emit, log=log) if render_cars else None
         self._render_check = 0.0
+        self.camera_packs_dir = None              # None: Documents\iRacing\cameras
+        self.packs_msg = None
+        self._packs_key, self._packs_at = None, 0.0
         self._last_cars = None
         self._last_state = None
         self._cam_hold = None                     # (carIdx, group, since)
@@ -84,6 +88,7 @@ class Bridge:
             self._last_siu = siu   # after the build, so a failed parse is retried next frame
             self._render_check = 0.0
             outbox.append(self.session_msg)
+            self._maybe_packs(outbox, force=False)
             tr = self.session_msg["track"]
             key = (tr.get("TrackID"), tr.get("TrackConfigName"))
             if key != self._map_key:
@@ -96,6 +101,24 @@ class Bridge:
                 else:
                     self.log(f"no cached map for {key}; will build from first clean lap")
                     self._collector = trackmap.LapCollector()
+
+    def _maybe_packs(self, outbox: list[dict], force: bool):
+        """Camera packs on disk for this track (pitwall/camerapacks.py). Session
+        info updates often during a race; the folder is read at most every 30 s
+        unless the track changed, and sent only when it says something new."""
+        tr = (self.session_msg or {}).get("track") or {}
+        key = (tr.get("TrackName"), len((self.session_msg or {}).get("drivers") or []))
+        if not force and key == self._packs_key and now_m() - self._packs_at < 30.0:
+            return
+        self._packs_key, self._packs_at = key, now_m()
+        try:
+            msg = packs_message(self.session_msg, self.camera_packs_dir)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"camera packs: {type(e).__name__}: {e}")
+            return
+        if force or msg != self.packs_msg:
+            self.packs_msg = msg
+            outbox.append(msg)
 
     def _maybe_build_map(self, state: dict, outbox: list[dict]):
         if self.map_msg is not None or self._map_key is None:
@@ -386,7 +409,7 @@ class Bridge:
             elif msg.get("type") == "resend":
                 # a new viewer wants the slow-changing messages again + fresh keyframes
                 for m in (self.session_msg, self.map_msg, self.director.status(),
-                          self.capture.status_message()):
+                          self.capture.status_message(), self.packs_msg):
                     if m:
                         await ws.send(json.dumps(m, separators=(",", ":")))
                 self._liveries_sent.clear()
