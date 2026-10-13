@@ -88,7 +88,8 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
 .b-state b{display:block;font:800 26px/1 var(--num);font-variant-numeric:tabular-nums}
 .b-state span{display:block;font:600 15px/1.3 var(--txt);margin-top:3px}
 .b-flag{width:14px}
-.b-replay{background:var(--lose);color:#fff;font:800 20px/1 var(--num);display:grid;place-items:center;padding:0 12px;letter-spacing:.04em}
+.b-replay{background:var(--lose);color:#fff;font:800 22px/1 var(--num);display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:0 14px;letter-spacing:.04em}
+.b-replay small{font:600 15px/1.2 var(--txt);letter-spacing:0;margin-top:3px}
 
 /* ---------- battle box ---------- */
 #battle{left:50%;top:40px;width:600px;margin-left:-300px;transform:translateY(-14px)}
@@ -107,7 +108,7 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
 .bt-foot .gain{color:var(--gain)} .bt-foot .lose{color:var(--lose)}
 
 /* ---------- driver card (lower third) ---------- */
-#card{left:470px;bottom:56px;width:760px;display:flex;transform:translateY(16px)}
+#card{left:470px;bottom:56px;width:840px;display:flex;transform:translateY(16px)}
 #card.on{transform:none}
 .c-num{width:132px;background:var(--board);color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center}
 .c-num b{font:900 74px/0.85 var(--num);font-variant-numeric:tabular-nums}
@@ -122,7 +123,7 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
 .c-sub{padding:7px 18px;color:var(--mut);font:600 16px/1.2 var(--txt);display:flex;gap:10px;align-items:center}
 .c-sub .cls{padding:2px 7px;color:var(--ink);font-weight:700}
 .c-stats{display:flex;background:var(--panel2)}
-.c-stats div{flex:1;padding:8px 18px 9px;border-right:1px solid var(--line)}
+.c-stats div{flex:1 1 auto;padding:8px 14px 9px;border-right:1px solid var(--line);white-space:nowrap}
 .c-stats div:last-child{border-right:0}
 .c-stats span{display:block;color:var(--mut);font:600 13px/1 var(--txt)}
 .c-stats b{display:block;font:700 24px/1.1 var(--num);font-variant-numeric:tabular-nums;margin-top:3px}
@@ -140,7 +141,7 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
 .tk i{width:8px;flex:none;background:var(--mut)}
 .tk.purple i{background:var(--purple)} .tk.lead i{background:var(--amber)} .tk.pit i{background:var(--mut)}
 .tk.flag-green i{background:var(--flag-green)} .tk.flag-yellow i{background:var(--flag-yellow)} .tk.flag-red i{background:var(--flag-red)}
-.tk.flag-white i{background:var(--flag-white)} .tk.flag-blue i{background:var(--flag-blue)} .tk.wx i{background:#59C2E8}
+.tk.flag-white i{background:var(--flag-white)} .tk.inc i{background:var(--lose)} .tk.flag-blue i{background:var(--flag-blue)} .tk.wx i{background:#59C2E8}
 .tk p{margin:0;padding:10px 14px 9px;font:600 18px/1.25 var(--txt)}
 .tk p b{font:800 21px/1 var(--num);letter-spacing:.015em}
 @keyframes tkIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
@@ -322,13 +323,14 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
       case "best": return fmt.lap(c.bestLapS);
       case "last": return fmt.lap(c.lastLapS);
       case "stops": return d.stopsSeen != null ? D(String(d.stopsSeen)) : "–";
+      case "incidents": return c.incidents != null && c.incidents >= 0 ? c.incidents + "x" : "–";
       default:
         if (!isRace()) return fmt.lap(c.bestLapS);
         if (c.gapValid && !(c.f2TimeS > 0)) return "Leader";
         return d.intervalS != null ? D(fmt.gap(d.intervalS)) : "–";
     }
   }
-  const MODE_LABEL = { interval: "Interval", leader: "Gap", best: "Best lap", last: "Last lap", stops: "Stops seen" };
+  const MODE_LABEL = { interval: "Interval", leader: "Gap", best: "Best lap", last: "Last lap", stops: "Stops seen", incidents: "Incidents" };
   function fastestIdx(cars) {
     let best = null;
     for (const c of cars) if (c.bestLapS > 0 && (!best || c.bestLapS < best.bestLapS)) best = c;
@@ -415,10 +417,17 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
     // the race as it happens, and the audience should be told.
     const cam = S.state.camera || {};
     const sp = cam.replaySpeed;
-    const behind = sp != null && (sp !== 1 || cam.replaySlowMotion);
+    // Playing at normal speed but behind the live race (the producer jumped to
+    // an incident) is a replay too; liveEdge says so (normalize.live_edge).
+    const le = S.state.derived && S.state.derived.liveEdge;
+    const behind = (sp != null && (sp !== 1 || cam.replaySlowMotion)) || (le && le.atLive === false);
     const rp = $("bReplay");
     rp.classList.toggle("hide", !behind);
-    if (behind) rp.textContent = sp === 0 ? "Paused" : cam.replaySlowMotion ? "Slow-mo" : sp < 0 ? "Rewind" : "Replay " + sp + "x";
+    if (behind) {
+      const what = G("replay.label", "");
+      const mode = sp === 0 ? "Paused" : cam.replaySlowMotion ? "Slow-mo" : sp < 0 ? "Rewind" : sp > 1 ? "Replay " + sp + "x" : "Replay";
+      rp.innerHTML = esc(mode) + (what ? `<small>${esc(what)}</small>` : "");
+    }
   }
 
   // ---------------------------------------------------------------- battle
@@ -502,6 +511,12 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
     } else if (d.theoreticalBestS != null) {
       stats.push(["Best sectors", D(fmt.lap(d.theoreticalBestS))]);
     }
+    // iRacing's own count, from the session info. Shown against the limit when
+    // the session has one; hidden when the count is not published.
+    if (c.incidents != null && c.incidents >= 0) {
+      const lim = S.session && S.session.options ? parseInt(S.session.options.IncidentLimit, 10) : NaN;
+      stats.push(["Incidents", c.incidents + "x" + (lim > 0 ? `<small style="font-size:17px;color:var(--mut);font-weight:600"> / ${lim}</small>` : "")]);
+    }
     if (c.onPitRoad) stats[0][1] += " · pit";
     $("cStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${v}</b></div>`).join("");
   }
@@ -546,7 +561,7 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
   // ---------------------------------------------------------------- ticker
   // Only race-wide news. Events about "your" car (incidents, position, engine,
   // closing on you) are the driver's, and a spectator has none.
-  const TICK_KINDS = new Set(["fastest_lap", "class_lead", "pit_in", "pit_out", "flag", "rain_start", "rain_stop", "declared_wet"]);
+  const TICK_KINDS = new Set(["fastest_lap", "class_lead", "pit_in", "pit_out", "flag", "rain_start", "rain_stop", "declared_wet", "car_incident"]);
   const queue = [];
   function carName(i) { const c = carByIdx(i); if (!c) return "Car " + esc(i); const n = splitName(c.name);
     return `<b>${esc(n.first ? n.first[0] + ". " : "")}${esc(n.last)}</b>`; }
@@ -569,12 +584,20 @@ body{font-family:var(--txt);color:var(--fg);-webkit-font-smoothing:antialiased}
       case "rain_start": return ["wx", "Rain is falling"];
       case "rain_stop": return ["wx", "The rain has stopped"];
       case "declared_wet": return ["wx", e.value ? "Wet race declared" : "Wet declaration lifted"];
+      case "car_incident": {
+        // 2x and up only: 1x offs would bury everything else. The cause is
+        // named only when the rise matches a single entry in iRacing's table.
+        if (!(e.points >= 2)) return null;
+        const cause = e.single && e.causes.length === 1 ? ` · ${esc(e.causes[0])}` : "";
+        return ["inc", `${carName(e.idx)} +${esc(e.points)}x incident${cause}`];
+      }
     }
     return null;
   }
   function pushTick(e) {
     if (!TICK_KINDS.has(e.kind)) return;
     if ((e.kind === "pit_in" || e.kind === "pit_out") && !G("ticker.pits", true)) return;
+    if (e.kind === "car_incident" && !G("ticker.incidents", true)) return;
     const it = tickerItem(e); if (it) queue.push(it);
   }
   function pumpTicker() {

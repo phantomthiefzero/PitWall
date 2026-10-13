@@ -67,7 +67,7 @@ Recordings needed (each ~10–20 min, `--hz 10` is plenty for classification):
 | traffic meeting | lap-fraction gap / (1/your pace - 1/their pace) | Constant-pace arithmetic; the place is approximate because speed varies around a lap. Unit-tested. |
 | events (`feed.events`) | transitions in the values above and in `SessionFlags`, incidents, `EngineWarnings`, `PlayerCarTowTime`, weather | Seeded silently on first sight, so only what is watched happening is reported. Pit limiter and rev limiter warnings are routine and skipped. A flag is not repeated within 20 s. |
 
-## Broadcast (camera, replay, battles) — added Oct 2026, NOT yet run against the sim
+## Broadcast (camera, replay, battles, incidents) — added Oct 2026, NOT yet run against the sim
 
 | Item | Claim | Evidence so far | Check on the sim PC |
 |---|---|---|---|
@@ -81,6 +81,13 @@ Recordings needed (each ~10–20 min, `--hz 10` is plenty for classification):
 | `replay_set_play_speed`, `replay_search` | speed 0 pauses, `to_end` returns to live, `prev/next_incident` jump | pyirsdk API only | Replay buttons; "Back to live" must land at speed 1 |
 | `derived.battles` | class neighbours under 1.0 s (held to 1.5 s) | unit-tested; fake race checked rule by rule | watch a real multiclass race: no cross-class "battles", no flicker at 1.0 s |
 | `class_lead` event | every class, no player car needed | unit-tested | spectate a race with a lead change |
+
+| `DriverInfo/Drivers[].TeamIncidentCount`, `CurDriverIncidentCount` | populated for EVERY car while spectating, and refreshed with the session info a few seconds after the incident | **unknown and the biggest open question.** One replay tool's author found incident counts "only available for our car"; that may mean the telemetry `PlayerCar*IncidentCount` variables rather than the session info. If others' counts read -1 or never move, the Points list stays empty and only Off track / Slowed remain | spectate a race; watch a car spin; check the Points list gets it, and note how many seconds after the spin it arrives |
+| session-info refresh rate | fast enough that one count rise is usually one incident | unknown | compare rises against what you watched; a 1x+2x pair arriving as one 3x shows up as "more than one incident" |
+| `CarIdxTrackSurface` off_track | matches iRacing's "wheels off" | used the same way by RobertsmaniaReplay; not compared with 1x awards here | count Off track events against 1x awards for the same car |
+| `ReplaySessionTime` vs `SessionTime` | within 4 s at the live edge while spectating | the 4 s tolerance is RobertsmaniaReplay's, not measured here | watch the Live/Replay badge in the producer header while spectating normally: it must say Live |
+| `replay_search_session_time(session, ms)` | seeks the replay to that moment | pyirsdk API; RobertsmaniaReplay uses the same broadcast message | press Replay on an incident; the picture shows the car a few seconds before it |
+| `derived` slowed | spins and crashes, not slow corners or the start | unit-tested, and on the fake (all detections matched a real fake incident) | watch for false Slowed events at hairpins, at the start, and under yellow |
 
 Two traps found while building it. Camera cuts splice the spectator kinematics from two cars,
 so the map builder now voids its lap on any `CamCarIdx` change (tested). And `lead_change`

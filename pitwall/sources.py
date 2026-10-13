@@ -379,7 +379,8 @@ class FakeSource(TelemetrySource):
     ]
 
     def __init__(self, seed: int = 7, n_cars: int = 24, realtime: bool = True,
-                 speed: float = 1.0, player_pit_lap: int | None = None, spectator: bool = False):
+                 speed: float = 1.0, player_pit_lap: int | None = None, spectator: bool = False,
+                 incidents: bool | None = None, incident_every_s: float = 25.0):
         # spectator=True behaves like a spectator slot, as observed live:
         # PlayerCarIdx is 63 (not a car), the session is a replay at speed 1,
         # kinematics follow the camera car, and private car state (fuel, tyres,
@@ -387,6 +388,21 @@ class FakeSource(TelemetrySource):
         self.spectator = spectator
         self.cam = {"car": 0, "group": 11, "num": 1}
         self.replay_speed, self.replay_slow = 1, False
+        self.replay_behind = 0.0
+        # Incidents, in iRacing's shape (opt-in, on by default for a spectator
+        # field so older tests keep their exact race). What makes them awkward,
+        # and so worth faking: the count lives in the SESSION INFO and moves
+        # seconds after the event; concurrent incidents count only the most
+        # serious one ("2x that causes a 4x" is 4x); light contact is 0x and
+        # never moves the count; and a count can rise with nothing visible in
+        # the telemetry (contact, a wall) or a car can leave the track and earn
+        # nothing yet. Their own RNG, so they do not disturb the field's.
+        self.incidents_on = spectator if incidents is None else incidents
+        self.incident_every_s = incident_every_s
+        self.inc_rng = random.Random(seed + 101)
+        self.inc_effect: dict[int, dict] = {}     # idx -> {"until", "speed", "off_until"}
+        self.inc_pending: dict[int, dict] = {}    # idx -> {"at", "points"} awaiting the session update
+        self.inc_log: list[dict] = []             # ground truth for tests: what really happened
         self.rng = random.Random(seed)
         self.realtime = realtime
         # speed > 1 runs the race faster than real time (for looking at a whole
@@ -500,6 +516,8 @@ class FakeSource(TelemetrySource):
                 "LicColor": [0x0153DB, 0x00C702, 0xFEEC04, 0xFC8A27][c.idx % 4],
                 "IsSpectator": 0,
                 "CarIsPaceCar": 0,
+                "CurDriverIncidentCount": 0,
+                "TeamIncidentCount": 0,
             })
         return {
             "WeekendInfo": {
@@ -598,6 +616,9 @@ class FakeSource(TelemetrySource):
             else:
                 spd = (self.length / c.base_lap) * self.curvature_speed_factor(c.pct) / 0.83
                 spd += math.sin(self.t * 0.5 + c.idx) * 0.8
+                eff = self.inc_effect.get(c.idx)
+                if eff and self.t < eff["until"]:
+                    spd *= eff["speed"]
             new_pct = c.pct + spd * dt / self.length
             if c.pit_phase is None and c.pit_planned and c.pct < self.PIT_IN_PCT <= new_pct:
                 c.pit_phase, c.pit_planned = "lane_in", False
@@ -646,6 +667,8 @@ class FakeSource(TelemetrySource):
             fr[i] = c.fast_repairs
             gear[i] = c.gear
             rpm[i] = c.rpm
+        if self.incidents_on:
+            self._incidents_step(dt, surf)
         for i in range(self.n_cars, 64):
             surf[i] = -1
             pcts[i] = -1.0
@@ -728,7 +751,7 @@ class FakeSource(TelemetrySource):
             "CamGroupNumber": self.cam["group"], "CamCameraNumber": self.cam["num"],
             "CamCameraState": 0x0051 if self.spectator else 0x0000,
             "ReplayPlaySpeed": self.replay_speed, "ReplayPlaySlowMotion": self.replay_slow,
-            "ReplaySessionNum": 1, "ReplaySessionTime": self.t, "ReplayFrameNumEnd": 1,
+            "ReplaySessionNum": 1, "ReplaySessionTime": self.t - self.replay_behind, "ReplayFrameNumEnd": 1,
         })
         if self.spectator:
             v.update({"PlayerCarIdx": 63, "IsReplayPlaying": True, "IsInGarage": False})
@@ -751,6 +774,49 @@ class FakeSource(TelemetrySource):
 
     def get(self, name: str) -> Any:
         return self._vars.get(name)
+
+    # Kinds of incident the fake field has: (name, points on pavement, speed
+    # factor while it lasts, seconds, seconds off the track)
+    FAKE_INCIDENTS = [
+        ("wheels_off", 1, 0.85, 1.5, 1.5),
+        ("spin", 2, 0.05, 3.0, 1.2),
+        ("wall", 2, 0.30, 2.5, 0.0),
+        ("heavy_contact", 4, 0.20, 2.5, 0.0),
+        ("light_contact", 0, 0.80, 0.6, 0.0),
+    ]
+    FAKE_INCIDENT_WEIGHTS = [45, 20, 10, 10, 15]
+
+    def _incidents_step(self, dt: float, surf: list):
+        r = self.inc_rng
+        # start one now and then, on a car that is racing
+        if dt > 0 and self.t > 20 and r.random() < dt / self.incident_every_s:
+            cands = [c for c in self.cars if c.pit_phase is None and c.idx not in self.inc_effect]
+            if cands:
+                c = r.choice(cands)
+                name, pts, speed, dur, off = r.choices(self.FAKE_INCIDENTS, self.FAKE_INCIDENT_WEIGHTS)[0]
+                self.inc_effect[c.idx] = {"until": self.t + dur, "speed": speed, "off_until": self.t + off}
+                self.inc_log.append({"t": self.t, "idx": c.idx, "kind": name, "points": pts})
+                if pts:
+                    p = self.inc_pending.get(c.idx)
+                    if p:   # concurrent with one still pending: only the most serious counts
+                        p["points"] = max(p["points"], pts)
+                    else:
+                        self.inc_pending[c.idx] = {"at": self.t + 1.5 + r.random() * 4.5, "points": pts}
+        for i, eff in list(self.inc_effect.items()):
+            if self.t < eff["off_until"] and surf[i] == 3:
+                surf[i] = 0                       # off_track
+            if self.t >= eff["until"] and self.t >= eff["off_until"]:
+                del self.inc_effect[i]
+        # the session info catches up a few seconds later
+        due = [i for i, p in self.inc_pending.items() if self.t >= p["at"]]
+        if due:
+            drivers = {d["CarIdx"]: d for d in self._session["DriverInfo"]["Drivers"]}
+            for i in due:
+                p = self.inc_pending.pop(i)
+                d = drivers[i]
+                d["TeamIncidentCount"] += p["points"]
+                d["CurDriverIncidentCount"] += p["points"]
+            self._siu += 1
 
     # A stand-in for iRacing's camera so the producer panel can be tried without
     # the sim. commands.py calls it in place of pyirsdk and marks the result
@@ -780,6 +846,12 @@ class FakeSource(TelemetrySource):
         elif method == "replay_search":
             if args[0] == "to_end":
                 self.replay_speed, self.replay_slow = 1, False
+                self.replay_behind = 0.0
+        elif method == "replay_search_session_time":
+            # The fake cannot rewind its field; it moves the playhead clock only,
+            # which is what the live-edge logic reads.
+            session, ms = args
+            self.replay_behind = max(0.0, self.t - ms / 1000.0)
         else:
             raise ValueError(f"fake source cannot simulate {method}")
 

@@ -6,7 +6,8 @@ Officially supported via the SDK broadcast channel (irsdk_BroadcastMsg):
     camera        cut to a car by number or by position, in a camera group;
                   or hand the choice to iRacing (most exciting / leader / incident)
     replay        play speed (incl. slow motion and pause), jump to live, step
-                  between incidents and laps
+                  between incidents and laps, seek to a session time (replay
+                  one incident)
     telemetry     start/stop/restart disk telemetry       (not used here)
     chat / macros iRacing chat macros 1-15                  (not used here)
 
@@ -104,6 +105,44 @@ def plan_camera(cmd: dict) -> tuple[str, tuple]:
     raise ValueError(f"unknown camera action {action!r}")
 
 
+# Seconds to wait after a seek before setting the speed: a speed change sent
+# while iRacing is still seeking can be lost (RobertsmaniaReplay waits for the
+# frame number to settle for the same reason).
+SEEK_SETTLE_S = 0.4
+
+
+def plan_jump(cmd: dict) -> list[tuple[str, tuple]]:
+    """Replay one moment, e.g. an incident:
+        {"cmd":"replay","action":"jump","session":2,"timeS":812.4,"preroll":5,
+         "car":"34","group":11}
+    Cuts to the car first (when given), seeks to timeS - preroll in that session
+    (irsdk_BroadcastReplaySearchSessionTime, milliseconds), waits for the seek to
+    settle, then plays at normal speed. Returns the calls in order; ("sleep",
+    (s,)) is a pause, not a call into iRacing.
+    """
+    session = _int(cmd.get("session"), 0, 64, "session")
+    try:
+        t = float(cmd.get("timeS"))
+    except (TypeError, ValueError):
+        raise ValueError("timeS must be a number of seconds")
+    if not (0 <= t < 7 * 86400):
+        raise ValueError("timeS out of range")
+    try:
+        pre = float(cmd.get("preroll", 5))
+    except (TypeError, ValueError):
+        raise ValueError("preroll must be a number of seconds")
+    if not (0 <= pre <= 60):
+        raise ValueError("preroll must be 0-60 s")
+    steps = []
+    if cmd.get("car") not in (None, ""):
+        group = _int(cmd.get("group", 0), 0, 255, "group")
+        steps.append(("cam_switch_num", (_car_number(cmd.get("car")), group, 0)))
+    steps.append(("replay_search_session_time", (session, int(max(0.0, t - pre) * 1000))))
+    steps.append(("sleep", (SEEK_SETTLE_S,)))
+    steps.append(("replay_set_play_speed", (1, False)))
+    return steps
+
+
 def plan_replay(cmd: dict) -> tuple[str, tuple]:
     """{"cmd":"replay","action":"speed","speed":1,"slow":false}   speed 0 pauses
        {"cmd":"replay","action":"search","mode":"to_end"}          to_end = back to live"""
@@ -141,7 +180,12 @@ class CommandGate:
         if kind == "pit":
             return self._pit(src, cmd, result)
         try:
-            method, args = plan_camera(cmd) if kind == "camera" else plan_replay(cmd)
+            if kind == "camera":
+                steps = [plan_camera(cmd)]
+            elif cmd.get("action") == "jump":
+                steps = plan_jump(cmd)
+            else:
+                steps = [plan_replay(cmd)]
         except ValueError as e:
             result["error"] = str(e)
             return result
@@ -151,17 +195,24 @@ class CommandGate:
         sim = getattr(src, "simulate_broadcast", None)
         if sim is not None:
             try:
-                sim(method, args)
+                for method, args in steps:
+                    if method != "sleep":
+                        sim(method, args)
                 result.update(ok=True, simulated=True)
             except Exception as e:  # noqa: BLE001
                 result["error"] = f"{type(e).__name__}: {e}"
             return result
         try:
+            import time
             import irsdk
             ir = src.irsdk()  # raises for non-live sources
-            if method == "replay_search":
-                args = (getattr(irsdk.RpySrchMode, args[0]),)
-            getattr(ir, method)(*args)
+            for method, args in steps:
+                if method == "sleep":
+                    time.sleep(args[0])
+                    continue
+                if method == "replay_search":
+                    args = (getattr(irsdk.RpySrchMode, args[0]),)
+                getattr(ir, method)(*args)
             result["ok"] = True
         except Exception as e:  # noqa: BLE001
             result["error"] = f"{type(e).__name__}: {e}"

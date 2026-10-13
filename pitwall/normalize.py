@@ -54,6 +54,59 @@ TRACK_WETNESS = {0: "unknown", 1: "dry", 2: "mostly_dry", 3: "very_lightly_wet",
                  5: "moderately_wet", 6: "very_wet", 7: "extremely_wet"}
 SKIES = {0: "clear", 1: "partly_cloudy", 2: "mostly_cloudy", 3: "overcast"}
 
+# iRacing's incident points, Official Sporting Code 3.5.1 (Sep 2025). The table is
+# per surface: on dirt, heavy contact is 2x instead of 4x. Light contact is 0x, so
+# it never moves a count and can never be seen in this data. When incidents are
+# concurrent only the most serious counts (3.5.2: "2x that causes a 4x" is 4x).
+INCIDENT_POINTS = {
+    "paved": {0: ["light contact"], 1: ["wheels off the racing surface"],
+              2: ["loss of control", "contact with an object"], 4: ["heavy contact with another car"]},
+    "dirt": {0: ["light contact"], 1: ["wheels off the racing surface"],
+             2: ["loss of control", "contact with an object", "heavy contact with another car"]},
+}
+
+
+def surface_kind(track_type) -> str:
+    """WeekendInfo/TrackType ("road course", "dirt oval", "dirt road", ...)."""
+    return "dirt" if "dirt" in str(track_type or "").lower() else "paved"
+
+
+def incident_causes(points: int, surface: str = "paved") -> dict:
+    """What a rise of `points` in a car's count can mean, by iRacing's table.
+
+    The count only tells us the total went up. A rise matching one table entry
+    is probably that incident; it can still be several smaller ones counted
+    between two session updates (two 1x offs read as 2x). A rise matching no
+    entry (3x, 5x) is certainly more than one incident. Both facts are stated;
+    nothing here picks one cause over another.
+    """
+    table = INCIDENT_POINTS.get(surface, INCIDENT_POINTS["paved"])
+    single = table.get(points, [])
+    return {"causes": single, "single": bool(single), "maybeSeveral": points > 1}
+
+
+def live_edge(g) -> dict:
+    """Where the telemetry is in time. While spectating, iRacing is playing its
+    replay, and every CarIdx* variable comes from the replay frame -- so after a
+    producer jumps back to an incident, the field data is the field at that
+    moment, not now. SessionTime keeps the live clock; ReplaySessionTime is the
+    playhead. Within LIVE_TOLERANCE_S of each other counts as live (the same 4 s
+    RobertsmaniaReplay uses; NOT yet measured here)."""
+    t_live = _num(g("SessionTime"))
+    replaying = bool(g("IsReplayPlaying"))
+    t_play = _num(g("ReplaySessionTime")) if replaying else t_live
+    if t_play is None:
+        t_play = t_live
+    behind = None
+    if replaying and t_live is not None and t_play is not None:
+        behind = round(t_live - t_play, 2)
+    at_live = (behind is None or abs(behind) < LIVE_TOLERANCE_S) and \
+        (not replaying or (g("ReplayPlaySpeed") in (None, 1) and not g("ReplayPlaySlowMotion")))
+    return {"tLive": t_live, "tPlay": t_play, "behindLiveS": behind, "atLive": at_live}
+
+
+LIVE_TOLERANCE_S = 4.0
+
 
 def decode_bits(value: int | None, table: dict[int, str]) -> list[str]:
     if value is None:
@@ -87,7 +140,8 @@ def _arr(v, idx, default=None):
 _DRIVER_KEYS = ("CarIdx", "UserName", "TeamName", "CarNumber", "CarNumberRaw", "CarClassID",
                 "CarClassShortName", "CarScreenNameShort", "CarScreenName", "CarPath",
                 "IRating", "LicString", "LicLevel", "LicColor", "IsSpectator", "CarIsPaceCar", "CarIsAI",
-                "CarClassEstLapTime", "CarClassRelSpeed", "CarClassColor", "TeamID", "UserID")
+                "CarClassEstLapTime", "CarClassRelSpeed", "CarClassColor", "TeamID", "UserID",
+                "CurDriverIncidentCount", "TeamIncidentCount")
 
 
 def build_session(src: TelemetrySource) -> dict:
@@ -458,7 +512,7 @@ class Deriver:
     LAP_TIME_WAIT_S = 10.0
     PACE_LAPS = 5
     FEED_MAX_LAPS = 6000
-    FEED_MAX_EVENTS = 300
+    FEED_MAX_EVENTS = 1500   # incidents for a whole field add up over a long race
 
     def _feed_add(self, kind: str, item: dict):
         self.feed_seq += 1
@@ -1040,6 +1094,108 @@ class Deriver:
         groups.sort(key=lambda g: (g["forClassPos"], g["forPos"] or 999))
         return groups
 
+    # ---- incidents ------------------------------------------------------------
+    # Two independent kinds, never mixed up:
+    #   counted   a car's incident total in the session info went up. That is
+    #             iRacing's own judgement and the only source of points. It
+    #             arrives with the session-info update, some time after the event.
+    #   observed  something seen in the telemetry of every car: leaving the track
+    #             (CarIdxTrackSurface) or slowing far below the field's speed at
+    #             that point of the lap (a spin, a crash, a stop). Not points.
+    # A counted incident is anchored to the latest observed event of the same car
+    # shortly before it, which is what "replay it" jumps to.
+    INC_ANCHOR_WINDOW_S = 30.0      # how far back an observed event may explain a counted one
+    INC_FALLBACK_S = 10.0           # no observed event: start this far before the count changed
+    OFF_HOLD_S = 5.0                # one off-track per car per 5 s (kerb-hopping is one event)
+    SLOW_HOLD_S = 15.0
+    SLOW_RATIO = 0.35               # under 35% of the field's speed at this point of the lap
+    SLOW_MIN_S = 1.0                # for at least this long
+    SLOW_BINS = 200                 # 0.5% of a lap per bin
+    SLOW_BIN_SAMPLES = 40
+    SLOW_BIN_MIN = 15
+
+    def incidents(self, cars: list, edge: dict, session_num, surface: str = "paved"):
+        st = self.__dict__.setdefault("_inc", {"count": {}, "surf": {}, "off_at": {}, "slow_at": {},
+                                               "prev": {}, "slow_since": {}, "bins": {}, "obs": {}})
+        t_live, t_play, at_live = edge["tLive"], edge["tPlay"], edge["atLive"]
+        # counted -- session info is live state, so this runs even mid-replay
+        for c in cars:
+            i, n = c["idx"], c.get("incidents")
+            if not isinstance(n, (int, float)) or n < 0 or t_live is None:
+                continue                         # not published for this car / session
+            prev = st["count"].get(i)
+            st["count"][i] = n
+            if prev is None or n <= prev:
+                continue                         # first sight is history; a drop is a reset
+            pts = int(n - prev)
+            anchor = None
+            for ob in reversed(st["obs"].get(i, [])):
+                if t_live - self.INC_ANCHOR_WINDOW_S <= ob["t"] <= t_live + 1:
+                    anchor = ob
+                    break
+            self.event(t_live, "car_incident", idx=i, points=pts, total=int(n),
+                       driverTotal=c.get("driverIncidents"), limit=self.incident_limit,
+                       lap=c.get("lap"), sessionNum=session_num,
+                       replayT=round(anchor["t"], 2) if anchor else round(t_live - self.INC_FALLBACK_S, 2),
+                       anchor=anchor["kind"] if anchor else "reported", surface=surface,
+                       **incident_causes(pts, surface))
+        # observed -- only at the live edge. Watching a replay re-plays the
+        # telemetry, and the same off-track must not be reported twice.
+        if not at_live or t_play is None:
+            st["prev"].clear()
+            st["slow_since"].clear()
+            return
+        rates = []
+        for c in cars:
+            i, pct, surf = c["idx"], c.get("pct"), c.get("surface")
+            was = st["surf"].get(i)
+            st["surf"][i] = surf
+            if was == "on_track" and surf == "off_track" and \
+                    t_play - st["off_at"].get(i, -1e9) >= self.OFF_HOLD_S:
+                st["off_at"][i] = t_play
+                self._observed(st, i, t_play, "off_track", c, session_num)
+            # speed in laps per second from successive lap distance
+            lapc = c.get("lapCompleted")
+            prev = st["prev"].get(i)
+            racing = surf in ("on_track", "off_track") and not c.get("onPitRoad") and pct is not None \
+                and pct >= 0 and lapc is not None
+            st["prev"][i] = (t_play, lapc + pct) if racing else None
+            if not racing or prev is None:
+                st["slow_since"].pop(i, None)
+                continue
+            dt = t_play - prev[0]
+            if dt <= 0 or dt > 1.0:
+                continue
+            rate = (lapc + pct - prev[1]) / dt
+            if rate < -0.01 or rate > 0.2:       # a reset or a scored lap jump, not motion
+                st["slow_since"].pop(i, None)
+                continue
+            rates.append((i, int(pct * self.SLOW_BINS) % self.SLOW_BINS, max(rate, 0.0), c))
+        all_meds = [self._median(b) for b in st["bins"].values() if len(b) >= self.SLOW_BIN_MIN]
+        field = self._median(all_meds) if all_meds else None
+        for i, b, rate, c in rates:
+            hist = st["bins"].setdefault(b, [])
+            med = self._median(hist) if len(hist) >= self.SLOW_BIN_MIN else None
+            slow = (med is not None and field is not None and med >= 0.3 * field and rate < self.SLOW_RATIO * med)
+            if slow:
+                since = st["slow_since"].setdefault(i, t_play)
+                if t_play - since >= self.SLOW_MIN_S and t_play - st["slow_at"].get(i, -1e9) >= self.SLOW_HOLD_S:
+                    st["slow_at"][i] = t_play
+                    self._observed(st, i, since, "slowed", c, session_num)
+            else:
+                st["slow_since"].pop(i, None)
+                hist.append(rate)              # only normal running defines "normal"
+                if len(hist) > self.SLOW_BIN_SAMPLES:
+                    del hist[0]
+
+    def _observed(self, st, i, t, kind, c, session_num):
+        ob = {"t": t, "kind": kind}
+        lst = st["obs"].setdefault(i, [])
+        lst.append(ob)
+        del lst[:-20]
+        self.event(t, kind, idx=i, lap=c.get("lap"), pct=round(c.get("pct") or 0.0, 4),
+                   sessionNum=session_num, replayT=round(t, 2))
+
     def session_best_sectors(self) -> list:
         return list(self._sect_best)
 
@@ -1243,6 +1399,7 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
                            laps_remain_ex=_num(g("SessionLapsRemainEx")),
                            time_remain_s=_num(g("SessionTimeRemain")),
                            lap_time_s=_num(g("LapLastLapTime")))
+    derived["liveEdge"] = live_edge(g)
     deriver.state_events(session["timeS"], session, player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
             "session": session, "weather": weather, "player": player, "camera": camera, "derived": derived}
@@ -1344,6 +1501,12 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "p2pActive": _arr(p2ps, i), "p2pCount": _arr(p2pc, i),
             "gear": _arr(gear, i), "rpm": _arr(rpm, i),
             "paceFlagsRaw": _arr(pace, i),
+            # From the session info, not telemetry: iRacing's own counted
+            # incident points for the car (team total) and its current driver.
+            # Refreshed only when the session info is. Negative or absent means
+            # not published for this car in this session.
+            "incidents": d.get("TeamIncidentCount") if d else None,
+            "driverIncidents": d.get("CurDriverIncidentCount") if d else None,
         })
 
     # derived: interval to the car one position ahead, from CarIdxF2Time.
@@ -1485,7 +1648,15 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "traffic": deriver.traffic(cars, player_idx),
             "battles": deriver.battles(cars, ahead_of, is_race),
         }
-        deriver.field_events(cars, now, player_idx, deriver._stops_tick)
+        edge = live_edge(g)
+        out["derived"]["liveEdge"] = edge
+        # Race events describe the race as it happens. While a replay is being
+        # watched the field data is from the past, and pit stops or lead changes
+        # read from it would be old news reported as new.
+        if edge["atLive"]:
+            deriver.field_events(cars, now, player_idx, deriver._stops_tick)
+        deriver.incidents(cars, edge, session_num,
+                          surface_kind(((session_msg or {}).get("track") or {}).get("TrackType")))
     return out
 
 

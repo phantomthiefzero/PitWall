@@ -1087,7 +1087,7 @@
     const cls = { pit_in: "dim", pit_out: "info", fastest_lap: "purple", incident: "hot", behind_closing: "warn2",
                   you_closing: "good", position: "info", lead_change: "info", flag: "info", engine: "hot",
                   tow: "hot", rain_start: "info", rain_stop: "info", track_wetness: "info", declared_wet: "info",
-                  pit_battle: "info", class_lead: "info" }[e.kind] || "info";
+                  pit_battle: "info", class_lead: "info", car_incident: "hot", off_track: "dim", slowed: "warn2" }[e.kind] || "info";
     let t = "";
     switch (e.kind) {
       case "pit_in": t = `${carLabel(e.idx)} into the pits`; break;
@@ -1105,6 +1105,10 @@
       case "position": { const better = e.toPos < e.fromPos;
         t = `<span class="${better ? "gain" : "lose"}">You ${isMulticlass() ? "class " : ""}P${esc(e.fromPos)} → P${esc(e.toPos)}</span>`; break; }
       case "lead_change": t = `${carLabel(e.idx)} takes the ${isMulticlass() ? "class " : ""}lead`; break;
+      case "car_incident": t = `${carLabel(e.idx)} <b>+${esc(e.points)}x</b> · ${esc(e.total)}x` +
+        (e.limit != null ? ` of ${esc(e.limit)}` : "") + (e.causes && e.causes.length ? ` · ${esc(e.causes.join(" or "))}` : ""); break;
+      case "off_track": t = `${carLabel(e.idx)} off the track`; break;
+      case "slowed": t = `${carLabel(e.idx)} ${D("slowed sharply", "Computed here: far below the field's speed at that point of the lap for over a second.")}`; break;
       case "class_lead": {
         const c = carByIdx(e.idx);
         t = `${carLabel(e.idx)} leads ${isMulticlass() && c && c.className ? esc(c.className) : "the race"}`; break;

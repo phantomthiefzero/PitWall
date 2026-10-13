@@ -177,7 +177,9 @@ class Bridge:
             except json.JSONDecodeError:
                 continue
             if msg.get("type") == "cmd":
-                res = self.gate.execute(self.src, msg)
+                # In a worker thread: a replay jump pauses between its seek and
+                # its play, and the stream must not stall while it does.
+                res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, msg)
                 self.log(f"cmd {msg} -> {'ok' if res['ok'] else res['error']}")
                 await ws.send(json.dumps(res))
             elif msg.get("type") == "resend":

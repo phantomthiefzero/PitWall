@@ -113,11 +113,42 @@ Event kinds: `pit_in`, `pit_out` (stationaryS, laneLossS), `fastest_lap` (lapS, 
 overall), `incident` (delta, total, limit), `behind_closing` / `you_closing` (gapS,
 rateSPerLap), `position` (fromPos, toPos -- class position), `lead_change`, `flag`,
 `engine` (warnings), `tow` (towS), `rain_start`, `rain_stop`, `track_wetness`,
-`declared_wet`, `pit_battle` (preS, nowS, first), `class_lead` (idx, prevIdx, classId -- every
+`declared_wet`, `pit_battle` (preS, nowS, first),
+`car_incident` (idx, points, total, driverTotal, limit, lap, sessionNum, replayT, anchor, surface,
+causes, single, maybeSeveral -- a car's counted incident points went up; see Incidents below),
+`off_track` and `slowed` (idx, lap, pct, sessionNum, replayT -- seen in the telemetry, not points),
+`class_lead` (idx, prevIdx, classId -- every
 class, held 5 s, with or without a player car; `lead_change` remains the player's class only).
 
 `session.options` carries `IncidentLimit` (a number, or "unlimited"),
 `FastRepairsLimit`, `StandingStart` and `NumStarters` from WeekendOptions.
+
+### Incidents
+Two kinds, kept apart on the wire:
+
+| | Source | Points? | Timing |
+|---|---|---|---|
+| `car_incident` | `DriverInfo/Drivers[].TeamIncidentCount` rising (plain per car as `cars.<idx>.incidents`; `driverIncidents` is `CurDriverIncidentCount`) | yes, iRacing's own | stamped when the session info changed, which is after the event |
+| `off_track` | `CarIdxTrackSurface` on_track -> off_track | no | stamped at the frame it happened |
+| `slowed` | derived: under 35% of the field's speed at that 0.5% of the lap for 1 s | no | stamped when the slowdown began |
+
+Point values (Official Sporting Code 3.5.1): light contact 0x, wheels off 1x, loss of control 2x,
+contact with an object 2x, heavy contact with another car 4x on pavement and 2x on dirt
+(`surface` comes from `WeekendInfo/TrackType`). Concurrent incidents count only the most
+serious (3.5.2). `causes` lists the table entries matching the rise; `single` is false when no
+single entry matches (3x, 5x), and `maybeSeveral` is true for any rise over 1x, because two
+incidents can land between two session-info updates. 0x never moves a count.
+
+`replayT` is where a replay of it should start, on the session clock of `sessionNum`: for a
+counted incident, the latest `off_track`/`slowed` of the same car in the 30 s before (`anchor`
+names which), else 10 s before it was counted (`anchor: "reported"`). Observed events are only
+detected at the live edge, so watching a replay never re-reports them. A count that is absent
+or negative is "not published" and produces nothing.
+
+`state.derived.liveEdge` = `{tLive, tPlay, behindLiveS, atLive}`: SessionTime, the replay
+playhead (ReplaySessionTime while a replay is playing), the difference, and whether the
+picture is within 4 s of live at normal speed. While not at live, the CarIdx data is the past,
+so race events (`field_events`) are not produced. `cars.derived.liveEdge` is the same.
 
 ### Delta encoding
 `full:true` = complete message (sent every 5 s and on every reconnect / `resend`).
@@ -141,7 +172,11 @@ Broadcast commands (producer token only; the bridge refuses them unless started 
 {"type":"cmd","cmd":"camera","action":"focus","focus":"exciting"|"leader"|"incident","group":11}
 {"type":"cmd","cmd":"replay","action":"speed","speed":0,"slow":false}
 {"type":"cmd","cmd":"replay","action":"search","mode":"to_end"|"prev_incident"|"next_incident"|"prev_lap"|...}
+{"type":"cmd","cmd":"replay","action":"jump","session":2,"timeS":812.4,"preroll":5,"car":"34","group":11}
 ```
+`jump` cuts to the car (when given), seeks to `timeS - preroll` with
+`irsdk_BroadcastReplaySearchSessionTime`, waits 0.4 s for the seek to settle, then plays at
+speed 1. It runs on a worker thread so the stream does not stall.
 `car` is the car NUMBER as a string (leading zeros matter); `camera` 0 lets iRacing pick within
 the group. Against the fake source `cmd_result` carries `"simulated": true`.
 
@@ -152,9 +187,10 @@ Broadcast graphics state, owned by the relay (not the bridge). A producer sends 
 ```
 The relay deep-merges it (`null` deletes a key) and sends the whole state to everyone:
 `{"type":"gfx","rev":12,"state":{...},"by":"Andrew"}`; new viewers get it on connect. Keys the
-overlay reads: `tower {show, mode: interval|leader|best|last|stops, class, rows}`,
+overlay reads: `tower {show, mode: interval|leader|best|last|stops|incidents, class, rows}`,
 `banner {show}`, `card {show, follow: camera|pinned, idx}`, `battle {show, mode: auto|pick, cars}`,
-`map {show}`, `ticker {show, pits}`, `board {show, class}`. A rejected patch gets
+`map {show}`, `ticker {show, pits, incidents}`, `board {show, class}`,
+`replay {label, car}` (caption for the Replay tag; shown only while not at the live edge). A rejected patch gets
 `gfx_result {ok:false, error}`.
 
 ### `resend` (viewer → bridge)

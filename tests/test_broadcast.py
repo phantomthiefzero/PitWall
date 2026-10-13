@@ -328,3 +328,158 @@ def test_suite_keeps_overlay_tokens_across_launches():
             f.write("not json")
         c = load_tokens(path)
         assert c["view"] and c != a
+
+
+# --------------------------------------------------------------------- incidents
+
+from pitwall.commands import plan_jump  # noqa: E402
+from pitwall.normalize import incident_causes, live_edge, surface_kind  # noqa: E402
+
+
+def test_incident_point_table_follows_the_sporting_code():
+    assert incident_causes(1)["causes"] == ["wheels off the racing surface"]
+    assert set(incident_causes(2)["causes"]) == {"loss of control", "contact with an object"}
+    assert incident_causes(4)["causes"] == ["heavy contact with another car"]
+    # dirt: heavy contact is 2x, and there is no 4x
+    assert "heavy contact with another car" in incident_causes(2, "dirt")["causes"]
+    assert incident_causes(4, "dirt") == {"causes": [], "single": False, "maybeSeveral": True}
+    # a 3x rise is no single incident: it can only be several
+    r = incident_causes(3)
+    assert r["causes"] == [] and not r["single"] and r["maybeSeveral"]
+    assert incident_causes(1)["maybeSeveral"] is False
+    assert surface_kind("dirt oval") == "dirt" and surface_kind("road course") == "paved"
+    assert surface_kind(None) == "paved"
+
+
+def _edge(t, live=True):
+    return {"tLive": t, "tPlay": t if live else t - 30, "behindLiveS": 0 if live else 30, "atLive": live}
+
+
+def _icar(idx, inc, surface="on_track", pct=0.5, lapc=3, pit=False):
+    return {"idx": idx, "incidents": inc, "driverIncidents": inc, "surface": surface, "pct": pct,
+            "lapCompleted": lapc, "lap": lapc + 1, "onPitRoad": pit}
+
+
+def test_counted_incidents_are_seeded_silently_and_anchored_to_what_was_seen():
+    d = Deriver()
+    d.incidents([_icar(1, 3), _icar(2, -1)], _edge(100), 2)
+    assert not d.feed_events, "a count already on the board is history, not news"
+    d.incidents([_icar(1, 3, surface="off_track")], _edge(101), 2)          # leaves the track at 101
+    d.incidents([_icar(1, 3)], _edge(103), 2)
+    d.incidents([_icar(1, 4)], _edge(105.5), 2)                             # session info catches up
+    ev = [e for e in d.feed_events if e["kind"] == "car_incident"]
+    assert len(ev) == 1
+    e = ev[0]
+    assert e["points"] == 1 and e["total"] == 4 and e["anchor"] == "off_track" and e["replayT"] == 101
+    assert e["sessionNum"] == 2 and e["causes"] == ["wheels off the racing surface"]
+    # nothing seen in the telemetry: fall back to well before the count moved
+    d.incidents([_icar(1, 8)], _edge(200), 2)
+    e = [e for e in d.feed_events if e["kind"] == "car_incident"][-1]
+    assert e["points"] == 4 and e["anchor"] == "reported" and e["replayT"] == 200 - Deriver.INC_FALLBACK_S
+    # an unpublished count (-1) never produces an incident, and a drop re-seeds
+    d.incidents([_icar(2, -1), _icar(1, 2)], _edge(210), 2)
+    d.incidents([_icar(1, 3)], _edge(220), 2)
+    assert [e["points"] for e in d.feed_events if e["kind"] == "car_incident"] == [1, 4, 1]
+
+
+def test_off_tracks_are_reported_once_and_never_from_a_replay():
+    d = Deriver()
+    seq = [("on_track", 10), ("off_track", 10.2), ("on_track", 10.5), ("off_track", 11.0), ("on_track", 11.3)]
+    for surf, t in seq:
+        d.incidents([_icar(5, 0, surface=surf)], _edge(t), 1)
+    offs = [e for e in d.feed_events if e["kind"] == "off_track"]
+    assert len(offs) == 1, "kerb-hopping inside 5 s is one event"
+    d2 = Deriver()
+    for surf, t in seq:
+        d2.incidents([_icar(5, 0, surface=surf)], _edge(t, live=False), 1)
+    assert not [e for e in d2.feed_events if e["kind"] == "off_track"], "a replay must not re-report"
+
+
+def test_slowed_sharply_compares_with_the_field_at_the_same_point_of_the_lap():
+    d = Deriver()
+    t, pos = 0.0, {i: i * 0.04 for i in range(10)}
+    # a slow corner at 40-50% of the lap: everyone at a third of normal speed there
+    def speed(p):
+        return 0.004 if 0.4 <= p % 1 < 0.5 else 0.012
+    stalled = None
+    for step in range(6000):
+        t += 0.125
+        cars = []
+        for i in range(10):
+            v = speed(pos[i])
+            if i == 3 and stalled is not None and t < stalled + 3:
+                v = 0.0005                                  # car 3 spins and nearly stops
+            pos[i] += v * 0.125
+            cars.append(_icar(i, 0, pct=pos[i] % 1, lapc=int(pos[i])))
+        if step == 4000:
+            stalled = t
+        d.incidents(cars, _edge(t), 1)
+    slowed = [e for e in d.feed_events if e["kind"] == "slowed"]
+    assert len(slowed) == 1, f"the slow corner must not count; got {slowed}"
+    assert slowed[0]["idx"] == 3 and abs(slowed[0]["t"] - stalled) < 0.5
+
+
+def test_fake_incidents_are_found_without_inventing_any():
+    """Every observed event matches something that really happened in the fake,
+    counted points add up to the truth, and the replay anchor lands on the
+    incident. (The fake mirrors iRacing's shape -- session-info lag, concurrent
+    incidents counting once, invisible 0x -- but it was written alongside the
+    detector, so the real check is a spectated race; see VARIABLES_TO_VERIFY.)"""
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    d = Deriver()
+    sess, siu = None, None
+    for k in range(60 * 600):
+        src.tick()
+        if src.session_info_update != siu:
+            sess, siu = build_session(src), src.session_info_update
+        if k % 4 == 0:
+            build_state(src, d)
+        if k % 8 == 0:
+            build_cars(src, sess, d)
+    truth = src.inc_log
+    ev = d.feed_events
+    observed = [e for e in ev if e["kind"] in ("off_track", "slowed")]
+    assert observed
+    for e in observed:
+        assert any(x["idx"] == e["idx"] and abs(x["t"] - e["t"]) < 3 and x["kind"] != "light_contact"
+                   for x in truth), f"observed event with nothing behind it: {e}"
+    counted = [e for e in ev if e["kind"] == "car_incident"]
+    drivers = src.session_info("DriverInfo")["Drivers"]
+    assert sum(e["points"] for e in counted) == sum(dr["TeamIncidentCount"] for dr in drivers)
+    for e in counted:
+        before = [x for x in truth if x["idx"] == e["idx"] and x["points"] > 0 and x["t"] <= e["t"]]
+        assert before and abs(e["replayT"] - before[-1]["t"]) < 1.0 or e["anchor"] == "reported"
+
+
+# --------------------------------------------------------------------- replay jump
+
+def test_replay_jump_cuts_seeks_settles_then_plays():
+    steps = plan_jump({"session": 2, "timeS": 812.4, "preroll": 5, "car": "34", "group": 11})
+    assert steps == [("cam_switch_num", ("34", 11, 0)), ("replay_search_session_time", (2, 807400)),
+                     ("sleep", (0.4,)), ("replay_set_play_speed", (1, False))]
+    assert plan_jump({"session": 0, "timeS": 3, "preroll": 5})[0] == ("replay_search_session_time", (0, 0))
+    for bad in ({"session": 0}, {"session": 0, "timeS": "x"}, {"session": 0, "timeS": 5, "preroll": 99},
+                {"session": 99, "timeS": 5}, {"session": 0, "timeS": 5, "car": "abc"}):
+        with pytest.raises(ValueError):
+            plan_jump(bad)
+
+
+def test_replay_jump_leaves_the_live_edge_and_back_to_live_returns():
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    for _ in range(60 * 60):
+        src.tick()
+    gate = CommandGate(camera=True)
+    assert live_edge(src.get)["atLive"]
+    res = gate.execute(src, {"cmd": "replay", "action": "jump", "session": 1, "timeS": 30, "preroll": 5,
+                             "car": "34", "group": 12})
+    assert res["ok"] and res["simulated"]
+    src.tick()
+    edge = live_edge(src.get)
+    assert not edge["atLive"] and edge["behindLiveS"] > 20
+    st = build_state(src, Deriver())
+    assert st["derived"]["liveEdge"]["atLive"] is False and st["camera"]["carIdx"] == 8
+    gate.execute(src, {"cmd": "replay", "action": "search", "mode": "to_end"})
+    src.tick()
+    assert live_edge(src.get)["atLive"]
