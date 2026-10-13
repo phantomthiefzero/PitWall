@@ -177,12 +177,16 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
   QualifyPositions or QualifyResultsInfo; iRacing's 0-based positions shown from 1.
 - `director` (bridge): `{on, mode: race|grid, style, holdS, gridLeft, current: {car, num, group,
   groupName, reason}, styles}`.
-- `livery` (bridge -> relay keeps one per key): `{key: "<CarID>_<TeamID or UserID>", idx, image: data URI, at}`.
+- `livery` (bridge -> relay keeps one per key): `{key: "<car>:<kind>", car: "<CarID>_<TeamID or UserID>",
+  kind: "render"|"photo", image: data URI, at, custom?}`. `render` is iRacing's own picture of the car
+  from its local server (pitwall/carrender.py), with the Trading Paints paint when one is on disk
+  (`custom: true`); `photo` is an OBS still from the broadcast.
 - `livery_status` (bridge): `{connected, error, sweeping, done, total, lastKey, config}`.
 - `assets` (relay): `{files: [{name, bytes, type}]}`; served at `/broadcast/assets/<name>`.
 - `asset_put` / `asset_del` (producer -> relay): `{name, data: base64}` / `{name}`; 30 MB cap,
   images, video, fonts only.
-- cars carry `classEstLapS`, `carDesign` (CarDesignStr), `helmetDesign`, `carId`, `userId`, `teamId`.
+- cars carry `classEstLapS`, `carDesign` (CarDesignStr), `helmetDesign`, `carId`, `userId`, `teamId`;
+  session drivers also carry CarNumberDesignStr, CarSponsor_1/2 and ClubID for the car renders.
 
 ### Delta encoding
 `full:true` = complete message (sent every 5 s and on every reconnect / `resend`).
@@ -241,7 +245,7 @@ plays the transition; the producer sends the camera command at `theme.stinger.cu
 mode: ...|gap|pits|incidents}`, and `theme`: `{preset: imsa|pitboard|daylight, colors: {ink, ink2,
 head, headText, text, muted, accent, accentText, fl, plate}, fonts: {display, body}, fontAssets,
 caps, radius, names: initial|last|full, rowHeight, text: {series, event, gridTitle}, logo,
-bannerLogo, stinger: {video, logo, durationMs, cutMs, sound}, livery: {x, y, zoom},
+bannerLogo, stinger: {video, logo, durationMs, cutMs, sound}, livery: {source: render|photo, x, y, zoom},
 layout: {<graphic>: {x, y, s}}}`. A rejected patch gets
 `gfx_result {ok:false, error}`.
 

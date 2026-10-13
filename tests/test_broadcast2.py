@@ -329,3 +329,81 @@ def test_camera_pack_installs_tracks_and_cars_folders_only():
             f.writestr("tv.cam", "cam")
         r = install_pack(bare, dest)
         assert not r["ok"] and "tracks or cars" in r["error"]
+
+
+# --------------------------------------------------------------------- iRacing's car renders
+
+def test_render_params_follow_the_driver_entry_and_encode_spaces_as_percent_20():
+    from pitwall.carrender import render_params, render_urls
+    d = {"CarPath": "mx5 mx52016", "CarID": 67, "CarDesignStr": "3,ff0000,00ff00,0000ff",
+         "CarNumberDesignStr": "0,1,ffffff,000000,ff0000", "CarNumber": "07", "LicColor": 0x0153DB,
+         "CarSponsor_1": 12, "CarSponsor_2": 0, "ClubID": 4, "UserName": "Jo Racer", "TeamName": "Jo Racer"}
+    p = render_params(d, r"C:\Users\a b\Documents\iRacing\paint\mx5\mx52016\car_1.tga")
+    assert p["carPat"] == "3" and p["carCol"] == "ff0000,00ff00,0000ff"
+    assert p["numPat"] == "0" and p["numSlnt"] == "1" and p["numcol"] == "ffffff,000000,ff0000"
+    assert p["number"] == "07" and p["licCol"] == "0153db" and p["sponsors"] == "12,0"
+    urls = render_urls(d, p["carCustPaint"])
+    assert len(urls) == 3, "nested MX-5 folder: two folder forms, then the raw one"
+    assert "carPath=mx5%5Cmx52016" in urls[0] and "carPath=mx5%2Fmx52016" in urls[1] and "carPath=mx5%20mx52016" in urls[2]
+    assert "+" not in urls[0].split("?", 1)[1], "a '+' is read as a plus sign by iRacing"
+    assert "carCustPaint=C%3A%5CUsers%5Ca%20b" in urls[0]
+    assert len(render_urls({"CarPath": "porsche992cup", "CarID": 1}, None)) == 1
+
+
+def test_trading_paints_files_are_found_team_paint_first():
+    from pitwall.carrender import find_paint
+    with tempfile.TemporaryDirectory() as root:
+        os.makedirs(os.path.join(root, "mx5", "mx52016"))
+        own = os.path.join(root, "mx5", "mx52016", "car_300.tga")
+        open(own, "wb").close()
+        assert find_paint("mx5 mx52016", 300, 0, root) == own
+        team = os.path.join(root, "mx5", "mx52016", "car_team_77.tga")
+        open(team, "wb").close()
+        assert find_paint("mx5 mx52016", 300, 77, root) == team, "a team event shows the team's paint"
+        assert find_paint("mx5 mx52016", 999, 0, root) is None
+        assert find_paint("", 300, 0, root) is None
+
+
+def test_car_renderer_renders_each_car_once_and_again_when_its_paint_changes():
+    import time as _t
+    from pitwall.carrender import CarRenderer
+    calls, out = [], []
+    PNG = b"\x89PNG fake"
+    up = {"ok": False}
+
+    def fetch(url):
+        calls.append(url)
+        if not up["ok"]:
+            raise OSError("connection refused")
+        return 200, "image/png", PNG
+    with tempfile.TemporaryDirectory() as d:
+        root = os.path.join(d, "paint")
+        os.makedirs(os.path.join(root, "gr86"))
+        r = CarRenderer(d, out.append, fetch=fetch, root=root)
+        r.RETRY_DOWN_S = 0.2
+        drivers = [{"CarPath": "gr86", "CarID": 5, "UserID": 1, "TeamID": 0, "CarNumber": "1"},
+                   {"CarPath": "gr86", "CarID": 5, "UserID": 2, "TeamID": 0, "CarNumber": "2"},
+                   {"CarPath": "safety", "CarID": 9, "UserID": 0, "CarIsPaceCar": 1}]
+        r.request(drivers)
+        _t.sleep(0.4)
+        assert out == [] and r.status["available"] is False, "iRacing not running: nothing yet"
+        up["ok"] = True
+        deadline = _t.time() + 3
+        while len(out) < 2 and _t.time() < deadline:
+            r._wake.set(); _t.sleep(0.05)
+        assert sorted(m["key"] for m in out) == ["5_1:render", "5_2:render"]
+        assert all(m["image"].startswith("data:image/png;base64,") and m["kind"] == "render" for m in out)
+        n = len(calls)
+        r.request(drivers)
+        _t.sleep(0.3)
+        assert len(calls) == n, "unchanged cars are not rendered again"
+        # Trading Paints drops a paint for driver 2: rendered again, with the paint
+        with open(os.path.join(root, "gr86", "car_2.tga"), "wb") as f:
+            f.write(b"tga")
+        r.request(drivers)
+        deadline = _t.time() + 3
+        while len(out) < 3 and _t.time() < deadline:
+            _t.sleep(0.05)
+        assert out[-1]["key"] == "5_2:render" and out[-1]["custom"] is True
+        assert "carCustPaint=" in calls[-1]
+        assert r.cached_message("5_1")["image"].startswith("data:image/png")

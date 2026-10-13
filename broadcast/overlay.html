@@ -127,8 +127,9 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .cd .stats span{display:block;color:var(--muted);font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
 .cd .stats b{display:block;font:700 21px/1.1 var(--display);font-variant-numeric:tabular-nums;margin-top:3px}
 
+.lv:empty{display:none}
 .livery{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.silo{position:absolute;inset:8% 4%;width:92%;height:84%}
+.livery.render{object-fit:contain;inset:4% 3%;width:94%;height:92%;filter:drop-shadow(0 6px 8px rgba(0,0,0,.45))}
 
 /* ---------- map ---------- */
 #map{right:36px;top:170px;width:360px;height:360px}
@@ -424,26 +425,17 @@ small{margin-right:4px}
 
   // ---------------------------------------------------------------- liveries
   const liveryKey = c => c && c.carId != null && (c.teamId || c.userId) ? c.carId + "_" + (c.teamId || c.userId) : null;
-  // The iRacing paint scheme as a car shape, for cars without a photo. These are
-  // the scheme's real colours, not the custom paint.
-  function silhouette(c) {
-    const parts = String(c.carDesign || "").split(",");
-    const col = i => /^[0-9a-f]{6}$/i.test(parts[i] || "") ? "#" + parts[i] : null;
-    const a = col(1) || css(c.classColor) || "#777", b = col(2) || "#ddd", d = col(3) || "#222";
-    return `<svg class="silo" viewBox="0 0 220 80" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-      <path d="M8 56 L14 42 Q20 34 40 32 L78 30 Q96 18 128 17 L150 18 Q170 20 186 32 L206 38 Q214 42 212 52 L210 58 Z" fill="${a}"/>
-      <path d="M80 30 Q98 20 128 19 L148 20 Q160 22 170 30 Z" fill="${d}" opacity=".85"/>
-      <path d="M12 50 L210 46 L210 52 L10 56 Z" fill="${b}"/>
-      <circle cx="52" cy="58" r="13" fill="#111"/><circle cx="52" cy="58" r="6" fill="#555"/>
-      <circle cx="170" cy="58" r="13" fill="#111"/><circle cx="170" cy="58" r="6" fill="#555"/></svg>`;
-  }
+  // Each car's picture: iRacing's own render with the driver's paint (Trading
+  // Paints included), or a photo taken from the broadcast through OBS. Which
+  // one leads is a choice in the Look tab; nothing is drawn in their place.
   function liveryHtml(c) {
-    const img = S.liveries[liveryKey(c)];
-    if (img) {
-      const fx = T("livery.x", 50), fy = T("livery.y", 58), z = T("livery.zoom", 1.6);
-      return `<img class="livery" src="${img}" alt="" style="object-position:${fx}% ${fy}%;transform:scale(${z});transform-origin:${fx}% ${fy}%">`;
-    }
-    return silhouette(c);
+    const l = S.liveries[liveryKey(c)] || {};
+    const order = T("livery.source", "render") === "photo" ? ["photo", "render"] : ["render", "photo"];
+    const kind = order.find(k => l[k]);
+    if (!kind) return "";
+    if (kind === "render") return `<img class="livery render" src="${l.render}" alt="">`;
+    const fx = T("livery.x", 50), fy = T("livery.y", 58), z = T("livery.zoom", 1.6);
+    return `<img class="livery" src="${l.photo}" alt="" style="object-position:${fx}% ${fy}%;transform:scale(${z});transform-origin:${fx}% ${fy}%">`;
   }
 
   // ---------------------------------------------------------------- tower
@@ -907,7 +899,12 @@ small{margin-right:4px}
       case "feed": handleFeed(m); break;
       case "gfx": S.gfx = m.state || {}; applyTheme(); maybeStinger(); break;
       case "assets": S.assets = m.files || []; break;
-      case "livery": if (m.key && m.image) S.liveries[m.key] = m.image; break;
+      case "livery": {
+        if (!m.image) break;
+        const car = m.car || String(m.key || "").split(":")[0], kind = m.kind || "photo";
+        S.liveries[car] = Object.assign({}, S.liveries[car], { [kind]: m.image });
+        break;
+      }
       default: return;
     }
     dirty = true;

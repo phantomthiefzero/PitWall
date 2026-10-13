@@ -10,6 +10,8 @@ import asyncio
 import json
 import threading
 import time
+
+now_m = time.monotonic
 import traceback
 import urllib.parse
 
@@ -18,6 +20,7 @@ import websockets
 from . import trackmap
 from .delta import DeltaEncoder, cars_to_wire
 from .commands import CommandGate
+from .carrender import CarRenderer, render_key
 from .director import Director
 from .liveries import LiveryCapture, LiveryStore, livery_key
 from .normalize import Deriver, build_cars, build_session, build_state
@@ -27,7 +30,8 @@ from .sources import TelemetrySource
 class Bridge:
     def __init__(self, src: TelemetrySource, relay_url: str, token: str,
                  state_hz: float = 15.0, cars_hz: float = 8.0, allow_commands: bool = False,
-                 allow_camera: bool = False, log=print, livery_dir: str | None = None):
+                 allow_camera: bool = False, log=print, livery_dir: str | None = None,
+                 render_cars: bool = True):
         self.src = src
         self.relay_url = relay_url
         self.token = token
@@ -52,6 +56,9 @@ class Bridge:
         self.director = Director(self._cut, log=log)
         self.livery_store = LiveryStore(livery_dir)
         self.capture = LiveryCapture(self.livery_store, self._cut, self._emit, log=log)
+        # iRacing's own picture of every car with its paint (Trading Paints included)
+        self.renderer = CarRenderer(self.livery_store.base, self._emit, log=log) if render_cars else None
+        self._render_check = 0.0
         self._last_cars = None
         self._last_state = None
         self._cam_hold = None                     # (carIdx, group, since)
@@ -75,6 +82,7 @@ class Bridge:
         if siu != self._last_siu:
             self.session_msg = build_session(self.src)
             self._last_siu = siu   # after the build, so a failed parse is retried next frame
+            self._render_check = 0.0
             outbox.append(self.session_msg)
             tr = self.session_msg["track"]
             key = (tr.get("TrackID"), tr.get("TrackConfigName"))
@@ -196,8 +204,14 @@ class Bridge:
         return {c["idx"]: c for c in (self._last_cars or {}).get("cars") or []}
 
     def _livery_messages(self) -> list[dict]:
-        """Every kept photo for a car in this session (sent on connect/resend)."""
+        """Every kept picture for a car in this session (sent on connect/resend)."""
         out = []
+        if self.renderer is not None:
+            for d in (self.session_msg or {}).get("drivers") or []:
+                k = render_key(d)
+                m = self.renderer.cached_message(k) if k else None
+                if m:
+                    out.append(m)
         for c in (self._last_cars or {}).get("cars") or []:
             key = livery_key(c)
             if key and key not in self._liveries_sent:
@@ -218,6 +232,11 @@ class Bridge:
         if self.director.changed:
             self.director.changed = False
             outbox.append(self.director.status())
+        # Car pictures from iRacing: on every session change, and every 20 s in
+        # case Trading Paints has just downloaded a paint (it does, after you join).
+        if self.renderer is not None and self.session_msg is not None and now_m() - self._render_check > 20.0:
+            self._render_check = now_m()
+            self.renderer.request(self.session_msg.get("drivers") or [])
         # photos already on disk for cars that have just appeared
         for c in cars_msg.get("cars") or []:
             key = livery_key(c)
