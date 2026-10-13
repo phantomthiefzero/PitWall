@@ -141,7 +141,8 @@ _DRIVER_KEYS = ("CarIdx", "UserName", "TeamName", "CarNumber", "CarNumberRaw", "
                 "CarClassShortName", "CarScreenNameShort", "CarScreenName", "CarPath",
                 "IRating", "LicString", "LicLevel", "LicColor", "IsSpectator", "CarIsPaceCar", "CarIsAI",
                 "CarClassEstLapTime", "CarClassRelSpeed", "CarClassColor", "TeamID", "UserID",
-                "CurDriverIncidentCount", "TeamIncidentCount", "CarDesignStr", "HelmetDesignStr", "CarID")
+                "CurDriverIncidentCount", "TeamIncidentCount", "CarDesignStr", "HelmetDesignStr", "CarID",
+                "CarNumberDesignStr", "CarSponsor_1", "CarSponsor_2", "ClubID")
 
 
 def build_session(src: TelemetrySource) -> dict:

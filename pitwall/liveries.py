@@ -7,8 +7,9 @@ taken from: with the camera on a car in a chase view, OBS is asked for a still
 of the iRacing capture source (pitwall/obs.py). Each photo is kept on disk per
 driver and car, so a regular in the same car is already there next week.
 
-Without OBS, the overlay falls back to the colours of the iRacing paint scheme
-(CarDesignStr), which are real for every car but are not custom paints.
+The main source of car pictures is iRacing's own renderer (pitwall/carrender.py),
+which needs no OBS and draws every car with its Trading Paints paint. These
+photos are the optional extra: the car as it looked on track.
 
 Photos are only ever taken of what is on screen; nothing here invents a livery.
 """
@@ -75,11 +76,11 @@ class LiveryStore:
             return None
 
     def message(self, key: str, car: dict | None = None, image: str | None = None) -> dict | None:
+        from .carrender import livery_message
         image = image or self.get(key)
         if not image:
             return None
-        return {"type": "livery", "key": key, "idx": (car or {}).get("idx"), "image": image,
-                "at": os.path.getmtime(self.path(key)) if self.has(key) else time.time()}
+        return livery_message(key, "photo", image, idx=(car or {}).get("idx"))
 
 
 class LiveryCapture:

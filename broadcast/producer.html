@@ -167,7 +167,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
         <p class="note">Automatic shows it during the parade laps of a race and takes it off at the green.</p>
         <h3>Walk the grid</h3>
         <div class="grid2"><label for="gwHold">Seconds per car</label><input type="number" id="gwHold" min="2" max="20" value="5">
-          <label for="gwSnap">Photograph liveries</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
+          <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
         <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button id="gwStop">Stop</button></div>
       </section>
       <section><h2>Race control</h2><div id="tickerOpts"></div></section>
@@ -216,7 +216,9 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
         <h2>Positions</h2>
         <div class="pos3" id="positions"></div>
         <div class="opts" style="margin-top:8px"><button id="posReset">Reset all positions</button></div>
-        <h3>Livery framing</h3>
+        <h3>Car pictures</h3>
+        <div class="opts" id="lvSource"></div>
+        <h3>Photo framing (OBS photos)</h3>
         <div class="pos3"><span></span><span class="note">across %</span><span class="note">down %</span><span class="note">zoom</span>
           <span>Photo</span><input type="number" id="lvX" step="1" value="50"><input type="number" id="lvY" step="1" value="58"><input type="number" id="lvZ" step="0.1" value="1.6"></div>
       </section>
@@ -234,8 +236,10 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
 
     <div data-pane="liveries" class="hide">
       <section>
-        <h2>Livery photos</h2>
-        <p class="note" style="margin-top:0">Each car's livery, Trading Paints included, photographed from your iRacing picture through OBS. In OBS: Tools &gt; WebSocket Server Settings &gt; Enable, then copy the password here.</p>
+        <h2>Car pictures</h2>
+        <p class="note" style="margin-top:0">Automatic: iRacing draws each car with its paint, Trading Paints included, the same way its own screens do. Nothing to set up; keep Trading Paints running so the paints are on this PC. <b id="rnCount"></b></p>
+        <h3>Optional: photos from the broadcast</h3>
+        <p class="note" style="margin-top:0">The car as it looked on track, taken from your iRacing picture through OBS. In OBS: Tools &gt; WebSocket Server Settings &gt; Enable, then copy the password here.</p>
         <div class="grid2" style="margin-top:8px">
           <label for="oUrl">OBS address</label><input type="text" id="oUrl" value="ws://127.0.0.1:4455">
           <label for="oPw">Password</label><input type="password" id="oPw" placeholder="unchanged">
@@ -549,6 +553,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     else if (ds.jump) { const ev = S.feed.events.find(x => x.seq === Number(ds.jump)); if (ev) jumpTo(ev); }
     else if (ds.preset) setGfx({ theme: { preset: ds.preset, colors: null, fonts: null } });
     else if (ds.names) setGfx({ theme: { names: ds.names } });
+    else if (ds.lvsrc) setGfx({ theme: { livery: { source: ds.lvsrc } } });
     else if (ds.caps) setGfx({ theme: { caps: ds.caps === "1" } });
     else if (ds.adel) { if (confirm("Delete " + ds.adel + "?")) send({ type: "asset_del", name: ds.adel }); }
   });
@@ -594,9 +599,9 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       return `<div class="car${c.idx === cam ? " cam" : ""}" data-idx="${c.idx}" tabindex="0" role="button" aria-label="Cut to ${esc(c.name)}">` +
         `<span class="p">${c.pos > 0 ? esc(c.pos) : ""}</span><span class="bar" style="background:${m ? css(c.classColor) : "transparent"}"></span>` +
         `<span class="n">#${esc(c.num ?? "")}</span><span class="nm">${esc(c.name || "car " + c.idx)}</span>` +
-        (c.onPitRoad ? `<span class="pit">PIT</span>` : "") + `<span class="lvok" title="${has ? "Livery photo taken" : ""}">${has ? "●" : ""}</span>` +
+        (c.onPitRoad ? `<span class="pit">PIT</span>` : "") + `<span class="lvok" title="${has ? "Car picture ready" : ""}">${has ? "●" : ""}</span>` +
         `<span class="g">${g}</span><button data-pin="${c.idx}" class="${pin === c.idx ? "on" : ""}" ${canProduce() ? "" : "disabled"}>Card</button>` +
-        `<button data-snap="${c.idx}" title="Photograph this car's livery now (camera must be on it)" ${canCamera() && S.lv && S.lv.config && S.lv.config.source ? "" : "disabled"}>Photo</button></div>`;
+        `<button data-snap="${c.idx}" title="Take an OBS photo of this car now (camera must be on it)" ${canCamera() && S.lv && S.lv.config && S.lv.config.source ? "" : "disabled"}>Photo</button></div>`;
     };
     $("field").innerHTML = cars.map(row).join("") + unscored.map(row).join("") || `<p class="note">The field appears once the bridge is streaming.</p>`;
   }
@@ -734,6 +739,9 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     const lay = th.layout || {};
     $("positions").innerHTML = `<span></span><span class="note">right px</span><span class="note">down px</span><span class="note">size</span>` +
       Object.entries(POS_LABELS).map(([k, l]) => `<span>${l}</span>` + ["x", "y", "s"].map(a => `<input type="number" data-pos="${k}.${a}" step="${a === "s" ? 0.05 : 5}" value="${(lay[k] || {})[a] ?? (a === "s" ? 1 : 0)}">`).join("")).join("");
+    const src = (th.livery || {}).source || "render";
+    $("lvSource").innerHTML = [["render", "iRacing's picture with the paint"], ["photo", "Photo from the broadcast"]]
+      .map(([k, l]) => `<button data-lvsrc="${k}" class="${src === k ? "on" : ""}">${l}</button>`).join("");
     const lv = th.livery || {};
     $("lvX").value = lv.x ?? 50; $("lvY").value = lv.y ?? 58; $("lvZ").value = lv.zoom ?? 1.6;
     renderAssets();
@@ -803,6 +811,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       $("oAuto").checked = cfg.auto !== false;
       $("oPw").placeholder = cfg.hasPassword ? "saved (leave empty to keep)" : "none set";
     }
+    $("rnCount").textContent = S.liveries.size ? S.liveries.size + " cars have a picture so far." : "";
     $("oStatus").innerHTML = !st ? "Waiting for the bridge." : st.connected ? `Connected to OBS. ${S.liveries.size} livery photos so far.` :
       st.error ? `<span style="color:var(--bad)">${esc(st.error)}</span>` : "Not connected yet.";
     const p = $("lvProg");
@@ -860,7 +869,12 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       case "feed": handleFeed(m); break;
       case "director": S.director = m; dirty.cam = true; renderCameraButtons(true); renderDirector(); break;
       case "livery_status": S.lv = m; dirty.lv = true; dirty.ctl = true; break;
-      case "livery": if (m.key) S.liveries.add(m.key); dirty.lv = dirty.field = true; break;
+      case "livery": {
+        const car = m.car || String(m.key || "").split(":")[0];
+        if (car) S.liveries.add(car);
+        if (m.kind === "render") S.renders = (S.renders || 0) + 1;
+        dirty.lv = dirty.field = true; break;
+      }
       case "assets": S.assets = m.files || []; renderAssets(); dirty.look = true; break;
       case "asset_result": if (m.ok) toast(m.deleted ? "Deleted " + m.name : "Uploaded " + m.name); else toast(m.error, true); break;
       case "gfx": {

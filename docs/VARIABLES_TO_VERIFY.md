@@ -95,6 +95,8 @@ Recordings needed (each ~10–20 min, `--hz 10` is plenty for classification):
 | `SessionLaps` + leader laps | a lap-limited race ends when the leader completes `SessionLaps` | the clock ran past the finish in a real race because the old code used the spectator's own laps remaining | the banner should say "Final lap" as the leader starts it |
 | `QualifyResultsInfo/Results` `Position` | 0-based | iracedeck issue #624 says so | the grid shows pole as 1 |
 | `CarDesignStr` | "pattern,colour1,colour2,colour3" | goirsdk field list | fallback car colours match the default paint |
+| iRacing's local render server `127.0.0.1:32034/pk_car.png` | draws a car with its paint scheme, number, and the custom paint .tga given in `carCustPaint` | undocumented by iRacing; parameters from SIMRacingApps and the halvar20000/iracing-overlays livery overlay (which found the %20 and nested-MX-5 traps); tested here only against a stand-in | with iRacing running, the Liveries tab should count pictures for the whole field within a minute; a driver with a Trading Paints paint should show it; watch for every car looking like a Skip Barber/FF1600 (an unknown CarPath) |
+| Trading Paints paint files | `Documents\iRacing\paint\<CarPath>\car_<UserID>.tga`, team events `car_team_<TeamID>.tga` | as used by the same overlay | compare one driver's picture with their paint on track |
 | OBS `GetSourceScreenshot` | a still of the iRacing source without the overlay | obs-websocket v5 protocol docs; tested against a stand-in server | Liveries tab: connect, photograph one car, check it on the driver card |
 
 Two traps found while building it. Camera cuts splice the spectator kinematics from two cars,

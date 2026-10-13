@@ -45,7 +45,7 @@ every graphic can be changed from the producer panel (Look tab), and saved to a 
 | Timing tower | overall, or every class at once in its own section, or one class; live interval, gap, best/last lap, pit stops or incidents; class-coloured number plates; the car on camera highlighted; fastest lap per class; rows slide on overtakes |
 | Session banner | laps (from the leader: "Lap 12/30", "Final lap") or time left, formation and pre-race, the racing flag, track and event |
 | Replay bug | appears whenever the picture is behind live, paused or slowed, naming what is being replayed |
-| Battle box | the closest fight in a class, or one you pick: both cars, their liveries, the live gap and its trend |
+| Battle box | the closest fight in a class, or one you pick: both cars with their paint, the live gap and its trend |
 | Driver card | whoever the camera is on (or a pinned driver): livery, number, name, licence, iRating, car, position, laps, pit stops, official incidents after the finish |
 | Track map | smooth at 60 frames a second, class colours, camera and battle cars marked |
 | Race control | fastest laps, lead changes in every class, incidents, pit stops, flags, rain |
@@ -72,15 +72,19 @@ Cinematic, Onboards or Classic TV style. Camera packs add more: the free communi
 not bundled; download one and use **Install a camera pack** on the suite's Broadcast tile. Its
 groups show up in the panel marked ★ and the director uses them as trackside shots.
 
-**Liveries.** Trading Paints delivers paints as textures that iRacing wraps around the car, so
-the livery people recognise only exists in iRacing's picture. The Liveries tab connects to OBS
-(Tools > WebSocket Server Settings > Enable; free, built in since OBS 28) and photographs each
-car from your iRacing capture in a chase view: all at once before the race, during the grid walk,
-or by itself the first time the camera holds a car in a chase view. Photos are kept for next time.
-Cars without one show their iRacing paint scheme colours.
+**Car pictures.** Every car is shown as iRacing itself draws it, with its paint: while the
+sim runs, iRacing has a small local picture server (127.0.0.1:32034, the one its own screens
+use), and given the path of a paint file it draws the car wearing it. Trading Paints keeps
+the paints it downloads in `Documents\iRacing\paint\<car>\car_<driver id>.tga` (or
+`car_team_<team id>.tga` in team events), so a driver's Trading Paints livery is what appears,
+and iRacing's own paint scheme where there is none. It is automatic: keep Trading Paints running
+on the PC with iRacing, and new paints are picked up within 20 s of arriving. Pictures are
+kept for next time. Optionally, the Liveries tab can also take photos of the cars as they
+looked on track, through OBS's built-in WebSocket (Tools > WebSocket Server Settings > Enable);
+the Look tab chooses which of the two leads.
 
 **Grid walk.** Before the start, the director can walk down the starting grid one car at a time
-in a chase camera, photographing each livery as it goes.
+in a chase camera (and take OBS photos as it goes, if you use them).
 
 Same accuracy rule as the rest of PitWall: numbers come from iRacing or are computed in
 `pitwall/normalize.py`. The producer panel marks computed ones with a dotted underline; the
