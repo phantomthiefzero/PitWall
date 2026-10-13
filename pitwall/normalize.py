@@ -141,7 +141,7 @@ _DRIVER_KEYS = ("CarIdx", "UserName", "TeamName", "CarNumber", "CarNumberRaw", "
                 "CarClassShortName", "CarScreenNameShort", "CarScreenName", "CarPath",
                 "IRating", "LicString", "LicLevel", "LicColor", "IsSpectator", "CarIsPaceCar", "CarIsAI",
                 "CarClassEstLapTime", "CarClassRelSpeed", "CarClassColor", "TeamID", "UserID",
-                "CurDriverIncidentCount", "TeamIncidentCount")
+                "CurDriverIncidentCount", "TeamIncidentCount", "CarDesignStr", "HelmetDesignStr", "CarID")
 
 
 def build_session(src: TelemetrySource) -> dict:
@@ -1095,106 +1095,227 @@ class Deriver:
         return groups
 
     # ---- incidents ------------------------------------------------------------
-    # Two independent kinds, never mixed up:
-    #   counted   a car's incident total in the session info went up. That is
-    #             iRacing's own judgement and the only source of points. It
-    #             arrives with the session-info update, some time after the event.
-    #   observed  something seen in the telemetry of every car: leaving the track
-    #             (CarIdxTrackSurface) or slowing far below the field's speed at
-    #             that point of the lap (a spin, a crash, a stop). Not points.
-    # A counted incident is anchored to the latest observed event of the same car
-    # shortly before it, which is what "replay it" jumps to.
-    INC_ANCHOR_WINDOW_S = 30.0      # how far back an observed event may explain a counted one
-    INC_FALLBACK_S = 10.0           # no observed event: start this far before the count changed
-    OFF_HOLD_S = 5.0                # one off-track per car per 5 s (kerb-hopping is one event)
-    SLOW_HOLD_S = 15.0
-    SLOW_RATIO = 0.35               # under 35% of the field's speed at this point of the lap
-    SLOW_MIN_S = 1.0                # for at least this long
-    SLOW_BINS = 200                 # 0.5% of a lap per bin
+    # iRacing does not publish other cars' incident counts while the race runs
+    # (observed: every count arrived only after the chequered flag), so the live
+    # list is built from what every car's telemetry shows, and labelled as a
+    # prediction. Signals, all per car, all at the live edge only:
+    #   off track     CarIdxTrackSurface on_track -> off_track (iRacing's own flag)
+    #   slowed        under 35% of the field's speed at that 0.5% of the lap, 1 s+
+    #   stopped       under 5% of it for 2 s+
+    #   backwards     lap distance running backwards: a car facing the wrong way
+    #   nearby        another car within ~0.4% of a lap when it began, and whether
+    #                 that car lost speed too (contact)
+    #   tow / reset   gone from the world, or in its pit box without driving the lane
+    #   repair flag   CarIdxSessionFlags gains "repair" (damage)
+    # Signals for one car within a few seconds are one incident; when it settles
+    # it is classified with iRacing's table (Sporting Code 3.5.1), the most
+    # serious part counting, as iRacing counts concurrent incidents (3.5.2).
+    # The counted points (session info) are still read: they appear after the
+    # race, and are then compared with the prediction, car by car.
+    INC_ANCHOR_WINDOW_S = 30.0
+    INC_FALLBACK_S = 10.0
+    INC_SETTLE_S = 3.0              # quiet this long after the last signal -> incident is complete
+    INC_PREROLL_S = 0.0
+    SLOW_RATIO = 0.35
+    STOP_RATIO = 0.05
+    SLOW_MIN_S = 1.0
+    STOP_MIN_S = 2.0
+    BACKWARDS_RATE = -0.003         # laps per second; a car rolling back, not jitter
+    NEAR_LAPS = 0.004               # "alongside": 0.4% of a lap (~20 m on 5 km)
+    NEAR_DIP = 0.75                 # the other car fell under 75% of the field's speed too
+    SLOW_BINS = 200
     SLOW_BIN_SAMPLES = 40
     SLOW_BIN_MIN = 15
+    LIKELY_POINTS = {"paved": {"off_track": 1, "spin": 2, "lost_speed": 2, "contact": 4, "tow": 0, "damage": 0},
+                     "dirt": {"off_track": 1, "spin": 2, "lost_speed": 2, "contact": 2, "tow": 0, "damage": 0}}
+
+    def _incst(self):
+        return self.__dict__.setdefault("_inc", {
+            "count": {}, "surf": {}, "prev": {}, "since": {}, "bins": {}, "open": {}, "last_rate": {},
+            "flags": {}, "predicted": {}, "obs": {}, "next_id": 1, "tally_done": False})
 
     def incidents(self, cars: list, edge: dict, session_num, surface: str = "paved"):
-        st = self.__dict__.setdefault("_inc", {"count": {}, "surf": {}, "off_at": {}, "slow_at": {},
-                                               "prev": {}, "slow_since": {}, "bins": {}, "obs": {}})
+        st = self._incst()
         t_live, t_play, at_live = edge["tLive"], edge["tPlay"], edge["atLive"]
-        # counted -- session info is live state, so this runs even mid-replay
+        self._counted(st, cars, t_live, session_num, surface)
+        if not at_live or t_play is None:
+            st["prev"].clear()
+            st["since"].clear()
+            return
+        by = {c["idx"]: c for c in cars}
+        rates = {}
+        for c in cars:
+            i, pct, surf = c["idx"], c.get("pct"), c.get("surface")
+            was = st["surf"].get(i)
+            st["surf"][i] = surf
+            # tow / reset: out of the world mid-session, or in the box without the lane
+            if was in ("on_track", "off_track") and surf == "not_in_world":
+                self._signal(st, c, t_play, "tow", session_num)
+            elif was in ("on_track", "off_track") and surf == "in_pit_stall":
+                self._signal(st, c, t_play, "tow", session_num)
+            if was == "on_track" and surf == "off_track":
+                self._signal(st, c, t_play, "off_track", session_num)
+            # race control flags on the car
+            fl = set(c.get("flags") or [])
+            had = st["flags"].get(i)
+            st["flags"][i] = fl
+            if had is not None and "repair" in fl and "repair" not in had:
+                self._signal(st, c, t_play, "damage", session_num)
+            # speed in laps per second
+            lap = c.get("lap")
+            prev = st["prev"].get(i)
+            moving = surf in ("on_track", "off_track") and not c.get("onPitRoad") and pct is not None \
+                and pct >= 0 and lap is not None
+            st["prev"][i] = (t_play, lap + pct) if moving else None
+            if not moving or prev is None:
+                continue
+            dt = t_play - prev[0]
+            if dt <= 0 or dt > 1.0:
+                continue
+            rate = (lap + pct - prev[1]) / dt
+            if rate > 0.2 or rate < -0.05:          # a lap counter step or a reset, not motion
+                continue
+            rates[i] = (rate, int(pct * self.SLOW_BINS) % self.SLOW_BINS)
+        meds = [self._median(b) for b in st["bins"].values() if len(b) >= self.SLOW_BIN_MIN]
+        field = self._median(meds) if meds else None
+        ratio = {}
+        for i, (rate, b) in rates.items():
+            hist = st["bins"].setdefault(b, [])
+            med = self._median(hist) if len(hist) >= self.SLOW_BIN_MIN else None
+            if med is None or field is None or med <= 0 or med < 0.3 * field:
+                hist.append(rate)                     # still learning this part of the lap
+                if len(hist) > self.SLOW_BIN_SAMPLES:
+                    del hist[0]
+                continue
+            ratio[i] = rate / med
+            c = by[i]
+            if rate < self.BACKWARDS_RATE:
+                self._signal(st, c, t_play, "backwards", session_num)
+            slow_since = st["since"].setdefault(i, {})
+            for kind, lim, hold in (("slowed", self.SLOW_RATIO, self.SLOW_MIN_S), ("stopped", self.STOP_RATIO, self.STOP_MIN_S)):
+                if rate < lim * med:
+                    t0 = slow_since.setdefault(kind, t_play)
+                    if t_play - t0 >= hold:
+                        self._signal(st, c, t0, kind, session_num)
+                else:
+                    slow_since.pop(kind, None)
+            if rate >= self.SLOW_RATIO * med:
+                hist.append(rate)                     # only normal running defines normal
+                if len(hist) > self.SLOW_BIN_SAMPLES:
+                    del hist[0]
+        # who was alongside each car that has just started an incident
+        for i, inc in st["open"].items():
+            if inc.get("near_checked") or i not in by:
+                continue
+            inc["near_checked"] = True
+            me = by[i]
+            dm = _dist(me)
+            if dm is None:
+                continue
+            for j, c in by.items():
+                dj = _dist(c)
+                if j == i or dj is None or c.get("onPitRoad"):
+                    continue
+                if abs(dj - dm) <= self.NEAR_LAPS:
+                    inc["near"].add(j)
+                    if ratio.get(j, 1.0) < self.NEAR_DIP:
+                        inc["near_dip"].add(j)
+        # close what has settled
+        for i in [i for i, inc in st["open"].items() if t_play - inc["last"] >= self.INC_SETTLE_S]:
+            self._close(st, st["open"].pop(i), surface)
+
+    def _signal(self, st, c, t, kind, session_num):
+        i = c["idx"]
+        inc = st["open"].get(i)
+        if inc is None:
+            inc = {"idx": i, "t": t, "last": t, "signals": set(), "near": set(), "near_dip": set(),
+                   "lap": c.get("lap"), "pct": c.get("pct"), "sessionNum": session_num,
+                   "classId": c.get("classId")}
+            st["open"][i] = inc
+        if kind in inc["signals"] and kind in ("slowed", "stopped", "backwards"):
+            inc["last"] = max(inc["last"], t)
+            return
+        inc["signals"].add(kind)
+        inc["t"] = min(inc["t"], t)
+        inc["last"] = max(inc["last"], t)
+
+    def _close(self, st, inc, surface):
+        sig = inc["signals"]
+        table = self.LIKELY_POINTS.get(surface, self.LIKELY_POINTS["paved"])
+        # Another car that was alongside AND lost speed with it is contact.
+        partners = sorted(j for j in inc["near_dip"] if j in st["open"] or self._recent_partner(st, j, inc))
+        parts = []
+        if partners or (inc["near_dip"] and ({"slowed", "stopped"} & sig)):
+            parts.append("contact")
+        if "backwards" in sig or ({"off_track"} <= sig and ({"slowed", "stopped"} & sig)):
+            parts.append("spin")
+        elif {"slowed", "stopped"} & sig:
+            parts.append("lost_speed")
+        if "off_track" in sig and not parts:
+            parts.append("off_track")
+        if "tow" in sig:
+            parts.append("tow")
+        if "damage" in sig:
+            parts.append("damage")
+        if not parts:
+            return
+        kind = max(parts, key=lambda k: (table.get(k, 0), k == "contact"))
+        pts = max(table.get(k, 0) for k in parts)
+        confidence = ("high" if kind == "off_track" or "backwards" in sig or len(inc["near_dip"]) else
+                      "medium" if "stopped" in sig or "damage" in sig else "low")
+        iid = st["next_id"]
+        st["next_id"] += 1
+        st["predicted"][inc["idx"]] = st["predicted"].get(inc["idx"], 0) + pts
+        st["obs"].setdefault(inc["idx"], []).append({"t": inc["t"], "kind": kind})
+        del st["obs"][inc["idx"]][:-20]
+        self.event(inc["t"], "race_incident", id=iid, idx=inc["idx"], what=kind, parts=parts,
+                   likelyPoints=pts, confidence=confidence, signals=sorted(sig),
+                   near=sorted(inc["near"]), contactWith=sorted(inc["near_dip"]),
+                   lap=inc["lap"], pct=round(inc["pct"] or 0.0, 4), classId=inc["classId"],
+                   sessionNum=inc["sessionNum"], replayT=round(inc["t"], 2), endT=round(inc["last"], 2),
+                   surface=surface)
+
+    def _recent_partner(self, st, j, inc):
+        return any(abs(o["t"] - inc["t"]) <= 3.0 for o in st["obs"].get(j, []))
+
+    def predicted_incidents(self) -> dict:
+        return dict(self._incst()["predicted"])
+
+    def _counted(self, st, cars, t_live, session_num, surface):
+        """iRacing's own counts. Hidden from a spectator during the race, they
+        arrive in one step after the finish; when they do, compare each car's
+        official total with what was predicted for it."""
+        rises = []
         for c in cars:
             i, n = c["idx"], c.get("incidents")
             if not isinstance(n, (int, float)) or n < 0 or t_live is None:
-                continue                         # not published for this car / session
+                continue
             prev = st["count"].get(i)
             st["count"][i] = n
             if prev is None or n <= prev:
-                continue                         # first sight is history; a drop is a reset
-            pts = int(n - prev)
-            anchor = None
-            for ob in reversed(st["obs"].get(i, [])):
-                if t_live - self.INC_ANCHOR_WINDOW_S <= ob["t"] <= t_live + 1:
-                    anchor = ob
-                    break
-            self.event(t_live, "car_incident", idx=i, points=pts, total=int(n),
+                continue
+            rises.append((c, int(n - prev), int(n)))
+        if not rises:
+            return
+        # A step for most of the field at once is the post-race publication, not
+        # incidents happening now: report it as the official tally.
+        if len(rises) >= max(3, len(cars) // 3) or st["tally_done"]:
+            pred = st["predicted"]
+            self.event(t_live, "official_incidents", sessionNum=session_num, cars=[
+                {"idx": c["idx"], "official": int(c.get("incidents") or 0), "predicted": pred.get(c["idx"], 0)}
+                for c in cars if isinstance(c.get("incidents"), (int, float)) and c["incidents"] >= 0])
+            st["tally_done"] = True
+            return
+        for c, pts, total in rises:
+            i = c["idx"]
+            anchor = next((o for o in reversed(st["obs"].get(i, []))
+                           if t_live - self.INC_ANCHOR_WINDOW_S <= o["t"] <= t_live + 1), None)
+            self.event(t_live, "car_incident", idx=i, points=pts, total=total,
                        driverTotal=c.get("driverIncidents"), limit=self.incident_limit,
                        lap=c.get("lap"), sessionNum=session_num,
                        replayT=round(anchor["t"], 2) if anchor else round(t_live - self.INC_FALLBACK_S, 2),
                        anchor=anchor["kind"] if anchor else "reported", surface=surface,
                        **incident_causes(pts, surface))
-        # observed -- only at the live edge. Watching a replay re-plays the
-        # telemetry, and the same off-track must not be reported twice.
-        if not at_live or t_play is None:
-            st["prev"].clear()
-            st["slow_since"].clear()
-            return
-        rates = []
-        for c in cars:
-            i, pct, surf = c["idx"], c.get("pct"), c.get("surface")
-            was = st["surf"].get(i)
-            st["surf"][i] = surf
-            if was == "on_track" and surf == "off_track" and \
-                    t_play - st["off_at"].get(i, -1e9) >= self.OFF_HOLD_S:
-                st["off_at"][i] = t_play
-                self._observed(st, i, t_play, "off_track", c, session_num)
-            # speed in laps per second from successive lap distance
-            lapc = c.get("lapCompleted")
-            prev = st["prev"].get(i)
-            racing = surf in ("on_track", "off_track") and not c.get("onPitRoad") and pct is not None \
-                and pct >= 0 and lapc is not None
-            st["prev"][i] = (t_play, lapc + pct) if racing else None
-            if not racing or prev is None:
-                st["slow_since"].pop(i, None)
-                continue
-            dt = t_play - prev[0]
-            if dt <= 0 or dt > 1.0:
-                continue
-            rate = (lapc + pct - prev[1]) / dt
-            if rate < -0.01 or rate > 0.2:       # a reset or a scored lap jump, not motion
-                st["slow_since"].pop(i, None)
-                continue
-            rates.append((i, int(pct * self.SLOW_BINS) % self.SLOW_BINS, max(rate, 0.0), c))
-        all_meds = [self._median(b) for b in st["bins"].values() if len(b) >= self.SLOW_BIN_MIN]
-        field = self._median(all_meds) if all_meds else None
-        for i, b, rate, c in rates:
-            hist = st["bins"].setdefault(b, [])
-            med = self._median(hist) if len(hist) >= self.SLOW_BIN_MIN else None
-            slow = (med is not None and field is not None and med >= 0.3 * field and rate < self.SLOW_RATIO * med)
-            if slow:
-                since = st["slow_since"].setdefault(i, t_play)
-                if t_play - since >= self.SLOW_MIN_S and t_play - st["slow_at"].get(i, -1e9) >= self.SLOW_HOLD_S:
-                    st["slow_at"][i] = t_play
-                    self._observed(st, i, since, "slowed", c, session_num)
-            else:
-                st["slow_since"].pop(i, None)
-                hist.append(rate)              # only normal running defines "normal"
-                if len(hist) > self.SLOW_BIN_SAMPLES:
-                    del hist[0]
-
-    def _observed(self, st, i, t, kind, c, session_num):
-        ob = {"t": t, "kind": kind}
-        lst = st["obs"].setdefault(i, [])
-        lst.append(ob)
-        del lst[:-20]
-        self.event(t, kind, idx=i, lap=c.get("lap"), pct=round(c.get("pct") or 0.0, 4),
-                   sessionNum=session_num, replayT=round(t, 2))
 
     def session_best_sectors(self) -> list:
         return list(self._sect_best)
@@ -1496,6 +1617,16 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "surface": TRACK_SURFACE.get(s, str(s)) if s is not None else None,
             "lastLapS": _arr(last, i), "bestLapS": _arr(best, i), "bestLapNum": _arr(bestn, i),
             "compound": _arr(comp, i),
+            # The class's reference lap from the session info: what CarIdxEstTime
+            # is measured against (its value at the line).
+            "classEstLapS": d.get("CarClassEstLapTime") if d else None,
+            # iRacing's paint scheme for the car and helmet ("pattern,col1,col2,col3").
+            # Not the Trading Paints livery, which only exists as a texture.
+            "carDesign": d.get("CarDesignStr") if d else None,
+            "helmetDesign": d.get("HelmetDesignStr") if d else None,
+            "carId": d.get("CarID") if d else None,
+            "userId": d.get("UserID") if d else None,
+            "teamId": d.get("TeamID") if d else None,
             "flags": decode_bits(_arr(cflags, i), FLAG_BITS),
             "fastRepairsUsed": _arr(frep, i),
             "p2pActive": _arr(p2ps, i), "p2pCount": _arr(p2pc, i),
@@ -1625,6 +1756,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                 if c.get("bestLapS") and c["bestLapS"] > 0:
                     c["derived"]["bestLapLeftS"] = round(c["bestLapS"] - theo, 3)
 
+    live_gaps(ordered)
     out = {"type": "cars", "schema": SCHEMA_VERSION, "t": _num(g("SessionTime")), "cars": cars}
     if deriver is not None:
         for c in cars:
@@ -1647,6 +1779,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "undercut": deriver.undercut(cars, player_idx, now) if is_race and me is not None else [],
             "traffic": deriver.traffic(cars, player_idx),
             "battles": deriver.battles(cars, ahead_of, is_race),
+            "predictedIncidents": deriver.predicted_incidents(),
+            "race": race_length(session_msg, session_num, ordered, _num(g("SessionTimeRemain")),
+                                deriver, decode_bits(g("SessionFlags"), FLAG_BITS)),
         }
         edge = live_edge(g)
         out["derived"]["liveEdge"] = edge
@@ -1658,6 +1793,131 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         deriver.incidents(cars, edge, session_num,
                           surface_kind(((session_msg or {}).get("track") or {}).get("TrackType")))
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Live gaps, from CarIdxEstTime
+# --------------------------------------------------------------------------- #
+#
+# CarIdxF2Time is iRacing's official gap, but it only moves when the timing
+# catches up with a car: on a broadcast the tower sat on the same interval for
+# most of a lap. CarIdxEstTime is live: the time this car's class takes to reach
+# where the car is now, from the line. Two cars of one class at lap distances
+# dA > dB are separated by the time B needs to reach A's spot, which is
+# EstTime(A) - EstTime(B) on the same lap, plus a class lap for every whole lap.
+# Across classes there is no shared time curve, so the fraction of a lap is
+# scaled by the BEHIND car's class lap instead. Whole laps are kept separately,
+# because "+1 lap" is what a broadcast says, not "+94.2".
+
+def _dist(c):
+    lap, pct = c.get("lap"), c.get("pct")
+    if lap is None or pct is None or pct < 0 or lap < 0:
+        return None
+    return lap + pct
+
+
+def gap_between(a: dict, b: dict):
+    """Live time from car `b` back to car `a` (a ahead). Returns (seconds incl.
+    whole laps, whole laps) or (None, None) when it cannot be worked out."""
+    da, db = _dist(a), _dist(b)
+    lap_b = b.get("classEstLapS")
+    if da is None or db is None or not lap_b or lap_b <= 0:
+        return None, None
+    d = da - db
+    if d < -0.02 or d > 200:            # crossing the line out of step, or nonsense
+        return None, None
+    d = max(d, 0.0)
+    laps = int(d + 1e-6)
+    ea, eb = a.get("estTimeS"), b.get("estTimeS")
+    same = a.get("classId") is not None and a.get("classId") == b.get("classId")
+    if same and ea is not None and eb is not None and ea >= 0 and eb >= 0:
+        frac_t = ea - eb if a["pct"] >= b["pct"] else (lap_b - eb) + ea
+        if frac_t < 0 or frac_t > lap_b * 1.5:
+            frac_t = (d - laps) * lap_b
+    else:
+        frac_t = (d - laps) * lap_b
+    # The fractional part can cross a whole lap when the two cars straddle the
+    # line; normalise so laps and seconds agree.
+    if frac_t >= lap_b:
+        frac_t -= lap_b
+        laps += 1
+    return round(laps * lap_b + frac_t, 3), laps
+
+
+def live_gaps(ordered: list):
+    """Adds derived.liveIntervalS / intervalLaps (to the car ahead in the order),
+    liveGapS / gapLaps (to the overall leader) and liveClassGapS / classGapLaps."""
+    leader = ordered[0] if ordered else None
+    class_leader = {}
+    prev = None
+    for c in ordered:
+        d = c.setdefault("derived", {})
+        cl = class_leader.setdefault(c.get("classId"), c)
+        if prev is None:
+            d.update(liveIntervalS=None, intervalLaps=None, liveGapS=None, gapLaps=None)
+        else:
+            d["liveIntervalS"], d["intervalLaps"] = gap_between(prev, c)
+            d["liveGapS"], d["gapLaps"] = gap_between(leader, c)
+        if cl is c:
+            d.update(liveClassGapS=None, classGapLaps=None)
+        else:
+            d["liveClassGapS"], d["classGapLaps"] = gap_between(cl, c)
+        prev = c
+
+
+# --------------------------------------------------------------------------- #
+# Race length: laps or time, whichever ends it
+# --------------------------------------------------------------------------- #
+
+def _parse_laps(v):
+    try:
+        n = int(str(v).split()[0])
+        return n if 0 < n < 10000 else None
+    except (TypeError, ValueError):
+        return None                       # "unlimited"
+
+
+def _parse_secs(v):
+    try:
+        x = float(str(v).split()[0])
+        return x if 0 < x < 7 * 86400 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver, flags) -> dict:
+    """How much of the session is left, from the LEADER, not the player.
+
+    SessionLapsRemainEx is the player's own count, and a spectator has no car:
+    a lap-limited race then showed the session clock, which ran on past the
+    chequered flag. The lap limit comes from the session info (SessionLaps) and
+    the leader's completed laps; the time limit from SessionTimeRemain. When a
+    race has both, the one that ends it first is estimated from the leader's
+    pace (derived)."""
+    sess = next((s for s in (session_msg or {}).get("sessions") or [] if s.get("SessionNum") == session_num), {})
+    total = _parse_laps(sess.get("SessionLaps"))
+    limit_s = _parse_secs(sess.get("SessionTime"))
+    leader = ordered[0] if ordered else None
+    done = leader.get("lapCompleted") if leader else None
+    if done is not None and done < 0:
+        done = 0
+    remain = time_remain_s if time_remain_s is not None and 0 <= time_remain_s < 7 * 86400 else None
+    to_go = max(0, total - done) if total and done is not None else None
+    pace = deriver.pace(leader["idx"]) if (deriver is not None and leader) else None
+    by_time = None
+    if limit_s and remain is not None and pace:
+        by_time = int(math.ceil(remain / pace)) if remain > 0 else 0
+    if total and (not limit_s or by_time is None or to_go is None or to_go <= by_time):
+        ends = "laps"
+    elif limit_s:
+        ends = "time"
+    else:
+        ends = "laps" if total else None
+    return {"totalLaps": total, "leaderLapsDone": done,
+            "leaderLap": leader.get("lap") if leader else None,
+            "lapsToGo": to_go, "timeRemainS": remain if limit_s or not total else remain,
+            "timeLimited": bool(limit_s), "lapsByTime": by_time, "endsBy": ends,
+            "white": "white" in (flags or []), "checkered": "checkered" in (flags or [])}
 
 
 def _is_race(session_msg: dict | None, session_num) -> bool:

@@ -89,8 +89,10 @@ class PitWallHost:
         # Camera control is on: the only way to reach this relay is from this PC,
         # with the producer token, and cutting cameras is the producer's job.
         # Pit commands stay off, as before.
+        # Cars at 15 Hz rather than 8: a broadcast tower and map need the field
+        # to move smoothly, and everything stays on this PC.
         self.bridge = Bridge(src, "ws://127.0.0.1:%d" % self.port, self._bridge_token,
-                             allow_camera=True, log=self.log)
+                             cars_hz=15.0, allow_camera=True, log=self.log)
         asyncio.get_running_loop().create_task(self.bridge.run())
         self.log("PitWall relay on ws://127.0.0.1:%d, bridge source: %s" % (self.port, self.source_kind))
 
