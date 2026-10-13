@@ -6,6 +6,7 @@ One Windows app for the iRacing tools, fed by a built-in telemetry bridge:
 |---|---|
 | **Lap Analyzer** | Compare laps against your best or a reference, read the car setup in the iRacing garage layout, watch live graphs, and see each setup change's effect run by run |
 | **PitWall** | Engineer and spotter dashboard: track map, standings, flags, weather, car systems (everything below this section) |
+| **Broadcast** | TV-style overlay for OBS when you spectate a race, run from a producer panel by you and a co-host (see [Broadcast](#broadcast)) |
 
 ## Using the app
 
@@ -32,6 +33,70 @@ with remote crew still uses a public relay as described below. A log is written 
 
 Run from source: `python -m pip install -r requirements.txt`, then `python -m suite`
 (`--browser` to use the browser, `--pitwall-source fake` for PitWall's fake field).
+
+# Broadcast
+
+A broadcast overlay for races you spectate, built on PitWall's bridge and relay.
+
+| Graphic | What it shows |
+|---|---|
+| Timing tower | running order with interval, gap to leader, best or last lap, or stops seen; class colours; pit tag; the camera car highlighted; fastest lap in purple; rows slide on overtakes; keeps the camera car on the tower in a big field |
+| Session banner | track, laps or time left, the racing flag (start-light and service bits are left out), and a Replay / Paused / Slow-mo tag whenever the picture is not live |
+| Battle box | the closest fight, or one you pick: cars, gaps, and the closing trend when iRacing's gaps support one |
+| Driver card | whoever the camera is on (or a pinned driver): number, name, licence, iRating, car, class, position, last and best lap, stint and stops seen |
+| Track map | outline built from a lap, class-coloured cars, camera car and battle cars marked |
+| Race control | fastest laps, lead changes in every class, pit stops, flags, rain |
+| Standings board | the whole field, two columns, for breaks |
+
+The producer panel switches each graphic on and off, picks tower modes and classes, pins the
+driver card, puts a battle on air, cuts iRacing's camera to any driver in any camera group
+(or lets iRacing choose: most exciting, leader, incidents), and runs the replay (pause,
+slow motion, previous incident, back to live). Two people can use it at once; both always
+see the same state.
+
+Same accuracy rule as everything else here: numbers come from iRacing or are derived in
+`pitwall/normalize.py`, and derived ones have a dotted underline on air. Camera and replay
+control has NOT been run against the sim yet; see `docs/VARIABLES_TO_VERIFY.md`, "Broadcast".
+
+### In the suite (one PC)
+
+1. Open the suite, join the race as a spectator in iRacing.
+2. On the home screen, **Broadcast → Copy OBS address**. In OBS add a **Browser Source**,
+   1920 × 1080, paste the address, and put it above your iRacing capture. The address stays
+   the same every launch, so this is a one-time step.
+3. **Open producer panel**. Turn graphics on, tap a driver to cut the camera to them.
+
+For separate OBS sources per graphic (to move or crop them in OBS), add `&only=tower` (or
+`banner`, `battle`, `card`, `map`, `ticker`, `board`) to the address.
+
+### With a co-host
+
+The suite's relay only listens on this PC. A co-host needs a public address for it. The
+least setup is a Cloudflare quick tunnel (free, no account), run on the PC with the suite:
+
+```
+cloudflared tunnel --url http://127.0.0.1:8765
+```
+
+It prints an `https://<random>.trycloudflare.com` address. Send your co-host the producer
+link with that address in place of `http://127.0.0.1:8765` (the token stays the same). The
+producer link controls your camera and graphics, so only share it with your co-host; the
+address changes every time the tunnel starts.
+
+A permanent relay (a small VPS) works the same way as for PitWall below; start it with a
+producer token and the bridge with `--allow-camera`:
+
+```
+python relay/server.py --port 8765 --bridge-token B --view-token V --producer-token P
+py -3 -m pitwall stream --source live --relay wss://relay.example.com --token B --allow-camera
+```
+
+then `https://relay.example.com/broadcast/overlay.html?token=V` in OBS and
+`https://relay.example.com/broadcast/producer.html?token=P` for each producer.
+
+Try it without iRacing: `py -3 -m pitwall stream --source fake --spectator --allow-camera ...`
+runs a fake spectated multiclass race whose camera responds to the panel (results say
+"fake field").
 
 # PitWall
 
@@ -64,7 +129,7 @@ driver PC                       anywhere public               each engineer/spot
 | `pitwall/recorder.py`, `analyze.py` | phase-1 truth harness | yes |
 | `pitwall/bridge.py`, `delta.py` | streaming, delta encoding (~30 KB/s for 24 cars) | yes, end to end |
 | `pitwall/commands.py` | pit-service commands into iRacing (phase 2), off by default | gate logic yes; actual sim call **needs your PC** |
-| `relay/server.py` | fan-out with bridge / view / engineer tokens | yes |
+| `relay/server.py` | fan-out with bridge / view / engineer / producer tokens; broadcast gfx state; serves /broadcast/ | yes |
 | `client/index.html` | dashboard, no build step | rendered headless against the fake stream |
 | `tests/test_pipeline.py` | proofs for the derived parts | passing |
 
@@ -194,6 +259,7 @@ The client has no command UI yet. That is intentional: phase 1 first.
 pitwall/        bridge package (python -m pitwall ...)
 relay/          relay server
 client/         dashboard (single file)
+broadcast/      OBS overlay and producer panel (single files)
 docs/           PROTOCOL.md, ARCHITECTURE.md, VARIABLES_TO_VERIFY.md
 tests/          proofs for derived logic
 ```

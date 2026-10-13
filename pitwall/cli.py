@@ -4,7 +4,7 @@
   python -m pitwall record  --out race.jsonl.gz [--hz 10] [--minutes 30]
   python -m pitwall analyze race.jsonl.gz [--md docs/VARIABLES.md] [--json report.json]
   python -m pitwall map     race.jsonl.gz  [--out map.json]       build a track outline from a recording
-  python -m pitwall stream  --relay ws://host:8765 --token T [--source fake] [--allow-commands]
+  python -m pitwall stream  --relay ws://host:8765 --token T [--source fake] [--allow-commands] [--allow-camera]
 
 Replaying a capture through the whole stack (no iRacing needed):
   python -m pitwall stream --source replay --path recordings/race.jsonl.gz --relay ws://127.0.0.1:8765 --token B
@@ -23,7 +23,8 @@ from .sources import make_source
 def _src(args):
     kw = {}
     if args.source == "fake":
-        kw = {"realtime": not getattr(args, "fast", False)}
+        kw = {"realtime": not getattr(args, "fast", False),
+              "spectator": getattr(args, "spectator", False)}
     elif args.source == "replay":
         kw = {"realtime": not getattr(args, "fast", False),
               "speed": getattr(args, "speed", 1.0),
@@ -110,7 +111,7 @@ def cmd_stream(args):
     from .bridge import Bridge
     src = _src(args)
     b = Bridge(src, args.relay, args.token, state_hz=args.state_hz, cars_hz=args.cars_hz,
-               allow_commands=args.allow_commands)
+               allow_commands=args.allow_commands, allow_camera=args.allow_camera)
     try:
         asyncio.run(b.run())
     except KeyboardInterrupt:
@@ -130,6 +131,8 @@ def main(argv=None):
                         help="fake/replay source: run as fast as possible instead of in real time")
         sp.add_argument("--speed", type=float, default=1.0, help="replay source: playback rate (2 = double)")
         sp.add_argument("--loop", action="store_true", help="replay source: restart at the end")
+        sp.add_argument("--spectator", action="store_true",
+                        help="fake source: behave like a spectator slot (PlayerCarIdx 63, no private car data)")
 
     s = sub.add_parser("check", help="print one normalized frame")
     add_source(s)
@@ -162,6 +165,8 @@ def main(argv=None):
     s.add_argument("--state-hz", type=float, default=15.0)
     s.add_argument("--cars-hz", type=float, default=8.0)
     s.add_argument("--allow-commands", action="store_true", help="accept pit commands from engineers (phase 2)")
+    s.add_argument("--allow-camera", action="store_true",
+                   help="accept camera and replay commands from a broadcast producer")
     s.set_defaults(fn=cmd_stream)
 
     args = p.parse_args(argv)

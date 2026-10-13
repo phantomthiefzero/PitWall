@@ -27,6 +27,9 @@ the event (practice/qual/race). `sectors[]` gives sector start percentages.
 `track` and `event` carry WeekendInfo fields. `driverCar` carries fuel capacity,
 shift lights, redline, pit-lane position for the player's car.
 
+`cameras[]` is `CameraInfo/Groups`: `{num, name, scenic, cameras:[{num, name}]}`. Group numbers
+differ by track, so camera commands always take them from here.
+
 ### `map` (bridge, once per track config; from cache or built from the first clean lap)
 ```json
 {"type":"map","trackId":123,"config":"Grand Prix","bins":720,
@@ -51,8 +54,13 @@ integration missed closing the loop before correction; treat > 30 m as suspect.
            "dc":{"brakeBias","abs","tractionControl","antiRollFront","antiRollRear","fuelMixture",...},
            "tires":{"LF":{"carcassTempC":[l,m,r],"wearPct":[l,m,r],"coldPressureKPa","pressureKPa"},...},
            "isOnTrack","isInGarage","isReplayPlaying","replayFrame"},
+ "camera":{"carIdx","group","num","state":[...],"stateRaw","replaySpeed","replaySlowMotion",
+           "replaySessionNum","replaySessionTimeS","replayFramesFromEnd"},
  "derived":{"fuelPerLap","lapsOfFuel","fuelPerLapSamples"}}
 ```
+`camera` is what the broadcast is looking at: `CamCarIdx`, `CamGroupNumber`, `CamCameraNumber`,
+`CamCameraState` (decoded) and the replay variables. Spectating is a replay at `replaySpeed` 1;
+any other speed, or slow motion, means the picture is not the race as it happens.
 
 ### `cars` (bridge, 8 Hz, delta-encoded; keyed by car index as a string)
 ```json
@@ -73,8 +81,16 @@ integration missed closing the loop before correction; treat > 30 m as suspect.
             "undercut":[{"idx","kind":"they_stopped"|"you_stopped","stopLap","lapsSince","preStopToPlayerS",
                          "toPlayerS","inPit","series":[...],"trendSPerLap","settledToPlayerS",
                          "afterYourStopS"|"afterTheirStopS"}],
-            "traffic":[{"idx","kind":"you_catch"|"catches_you","inS","atPct"}]}}
+            "traffic":[{"idx","kind":"you_catch"|"catches_you","inS","atPct"}],
+            "battles":[{"id","classId","cars":[idx,...],"gapsS":[...],"closingSPerLap":[...],
+                        "catchLaps":[...],"forClassPos","forPos"}]}}
 ```
+`battles` (race only): cars that are neighbours IN THEIR CLASS with trusted F2Times less than
+1.0 s apart; a pair stays in until the gap passes 1.5 s. Pairs that touch form one group,
+front to back. `gapsS[k]` is between `cars[k]` and `cars[k+1]`. `closingSPerLap[k]` / `catchLaps[k]`
+are the behind car's own closing trend, and only when the pair is also adjacent overall --
+otherwise null, because that trend is measured against some other car. Neither car may be on
+pit road. Ordered by class position of the front car.
 Sign conventions: `toPlayerS` is + when that car is BEHIND you. `youGainSPerLap` is + when the
 trend is good for you (a car ahead coming back, a car behind dropping back). `onTrackS` uses
 the same sign as `toPlayerS`. Race-only values (`toPlayerS`, `classGapS`, `rejoin`,
@@ -97,7 +113,8 @@ Event kinds: `pit_in`, `pit_out` (stationaryS, laneLossS), `fastest_lap` (lapS, 
 overall), `incident` (delta, total, limit), `behind_closing` / `you_closing` (gapS,
 rateSPerLap), `position` (fromPos, toPos -- class position), `lead_change`, `flag`,
 `engine` (warnings), `tow` (towS), `rain_start`, `rain_stop`, `track_wetness`,
-`declared_wet`, `pit_battle` (preS, nowS, first).
+`declared_wet`, `pit_battle` (preS, nowS, first), `class_lead` (idx, prevIdx, classId -- every
+class, held 5 s, with or without a player car; `lead_change` remains the player's class only).
 
 `session.options` carries `IncidentLimit` (a number, or "unlimited"),
 `FastRepairsLimit`, `StandingStart` and `NumStarters` from WeekendOptions.
@@ -116,8 +133,34 @@ fast_repair, clear_windshield, clear_fast_repair, clear_fuel, tire_compound(idx)
 The bridge answers with `cmd_result {ok, echo, error}` and the relay copies it to
 the sender. The bridge refuses everything unless started with `--allow-commands`.
 
+Broadcast commands (producer token only; the bridge refuses them unless started with
+`--allow-camera`, a separate gate from `--allow-commands`):
+```json
+{"type":"cmd","cmd":"camera","action":"car","car":"34","group":11,"camera":0}
+{"type":"cmd","cmd":"camera","action":"position","position":1,"group":11}
+{"type":"cmd","cmd":"camera","action":"focus","focus":"exciting"|"leader"|"incident","group":11}
+{"type":"cmd","cmd":"replay","action":"speed","speed":0,"slow":false}
+{"type":"cmd","cmd":"replay","action":"search","mode":"to_end"|"prev_incident"|"next_incident"|"prev_lap"|...}
+```
+`car` is the car NUMBER as a string (leading zeros matter); `camera` 0 lets iRacing pick within
+the group. Against the fake source `cmd_result` carries `"simulated": true`.
+
+### `gfx` (producer → relay → every viewer)
+Broadcast graphics state, owned by the relay (not the bridge). A producer sends a patch:
+```json
+{"type":"gfx","set":{"tower":{"show":true,"mode":"best"}},"by":"Andrew"}
+```
+The relay deep-merges it (`null` deletes a key) and sends the whole state to everyone:
+`{"type":"gfx","rev":12,"state":{...},"by":"Andrew"}`; new viewers get it on connect. Keys the
+overlay reads: `tower {show, mode: interval|leader|best|last|stops, class, rows}`,
+`banner {show}`, `card {show, follow: camera|pinned, idx}`, `battle {show, mode: auto|pick, cars}`,
+`map {show}`, `ticker {show, pits}`, `board {show, class}`. A rejected patch gets
+`gfx_result {ok:false, error}`.
+
 ### `resend` (viewer → bridge)
 Asks for `session`, `map` and fresh keyframes. Sent by the client on connect.
 
 ### `relay` (relay → viewer)
-`{"type":"relay","bridge":"connected"|"disconnected","engineer":bool,"viewers":n}`
+`{"type":"relay","bridge":"connected"|"disconnected","engineer":bool,"role":"view"|"engineer"|"producer","viewers":n}`
+
+Tokens: view (read-only), engineer (pit commands), producer (camera, replay, gfx).

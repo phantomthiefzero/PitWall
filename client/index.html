@@ -1087,7 +1087,7 @@
     const cls = { pit_in: "dim", pit_out: "info", fastest_lap: "purple", incident: "hot", behind_closing: "warn2",
                   you_closing: "good", position: "info", lead_change: "info", flag: "info", engine: "hot",
                   tow: "hot", rain_start: "info", rain_stop: "info", track_wetness: "info", declared_wet: "info",
-                  pit_battle: "info" }[e.kind] || "info";
+                  pit_battle: "info", class_lead: "info" }[e.kind] || "info";
     let t = "";
     switch (e.kind) {
       case "pit_in": t = `${carLabel(e.idx)} into the pits`; break;
@@ -1105,6 +1105,10 @@
       case "position": { const better = e.toPos < e.fromPos;
         t = `<span class="${better ? "gain" : "lose"}">You ${isMulticlass() ? "class " : ""}P${esc(e.fromPos)} → P${esc(e.toPos)}</span>`; break; }
       case "lead_change": t = `${carLabel(e.idx)} takes the ${isMulticlass() ? "class " : ""}lead`; break;
+      case "class_lead": {
+        const c = carByIdx(e.idx);
+        t = `${carLabel(e.idx)} leads ${isMulticlass() && c && c.className ? esc(c.className) : "the race"}`; break;
+      }
       case "flag": t = `<b>${esc(words(e.flag)).replace(/^./, x => x.toUpperCase())} flag</b>`; break;
       case "engine": t = `<b>Engine warning:</b> ${esc((e.warnings || []).map(words).join(", "))}`; break;
       case "tow": t = `<b>Tow</b> · ${esc(e.towS)} s`; break;
@@ -1126,6 +1130,10 @@
   function renderFeed() {
     const el = $("feed");
     let evs = S.feed.events;
+    // class_lead covers every class for the broadcast; your own class is already
+    // reported as lead_change, so do not say it twice.
+    const meC = meCar();
+    if (meC) evs = evs.filter(e => !(e.kind === "class_lead" && e.classId === meC.classId));
     if (feedFilter === "you") {
       const rs = rivalSet();
       const mine = new Set(["incident", "position", "engine", "tow", "flag", "behind_closing", "you_closing",

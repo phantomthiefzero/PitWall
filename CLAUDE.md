@@ -20,7 +20,8 @@ Verification status
 - Captures can drive the whole stack without the sim:
   `python -m pitwall stream --source replay --path recordings/x.jsonl.gz --loop`.
   Use it. Several bugs were only visible against a real field.
-- `commands.py` (phase 2 pit service) is still UNTESTED against the sim.
+- `commands.py` (phase 2 pit service) is still UNTESTED against the sim. So are its camera
+  and replay commands (broadcast); see VARIABLES_TO_VERIFY.md, "Broadcast".
 
 A recurring trap, worth stating plainly: FakeSource repeatedly encoded the same
 assumption as the code under test, so the suite passed while the sim disagreed.
@@ -38,3 +39,13 @@ iRacing Suite app (suite/)
 - `suite/bridge.py` uses only the standard library (plus pyirsdk). Its replay reads
   .ibt files; PitWall's replay reads its own .jsonl.gz captures. They are different.
 - `tests/test_suite.py` must pass along with `tests/test_pipeline.py`.
+
+Broadcast (broadcast/)
+- `overlay.html` (OBS source) and `producer.html` (you + co-host) are single files, no build
+  step, same provenance rule as the client: derived values carry the dotted underline.
+- Graphics state ("gfx") lives in the relay, not the bridge. Camera/replay commands go
+  through the bridge under `--allow-camera` and the producer token, separate from pit.
+- The relay serves both pages at /broadcast/. The suite runs the bridge with camera control
+  on and keeps the view/producer tokens in %LOCALAPPDATA%\iRacingSuite\broadcast.json so the
+  OBS source address survives restarts.
+- `tests/test_broadcast.py` must pass with the others.

@@ -4,7 +4,8 @@
 
 ```
 client/index.html          renders protocol messages; never computes racing math
-relay/server.py            fan-out + auth; never interprets telemetry
+broadcast/overlay.html     OBS overlay; same rule. producer.html drives it through relay gfx
+relay/server.py            fan-out + auth + broadcast gfx state; never interprets telemetry
 pitwall/bridge.py          schedules, delta-encodes, forwards commands
 pitwall/delta.py           keyframes + diffs
 pitwall/normalize.py       raw vars -> messages; the ONLY place derived values are computed
@@ -46,4 +47,13 @@ carries `closureErrorM` so the client can warn.
 - command UI in the client (phase 2)
 - multi-class handling beyond showing class name/position (needs a real multi-class recording to design against)
 - sector times per car (derive from CarIdxLapDistPct crossings of SplitTimeInfo sectors — needs validation)
-- a Godot/overlay client (same protocol; WebSocketPeer)
+- a Godot client (same protocol; WebSocketPeer)
+- an auto-director (camera choices made by rule); battles are derived, cuts are still manual
+
+## Broadcast
+Graphics state is a relay concern, not a bridge concern: it belongs to the people producing
+the show, survives a bridge restart, and must be shared by two producers and any number of
+OBS sources. Camera and replay control go the other way, through the bridge, because only
+the bridge can talk to iRacing; they have their own gate (`--allow-camera`) and their own
+token (producer), separate from pit service. While spectating, the player-car kinematics
+follow the camera car, so the map builder voids a lap whenever `CamCarIdx` changes.
