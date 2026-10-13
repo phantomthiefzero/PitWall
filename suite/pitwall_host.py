@@ -80,7 +80,7 @@ class PitWallHost:
             self.log(self.error)
             return
         try:
-            kw = {"realtime": True} if self.source_kind == "fake" else {}
+            kw = {"realtime": True, "incidents": True} if self.source_kind == "fake" else {}
             src = make_source(self.source_kind, None, **kw)
         except Exception as e:
             self.error = "PitWall could not open iRacing's telemetry: %s: %s" % (type(e).__name__, e)

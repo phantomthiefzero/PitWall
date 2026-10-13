@@ -45,8 +45,21 @@ A broadcast overlay for races you spectate, built on PitWall's bridge and relay.
 | Battle box | the closest fight, or one you pick: cars, gaps, and the closing trend when iRacing's gaps support one |
 | Driver card | whoever the camera is on (or a pinned driver): number, name, licence, iRating, car, class, position, last and best lap, stint and stops seen |
 | Track map | outline built from a lap, class-coloured cars, camera car and battle cars marked |
-| Race control | fastest laps, lead changes in every class, pit stops, flags, rain |
+| Race control | fastest laps, lead changes in every class, pit stops, incidents of 2x and up, flags, rain |
 | Standings board | the whole field, two columns, for breaks |
+
+**Incidents.** The producer panel lists every car's incidents as they happen, newest first,
+and **Replay** on any of them rewinds iRacing to a few seconds before it (3, 5, 10 or 15 s,
+your choice), cuts to that car and plays; **Back to live** returns. The overlay shows a Replay
+tag naming the car while you are behind live. Points follow iRacing's table (Sporting Code
+3.5.1): light contact 0x, wheels off 1x, loss of control 2x, contact with an object 2x,
+heavy contact 4x (2x on dirt). Points come from iRacing's own count for each car; iRacing
+only says the total went up, so a 2x is labelled "loss of control or contact with an object",
+and a rise no single incident explains (3x) says so. Alongside the points, "Everything seen"
+adds off-tracks and sharp slowdowns read from every car's telemetry, which are not points
+but show where things happened; a counted incident replays from the off-track or slowdown
+that preceded it. Whether iRacing publishes other cars' counts to a spectator is the one
+thing still to confirm on a real race (see `docs/VARIABLES_TO_VERIFY.md`).
 
 The producer panel switches each graphic on and off, picks tower modes and classes, pins the
 driver card, puts a battle on air, cuts iRacing's camera to any driver in any camera group
