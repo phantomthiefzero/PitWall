@@ -575,3 +575,44 @@ def test_car_renderer_renders_each_car_once_and_again_when_its_paint_changes():
         assert out[-1]["key"] == "5_2:render" and out[-1]["custom"] is True
         assert "carCustPaint=" in calls[-1]
         assert r.cached_message("5_1")["image"].startswith("data:image/png")
+
+
+# --------------------------------------------------------------------- camera packs on disk
+
+def test_camera_pack_folders_are_matched_to_the_track_and_cars():
+    from pitwall.camerapacks import match_folder, packs_message
+    folders = ["daytona 2011", "virginia 2022", "virginia", "okayama"]
+    assert match_folder(folders, "virginia 2022 full") == "virginia 2022", "longest folder the name starts with"
+    assert match_folder(folders, "Okayama") == "okayama"
+    assert match_folder(folders, "spa 2024 gp") is None
+    assert match_folder(["mx5 mx52016"], "mx5 mx52016") == "mx5 mx52016"
+    with tempfile.TemporaryDirectory() as base:
+        os.makedirs(os.path.join(base, "tracks", "virginia 2022", "full"))
+        open(os.path.join(base, "tracks", "virginia 2022", "full", "tv.cam"), "w").close()
+        open(os.path.join(base, "tracks", "virginia 2022", "readme.txt"), "w").close()
+        os.makedirs(os.path.join(base, "cars", "mx5 mx52016"))
+        open(os.path.join(base, "cars", "mx5 mx52016", "car.cam"), "w").close()
+        sess = {"track": {"TrackName": "virginia 2022 full", "TrackDisplayName": "VIRginia"},
+                "drivers": [{"CarPath": "mx5 mx52016"}, {"CarPath": "porsche992cup"}]}
+        m = packs_message(sess, base)
+        assert m["type"] == "camera_packs" and m["track"]["folder"] == "virginia 2022"
+        assert m["track"]["files"] == ["full/tv.cam"], "only camera files are listed"
+        assert [c["carPath"] for c in m["cars"]] == ["mx5 mx52016"]
+        m2 = packs_message({"track": {"TrackName": "okayama full"}, "drivers": []}, base)
+        assert m2["track"]["folder"] is None and m2["trackCount"] == 1
+    assert packs_message(None, "/no/such/dir")["exists"] is False
+
+
+def test_the_bridge_reports_camera_packs_with_the_session():
+    from pitwall.bridge import Bridge
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    with tempfile.TemporaryDirectory() as base:
+        b = Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None, render_cars=False, livery_dir=base)
+        b.camera_packs_dir = base
+        src.tick()
+        out = b._build(0.0)
+        packs = [m for m in out if m.get("type") == "camera_packs"]
+        assert len(packs) == 1 and packs[0]["track"]["folder"] is None
+        src.tick()
+        assert not [m for m in b._build(1.0) if m.get("type") == "camera_packs"], "only when something changed"

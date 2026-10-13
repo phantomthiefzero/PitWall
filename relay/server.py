@@ -39,7 +39,8 @@ from websockets.asyncio.server import serve
 from websockets.datastructures import Headers
 from websockets.http11 import Response
 
-SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director", "livery_status")
+SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director", "livery_status",
+                  "camera_packs")
 
 # Messages a viewer may have queued before it is judged too slow and dropped.
 # At ~20 msg/s this is ~10 s of stream. Each viewer drains its own queue, so a
