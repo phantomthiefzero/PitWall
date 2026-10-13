@@ -1168,14 +1168,47 @@ class Deriver:
             "count": {}, "surf": {}, "prev": {}, "since": {}, "bins": {}, "open": {}, "last_rate": {},
             "flags": {}, "predicted": {}, "obs": {}, "next_id": 1, "tally_done": False})
 
-    def incidents(self, cars: list, edge: dict, session_num, surface: str = "paved"):
+    # Only green-flag running is watched. Before the start the grid sits still
+    # and the pace laps crawl; under a full-course caution the field slows as
+    # one; after the chequered flag finishers cruise. None of that is an incident.
+    INC_STATES = ("racing", "checkered")
+    INC_QUIET_FLAGS = {"caution", "caution_waving", "red"}
+
+    def _inc_watching(self, st, cars, state, flags) -> bool:
+        if state is None:                       # no session state given: always watch
+            return True
+        was = st.get("state")
+        st["state"] = state
+        if state == "racing" and was != "racing" and was != "checkered":
+            st["bins"].clear()                  # pace-lap speeds are not normal running
+        if state == "checkered" and was != "checkered":
+            laps = {c["idx"]: c.get("lap") for c in cars}
+            st["fin_lap"] = laps
+            # the leader's flag is what ended the race: it has finished already
+            top = max((v for v in laps.values() if v is not None), default=None)
+            for i, v in laps.items():
+                if top is not None and v == top:
+                    laps[i] = v - 1
+        if state not in self.INC_STATES or self.INC_QUIET_FLAGS & set(flags or ()):
+            return False
+        return True
+
+    def incidents(self, cars: list, edge: dict, session_num, surface: str = "paved",
+                  state: str | None = None, flags=None):
         st = self._incst()
         t_live, t_play, at_live = edge["tLive"], edge["tPlay"], edge["atLive"]
         self._counted(st, cars, t_live, session_num, surface)
-        if not at_live or t_play is None:
+        watching = self._inc_watching(st, cars, state, flags)
+        if not at_live or t_play is None or not watching:
             st["prev"].clear()
             st["since"].clear()
+            if not watching:
+                st["open"].clear()              # half-seen signals from the caution / grid
             return
+        if state == "checkered":                # a car that has taken the flag is cruising
+            fin = st.get("fin_lap") or {}
+            cars = [c for c in cars if c.get("lap") is None or fin.get(c["idx"]) is None
+                    or c["lap"] <= fin[c["idx"]]]
         by = {c["idx"]: c for c in cars}
         rates = {}
         for c in cars:
@@ -1229,10 +1262,20 @@ class Deriver:
             for kind, lim, hold in (("slowed", self.SLOW_RATIO, self.SLOW_MIN_S), ("stopped", self.STOP_RATIO, self.STOP_MIN_S)):
                 if rate < lim * med:
                     t0 = slow_since.setdefault(kind, t_play)
-                    if t_play - t0 >= hold:
+                    if t_play - t0 < hold:
+                        continue
+                    if not slow_since.get(kind + "_sent"):
+                        # once per stretch: a car parked for a minute is one
+                        # incident, not one every few seconds (it was re-opened
+                        # after every settle, thousands of times on a stopped grid)
+                        slow_since[kind + "_sent"] = True
                         self._signal(st, c, t0, kind, session_num)
+                    inc = st["open"].get(i)
+                    if inc is not None and t_play - inc["t"] < self.INC_FALLBACK_S:
+                        inc["last"] = max(inc["last"], t_play)   # still happening
                 else:
                     slow_since.pop(kind, None)
+                    slow_since.pop(kind + "_sent", None)
             if rate >= self.SLOW_RATIO * med:
                 hist.append(rate)                     # only normal running defines normal
                 if len(hist) > self.SLOW_BIN_SAMPLES:
@@ -1825,7 +1868,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         if edge["atLive"]:
             deriver.field_events(cars, now, player_idx, deriver._stops_tick)
         deriver.incidents(cars, edge, session_num,
-                          surface_kind(((session_msg or {}).get("track") or {}).get("TrackType")))
+                          surface_kind(((session_msg or {}).get("track") or {}).get("TrackType")),
+                          state=SESSION_STATE.get(g("SessionState"), "invalid"),
+                          flags=decode_bits(g("SessionFlags"), FLAG_BITS))
     return out
 
 
