@@ -1879,13 +1879,20 @@ def gap_between(a: dict, b: dict):
 
 def live_gaps(ordered: list):
     """Adds derived.liveIntervalS / intervalLaps (to the car ahead in the order),
-    liveGapS / gapLaps (to the overall leader) and liveClassGapS / classGapLaps."""
+    liveGapS / gapLaps (to the overall leader), liveClassGapS / classGapLaps (to
+    the class leader) and liveClassIntervalS / classIntervalLaps (to the car ahead
+    in its class)."""
     leader = ordered[0] if ordered else None
     class_leader = {}
+    class_prev = {}
     prev = None
     for c in ordered:
         d = c.setdefault("derived", {})
         cl = class_leader.setdefault(c.get("classId"), c)
+        cp = class_prev.get(c.get("classId"))
+        class_prev[c.get("classId")] = c
+        # to the car ahead IN THIS CLASS, for a tower split by class
+        d["liveClassIntervalS"], d["classIntervalLaps"] = gap_between(cp, c) if cp is not None else (None, None)
         if prev is None:
             d.update(liveIntervalS=None, intervalLaps=None, liveGapS=None, gapLaps=None)
         else:

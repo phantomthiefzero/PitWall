@@ -89,6 +89,14 @@ Recordings needed (each ~10–20 min, `--hz 10` is plenty for classification):
 | `replay_search_session_time(session, ms)` | seeks the replay to that moment | pyirsdk API; RobertsmaniaReplay uses the same broadcast message | press Replay on an incident; the picture shows the car a few seconds before it |
 | `derived` slowed | spins and crashes, not slow corners or the start | unit-tested, and on the fake (all detections matched a real fake incident) | watch for false Slowed events at hairpins, at the start, and under yellow |
 
+| Other cars' `TeamIncidentCount` while spectating | hidden until the race ends | **Observed live (Oct 2026): none moved during the race; all arrived after the finish.** The live list is therefore predicted from telemetry | the producer's post-race tally shows how close the prediction was: note the "predicted exactly" count after each race |
+| predicted incidents (`race_incident`) | off track ~ iRacing's 1x; backwards or off-and-slow ~ spin 2x; slow alone ~ 2x; two cars slowing together ~ 4x contact | the fake's incidents were written alongside the detector, so passing on it proves the logic only | compare with the official tally after a race; look for kerb-hopping "off tracks" iRacing did not count, and contacts it saw as two separate slowdowns |
+| `CarIdxEstTime` live gaps | track iRacing's own F2Time gaps between updates, and move every frame | on the fake: median difference under 0.5 s | watch a close pair: the live interval should move smoothly and land on iRacing's gap at the line |
+| `SessionLaps` + leader laps | a lap-limited race ends when the leader completes `SessionLaps` | the clock ran past the finish in a real race because the old code used the spectator's own laps remaining | the banner should say "Final lap" as the leader starts it |
+| `QualifyResultsInfo/Results` `Position` | 0-based | iracedeck issue #624 says so | the grid shows pole as 1 |
+| `CarDesignStr` | "pattern,colour1,colour2,colour3" | goirsdk field list | fallback car colours match the default paint |
+| OBS `GetSourceScreenshot` | a still of the iRacing source without the overlay | obs-websocket v5 protocol docs; tested against a stand-in server | Liveries tab: connect, photograph one car, check it on the driver card |
+
 Two traps found while building it. Camera cuts splice the spectator kinematics from two cars,
 so the map builder now voids its lap on any `CamCarIdx` change (tested). And `lead_change`
 needed a player car, so a spectator never saw a lead change; `class_lead` covers that.

@@ -305,3 +305,27 @@ def test_relay_takes_assets_from_the_producer_only_and_serves_them():
                     assert keys == {"110_1", "110_2"}
             return True
         assert asyncio.run(run())
+
+
+# --------------------------------------------------------------------- camera packs
+
+def test_camera_pack_installs_tracks_and_cars_folders_only():
+    import zipfile
+    from suite.cameras import install_pack
+    with tempfile.TemporaryDirectory() as d:
+        z = os.path.join(d, "pack.zip")
+        with zipfile.ZipFile(z, "w") as f:
+            f.writestr("Pack v2/tracks/limerock/2019/full/tv.cam", "cam")
+            f.writestr("Pack v2/cars/mx5/car.cam", "cam")
+            f.writestr("Pack v2/readme.txt", "hi")
+            f.writestr("Pack v2/tracks/../../../evil.cam", "no")
+        dest = os.path.join(d, "cameras")
+        r = install_pack(z, dest)
+        assert r["ok"] and sorted(r["installed"]) == ["cars/mx5/car.cam", "tracks/limerock/2019/full/tv.cam"]
+        assert os.path.isfile(os.path.join(dest, "tracks", "limerock", "2019", "full", "tv.cam"))
+        assert not os.path.exists(os.path.join(d, "evil.cam"))
+        bare = os.path.join(d, "bare.zip")
+        with zipfile.ZipFile(bare, "w") as f:
+            f.writestr("tv.cam", "cam")
+        r = install_pack(bare, dest)
+        assert not r["ok"] and "tracks or cars" in r["error"]

@@ -206,6 +206,6 @@ class AppWindowApiTest(unittest.TestCase):
         api = Api(engine=object())
         api._window = object()
         public = {n for n in dir(api) if not n.startswith("_")}
-        self.assertEqual(public, {"version", "pick_replay", "use_live"})
+        self.assertEqual(public, {"version", "pick_replay", "use_live", "install_camera_pack", "open_cameras_folder"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)

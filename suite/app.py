@@ -117,6 +117,30 @@ class Api:
         self._engine.live()
         return {"ok": True}
 
+    def install_camera_pack(self):
+        """Pick a downloaded camera pack (.zip) and copy it into iRacing's cameras folder."""
+        import webview
+        from suite.cameras import install_pack
+        kind = webview.FileDialog.OPEN if hasattr(webview, "FileDialog") else webview.OPEN_DIALOG
+        picked = self._window.create_file_dialog(kind, file_types=("Camera pack (*.zip)", "All files (*.*)"))
+        if not picked:
+            return {"ok": False}
+        path = picked[0] if isinstance(picked, (list, tuple)) else picked
+        try:
+            return install_pack(path)
+        except Exception as e:
+            return {"ok": False, "error": "Could not install that pack: %s" % e}
+
+    def open_cameras_folder(self):
+        from suite.cameras import cameras_dir
+        d = cameras_dir()
+        os.makedirs(d, exist_ok=True)
+        try:
+            os.startfile(d)  # Windows
+        except Exception as e:
+            return {"ok": False, "error": str(e), "path": d}
+        return {"ok": True, "path": d}
+
 
 def quit_now(code=0):
     """End the process. Background threads (iRacing reader, thread pools) must not
