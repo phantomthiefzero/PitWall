@@ -225,7 +225,8 @@ class Bridge:
         recent = [e for e in self.deriver.feed_events[-40:] if e.get("kind") == "race_incident"]
         if self.gate.camera:
             try:
-                self.director.tick(self.session_msg, cars_msg, self._last_state, recent)
+                self.director.tick(self.session_msg, cars_msg, self._last_state, recent,
+                                   busy=bool(self.capture.status.get("sweeping")))
             except Exception as e:  # noqa: BLE001
                 self.log(f"director: {type(e).__name__}: {e}")
                 self.director.stop()
@@ -273,7 +274,14 @@ class Bridge:
         cars = (self._last_cars or {}).get("cars") or []
         if kind == "director":
             if action == "set":
-                self.director.configure(on=msg.get("on"), style=msg.get("style"), hold_s=msg.get("holdS"))
+                self.director.configure(on=msg.get("on"), style=msg.get("style"), hold_s=msg.get("holdS"),
+                                        auto_grid=msg.get("autoGrid"))
+                if msg.get("gridHoldS") is not None:
+                    self.director.grid_hold_s = max(2.0, min(20.0, float(msg["gridHoldS"])))
+            elif action == "follow_battle":
+                if not self.director.follow_battle(msg.get("cars") or []):
+                    res["error"] = "a battle needs two cars"
+                    return res
             elif action == "grid_walk":
                 rows = ((self.session_msg or {}).get("grid") or {}).get("rows") or []
                 by = {c["idx"]: c for c in cars}
@@ -284,7 +292,7 @@ class Bridge:
                 def on_car(car):
                     if snap:
                         threading.Timer(LiveryCapture.SETTLE_S, self.capture.snap, args=(dict(car),)).start()
-                self.director.start_grid_walk(order, hold_s=msg.get("holdS", 5.0), on_car=on_car)
+                self.director.start_grid_walk(order, hold_s=msg.get("holdS"), on_car=on_car)
             elif action == "stop":
                 self.director.stop()
             else:
@@ -365,6 +373,11 @@ class Bridge:
                 self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} -> {'ok' if res['ok'] else res['error']}")
                 await ws.send(json.dumps(res))
             elif msg.get("type") == "cmd":
+                # A cut by hand takes the camera from the director, the grid walk
+                # or a followed battle: one owner at a time (pitwall/director.py).
+                # Replay commands do not: the owner simply waits for live.
+                if msg.get("cmd") == "camera" and self.gate.camera and self.director.manual():
+                    await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
                 # In a worker thread: a replay jump pauses between its seek and
                 # its play, and the stream must not stall while it does.
                 res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, msg)

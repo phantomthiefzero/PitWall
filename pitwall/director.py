@@ -1,10 +1,26 @@
-"""Auto-director: picks the car and the camera, the way a TV director would.
+"""Who moves the camera, and the auto-director.
 
-iRacing's own "most exciting" mode picks a car but uses the same few TV cameras.
-This chooses from every camera group the track offers -- chase, rear chase
-(the car behind, from the car ahead), gyro, chopper, blimp, onboards, pit lane,
-and any group added by a camera pack the user loaded -- and varies them, with
-the subject chosen from what the race is doing:
+One owner at a time. Before this, the auto-director, the grid walk and the
+producer's own cuts all moved iRacing's camera independently: the director cut
+away seconds after the producer chose a car, and a battle the producer picked
+was abandoned on the next shot. Now there is exactly one owner, and it is shown
+in the producer panel:
+
+    "you"     the producer. Every cut made by hand -- a car, a camera group,
+              iRacing's own "most exciting" -- takes the camera back from
+              whatever had it, and nothing moves it again until asked.
+    "race"    the auto-director picks the car and the shot from the race.
+    "grid"    the grid walk: down the starting grid one car at a time, in
+              order, chase camera, holding each one. Starts on its own when the
+              pace laps begin (can be turned off); ends at the green flag.
+    "battle"  follows the cars of one battle, varying the shot between them,
+              until the battle is over.
+
+"grid" and "battle" are temporary: when they end, the camera goes back to
+whoever had it before ("race" or "you"). Nothing acts while a replay is on
+screen, nor while livery photos are being taken; the owner carries on at live.
+
+Shot choice in "race" mode, from what the race is doing:
 
     a fresh incident (contact, spin)   -> that car, from trackside
     a battle                           -> leader's rear chase / chaser's chase / onboard
@@ -12,11 +28,7 @@ the subject chosen from what the race is doing:
     the start and the leader now and then -> aerial and trackside
     otherwise                          -> the pack near the front
 
-It never acts while the picture is behind live (a replay is being watched), and
-every cut goes through the same command gate as a producer's.
-
-Grid walk: before the start, down the starting grid one car at a time in a
-chase view, optionally photographing each livery (pitwall/liveries.py).
+Every cut goes through the same command gate as a producer's.
 """
 from __future__ import annotations
 
@@ -40,13 +52,20 @@ STYLES = {
     "onboard": {"onboard": 5, "chase": 2, "rear": 2, "trackside": 1},
 }
 
+# A battle, shot by shot: (kind, which car). "rear" on the car in FRONT looks
+# back at it and shows the chaser behind; "chase" on the LAST car shows the
+# whole train ahead of it.
+BATTLE_SHOTS = [("chase", "back"), ("rear", "front"), ("trackside", "back"),
+                ("aerial", "front"), ("onboard", "back")]
+
+FRESH_INCIDENT_S = 20.0     # an incident older than this is not news
+BATTLE_LOST_S = 8.0         # a followed battle missing this long is over
+
 
 def group_kind(name: str | None) -> str:
     n = (name or "").strip().lower()
     if n in GROUP_KIND:
         return GROUP_KIND[n]
-    if n.startswith("tv"):
-        return "trackside"
     return "trackside"
 
 
@@ -56,56 +75,116 @@ class Director:
         self.log = log
         self.rng = rng or random.Random()
         self.clock = clock
+        # owner: on=False is "you"; on=True with mode race / grid / battle
         self.on = False
+        self.mode = "race"
+        self.resume = None                # owner to return to after grid / battle: "race" or None
         self.style = "cinematic"
         self.hold_s = 8.0
-        self.mode = "race"                # or "grid"
-        self.grid = []                    # car dicts to walk
+        self.auto_grid = True             # walk the grid by itself when the pace laps start
+        self.grid = []                    # car dicts still to visit
+        self.grid_total = 0
         self.grid_hold_s = 5.0
         self.on_grid_car = None           # callback(car) when the walk reaches a car
+        self.battle = None                # {"cars": [idx...], "lostAt": t|None, "shot": n}
+        self.battle_hold_s = 6.0
+        self.note = None                  # why the owner last changed, for the panel
         self._next_at = 0.0
         self._last_group = None
         self._last_kind = None
         self._shown_incidents = set()
         self._battle_flip = False
         self._shots = 0
-        self.current = None               # {"car", "group", "groupName", "reason"}
+        self._grid_walked = set()         # session numbers already walked automatically
+        self._last_state = None
+        self.current = None               # {"car", "num", "group", "groupName", "reason"}
         self.changed = True
 
-    # ------------------------------------------------------------------ #
-    def configure(self, on=None, style=None, hold_s=None):
+    # ------------------------------------------------------------------ owner
+    @property
+    def owner(self) -> str:
+        return self.mode if self.on else "you"
+
+    def _set_owner(self, owner, note=None):
+        if owner in (None, "you"):
+            self.on, self.mode = False, "race"
+        else:
+            self.on, self.mode = True, owner
+        if owner != "grid":
+            self.grid = []
+        if owner != "battle":
+            self.battle = None
+        self.note = note
+        self._next_at = 0.0
+        self.changed = True
+
+    def _end_temporary(self, note):
+        back, self.resume = self.resume, None
+        self._set_owner(back, note)
+
+    def configure(self, on=None, style=None, hold_s=None, auto_grid=None):
         if on is not None:
-            self.on = bool(on)
-            if self.on:
-                self.mode = "race"
-            self._next_at = 0.0
+            self.resume = None
+            self._set_owner("race" if on else None, "director on" if on else "director off")
         if style in STYLES:
             self.style = style
         if hold_s is not None:
             self.hold_s = max(3.0, min(30.0, float(hold_s)))
+        if auto_grid is not None:
+            self.auto_grid = bool(auto_grid)
         self.changed = True
 
-    def start_grid_walk(self, cars: list[dict], hold_s: float = 5.0, on_car=None):
+    def manual(self, why="you cut the camera"):
+        """The producer cut by hand: they have the camera now, from anything."""
+        if not self.on:
+            return False
+        self.resume = None
+        self._set_owner(None, why)
+        return True
+
+    def start_grid_walk(self, cars: list[dict], hold_s: float | None = None, on_car=None):
         self.grid = [c for c in cars if c.get("num") is not None]
-        self.grid_hold_s = max(2.0, min(20.0, float(hold_s)))
+        self.grid_total = len(self.grid)
+        if hold_s is not None:
+            self.grid_hold_s = max(2.0, min(20.0, float(hold_s)))
         self.on_grid_car = on_car
-        self.mode = "grid"
-        self.on = True
+        if self.owner not in ("grid", "battle"):
+            self.resume = "race" if self.owner == "race" else None
+        self.on, self.mode = True, "grid"
+        self.battle = None
+        self.note = "walking the grid"
         self._next_at = 0.0
         self.changed = True
 
-    def stop(self):
-        self.on = False
-        self.mode = "race"
+    def follow_battle(self, car_idxs: list[int]):
+        cars = [int(i) for i in car_idxs if i is not None]
+        if len(cars) < 2:
+            return False
+        if self.owner not in ("grid", "battle"):
+            self.resume = "race" if self.owner == "race" else None
+        self.on, self.mode = True, "battle"
         self.grid = []
+        self.battle = {"cars": cars, "lostAt": None, "shot": 0}
+        self.note = "following a battle"
+        self._next_at = 0.0
         self.changed = True
+        return True
+
+    def stop(self):
+        """Stop whatever is running; the producer has the camera."""
+        self.resume = None
+        self._set_owner(None, "stopped")
 
     def status(self) -> dict:
-        return {"type": "director", "on": self.on, "mode": self.mode, "style": self.style,
-                "holdS": self.hold_s, "gridLeft": len(self.grid) if self.mode == "grid" else None,
-                "current": self.current, "styles": sorted(STYLES)}
+        return {"type": "director", "on": self.on, "mode": self.mode, "owner": self.owner,
+                "resume": self.resume, "style": self.style, "holdS": self.hold_s,
+                "autoGrid": self.auto_grid, "gridHoldS": self.grid_hold_s,
+                "gridLeft": len(self.grid) if self.owner == "grid" else None,
+                "gridTotal": self.grid_total if self.owner == "grid" else None,
+                "battle": list(self.battle["cars"]) if self.battle else None,
+                "note": self.note, "current": self.current, "styles": sorted(STYLES)}
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------ shots
     def _groups(self, session) -> dict[str, list[dict]]:
         out: dict[str, list[dict]] = {}
         for g in (session or {}).get("cameras") or []:
@@ -121,7 +200,7 @@ class Director:
         options = []
         for kind, w in kinds_weights.items():
             for g in groups.get(kind, []):
-                if g["num"] == self._last_group:
+                if g["num"] == self._last_group and sum(len(groups.get(k, [])) for k in kinds_weights) > 1:
                     continue
                 # do not repeat the same KIND twice in a row either, unless it is all there is
                 ww = w * (0.35 if kind == self._last_kind else 1.0)
@@ -148,13 +227,18 @@ class Director:
             self.changed = True
         return ok
 
-    # ------------------------------------------------------------------ #
-    def tick(self, session: dict | None, cars_msg: dict | None, state: dict | None, recent_incidents: list):
-        if not self.on or not session or not cars_msg:
+    # ------------------------------------------------------------------ tick
+    def tick(self, session: dict | None, cars_msg: dict | None, state: dict | None,
+             recent_incidents: list, busy: bool = False):
+        if not session or not cars_msg:
+            return
+        race_state = ((state or {}).get("session") or {}).get("state")
+        self._watch_session(session, cars_msg, state, race_state)
+        if not self.on:
             return
         edge = ((state or {}).get("derived") or {}).get("liveEdge") or {}
-        if edge.get("atLive") is False:
-            return                                   # a replay is on: leave the camera alone
+        if edge.get("atLive") is False or busy:
+            return                                   # a replay / a photo sweep: leave the camera alone
         now = self.clock()
         if now < self._next_at:
             return
@@ -166,16 +250,44 @@ class Director:
         if not cars:
             return
         by = {c["idx"]: c for c in cars}
+        if self.mode == "battle":
+            self._battle_step(groups, by, cars_msg, now)
+            return
+        self._race_step(groups, cars, by, cars_msg, state, race_state, recent_incidents, edge, now)
+
+    def _watch_session(self, session, cars_msg, state, race_state):
+        """The pace laps starting begin the grid walk; the green flag ends it."""
+        was, self._last_state = self._last_state, race_state
+        is_race = bool((cars_msg.get("derived") or {}).get("isRace"))
+        snum = ((state or {}).get("session") or {}).get("num")
+        if self.mode == "grid" and self.on and race_state == "racing" and was in ("parade_laps", "warmup", "get_in_car"):
+            self._end_temporary("the green flag: grid walk over")
+            return
+        if (self.auto_grid and is_race and race_state == "parade_laps" and was != "parade_laps"
+                and snum not in self._grid_walked and self.owner != "battle"):
+            rows = (session.get("grid") or {}).get("rows") or []
+            by = {c["idx"]: c for c in cars_msg.get("cars") or []}
+            order = [by[r["idx"]] for r in rows if r.get("idx") in by]
+            if order:
+                self._grid_walked.add(snum)
+                self.start_grid_walk(order, on_car=self.on_grid_car)
+                self.note = "pace laps: walking the grid"
+
+    def _race_step(self, groups, cars, by, cars_msg, state, race_state, recent_incidents, edge, now):
         weights = STYLES.get(self.style, STYLES["cinematic"])
         hold = self.hold_s * (0.75 + self.rng.random() * 0.5)
-        race_state = ((state or {}).get("session") or {}).get("state")
         leader = min((c for c in cars if c.get("pos")), key=lambda c: c["pos"], default=None)
-
-        # 1. a fresh incident worth showing
+        t_live = edge.get("tLive")
+        # 1. a fresh incident worth showing (one from minutes ago is not news:
+        #    turning the director on must not replay the whole feed)
         for inc in reversed(recent_incidents):
             if inc.get("id") in self._shown_incidents or inc.get("what") not in ("contact", "spin", "lost_speed"):
                 continue
             self._shown_incidents.add(inc.get("id"))
+            if inc.get("what") == "lost_speed" and inc.get("confidence") == "low":
+                continue
+            if t_live is not None and inc.get("t") is not None and t_live - inc["t"] > FRESH_INCIDENT_S:
+                continue
             c = by.get(inc.get("idx"))
             if c:
                 g = self._pick_group(groups, {"trackside": 5, "chase": 2, "aerial": 1})
@@ -205,7 +317,7 @@ class Director:
             if front and back:
                 self._battle_flip = not self._battle_flip
                 if self._battle_flip and groups.get("rear"):
-                    c, g, why = front, self._pick_group(groups, {"rear": 1}), "battle: the chaser, from the car ahead"
+                    c, g, why = front, self._pick_group(groups, {"rear": 1}), "battle: from the car ahead"
                 else:
                     c = back
                     g = self._pick_group(groups, {k: w for k, w in weights.items() if k != "rear"})
@@ -223,12 +335,38 @@ class Director:
         if g and self._do_cut(c, g, why):
             self._next_at = now + hold
 
+    def _battle_step(self, groups, by, cars_msg, now):
+        b = self.battle
+        want = set(b["cars"])
+        battles = ((cars_msg.get("derived") or {}).get("battles")) or []
+        # the same battle: shares at least two cars (it may have grown or shrunk)
+        match = max(battles, key=lambda x: len(want & set(x["cars"])), default=None)
+        if match and len(want & set(match["cars"])) >= 2:
+            b["cars"], b["lostAt"] = list(match["cars"]), None
+        else:
+            b["lostAt"] = b["lostAt"] if b["lostAt"] is not None else now
+            if now - b["lostAt"] >= BATTLE_LOST_S:
+                self._end_temporary("the battle is over")
+                return
+        front, back = by.get(b["cars"][0]), by.get(b["cars"][-1])
+        if not front or not back:
+            return
+        for k in range(len(BATTLE_SHOTS)):
+            kind, who = BATTLE_SHOTS[(b["shot"] + k) % len(BATTLE_SHOTS)]
+            if not groups.get(kind):
+                continue
+            g = self._pick_group(groups, {kind: 1})
+            car = front if who == "front" else back
+            if g and self._do_cut(car, g, "battle"):
+                b["shot"] = (b["shot"] + k + 1) % len(BATTLE_SHOTS)
+                self._next_at = now + self.battle_hold_s
+                return
+        self._next_at = now + 1.0
+
     def _grid_step(self, groups, now):
         if not self.grid:
-            self.mode = "race"
-            self.on = False
             self.current = None
-            self.changed = True
+            self._end_temporary("grid walk done")
             return
         car = self.grid.pop(0)
         chase = [g for g in groups.get("chase", []) if (g.get("name") or "").lower() == "chase"] or groups.get("chase") \
@@ -237,6 +375,8 @@ class Director:
             return
         g = {**chase[0], "kind": "chase"}
         if self._do_cut(car, g, "starting grid"):
+            self.current["gridPos"] = self.grid_total - len(self.grid)
             if self.on_grid_car:
                 self.on_grid_car(car)
+        self.changed = True
         self._next_at = now + self.grid_hold_s

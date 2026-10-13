@@ -381,13 +381,18 @@ class FakeSource(TelemetrySource):
     def __init__(self, seed: int = 7, n_cars: int = 24, realtime: bool = True,
                  speed: float = 1.0, player_pit_lap: int | None = None, spectator: bool = False,
                  incidents: bool | None = None, incident_every_s: float = 25.0,
-                 hide_incident_counts: bool | None = None, parade_s: float = 0.0):
+                 hide_incident_counts: bool | None = None, parade_s: float = 0.0,
+                 grid_s: float = 0.0):
         # spectator=True behaves like a spectator slot, as observed live:
         # PlayerCarIdx is 63 (not a car), the session is a replay at speed 1,
         # kinematics follow the camera car, and private car state (fuel, tyres,
         # dc*, pit service, incidents) is absent.
         self.spectator = spectator
         self.parade_s = parade_s
+        # grid_s: before the start iRacing's field sits still on track (warmup)
+        # and then crawls round behind the pace car (parade_laps). A detector
+        # that learns "normal" speed must not learn it there, nor flag it.
+        self.grid_s = grid_s
         self.cam = {"car": 0, "group": 11, "num": 1}
         self.replay_speed, self.replay_slow = 1, False
         self.replay_behind = 0.0
@@ -641,9 +646,13 @@ class FakeSource(TelemetrySource):
                     c.pit_phase = "lane_out"
             elif c.pit_phase is not None:
                 spd = self.PIT_LANE_MS
+            elif self.t < self.grid_s:
+                spd = 0.0                       # sitting on the grid, on track, still
             else:
                 spd = (self.length / c.base_lap) * self.curvature_speed_factor(c.pct) / 0.83
                 spd += math.sin(self.t * 0.5 + c.idx) * 0.8
+                if self.t < self.parade_s and self.grid_s:
+                    spd *= 0.4                  # behind the pace car
                 eff = self.inc_effect.get(c.idx)
                 if eff and self.t < eff["until"]:
                     spd *= -0.25 if self.t < eff.get("back_until", 0) else eff["speed"]
@@ -729,7 +738,8 @@ class FakeSource(TelemetrySource):
         self.fuel -= (fuel_rate_kg_h / 3600.0) * dt / 0.75  # kg/h -> l/s with ~0.75 kg/l
         x, y = self.pos_at(player.pct)
         v.update({
-            "SessionTime": self.t, "SessionNum": 1, "SessionState": 3 if self.t < self.parade_s else 4,
+            "SessionTime": self.t, "SessionNum": 1,
+            "SessionState": 2 if self.t < self.grid_s else 3 if self.t < self.parade_s else 4,
             "SessionFlags": 0x0004, "SessionTimeRemain": 604800.0,
             "SessionLapsRemainEx": max(0, 25 - player.laps_completed),
             "SessionTimeOfDay": 14 * 3600 + self.t, "PlayerCarIdx": 0,
@@ -818,7 +828,7 @@ class FakeSource(TelemetrySource):
     def _incidents_step(self, dt: float, surf: list):
         r = self.inc_rng
         # start one now and then, on a car that is racing
-        if dt > 0 and self.t > 20 and r.random() < dt / self.incident_every_s:
+        if dt > 0 and self.t > max(20, self.parade_s + 20) and r.random() < dt / self.incident_every_s:
             cands = [c for c in self.cars if c.pit_phase is None and c.idx not in self.inc_effect]
             if cands:
                 name, pts, speed, dur, off, pair, back = r.choices(self.FAKE_INCIDENTS, self.FAKE_INCIDENT_WEIGHTS)[0]

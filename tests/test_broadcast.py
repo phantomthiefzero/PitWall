@@ -457,6 +457,74 @@ def test_two_cars_slowing_together_side_by_side_is_contact():
     assert inc[0]["contactWith"] in ([3], [4])
 
 
+def test_a_car_parked_for_a_minute_is_one_incident_not_one_every_few_seconds():
+    """Seen live: on the grid the counter climbed past 3000. A stopped car kept
+    re-opening a fresh 'stopped' incident every time the last one settled."""
+    d = Deriver()
+    _field_run(d, lambda i, t, te: 0.0 if i == 3 and t < te + 60 else None, steps=6000)
+    inc = [e for e in _races(d) if e["idx"] == 3]
+    assert len(inc) == 1, f"one stop, one incident; got {len(inc)}"
+
+
+def _staged_run(d, phases, n=10):
+    """phases: [(seconds, state, flags, speed_factor)] -- the field laps a track
+    with a slow corner; a factor of 0 sits still on track, as on the grid."""
+    t, pos = 0.0, {i: i * 0.04 for i in range(n)}
+    for secs, state, flags, k in phases:
+        for _ in range(int(secs / 0.125)):
+            t += 0.125
+            cars = []
+            for i in range(n):
+                pos[i] += (0.004 if 0.4 <= pos[i] % 1 < 0.5 else 0.012) * k * 0.125
+                cars.append(_icar(i, None, pct=pos[i] % 1, lapc=int(pos[i])))
+            d.incidents(cars, _edge(t), 1, state=state, flags=flags)
+    return t
+
+
+def test_nothing_is_an_incident_on_the_grid_behind_the_pace_car_or_under_caution():
+    d = Deriver()
+    _staged_run(d, [(30, "warmup", [], 1.0),          # rolling out to the grid
+                    (240, "warmup", [], 0.0),         # parked on the grid, on track
+                    (200, "parade_laps", [], 0.35),   # pace laps
+                    (600, "racing", ["green"], 1.0),
+                    (120, "racing", ["caution_waving"], 0.3),
+                    (60, "racing", ["caution"], 0.0),  # field stopped under red-ish caution
+                    (300, "racing", ["green"], 1.0)])
+    assert not _races(d), f"{len(_races(d))} predicted with no incident on track"
+    # and the detector is still alive afterwards
+    d2 = Deriver()
+    _staged_run(d2, [(240, "warmup", [], 0.0), (200, "parade_laps", [], 0.35), (600, "racing", [], 1.0)])
+    t, pos = 1040.0, None
+    for step in range(40):                               # car 3 stops dead in the race
+        t += 0.125
+        cars = [_icar(i, None, pct=(0.1 * i + t * 0.012) % 1 if i != 3 else 0.3, lapc=int(t * 0.012))
+                for i in range(10)]
+        d2.incidents(cars, _edge(t), 1, state="racing", flags=[])
+    for step in range(40):
+        t += 0.125
+        cars = [_icar(i, None, pct=(0.1 * i + t * 0.012) % 1, lapc=int(t * 0.012)) for i in range(10)]
+        d2.incidents(cars, _edge(t), 1, state="racing", flags=[])
+    assert [e["idx"] for e in _races(d2)] == [3]
+
+
+def test_fake_race_start_predicts_nothing_before_the_green():
+    src = FakeSource(realtime=False, spectator=True, grid_s=150, parade_s=330, incident_every_s=20)
+    src.connect()
+    d = Deriver()
+    sess, siu = None, None
+    for k in range(60 * 700):
+        src.tick()
+        if src.session_info_update != siu:
+            sess, siu = build_session(src), src.session_info_update
+        if k % 4 == 0:
+            build_state(src, d)
+        if k % 8 == 0:
+            build_cars(src, sess, d)
+    inc = _races(d)
+    assert not [e for e in inc if e["t"] < 330], "predicted incidents before the green"
+    assert inc, "and real ones after it are still seen"
+
+
 def test_contact_is_2x_on_dirt():
     from pitwall.normalize import Deriver as Dv
     assert Dv.LIKELY_POINTS["dirt"]["contact"] == 2 and Dv.LIKELY_POINTS["paved"]["contact"] == 4
