@@ -312,6 +312,13 @@ small{margin-right:4px}
   let gridUp = false;
   const shown = name => allowed(name) && !!G(name + ".show", DEFAULT_ON[name]) &&
     !(gridUp && ["tower", "card", "battle", "map", "board"].includes(name) && G("grid.solo", true));
+  // The grid walk (pitwall/director.py) is going down the grid: the card shows
+  // the car it is on, with its starting position, instead of the full board.
+  const gridWalkCar = () => {
+    const d = S.director;
+    if (!d || d.owner !== "grid" || !d.current || G("grid.mode", "auto") === "off") return null;
+    return carByIdx(d.current.car);
+  };
   const allCars = () => S.cars && S.cars.cars ? Object.values(S.cars.cars) : [];
   const carByIdx = i => i == null ? null : allCars().find(c => c.idx === i) || null;
   const isRace = () => !!(S.cars && S.cars.derived && S.cars.derived.isRace);
@@ -612,13 +619,17 @@ small{margin-right:4px}
 
   // ---------------------------------------------------------------- driver card
   function cardCar() {
+    const w = gridWalkCar(); if (w) return w;
     if (G("card.follow", "camera") === "pinned") { const c = carByIdx(G("card.idx", null)); if (c) return c; }
     return carByIdx(camIdx());
   }
   function renderCard() {
+    const walk = gridWalkCar();
     const c = cardCar();
-    $("card").classList.toggle("on", shown("card") && !!c);
+    $("card").classList.toggle("on", walk ? allowed("card") || allowed("grid") : shown("card") && !!c);
+    $("card").classList.toggle("walk", !!walk);
     if (!c) return;
+    if (walk) { renderGridCard(c); return; }
     const m = multi();
     const bg = m ? (css(c.classColor) || "#444") : T("colors.head", "#000");
     $("cdNumBox").style.background = bg; $("cdNumBox").style.color = inkOn(/^#/.test(bg) ? bg : null);
@@ -640,6 +651,27 @@ small{margin-right:4px}
       const lim = S.session && S.session.options ? parseInt(S.session.options.IncidentLimit, 10) : NaN;
       stats.push(["Incidents", c.incidents + "x" + (lim > 0 ? " / " + lim : "")]);
     }
+    $("cdStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+  }
+
+  function renderGridCard(c) {
+    const rows = (S.session && S.session.grid && S.session.grid.rows) || [];
+    const r = rows.find(x => x.idx === c.idx) || {};
+    const m = multi();
+    const bg = m ? (css(c.classColor) || "#444") : T("colors.head", "#000");
+    $("cdNumBox").style.background = bg; $("cdNumBox").style.color = inkOn(/^#/.test(bg) ? bg : null);
+    $("cdNum").textContent = c.num ?? "–";
+    $("cdPos").textContent = r.pos ? "Starts P" + r.pos : "";
+    const p = String(c.name || "").trim().split(/\s+/);
+    $("cdName").innerHTML = p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "");
+    $("cdLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
+      (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
+    $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
+    $("cdLv").innerHTML = liveryHtml(c);
+    const stats = [["Grid", r.pos ? "P" + r.pos + " of " + rows.length : "–"]];
+    if (m && r.classPos) stats.push([(c.className || "Class"), "P" + r.classPos]);
+    stats.push(["Qualifying", r.timeS ? fmt.lap(r.timeS) : "No time"]);
+    if (c.bestLapS > 0 && !r.timeS) stats.push(["Best lap", fmt.lap(c.bestLapS)]);
     $("cdStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
   }
 
@@ -808,8 +840,8 @@ small{margin-right:4px}
   }
   function renderGrid() {
     const rows = (S.session && S.session.grid && S.session.grid.rows) || [];
-    const on = allowed("grid") && rows.length > 0 && gridWanted() && !!S.cars;
-    gridUp = rows.length > 0 && gridWanted() && !!S.cars;
+    gridUp = (rows.length > 0 && gridWanted() && !!S.cars) || !!gridWalkCar();
+    const on = allowed("grid") && rows.length > 0 && gridWanted() && !!S.cars && !gridWalkCar();
     $("grid").classList.toggle("on", on);
     if (!on) return;
     const t = S.session.track;
@@ -899,6 +931,7 @@ small{margin-right:4px}
       case "feed": handleFeed(m); break;
       case "gfx": S.gfx = m.state || {}; applyTheme(); maybeStinger(); break;
       case "assets": S.assets = m.files || []; break;
+      case "director": S.director = m; break;
       case "livery": {
         if (!m.image) break;
         const car = m.car || String(m.key || "").split(":")[0], kind = m.kind || "photo";

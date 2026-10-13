@@ -103,6 +103,12 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
 .bt .act{display:flex;gap:6px;flex-wrap:wrap}
 .bt .act button{min-height:28px;padding:2px 9px;font-size:13px}
 .bt.live{box-shadow:inset 3px 0 0 var(--acc);padding-left:10px}
+.bt.follow{background:rgba(255,204,0,.08)}
+.owner{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px}
+.owner .who{flex:1;min-width:0;font-size:14px;line-height:1.3}
+.owner .who b{display:block;font:800 18px/1.1 var(--num);color:var(--acc)}
+.owner.you .who b{color:var(--fg)}
+.owner button{flex:none}
 .log{max-height:240px;overflow:auto;font-size:13px}
 .log div{padding:3px 0;border-top:1px solid var(--line);display:flex;gap:8px}
 .log time{color:var(--mut);flex:none;width:44px;font-variant-numeric:tabular-nums}
@@ -164,8 +170,10 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       <section>
         <h2>Starting grid</h2>
         <div class="opts" id="gridMode"></div>
-        <p class="note">Automatic shows it during the parade laps of a race and takes it off at the green.</p>
+        <p class="note">Automatic: when the pace laps start, the camera goes down the grid one car at a time, in order, with that driver's card at the bottom of the screen. The full grid board shows before and after the walk. Both come off at the green.</p>
         <h3>Walk the grid</h3>
+        <div id="gwAuto"></div>
+        <p class="note" id="gwNow"></p>
         <div class="grid2"><label for="gwHold">Seconds per car</label><input type="number" id="gwHold" min="2" max="20" value="5">
           <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
         <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button id="gwStop">Stop</button></div>
@@ -261,6 +269,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     <section>
       <h2>Cameras <small id="camGroupName"></small></h2>
       <div id="camWarn" class="warn hide"></div>
+      <div class="owner" id="owner"></div>
       <h3 style="margin-top:0">Shots on the car on camera</h3>
       <div class="opts" id="shots"></div>
       <h3>All camera groups</h3>
@@ -449,6 +458,9 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     const gm = G("grid.mode", "auto");
     $("gridMode").innerHTML = [["auto", "Automatic"], ["on", "Show now"], ["off", "Off"]].map(([k, l]) => `<button data-grid="${k}" class="${gm === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
     $("gwSnapNote").textContent = S.lv && S.lv.config && S.lv.config.source ? "" : "(connect OBS in Liveries first)";
+    const dr = S.director || {};
+    $("gwAuto").innerHTML = sw("sw-gwauto", dr.autoGrid !== false, 'data-gwauto="1"', "Start it when the pace laps begin");
+    if (dr.gridHoldS && document.activeElement !== $("gwHold")) $("gwHold").value = dr.gridHoldS;
     const minInc = G("ticker.minIncident", "spin");
     $("tickerOpts").innerHTML = sw("sw-pits", G("ticker.pits", true), 'data-tk="pits"', "Pit stops") +
       sw("sw-incs", G("ticker.incidents", true), 'data-tk="incidents"', "Incidents") +
@@ -469,7 +481,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     const camOk = canCamera();
     const groups = (S.session && S.session.cameras) || [];
     const cur = S.state && S.state.camera ? S.state.camera.group : null;
-    const sig = [camOk, cur, groups.length, S.session && S.session.update, JSON.stringify(S.director && S.director.on), S.director && S.director.style].join("|");
+    const sig = [camOk, cur, groups.length, S.session && S.session.update, directorOn(), S.director && S.director.style].join("|");
     if (sig === camSig && !force) return;
     camSig = sig;
     const why = !canProduce() ? "" : !S.hello ? "Waiting for the bridge." : "Camera control is off: start the bridge with --allow-camera (the suite does this for you).";
@@ -485,8 +497,8 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     $("groups").innerHTML = groups.map(g => `<button data-group="${esc(g.num)}" class="${g.num === cur ? "on" : ""}" ${camOk && !g.scenic ? "" : "disabled"}${known.has((g.name || "").toLowerCase()) ? "" : ' title="Added by a camera pack"'}>${esc(g.name || "Group " + g.num)}${known.has((g.name || "").toLowerCase()) ? "" : " ★"}</button>`).join("");
     const cg = groups.find(g => g.num === cur);
     $("camGroupName").textContent = cg ? "On " + cg.name : "";
-    const dir = S.director || {};
-    $("dirCtl").innerHTML = `<button data-dir="toggle" class="big ${dir.on && dir.mode === "race" ? "on" : ""}" ${camOk ? "" : "disabled"}>${dir.on && dir.mode === "race" ? "Director on" : "Director off"}</button>` +
+    const dir = S.director || {}, dOn = directorOn();
+    $("dirCtl").innerHTML = `<button data-dir="toggle" class="big ${dOn ? "on" : ""}" ${camOk ? "" : "disabled"}>${dOn ? "Director on" : "Director off"}</button>` +
       (dir.styles || ["cinematic", "onboard", "tv"]).map(st => `<button data-dstyle="${st}" class="${dir.style === st ? "on" : ""}" ${camOk ? "" : "disabled"}>${{ cinematic: "Cinematic", onboard: "Onboards", tv: "Classic TV" }[st] || st}</button>`).join("") +
       `<label class="note" style="align-self:center">hold <input type="number" id="dirHold" min="3" max="30" value="${dir.holdS || 8}" style="width:56px"> s</label>`;
     $("focus").innerHTML = [["exciting", "Most exciting"], ["leader", "Leader"], ["incident", "Incidents"]]
@@ -495,12 +507,31 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       ["prev_incident", "Previous iRacing incident"], ["next_incident", "Next iRacing incident"], ["prev_lap", "Previous lap"]]
       .map(([k, l]) => `<button data-replay="${k}" ${camOk ? "" : "disabled"}>${l}</button>`).join("");
   }
+  // Exactly one owner moves the camera (pitwall/director.py): you, the
+  // director, the grid walk, or a followed battle. A cut by hand takes it back.
+  const owner = () => (S.director && S.director.owner) || (S.director && S.director.on ? S.director.mode : "you");
+  const directorOn = () => owner() === "race" || (S.director && S.director.resume === "race");
+  function battleName(cars) {
+    const b = (S.cars && S.cars.derived && S.cars.derived.battles || []).find(x => cars && cars.filter(i => x.cars.includes(i)).length >= 2);
+    if (b) { const l = carByIdx(b.cars[0]); return "the battle for " + (multi() && l && l.className ? l.className + " " : "") + "P" + b.forClassPos; }
+    return "a battle";
+  }
   function renderDirector() {
-    const d = S.director;
-    if (!d) { $("dirNow").textContent = ""; return; }
+    const d = S.director || {}, o = owner();
     const c = d.current && carByIdx(d.current.car);
-    $("dirNow").innerHTML = d.on ? (d.mode === "grid" ? `Walking the grid: ${d.gridLeft ?? 0} to go` : "Choosing shots from the race.") +
-      (d.current ? ` Now: #${esc(d.current.num)} ${esc(c ? c.name : "")} · ${esc(d.current.groupName || "")} · ${esc(d.current.reason)}` : "") : "Off: cameras are yours.";
+    const now = d.current && o !== "you" ? `Now: #${esc(d.current.num)} ${esc(c ? c.name : "")} · ${esc(d.current.groupName || "")}.` : "";
+    const after = d.resume === "race" ? " Then back to the director." : o === "grid" || o === "battle" ? " Then the camera is yours again." : "";
+    const head = { you: "You have the camera", race: "The auto-director has the camera",
+      grid: `Walking the grid${d.gridTotal ? ": car " + Math.max(1, d.gridTotal - (d.gridLeft || 0)) + " of " + d.gridTotal : ""}`,
+      battle: "Following " + battleName(d.battle) }[o] || o;
+    const sub = o === "you" ? "Nothing moves it until you cut, start the director, follow a battle or walk the grid." :
+      `${now}${after} Any cut you make takes it back.`;
+    $("owner").className = "owner" + (o === "you" ? " you" : "");
+    $("owner").innerHTML = `<div class="who"><b>${esc(head)}</b>${sub}</div>` +
+      (o !== "you" ? `<button data-own="stop" ${canCamera() ? "" : "disabled"}>Take the camera</button>` : "");
+    $("dirNow").textContent = o === "race" ? "Choosing shots from the race." + (d.current ? " " + (d.current.reason || "") : "") :
+      d.resume === "race" ? "On: comes back when the " + (o === "grid" ? "grid walk" : "battle") + " ends." : "Off.";
+    $("gwNow").textContent = o === "grid" ? head + "." : "";
   }
 
   // ------------------------------------------------------------- clicks
@@ -529,8 +560,15 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       const c = carByIdx(S.state && S.state.camera ? S.state.camera.carIdx : null);
       if (c) cutToCar(c, Number(ds.group)); else cmd({ cmd: "camera", action: "focus", focus: "exciting", group: Number(ds.group), camera: 0 }, "Camera group");
     }
+    else if (ds.own) cmd({ cmd: "director", action: "stop" }, "You have the camera");
+    else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");
+    else if (ds.btfollow) {
+      const cars = ds.btfollow.split(",").map(Number);
+      setGfx({ battle: { mode: "pick", cars, show: true } });
+      cmd({ cmd: "director", action: "follow_battle", cars }, "Following the battle");
+    }
     else if (ds.dir) {
-      const on = !(S.director && S.director.on && S.director.mode === "race");
+      const on = !directorOn();
       cmd({ cmd: "director", action: "set", on, holdS: Number($("dirHold").value) || 8 }, on ? "Director on" : "Director off");
     }
     else if (ds.dstyle) cmd({ cmd: "director", action: "set", style: ds.dstyle }, "Director style");
@@ -547,7 +585,6 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     else if (ds.pin) { e.stopPropagation(); setGfx({ card: { follow: "pinned", idx: Number(ds.pin), show: true } }); }
     else if (ds.snap) { e.stopPropagation(); cmd({ cmd: "livery", action: "snap", idx: Number(ds.snap) }, "Livery photo"); }
     else if (ds.btshow) setGfx({ battle: { mode: "pick", cars: ds.btshow.split(",").map(Number), show: true } });
-    else if (ds.btcut) cutToCar(carByIdx(Number(ds.btcut)));
     else if (ds.incf) { incFilter = ds.incf; dirty.inc = true; }
     else if (ds.pre) { preroll = Number(ds.pre); try { localStorage.setItem("pw.producer.preroll", preroll); } catch (e2) {} dirty.inc = true; }
     else if (ds.jump) { const ev = S.feed.events.find(x => x.seq === Number(ds.jump)); if (ev) jumpTo(ev); }
@@ -559,6 +596,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
   });
   document.addEventListener("change", e => {
     if (e.target.id === "dirHold") cmd({ cmd: "director", action: "set", holdS: Number(e.target.value) || 8 }, "Director hold");
+    if (e.target.id === "gwHold") cmd({ cmd: "director", action: "set", gridHoldS: Number(e.target.value) || 5 }, "Seconds per car");
   });
   $("field").addEventListener("click", e => {
     if (e.target.closest("button")) return;
@@ -619,10 +657,12 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       const k = b.closingSPerLap.length - 1, rate = k >= 0 ? b.closingSPerLap[k] : null;
       const trend = rate == null ? "" : rate > 0 ? ` · ${D("closing " + rate.toFixed(2) + " s/lap")}` : rate < 0 ? ` · ${D("opening " + Math.abs(rate).toFixed(2) + " s/lap")}` : ` · ${D("holding")}`;
       const live = onAir === b && G("battle.show", false);
-      return `<div class="bt${live ? " live" : ""}"><div class="t"><b>For ${m && lead && lead.className ? esc(lead.className) + " " : ""}P${esc(b.forClassPos)}</b><span>${b.cars.length} cars${trend}</span></div>` +
+      const fb = owner() === "battle" && S.director.battle ? S.director.battle : null;
+      const followed = !!fb && b.cars.filter(i => fb.includes(i)).length >= 2;
+      return `<div class="bt${live ? " live" : ""}${followed ? " follow" : ""}"><div class="t"><b>For ${m && lead && lead.className ? esc(lead.className) + " " : ""}P${esc(b.forClassPos)}</b><span>${b.cars.length} cars${trend}</span></div>` +
         `<div class="who">${parts.join(" ")}</div><div class="act">` +
-        `<button data-btshow="${b.cars.join(",")}" ${canProduce() ? "" : "disabled"}>${live ? "On air" : "Show this battle"}</button>` +
-        `<button data-btcut="${b.cars[b.cars.length - 1]}" ${canCamera() ? "" : "disabled"}>Cut to the chaser</button></div></div>`;
+        `<button data-btfollow="${b.cars.join(",")}" class="${followed ? "on" : ""}" ${canCamera() ? "" : "disabled"} title="Shows the battle box and keeps the camera on these cars until the battle ends">${followed ? "Following" : "Follow with camera"}</button>` +
+        `<button data-btshow="${b.cars.join(",")}" ${canProduce() ? "" : "disabled"}>${live ? "Box on air" : "Battle box only"}</button></div></div>`;
     }).join("");
   }
 
@@ -867,7 +907,14 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       case "state": if (!m.full && !S.state) return; S.state = m.full ? m : merge(S.state, m); dirty.cam = true; break;
       case "cars": if (!m.full && !S.cars) return; if (m.full && !S.cars) dirty.inc = dirty.ctl = true; S.cars = m.full ? m : merge(S.cars, m); dirty.field = true; break;
       case "feed": handleFeed(m); break;
-      case "director": S.director = m; dirty.cam = true; renderCameraButtons(true); renderDirector(); break;
+      case "director": {
+        const was = owner();
+        S.director = m;
+        const now = owner();
+        if (was !== now && now === "you" && m.note) log(esc("Camera back to you: " + m.note));
+        else if (was !== now && m.note) log(esc(m.note));
+        dirty.cam = dirty.ctl = dirty.field = true; renderCameraButtons(true); renderDirector(); break;
+      }
       case "livery_status": S.lv = m; dirty.lv = true; dirty.ctl = true; break;
       case "livery": {
         const car = m.car || String(m.key || "").split(":")[0];

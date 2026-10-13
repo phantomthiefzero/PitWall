@@ -175,8 +175,11 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
 ### Broadcast messages
 - `session.grid` `{source, sessionNum, rows: [{pos, classPos, idx, timeS, lap}]}` from a race's
   QualifyPositions or QualifyResultsInfo; iRacing's 0-based positions shown from 1.
-- `director` (bridge): `{on, mode: race|grid, style, holdS, gridLeft, current: {car, num, group,
-  groupName, reason}, styles}`.
+- `director` (bridge): `{owner: you|race|grid|battle, on, mode, resume, style, holdS, autoGrid,
+  gridHoldS, gridLeft, gridTotal, battle: [idx]|null, note, current: {car, num, group, groupName,
+  reason, gridPos?}, styles}`. One owner moves the camera at a time. Any `camera` command (a cut by
+  hand) makes the owner `you`; `grid` and `battle` are temporary and hand back to `resume` when they
+  end. The grid walk starts by itself when a race's pace laps begin (`autoGrid`) and ends at the green.
 - `livery` (bridge -> relay keeps one per key): `{key: "<car>:<kind>", car: "<CarID>_<TeamID or UserID>",
   kind: "render"|"photo", image: data URI, at, custom?}`. `render` is iRacing's own picture of the car
   from its local server (pitwall/carrender.py), with the Trading Paints paint when one is on disk
@@ -214,8 +217,9 @@ Broadcast commands (producer token only; the bridge refuses them unless started 
 ```
 Director and liveries (producer token, `--allow-camera`):
 ```json
-{"type":"cmd","cmd":"director","action":"set","on":true,"style":"cinematic"|"onboard"|"tv","holdS":8}
+{"type":"cmd","cmd":"director","action":"set","on":true,"style":"cinematic"|"onboard"|"tv","holdS":8,"autoGrid":true,"gridHoldS":5}
 {"type":"cmd","cmd":"director","action":"grid_walk","holdS":5,"capture":true}
+{"type":"cmd","cmd":"director","action":"follow_battle","cars":[12,7]}
 {"type":"cmd","cmd":"director","action":"stop"}
 {"type":"cmd","cmd":"livery","action":"setup","url":"ws://127.0.0.1:4455","password":"...","source":"iRacing","group":"Chase","auto":true}
 {"type":"cmd","cmd":"livery","action":"sweep","missingOnly":false}

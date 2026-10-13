@@ -54,6 +54,9 @@ Broadcast (broadcast/)
   are compared with the prediction when they appear.
 - Director (pitwall/director.py) and livery photos (pitwall/liveries.py, pitwall/obs.py) only
   move the camera through CommandGate, under --allow-camera.
+- One owner of the camera at a time (director.py): you / director / grid walk / followed battle.
+  A producer `camera` command always takes it back (bridge._consumer calls Director.manual()).
+  Anything new that moves the camera must go through the Director's owner, not around it.
 - `tests/test_broadcast.py` and `tests/test_broadcast2.py` must pass with the others.
 - Graphics state ("gfx") lives in the relay, not the bridge. Camera/replay commands go
   through the bridge under `--allow-camera` and the producer token, separate from pit.

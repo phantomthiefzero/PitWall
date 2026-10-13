@@ -146,6 +146,7 @@ def test_grid_walk_visits_the_grid_in_order_with_a_chase_camera_then_stops():
     by = {c["idx"]: c for c in cars["cars"]}
     order = [by[r["idx"]] for r in sess["grid"]["rows"]][:5]
     seen = []
+    d.configure(on=False)
     d.start_grid_walk(order, hold_s=2, on_car=lambda c: seen.append(c["idx"]))
     chase = next(g["num"] for g in sess["cameras"] if g["name"] == "Chase")
     for step in range(20):
@@ -153,7 +154,174 @@ def test_grid_walk_visits_the_grid_in_order_with_a_chase_camera_then_stops():
         d.tick(sess, cars, st, [])
     assert seen == [c["idx"] for c in order]
     assert {g for _, g, _ in cuts} == {chase}
-    assert d.on is False and d.mode == "race"
+    assert d.owner == "you", "the walk was started by hand: the camera goes back to the producer"
+
+
+# ----------------------------------------------- one owner of the camera at a time
+
+def _frames(src, sess, deriver, seconds, every=8):
+    for k in range(int(60 * seconds)):
+        src.tick()
+        if k % every == 0:
+            yield build_state(src, deriver), build_cars(src, sess, deriver)
+
+
+def test_a_cut_by_hand_takes_the_camera_from_the_director_and_it_stays_taken():
+    src, d, cuts, clock = _director_rig()
+    deriver, sess = Deriver(), build_session(src)
+    t = 0.0
+    for st, cars in _frames(src, sess, deriver, 30):
+        t += 8 / 60
+        clock[0] = t
+        d.tick(sess, cars, st, [])
+    assert cuts and d.owner == "race"
+    assert d.manual() is True and d.owner == "you"
+    n = len(cuts)
+    for st, cars in _frames(src, sess, deriver, 120):
+        t += 8 / 60
+        clock[0] = t
+        d.tick(sess, cars, st, [{"id": 99, "what": "contact", "idx": 3}])
+    assert len(cuts) == n, "nothing may move the camera after the producer took it"
+    assert d.manual() is False, "taking it again is a no-op"
+
+
+def test_following_a_battle_stays_on_those_cars_varies_the_shot_then_hands_back():
+    src, d, cuts, clock = _director_rig()           # the director was on
+    deriver, sess = Deriver(), build_session(src)
+    names = {g["num"]: g["name"] for g in sess["cameras"]}
+    src.tick()
+    st, cars = build_state(src, deriver), build_cars(src, sess, deriver)
+    a, b = cars["cars"][4], cars["cars"][7]
+    battle = {"id": "x", "cars": [a["idx"], b["idx"]], "forClassPos": 2, "forPos": 3, "classId": a["classId"],
+              "gapsS": [0.4], "closingSPerLap": [], "catchLaps": []}
+    cars["derived"]["battles"] = [battle]
+    assert d.follow_battle([a["idx"], b["idx"]])
+    for step in range(60):                           # a minute on the battle
+        clock[0] = step * 1.0
+        d.tick(sess, cars, st, [{"id": 5, "what": "contact", "idx": 11, "t": None}])
+    on = {num for num, _, _ in cuts}
+    assert on <= {str(a["num"]), str(b["num"])}, f"left the battle for {on}"
+    assert on == {str(a["num"]), str(b["num"])}, "both cars are shown"
+    used = [names[g] for _, g, _ in cuts]
+    assert len(set(used)) >= 3 and all(x != y for x, y in zip(used, used[1:])), used
+    assert d.owner == "battle"
+    # the battle breaks up: after a grace period the director has the camera again
+    cars["derived"]["battles"] = []
+    for step in range(60, 75):
+        clock[0] = step * 1.0
+        d.tick(sess, cars, st, [])
+    assert d.owner == "race" and d.resume is None
+    # from "you", a followed battle hands back to you
+    d.configure(on=False)
+    d.follow_battle([a["idx"], b["idx"]])
+    for step in range(80, 95):
+        clock[0] = step * 1.0
+        d.tick(sess, cars, st, [])
+    assert d.owner == "you"
+
+
+def test_turning_the_director_on_does_not_replay_old_incidents():
+    src, d, cuts, clock = _director_rig()
+    deriver, sess = Deriver(), build_session(src)
+    for _ in range(60 * 200):
+        src.tick()
+    st, cars = build_state(src, deriver), build_cars(src, sess, deriver)
+    old = [{"id": i, "what": "contact", "idx": i, "t": 20.0 + i} for i in range(5)]
+    d.tick(sess, cars, st, old)
+    assert not cuts or "incident" not in d.current["reason"]
+
+
+def test_the_pace_laps_start_a_grid_walk_in_order_that_ends_at_the_green():
+    src = FakeSource(realtime=False, spectator=True, grid_s=20, parade_s=200, incidents=False)
+    src.connect()
+    gate = CommandGate(camera=True)
+    cuts = []
+
+    def cut(num, group):
+        r = gate.execute(src, {"cmd": "camera", "action": "car", "car": num, "group": group})
+        cuts.append((num, group, src.t))
+        return r
+    t = [0.0]
+    d = Director(cut, rng=random.Random(1), clock=lambda: t[0])
+    d.configure(on=True)                              # the director was running
+    d.grid_hold_s = 4
+    deriver, sess = Deriver(), build_session(src)
+    chase = next(g["num"] for g in sess["cameras"] if g["name"] == "Chase")
+    owners = []
+    for k in range(60 * 260):
+        src.tick()
+        if k % 8:
+            continue
+        t[0] = src.t
+        d.tick(sess, build_cars(src, sess, deriver), build_state(src, deriver), [])
+        owners.append((src.t, d.owner))
+    num = {c["idx"]: str(c["num"]) for c in build_cars(src, sess, deriver)["cars"]}
+    grid_nums = [num[r["idx"]] for r in sess["grid"]["rows"]]
+    walk = [(n, g) for n, g, at in cuts if 20 <= at < 200][:len(grid_nums)]
+    assert [n for n, _ in walk] == grid_nums, "every car, down the grid, in order"
+    assert {g for _, g in walk} == {chase}
+    walking = [at for at, o in owners if o == "grid"]
+    assert walking and min(walking) < 21 and max(walking) < 20 + 4 * 25, "about 4 s a car, from the pace laps"
+    assert any(o == "race" for at, o in owners if max(walking) < at < 200), \
+        "walk done before the green: the director carries on with the pace laps"
+    assert all(o == "race" for at, o in owners if at > 201), "after the green, still the director"
+
+
+def test_the_green_flag_ends_a_walk_that_has_not_finished_and_it_runs_once():
+    src = FakeSource(realtime=False, spectator=True, grid_s=5, parade_s=30, incidents=False)
+    src.connect()
+    gate = CommandGate(camera=True)
+    t = [0.0]
+    d = Director(lambda n, g: gate.execute(src, {"cmd": "camera", "action": "car", "car": n, "group": g}),
+                 rng=random.Random(1), clock=lambda: t[0])
+    d.grid_hold_s = 5                                   # 24 cars x 5 s will not fit in 25 s
+    deriver, sess = Deriver(), build_session(src)
+    owners = []
+    for k in range(60 * 60):
+        src.tick()
+        if k % 8:
+            continue
+        t[0] = src.t
+        d.tick(sess, build_cars(src, sess, deriver), build_state(src, deriver), [])
+        owners.append((src.t, d.owner))
+    assert any(o == "grid" for _, o in owners)
+    assert all(o == "you" for at, o in owners if at > 31), "green: back to the producer, who had it before"
+    assert d._grid_walked, "remembered, so it does not walk again in this session"
+
+
+def test_a_producer_cut_through_the_bridge_takes_the_camera_back():
+    from pitwall.bridge import Bridge
+
+    class WS:
+        def __init__(self, msgs):
+            self.msgs, self.sent = [json.dumps(m) for m in msgs], []
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.msgs:
+                raise StopAsyncIteration
+            return self.msgs.pop(0)
+
+        async def send(self, raw):
+            self.sent.append(json.loads(raw))
+
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False,
+               livery_dir=tempfile.mkdtemp())
+    b.director.configure(on=True)
+    ws = WS([{"type": "cmd", "cmd": "replay", "action": "speed", "speed": 1},
+             {"type": "cmd", "cmd": "camera", "action": "car", "car": "13", "group": 1, "camera": 0}])
+    asyncio.run(b._consumer(ws))
+    assert b.director.owner == "you"
+    owners = [m["owner"] for m in ws.sent if m.get("type") == "director"]
+    assert owners == ["you"], "a replay command leaves the owner alone; the cut takes it, and says so"
+    # following a battle is a director command, not a hand cut
+    ws = WS([{"type": "cmd", "cmd": "director", "action": "follow_battle", "cars": [1, 2]}])
+    asyncio.run(b._consumer(ws))
+    assert b.director.owner == "battle"
 
 
 # --------------------------------------------------------------------- OBS + liveries
