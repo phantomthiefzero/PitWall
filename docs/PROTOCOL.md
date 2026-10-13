@@ -61,11 +61,46 @@ integration missed closing the loop before correction; treat > 30 m as suspect.
                "pos","classPos","lap","lapCompleted","pct","f2TimeS","estTimeS","onPitRoad","surface",
                "lastLapS","bestLapS","bestLapNum","compound","flags":[...],"fastRepairsUsed",
                "p2pActive","p2pCount","gear","rpm","paceFlagsRaw",
-               "derived":{"intervalS"}}}}
+               "derived":{"intervalS","closingSPerLap","catchLaps","stopsSeen","lastStopS","lastStopLap",
+                          "lapsSincePit","inPit","stintLaps","stintAvgS","degSPerLap","sectorS","bestSectorS",
+                          "theoreticalBestS","bestLapLeftS",
+                          "toPlayerS","classGapS","paceS","youGainSPerLap","youCatchLaps","catchesYouLaps"}}},
+ "derived":{"sessionBestSectorS":[...],"isRace":true,
+            "pitLoss":{"laneLossS","samples","boxMedianS","boxSamples"},
+            "rejoin":{...pitLoss, "options":[{"kind":"zero_stationary"|"typical_stop"|"your_last_stop",
+                      "stationaryS","lossS","pos","classPos","ahead":{"idx","gapS"},"behind":{"idx","gapS"},
+                      "traffic":[{"idx","onTrackS"}]}]},
+            "undercut":[{"idx","kind":"they_stopped"|"you_stopped","stopLap","lapsSince","preStopToPlayerS",
+                         "toPlayerS","inPit","series":[...],"trendSPerLap","settledToPlayerS",
+                         "afterYourStopS"|"afterTheirStopS"}],
+            "traffic":[{"idx","kind":"you_catch"|"catches_you","inS","atPct"}]}}
 ```
+Sign conventions: `toPlayerS` is + when that car is BEHIND you. `youGainSPerLap` is + when the
+trend is good for you (a car ahead coming back, a car behind dropping back). `onTrackS` uses
+the same sign as `toPlayerS`. Race-only values (`toPlayerS`, `classGapS`, `rejoin`,
+`undercut`) are null or empty outside a race, where F2Time is a best lap rather than a gap.
 `f2TimeS` is iRacing's `CarIdxF2Time`: in a race it is time behind the leader;
 in practice/qualifying it is the car's fastest lap. `derived.intervalS` is only
 meaningful in a race.
+
+### `feed` (bridge, append-only: lap history and race events)
+```json
+{"type":"feed","full":true,"seq":812,
+ "laps":[{"seq","idx","lap","lapS","pos","classPos","gapS","classGapS","toPlayerS","pit","t"}],
+ "events":[{"seq","t","lap","kind",...}]}
+```
+`full:true` carries everything this run of the session has produced (sent on connect,
+on `resend`, and when the derived history resets); `full:false` carries only entries with
+`seq` above the previous message's. Clients ignore partial feeds until they have a full
+one, and drop entries whose `seq` they have already seen. Everything in it is derived.
+Event kinds: `pit_in`, `pit_out` (stationaryS, laneLossS), `fastest_lap` (lapS, classId,
+overall), `incident` (delta, total, limit), `behind_closing` / `you_closing` (gapS,
+rateSPerLap), `position` (fromPos, toPos -- class position), `lead_change`, `flag`,
+`engine` (warnings), `tow` (towS), `rain_start`, `rain_stop`, `track_wetness`,
+`declared_wet`, `pit_battle` (preS, nowS, first).
+
+`session.options` carries `IncidentLimit` (a number, or "unlimited"),
+`FastRepairsLimit`, `StandingStart` and `NumStarters` from WeekendOptions.
 
 ### Delta encoding
 `full:true` = complete message (sent every 5 s and on every reconnect / `resend`).

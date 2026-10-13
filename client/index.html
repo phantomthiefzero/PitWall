@@ -214,6 +214,61 @@
   .wx div span:first-child { color: var(--muted); display: block; font-size: 12px; }
   .wx .wet { color: var(--wet); }
 
+  /* ---- race engineer booth ---- */
+  :root { --mono: "Cascadia Mono", Consolas, "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+          --purple: #B98BFF; --orange: #FF9A3D; }
+  /* Timing reads in a fixed-width face, like every timing screen: digits line
+     up down a column and a changing value does not shift its neighbours. */
+  td.r, .big, header .clock, .mono, .feed .tm, .bb-gap, .rj td, .sect { font-family: var(--mono); }
+  header .clock { font-size: 26px; letter-spacing: .02em; }
+  details.panel > summary { text-transform: uppercase; letter-spacing: .08em; font-size: 11.5px; }
+  .stack { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  #mapPanel { flex: 1 1 60%; }
+  #feedPanel { flex: 1 1 40%; }
+  #standings { flex: 1 1 auto; }
+  #chartsPanel { flex: 0 0 auto; }
+  .feed { overflow-y: auto; font-size: 12.5px; min-height: 60px; }
+  .feed .ev { display: grid; grid-template-columns: 82px 1fr; gap: 8px; padding: 3px 2px;
+              border-bottom: 1px solid #22304F; }
+  .feed .tm { color: var(--dim); font-size: 11.5px; }
+  .feed .ev.k-flag b, .feed .ev.k-fastest_lap b { font-weight: 700; }
+  .ev.hot { color: var(--red); } .ev.good { color: var(--green); } .ev.warn2 { color: var(--orange); }
+  .ev.purple { color: var(--purple); } .ev.info { color: var(--text); } .ev.dim { color: var(--muted); }
+  .traffic { font-size: 12px; margin-top: 6px; display: grid; gap: 2px; }
+  .traffic .catch { color: var(--orange); } .traffic .caught { color: var(--blue); }
+  /* battle box */
+  .bb { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .bb-row { display: grid; grid-template-columns: 64px 1fr auto; gap: 4px 10px; align-items: center;
+            background: #182540; border-radius: 8px; padding: 8px 10px; }
+  .bb-side { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .bb-gap { font-size: 30px; font-weight: 700; line-height: 1; text-align: right; }
+  .bb-who { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bb-sub { grid-column: 1 / -1; font-size: 12px; color: var(--muted); display: flex; gap: 10px;
+            flex-wrap: wrap; align-items: center; }
+  /* strategy */
+  .rj { width: 100%; font-size: 12px; }
+  .rj td { padding: 3px 4px; border-bottom: 1px solid #253457; white-space: normal; vertical-align: top; }
+  .rj td:first-child { color: var(--muted); font-family: inherit; }
+  .uc { margin-top: 8px; font-size: 12px; background: #182540; border-radius: 6px; padding: 6px 8px; }
+  .uc + .uc { margin-top: 6px; }
+  .note { color: var(--muted); font-size: 12px; }
+  /* charts */
+  .tabs { display: flex; gap: 4px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .tabs button { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 5px;
+                 padding: 1px 8px; font: inherit; font-size: 11px; cursor: pointer; }
+  .tabs button.on { color: var(--text); border-color: var(--muted); background: #22304F; }
+  #chart { width: 100%; height: 240px; display: block; }
+  .sect { font-size: 12px; }
+  .sect span { display: inline-block; text-align: right; }
+  .sect span + span { margin-left: 6px; }
+  .s-purple { color: var(--purple); } .s-green { color: var(--green); } .s-yellow { color: var(--yellow); }
+  /* Sectors need room. At "lg" they take the place of Best and Laps (Best is
+     in the Watching panel; laps are in the header); below that they go. */
+  #standings[data-w="lg"] .c-best, #standings[data-w="lg"] .c-laps { display: none; }
+  #standings[data-w="lg"] td.driver { max-width: 110px; }
+  #standings[data-w="lg"] table { font-size: 12px; }
+  #standings[data-w="md"] .c-sec, #standings[data-w="sm"] .c-sec, #standings[data-w="xs"] .c-sec { display: none; }
+
   /* footer */
   footer { display: flex; gap: 18px; align-items: center; padding: 8px 18px; border-top: 1px solid var(--line);
     font-size: 12px; color: var(--muted); }
@@ -244,7 +299,9 @@
   @media (max-width: 1100px) {
     body { height: auto; min-height: 100vh; }
     main { grid-template-columns: 1fr 1fr; grid-template-rows: none; grid-auto-rows: auto; }
-    #mapPanel, #standings { height: max(420px, 62vh); }
+    #mapPanel, #standings { height: max(420px, 62vh); flex: none; }
+    #feedPanel, #chartsPanel { flex: none; }
+    .feed { max-height: 360px; }
     #mapPanel.collapsed, #standings.collapsed { height: auto; }
     main > .col:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr;
                              align-items: start; overflow: visible; }
@@ -276,6 +333,7 @@
 </header>
 
 <main>
+  <div class="stack" id="colA">
   <section id="mapPanel">
     <details class="panel" id="trackPanel" open>
       <summary>Track
@@ -283,10 +341,22 @@
                 title="Switch the map markers between car numbers and running position">car #</button>
       </summary>
       <canvas id="map"></canvas>
+      <div class="traffic" id="traffic"></div>
       <div class="mapnote" id="mapNote">Outline is built from your first clean lap and cached per track.</div>
     </details>
   </section>
 
+  <section id="feedPanel">
+    <details class="panel" id="feedDetails" open>
+      <summary>Race control
+        <span class="tabs" id="feedTabs"><button type="button" data-f="all" class="on">all</button><button type="button" data-f="you">you &amp; rivals</button></span>
+      </summary>
+      <div class="feed" id="feed"><div class="note">Pit stops, fastest laps, incidents, flags and weather changes appear here as they happen.</div></div>
+    </details>
+  </section>
+  </div>
+
+  <div class="stack" id="colB">
   <section id="standings">
     <details class="panel" id="standingsPanel" open>
       <summary>Standings</summary>
@@ -299,14 +369,39 @@
           <th class="r c-gap">Gap</th><th class="r c-last">Last</th><th class="r c-best">Best</th><th class="r c-laps">Laps</th>
           <th class="r c-deg"><span class="derived" title="Computed here: lap-time trend across this car's current stint, in seconds per lap. Positive = dropping off. Resets at every pit stop.">Deg</span></th>
           <th class="c-stops"><span class="derived" title="Stops we have WATCHED since connecting. A car that stopped before you connected shows none, so this is never proof a car has yet to stop.">Stops</span></th>
+          <th class="r c-sec"><span class="derived" title="Computed here: each car's latest sector times. Purple = session best, green = that car's best, yellow = slower than its best.">Sectors</span></th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
       </div>
     </details>
   </section>
+  <section id="chartsPanel">
+    <details class="panel" id="chartsDetails" open>
+      <summary>Charts
+        <span class="tabs" id="chartTabs"><button type="button" data-c="gap" class="on">gap to class leader</button><button type="button" data-c="you">gap to you</button><button type="button" data-c="pos">positions</button><button type="button" data-c="inputs">inputs</button></span>
+      </summary>
+      <canvas id="chart"></canvas>
+      <div class="mapnote" id="chartNote"></div>
+    </details>
+  </section>
+  </div>
 
   <div class="col">
+    <section id="battle">
+      <details class="panel" id="battleDetails" open>
+        <summary>Battle</summary>
+        <div class="bb" id="bb"><div class="note">Waiting for race gaps.</div></div>
+      </details>
+    </section>
+
+    <section id="strategy">
+      <details class="panel" id="strategyDetails" open>
+        <summary>Pit strategy</summary>
+        <div id="strat"><div class="note">Waiting for the field.</div></div>
+      </details>
+    </section>
+
     <section id="car">
       <details class="panel" id="carPanel" open>
       <summary>Your car</summary>
@@ -328,6 +423,7 @@
         <dt>Incidents</dt><dd id="inc">–</dd>
         <dt>Warnings</dt><dd id="warn" class="na">none</dd>
       </dl>
+      <div class="trend" id="engTrend" style="margin-top:0;border-top:0;padding-top:0"></div>
       <div class="dc" id="dc"></div>
       <div id="theo" style="font-size:12px;margin:6px 0 0"></div>
       <div id="sectors" style="font-size:12px;margin:6px 0 0"></div>
@@ -562,10 +658,12 @@
       case "state":
         if (!m.full && !S.state) break;
         S.state = m.full ? m : merge(S.state, m); S.lastStateAt = performance.now();
-        recordAccel(); recordWeather(); renderHeader(); renderCar(); renderWeather(); break;
+        recordAccel(); recordWeather(); recordEngine(); recordInputs(); renderHeader(); renderCar(); renderWeather(); break;
       case "cars":
         if (!m.full && !S.cars) break;
-        S.cars = m.full ? m : merge(S.cars, m); renderStandings(); renderFocus(); break;
+        S.cars = m.full ? m : merge(S.cars, m); renderStandings(); renderFocus();
+        renderBattle(); renderStrategy(); renderTraffic(); chartDirty = true; break;
+      case "feed": handleFeed(m); break;
       case "cmd_result": console.log("command result", m); break;
     }
   }
@@ -658,9 +756,9 @@
         <td class="r c-gap">${c.pos === 1 ? "leader" : (c.gapValid ? fmt.gap(c.f2TimeS) : "–")}</td>
         <td class="r c-last">${fmt.lap(c.lastLapS)}</td><td class="r c-best">${fmt.lap(c.bestLapS)}</td>
         <td class="r c-laps">${c.lapCompleted ?? "–"}</td><td class="r c-deg">${degCell(c)}</td>
-        <td class="c-stops">${pitCell(c, pit)}</td></tr>`;
+        <td class="c-stops">${pitCell(c, pit)}</td><td class="r c-sec">${sectorCell(c)}</td></tr>`;
     }).join("");
-    $("rows").innerHTML = html || `<tr><td colspan="11" class="empty">` +
+    $("rows").innerHTML = html || `<tr><td colspan="12" class="empty">` +
       (Object.keys(S.cars.cars || {}).length
         ? "No positions yet. iRacing scores the field once the session is under way."
         : "No cars in the session yet.") + `</td></tr>`;
@@ -944,6 +1042,390 @@
     renderTrend();
   }
 
+  // ---------------------------------------------------------------- booth
+  // Everything below displays values computed in pitwall/normalize.py (under a
+  // "derived" key) or reported by iRacing. The client does no racing maths: it
+  // picks, formats and draws.
+  S.feed = { laps: [], events: [], seq: 0, ready: false };
+  function handleFeed(m) {
+    if (m.full) {
+      S.feed = { laps: m.laps || [], events: m.events || [], seq: m.seq || 0, ready: true };
+    } else {
+      if (!S.feed.ready) return;          // wait for a full copy
+      for (const x of m.laps || []) if (x.seq > S.feed.seq) S.feed.laps.push(x);
+      for (const x of m.events || []) if (x.seq > S.feed.seq) S.feed.events.push(x);
+      S.feed.seq = Math.max(S.feed.seq, m.seq || 0);
+      if (S.feed.laps.length > 6000) S.feed.laps.splice(0, S.feed.laps.length - 6000);
+      if (S.feed.events.length > 300) S.feed.events.splice(0, S.feed.events.length - 300);
+    }
+    renderFeed(); chartDirty = true; renderBattle();
+  }
+
+  const carLabel = i => {
+    const c = carByIdx(i);
+    if (!c) return "car " + esc(i);
+    return `<span class="mono" style="color:var(--muted)">#${esc(c.num ?? c.idx)}</span> ${esc(c.name ?? "car " + c.idx)}`;
+  };
+  const shortCar = i => { const c = carByIdx(i); return c ? "#" + esc(c.num ?? c.idx) : "car " + esc(i); };
+  const meCar = () => carByIdx(S.state && S.state.player ? S.state.player.carIdx : null);
+  const sessClock = t => t == null ? "" : fmt.clock(t);
+  const D = (txt, title) => `<span class="derived" title="${esc(title)}">${txt}</span>`;
+  const secs = (v, d = 1) => v == null ? "–" : Math.abs(v).toFixed(d) + " s";
+
+  // ---- race control feed
+  let feedFilter = "all";
+  try { if (localStorage.getItem("pitwall.feedFilter") === "you") feedFilter = "you"; } catch (e) {}
+  function rivalSet() {
+    const me = meCar(); if (!me || !S.cars) return new Set();
+    const out = new Set([me.idx]);
+    for (const c of Object.values(S.cars.cars || {})) {
+      if (c.classId === me.classId && me.classPos && c.classPos && Math.abs(c.classPos - me.classPos) <= 2) out.add(c.idx);
+    }
+    return out;
+  }
+  function eventHtml(e) {
+    const cls = { pit_in: "dim", pit_out: "info", fastest_lap: "purple", incident: "hot", behind_closing: "warn2",
+                  you_closing: "good", position: "info", lead_change: "info", flag: "info", engine: "hot",
+                  tow: "hot", rain_start: "info", rain_stop: "info", track_wetness: "info", declared_wet: "info",
+                  pit_battle: "info" }[e.kind] || "info";
+    let t = "";
+    switch (e.kind) {
+      case "pit_in": t = `${carLabel(e.idx)} into the pits`; break;
+      case "pit_out": t = `${carLabel(e.idx)} out of the pits` +
+        (e.stationaryS != null ? ` · ${D(e.stationaryS.toFixed(1) + " s stationary", "Computed here: time stopped in the box.")}` : "") +
+        (e.laneLossS != null ? ` · ${D("lane loss " + e.laneLossS.toFixed(1) + " s", "Computed here: time in the pit lane minus stationary time, minus the time this car takes to cover the same stretch at its own pace.")}` : ""); break;
+      case "fastest_lap": {
+        const c = carByIdx(e.idx);
+        const scope = e.overall ? "Fastest lap" : `Fastest ${esc(c && c.className ? c.className : "class")} lap`;
+        t = `<b>${scope}</b> ${carLabel(e.idx)} <span class="mono">${fmt.lap(e.lapS)}</span>`; break;
+      }
+      case "incident": t = `<b>Incident +${esc(e.delta)}x</b> · ${esc(e.total)}x` + (e.limit != null ? ` of ${esc(e.limit)}` : ""); break;
+      case "behind_closing": t = `${carLabel(e.idx)} closing on you: ${secs(e.gapS, 2)} behind, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
+      case "you_closing": t = `You are closing on ${carLabel(e.idx)}: ${secs(e.gapS, 2)} ahead, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
+      case "position": { const better = e.toPos < e.fromPos;
+        t = `<span class="${better ? "gain" : "lose"}">You ${isMulticlass() ? "class " : ""}P${esc(e.fromPos)} → P${esc(e.toPos)}</span>`; break; }
+      case "lead_change": t = `${carLabel(e.idx)} takes the ${isMulticlass() ? "class " : ""}lead`; break;
+      case "flag": t = `<b>${esc(words(e.flag)).replace(/^./, x => x.toUpperCase())} flag</b>`; break;
+      case "engine": t = `<b>Engine warning:</b> ${esc((e.warnings || []).map(words).join(", "))}`; break;
+      case "tow": t = `<b>Tow</b> · ${esc(e.towS)} s`; break;
+      case "rain_start": t = "Rain started"; break;
+      case "rain_stop": t = "Rain stopped"; break;
+      case "track_wetness": t = `Track surface now ${esc(words(e.value))}`; break;
+      case "declared_wet": t = e.value ? "Wet declared: rain tires allowed" : "Wet declaration lifted"; break;
+      case "pit_battle": {
+        const was = e.preS, now = e.nowS;
+        const side = v => v < 0 ? secs(v, 1) + " ahead of you" : secs(v, 1) + " behind you";
+        const good = now > was;
+        t = `Pit battle with ${carLabel(e.idx)} settled (${e.first === "you" ? "you stopped first" : "they stopped first"}): ` +
+            `was ${side(was)}, now ${D(`<span class="${good ? "gain" : "lose"}">${side(now)}</span>`, "Computed here from the gaps before both stops and after both.")}`; break;
+      }
+      default: t = esc(e.kind);
+    }
+    return `<div class="ev ${cls} k-${esc(e.kind)}"><span class="tm">${e.lap != null ? "L" + esc(e.lap) + " · " : ""}${sessClock(e.t)}</span><span>${t}</span></div>`;
+  }
+  function renderFeed() {
+    const el = $("feed");
+    let evs = S.feed.events;
+    if (feedFilter === "you") {
+      const rs = rivalSet();
+      const mine = new Set(["incident", "position", "engine", "tow", "flag", "behind_closing", "you_closing",
+                            "pit_battle", "rain_start", "rain_stop", "track_wetness", "declared_wet"]);
+      evs = evs.filter(e => mine.has(e.kind) || (e.idx != null && rs.has(e.idx)));
+    }
+    if (!evs.length) { el.innerHTML = `<div class="note">${S.feed.ready ? "Nothing yet. Pit stops, fastest laps, incidents, flags and weather changes appear here as they happen." : "Waiting for the bridge."}</div>`; return; }
+    el.innerHTML = evs.slice(-150).reverse().map(eventHtml).join("");
+  }
+  $("feedTabs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-f]"); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    feedFilter = b.dataset.f;
+    try { localStorage.setItem("pitwall.feedFilter", feedFilter); } catch (e2) {}
+    for (const x of $("feedTabs").querySelectorAll("button")) x.classList.toggle("on", x.dataset.f === feedFilter);
+    renderFeed();
+  });
+  for (const x of $("feedTabs").querySelectorAll("button")) x.classList.toggle("on", x.dataset.f === feedFilter);
+
+  // ---- battle box: the class car directly ahead and directly behind
+  function lapSeries(idx, key, n = 10) {
+    return S.feed.laps.filter(e => e.idx === idx && e[key] != null).slice(-n).map(e => e[key]);
+  }
+  function battleRow(side, c) {
+    if (!c) return `<div class="bb-row"><span class="bb-side">${side}</span><span class="note">${side === "ahead" ? "You lead your class." : "Nobody behind in your class."}</span><span></span></div>`;
+    const d = c.derived || {};
+    const tp = d.toPlayerS;
+    const gain = d.youGainSPerLap;
+    let trend = "";
+    if (gain != null) {
+      if (gain === 0) trend = `<span class="flat">level</span>`;
+      else if (side === "ahead") trend = gain > 0
+        ? `<span class="gain">you gain ${gain.toFixed(2)} s/lap</span>` + (d.youCatchLaps != null ? ` · catch in ${d.youCatchLaps} laps` : "")
+        : `<span class="lose">pulling away ${(-gain).toFixed(2)} s/lap</span>`;
+      else trend = gain > 0
+        ? `<span class="gain">you pull away ${gain.toFixed(2)} s/lap</span>`
+        : `<span class="lose">closing ${(-gain).toFixed(2)} s/lap</span>` + (d.catchesYouLaps != null ? ` · on you in ${d.catchesYouLaps} laps` : "");
+    }
+    const me = meCar();
+    const sp = spark(lapSeries(c.idx, "toPlayerS").map(v => Math.abs(v)), 90, 18);
+    const pit = c.onPitRoad ? ` <span class="badge" style="background:var(--orange);color:#2A1A00">in pit</span>` : "";
+    return `<div class="bb-row"><span class="bb-side">${side}</span>` +
+      `<span class="bb-who">${carLabel(c.idx)}${pit}</span>` +
+      `<span class="bb-gap">${tp == null ? "–" : D(Math.abs(tp).toFixed(2), "Computed here: the difference between the two cars' time behind the leader (CarIdxF2Time).")}</span>` +
+      `<div class="bb-sub">${trend ? D(trend, "Computed here: least-squares trend of the gap over the last 90 s, per lap of your pace.") : `<span class="note">trend needs ~20 s of gaps</span>`}` +
+      `<span title="Their last lap / yours">last <span class="mono">${fmt.lap(c.lastLapS)}</span> vs <span class="mono">${fmt.lap(me && me.lastLapS)}</span></span>` +
+      (sp ? `<span title="Gap at each of their lap crossings">${sp}</span>` : "") + `</div></div>`;
+  }
+  function renderBattle() {
+    const el = $("bb");
+    if (!S.cars) return;
+    const me = meCar();
+    if (!me) { el.innerHTML = `<div class="note">The battle box follows your own car. While spectating there is no car of yours in the field.</div>`; return; }
+    if (S.cars.derived && S.cars.derived.isRace === false) { el.innerHTML = `<div class="note">Battles are measured in races, where iRacing reports each car's time behind the leader. In practice and qualifying that number is a best lap instead.</div>`; return; }
+    const cars = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
+    const ahead = cars.find(c => c.classPos === me.classPos - 1);
+    const behind = cars.find(c => c.classPos === me.classPos + 1);
+    el.innerHTML = battleRow("ahead", ahead) + battleRow("behind", behind);
+  }
+
+  // ---- pit strategy: lane loss, where you would rejoin, pit battles
+  const KIND_LABEL = { zero_stationary: "Lane only", typical_stop: "Typical stop", your_last_stop: "Your last stop" };
+  function renderStrategy() {
+    const el = $("strat");
+    if (!S.cars || !S.cars.derived) return;
+    const d = S.cars.derived;
+    if (d.isRace === false) { el.innerHTML = `<div class="note">Pit strategy works in races: rejoin positions come from each car's time behind the leader, which iRacing only reports in a race.</div>`; return; }
+    const pl = d.pitLoss || {};
+    let h = "";
+    if (pl.laneLossS == null) {
+      h += `<div class="note">Pit lane loss appears after the first stop seen from pit entry to pit exit this session (any car).</div>`;
+    } else {
+      h += `<div style="font-size:12.5px">${D(`Pit lane loss <b class="mono">${pl.laneLossS.toFixed(1)} s</b>`, "Computed here from stops watched this session: time between the pit-road lines, minus the stationary time, minus the time the same car takes to cover that stretch at its own pace. It leaves out the slowing down before the entry line and the speeding up after the exit line.")}` +
+           ` <span class="note">from ${pl.samples} stop${pl.samples === 1 ? "" : "s"}</span>` +
+           (pl.boxMedianS != null ? ` · ${D(`typical stationary <b class="mono">${pl.boxMedianS.toFixed(1)} s</b>`, "Computed here: the middle value of the stationary times seen this session. Your own stop depends on what you ask for.")}` : "") + `</div>`;
+    }
+    const rj = d.rejoin;
+    if (rj && rj.options && rj.options.length) {
+      h += `<table class="rj" style="margin-top:6px"><tbody>` + rj.options.map(o => {
+        const a = o.ahead ? `behind ${shortCar(o.ahead.idx)} by ${o.ahead.gapS.toFixed(1)} s` : "leading your class";
+        const b = o.behind ? `ahead of ${shortCar(o.behind.idx)} by ${o.behind.gapS.toFixed(1)} s` : "last in class";
+        const tr = (o.traffic || []).map(x => `${shortCar(x.idx)} ${Math.abs(x.onTrackS).toFixed(1)} s ${x.onTrackS < 0 ? "ahead" : "behind"}`).join(", ");
+        return `<tr><td>${KIND_LABEL[o.kind] || esc(o.kind)}<br><span class="note">${o.stationaryS.toFixed(1)} s stopped</span></td>` +
+          `<td>${D(`<b>P${o.pos}</b>${isMulticlass() ? ` · class P${o.classPos}` : ""}`, "Computed here: your time behind the leader plus this loss, placed among every other car's time behind the leader.")}` +
+          ` <span class="note">(${o.lossS.toFixed(1)} s)</span><br>${a} · ${b}` +
+          (tr ? `<br><span style="color:var(--orange)">on track at the exit: ${tr}</span>` : "") + `</td></tr>`;
+      }).join("") + `</tbody></table>` +
+      `<div class="note" style="margin-top:4px">If you pit this lap, where you would come out. Assumes everyone else keeps their current gap.</div>`;
+    } else if (pl.laneLossS != null) {
+      h += `<div class="note" style="margin-top:4px">Rejoin positions need a gap to the leader for your car (after your first lap).</div>`;
+    }
+    const ucAll = d.undercut || [];
+    const open_ = ucAll.filter(u => u.settledToPlayerS == null)
+      .sort((a, b) => Math.abs(a.toPlayerS ?? 1e9) - Math.abs(b.toPlayerS ?? 1e9)).slice(0, 3);
+    const uc = open_.concat(ucAll.filter(u => u.settledToPlayerS != null));
+    if (uc.length) {
+      h += uc.map(u => {
+        const sp = spark(u.series || [], 70, 16);
+        const tr = u.trendSPerLap == null ? "" : ` · <span class="${u.trendSPerLap > 0 ? "gain" : u.trendSPerLap < 0 ? "lose" : "flat"}">${u.trendSPerLap > 0 ? "+" : ""}${u.trendSPerLap.toFixed(2)} s last lap</span>`;
+        const side = v => v < 0 ? `<span class="lose">${secs(v)} behind them</span>` : `<span class="gain">${secs(v)} ahead of them</span>`;
+        const sideT = v => v < 0 ? `<span class="lose">${secs(v)} ahead of you</span>` : `<span class="gain">${secs(v)} behind you</span>`;
+        if (u.settledToPlayerS != null) {
+          return `<div class="uc">Pit battle with ${carLabel(u.idx)}: settled, they are now ${sideT(u.settledToPlayerS)} <span class="note">(were ${secs(u.preStopToPlayerS)} ${u.preStopToPlayerS < 0 ? "ahead" : "behind"} before the stops)</span></div>`;
+        }
+        if (u.kind === "they_stopped") {
+          return `<div class="uc"><b>${carLabel(u.idx)}</b> stopped${u.lapsSince != null ? ` ${u.lapsSince} lap${u.lapsSince === 1 ? "" : "s"} ago` : ""}` +
+            (u.inPit ? ` <span class="note">(still in the lane)</span>` : "") +
+            `<br>If you stop now you come out ${u.afterYourStopS == null ? "<span class=note>– (needs a pit loss)</span>" : D(side(u.afterYourStopS), "Computed here: your current gap to them minus the typical pit loss (lane loss + typical stationary time).")}${tr} ${sp}</div>`;
+        }
+        return `<div class="uc">You stopped${u.lapsSince != null ? ` ${u.lapsSince} lap${u.lapsSince === 1 ? "" : "s"} ago` : ""}; <b>${carLabel(u.idx)}</b> has not.` +
+          `<br>If they stop now they come out ${u.afterTheirStopS == null ? "<span class=note>–</span>" : D(sideT(u.afterTheirStopS), "Computed here: their current gap to you plus the typical pit loss.")}${tr} ${sp}</div>`;
+      }).join("");
+    } else if (pl.laneLossS != null) {
+      h += `<div class="note" style="margin-top:6px">Undercut watch: when a car near you in your class stops (or you do), the swing shows here lap by lap.</div>`;
+    }
+    el.innerHTML = h;
+  }
+
+  // ---- traffic forecast (list under the map; markers are drawn by drawMap)
+  function sectorOf(pct) {
+    const sec = (S.session && S.session.sectors) || [];
+    let k = 0;
+    sec.forEach((s, i) => { if (s.SectorStartPct != null && pct >= s.SectorStartPct) k = i; });
+    return sec.length ? "S" + (k + 1) : "";
+  }
+  function renderTraffic() {
+    const el = $("traffic");
+    const list = (S.cars && S.cars.derived && S.cars.derived.traffic) || [];
+    if (!list.length) { el.innerHTML = ""; return; }
+    el.innerHTML = list.slice(0, 4).map(x => {
+      const c = carByIdx(x.idx), cls = c && isMulticlass() && c.className ? " " + esc(c.className) : "";
+      return x.kind === "you_catch"
+        ? `<div class="catch">${D(`You catch ${shortCar(x.idx)}${cls} in ${Math.round(x.inS)} s`, "Computed here at both cars' current lap pace. Speeds vary around a lap, so the place is approximate.")} <span class="note">${sectorOf(x.atPct)}</span></div>`
+        : `<div class="caught">${D(`${shortCar(x.idx)}${cls} catches you in ${Math.round(x.inS)} s`, "Computed here at both cars' current lap pace. Speeds vary around a lap, so the place is approximate.")} <span class="note">${sectorOf(x.atPct)}</span></div>`;
+    }).join("");
+  }
+
+  // ---- engine trend (what water, oil and oil pressure have done this stint)
+  const ENG = [];
+  let engLastAt = 0;
+  function recordEngine() {
+    const p = S.state && S.state.player; if (!p || !playerBlockIsLive()) return;
+    const now = performance.now(); if (engLastAt && now - engLastAt < 5000) return;
+    engLastAt = now;
+    ENG.push({ t: now, w: p.waterTempC, o: p.oilTempC, op: p.oilPressBar });
+    if (ENG.length > 360) ENG.shift();
+    renderEngine();
+  }
+  function renderEngine() {
+    const el = $("engTrend");
+    if (ENG.length < 3) { el.innerHTML = ""; return; }
+    const mins = Math.max(1, Math.round((ENG[ENG.length - 1].t - ENG[0].t) / 60000));
+    const row = (label, key, f, eps) => {
+      const vals = ENG.map(x => x[key]).filter(v => v != null);
+      if (vals.length < 2) return "";
+      const dlt = vals[vals.length - 1] - vals[0];
+      const cls = dlt > eps ? "up" : dlt < -eps ? "down" : "flat";
+      return `<div class="row2"><span>${label}</span>${spark(vals)}<span class="delta ${cls}">${Math.abs(dlt) <= eps ? "steady" : (dlt > 0 ? "▲ " : "▼ ") + f(Math.abs(dlt))}</span></div>`;
+    };
+    el.innerHTML = `<h3><span class="derived" title="Computed here from what we have watched since connecting.">Engine over ${mins} min</span></h3>` +
+      row("Water", "w", v => U.tempDelta(v), 0.3) + row("Oil", "o", v => U.tempDelta(v), 0.3) +
+      row("Oil pressure", "op", v => U.press(v), 0.05);
+  }
+
+  // ---- inputs trace for the engineer: this lap against the last one
+  const INP = { cur: [], prev: [], lastPct: null };
+  function recordInputs() {
+    const p = S.state && S.state.player; if (!p || !playerBlockIsLive() || p.lapPct == null || p.lapPct < 0) return;
+    if (INP.lastPct != null && p.lapPct + 0.5 < INP.lastPct) { INP.prev = INP.cur; INP.cur = []; }
+    INP.lastPct = p.lapPct;
+    INP.cur.push([p.lapPct, p.throttle || 0, Math.min(1, p.brake || 0), p.deltaToBestS]);
+    if (INP.cur.length > 6000) INP.cur.shift();
+    if (chartTab === "inputs") chartDirty = true;
+  }
+
+  // ---- charts
+  let chartTab = "gap", chartDirty = true, chartAt = 0;
+  try { const t = localStorage.getItem("pitwall.chartTab"); if (t) chartTab = t; } catch (e) {}
+  const PALETTE = ["#6FA8FF", "#3DDC84", "#B98BFF", "#FF5A5A", "#59C2E8", "#FFD23F", "#F78FB3", "#9BE15D", "#C9A27E", "#8A97B3"];
+  $("chartTabs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-c]"); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    chartTab = b.dataset.c; chartDirty = true;
+    try { localStorage.setItem("pitwall.chartTab", chartTab); } catch (e2) {}
+    for (const x of $("chartTabs").querySelectorAll("button")) x.classList.toggle("on", x.dataset.c === chartTab);
+  });
+  for (const x of $("chartTabs").querySelectorAll("button")) x.classList.toggle("on", x.dataset.c === chartTab);
+  function chartCars() {
+    // Your class: the leader, and the cars within four places of you (or of the
+    // car being watched when you have none).
+    const ref = meCar() || focusCar();
+    if (!ref || !S.cars) return [];
+    const cars = Object.values(S.cars.cars || {}).filter(c => c.classId === ref.classId && c.classPos > 0);
+    return cars.filter(c => c.classPos === 1 || c.idx === ref.idx || Math.abs(c.classPos - ref.classPos) <= 4)
+               .sort((a, b) => a.classPos - b.classPos);
+  }
+  function drawCharts() {
+    const det = $("chartsDetails"); if (!det.open) return;
+    const cvs = $("chart"), r = cvs.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (!r.width || !r.height) return;
+    if (cvs.width !== Math.round(r.width * dpr) || cvs.height !== Math.round(r.height * dpr)) { cvs.width = Math.round(r.width * dpr); cvs.height = Math.round(r.height * dpr); }
+    const g = cvs.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
+    const W = r.width, H = r.height, L = 64, R = 46, T = 10, B = 20;
+    g.font = "10px system-ui, sans-serif"; g.lineJoin = "round";
+    const note = $("chartNote");
+    const axes = (x0, x1, y0, y1, yfmt, xfmt, invert, yInt) => {
+      const X = v => L + (v - x0) / ((x1 - x0) || 1) * (W - L - R);
+      const Y = v => invert ? T + (v - y0) / ((y1 - y0) || 1) * (H - T - B) : H - B - (v - y0) / ((y1 - y0) || 1) * (H - T - B);
+      g.strokeStyle = "#2F3F63"; g.lineWidth = 1; g.fillStyle = "#5A6784"; g.textAlign = "right";
+      const ticks = [];
+      if (yInt && y1 - y0 <= 14) { for (let v = Math.ceil(y0); v <= y1; v++) ticks.push(v); }
+      else for (let k = 0; k <= 4; k++) ticks.push(y0 + (y1 - y0) * k / 4);
+      for (const v of ticks) { const y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); g.fillText(yfmt(v), L - 4, y + 3); }
+      g.textAlign = "center";
+      const step = Math.max(1, Math.ceil((x1 - x0) / 10));
+      for (let v = Math.ceil(x0); v <= x1; v += step) g.fillText(xfmt(v), X(v), H - 6);
+      return [X, Y];
+    };
+    if (chartTab === "inputs") {
+      const tr = [INP.prev, INP.cur];
+      if (!INP.cur.length && !INP.prev.length) { note.textContent = playerBlockIsLive() ? "Builds as the car is driven." : "Inputs are your own car's channels; they read zero while spectating."; return; }
+      const [X, Y] = axes(0, 1, 0, 100, v => Math.round(v) + "%", v => "", false);
+      tr.forEach((pts, k) => {
+        for (const [col, ix] of [["#3DDC84", 1], ["#FF5A5A", 2]]) {
+          g.strokeStyle = col; g.globalAlpha = k ? 1 : 0.3; g.lineWidth = k ? 1.6 : 1.2; g.beginPath();
+          let pen = false, lp = -1;
+          for (const p of pts) { if (p[0] < lp) pen = false; lp = p[0]; const x = X(p[0]), y = Y(p[ix] * 100); pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; }
+          g.stroke();
+        }
+      });
+      g.globalAlpha = 1;
+      // delta to best on its own right-hand axis
+      const ds = INP.cur.filter(p => p[3] != null).map(p => p[3]);
+      if (ds.length > 1) {
+        const m = Math.max(0.2, ...ds.map(Math.abs));
+        const Yd = v => T + (m - v) / (2 * m) * (H - T - B);
+        g.strokeStyle = "#FFB23F"; g.lineWidth = 1.6; g.beginPath(); let pen = false;
+        for (const p of INP.cur) { if (p[3] == null) { pen = false; continue; } const x = X(p[0]), y = Yd(p[3]); pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; }
+        g.stroke();
+        g.fillStyle = "#FFB23F"; g.textAlign = "left";
+        g.fillText("+" + m.toFixed(2) + " s", W - R + 4, T + 8); g.fillText("−" + m.toFixed(2) + " s", W - R + 4, H - B);
+      }
+      note.textContent = "Throttle (green) and brake (red) by track position, this lap bright and last lap faint. Orange: iRacing's delta to your best lap (right-hand scale, up is slower).";
+      return;
+    }
+    const cars = chartCars();
+    const key = chartTab === "gap" ? "classGapS" : chartTab === "you" ? "toPlayerS" : "classPos";
+    const series = cars.map((c, i) => ({ c, col: c.idx === (S.state && S.state.player.carIdx) ? "#FFB23F" : PALETTE[i % PALETTE.length],
+      pts: S.feed.laps.filter(e => e.idx === c.idx && e[key] != null).map(e => [e.lap, e[key]]) })).filter(s => s.pts.length);
+    if (!series.length) {
+      note.textContent = chartTab === "you" && !meCar() ? "Gap to you needs your own car in the race."
+        : S.cars && S.cars.derived && S.cars.derived.isRace === false ? "Race-only: gaps come from each car's time behind the leader, which iRacing reports in races."
+        : "Builds lap by lap as cars cross the line.";
+      return;
+    }
+    const all = series.flatMap(s => s.pts);
+    const x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(x0 + 1, ...all.map(p => p[0]));
+    let y0 = Math.min(...all.map(p => p[1])), y1 = Math.max(...all.map(p => p[1]));
+    if (key === "classPos") { y0 = 1; y1 = Math.max(2, y1); }
+    if (key === "toPlayerS") { const m = Math.max(1, ...all.map(p => Math.abs(p[1]))); y0 = -m; y1 = m; }
+    if (key === "classGapS") { y0 = 0; y1 = Math.max(1, y1); }
+    const dec = Math.abs(y1 - y0) < 10 ? 1 : 0;
+    const yfmt = key === "classPos" ? (v => "P" + Math.round(v))
+      : key === "toPlayerS" ? (v => Math.abs(v) < 1e-9 ? "you" : Math.abs(v).toFixed(dec) + (v < 0 ? " ahead" : " behind"))
+      : (v => v.toFixed(dec) + " s");
+    const [X, Y] = axes(x0, x1, y0, y1, yfmt, v => "L" + v, true, key === "classPos");
+    if (key === "toPlayerS") {
+      g.strokeStyle = "#FFB23F"; g.lineWidth = 1.5; g.setLineDash([4, 4]);
+      g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(W - R, Y(0)); g.stroke(); g.setLineDash([]);
+    }
+    const labels = [];
+    for (const s of series) {
+      const mine = s.col === "#FFB23F";
+      g.strokeStyle = s.col; g.lineWidth = mine ? 2.6 : 1.5; g.beginPath();
+      s.pts.forEach((p, i) => { const x = X(p[0]), y = Y(p[1]); if (key === "classPos" && i) { g.lineTo(x, Y(s.pts[i - 1][1])); } i ? g.lineTo(x, y) : g.moveTo(x, y); });
+      g.stroke();
+      const lp = s.pts[s.pts.length - 1];
+      labels.push({ x: Math.min(W - R + 4, X(lp[0]) + 4), y: Y(lp[1]) + 3, txt: "#" + (s.c.num ?? s.c.idx), col: s.col, mine });
+    }
+    // End-of-line labels: push apart any that would overlap, keeping the order.
+    labels.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 11) labels[i].y = labels[i - 1].y + 11;
+    for (const l of labels) { g.fillStyle = l.col; g.textAlign = "left"; g.font = (l.mine ? "bold " : "") + "10px system-ui, sans-serif"; g.fillText(l.txt, l.x, l.y); }
+    note.innerHTML = chartTab === "gap" ? `<span class="derived" title="Computed here: each car's time behind the leader minus the class leader's, at every lap crossing.">Gap to your class leader at each lap</span>, your class leader and the cars within four places of you. You are orange.`
+      : chartTab === "you" ? `<span class="derived" title="Computed here from the two cars' time behind the leader, at each of their lap crossings.">Gap to you at each lap</span>: above the middle line is ahead of you, below is behind.`
+      : "Class position at each lap crossing, as iRacing scored it.";
+  }
+
+  // ---- sector cell for the standings
+  function sectorCell(c) {
+    const d = c.derived || {}, sec = d.sectorS;
+    if (!sec || !sec.some(v => v != null)) return "–";
+    const sb = (S.cars.derived && S.cars.derived.sessionBestSectorS) || [], own = d.bestSectorS || [];
+    return `<span class="sect">` + sec.map((v, i) => {
+      if (v == null) return `<span style="color:var(--dim)">–</span>`;
+      const cls = sb[i] != null && Math.abs(v - sb[i]) < 0.0005 ? "s-purple" : own[i] != null && Math.abs(v - own[i]) < 0.0005 ? "s-green" : "s-yellow";
+      return `<span class="${cls}">${v.toFixed(2)}</span>`;
+    }).join("") + `</span>`;
+  }
+
   // ---------------------------------------------------------------- map
   const cv = $("map"), ctx = cv.getContext("2d");
   // Which car the detail panel and the map highlight follow. Defaults to the
@@ -1098,6 +1580,16 @@
       const label = mapLabelMode === "pos" ? (c.pos > 0 ? String(c.pos) : "") : String(c.num ?? c.idx);
       if (label) ctx.fillText(label, x, y + 0.5);
     }
+    // Where you meet traffic, at current pace (derived; approximate place).
+    const traffic = (S.cars.derived && S.cars.derived.traffic) || [];
+    ctx.textBaseline = "alphabetic";
+    for (const t of traffic.slice(0, 4)) {
+      const [x, y] = P(t.atPct);
+      ctx.strokeStyle = t.kind === "you_catch" ? "#FF9A3D" : "#6FA8FF"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.stroke();
+      ctx.fillStyle = ctx.strokeStyle; ctx.font = "bold 10px system-ui, sans-serif"; ctx.textAlign = "left";
+      ctx.fillText(Math.round(t.inS) + "s", x + 10, y - 6);
+    }
   }
 
   // ---------------------------------------------------------------- loop
@@ -1105,6 +1597,9 @@
     drawMap();
     drawGG();
     const now = performance.now();
+    if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {
+      chartDirty = false; chartAt = now; drawCharts();
+    }
     if (S.lastStateAt) { const age = (now - S.lastStateAt) / 1000; $("age").textContent = age < 1.5 ? "live" : "last update " + age.toFixed(0) + " s ago"; $("age").style.color = age < 3 ? "" : "#FF5A5A"; }
     // Divide by the real elapsed time, not a constant 2 s: this loop is driven by
     // requestAnimationFrame, which browsers throttle to ~1 Hz or stop outright while
@@ -1124,7 +1619,7 @@
   (function () {
     const el = $("standings");
     if (!el || typeof ResizeObserver === "undefined") return;
-    const bucket = w => w >= 600 ? "lg" : w >= 490 ? "md" : w >= 410 ? "sm" : "xs";
+    const bucket = w => w >= 800 ? "xl" : w >= 640 ? "lg" : w >= 490 ? "md" : w >= 410 ? "sm" : "xs";
     const tbl = el.querySelector(".tbl");
     const det = $("standingsPanel");
     // The flex chain cannot reach through <details>: the browser slots the
@@ -1158,16 +1653,36 @@
     if (typeof ResizeObserver === "undefined") return;
     function sizeMap() {
       if (!det.open) return;
-      const summary = det.querySelector("summary"), note = $("mapNote");
+      const summary = det.querySelector("summary"), note = $("mapNote"), trf = $("traffic");
       const cs = getComputedStyle(sec);
       const avail = sec.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
-        - (summary ? summary.offsetHeight + 8 : 0) - (note ? note.offsetHeight + 6 : 0);
+        - (summary ? summary.offsetHeight + 8 : 0) - (note ? note.offsetHeight + 6 : 0)
+        - (trf && trf.offsetHeight ? trf.offsetHeight + 6 : 0);
       cv.style.height = Math.max(240, Math.floor(avail)) + "px";
     }
     new ResizeObserver(sizeMap).observe(sec);
     det.addEventListener("toggle", sizeMap);
     window.addEventListener("resize", sizeMap);
     sizeMap();
+  })();
+
+  (function () {
+    const sec = $("feedPanel"), det = $("feedDetails"), list = $("feed");
+    const narrow = window.matchMedia ? window.matchMedia("(max-width: 1100px)") : { matches: false };
+    if (typeof ResizeObserver === "undefined") return;
+    function sizeFeed() {
+      if (!det.open) return;
+      if (narrow.matches) { list.style.maxHeight = ""; return; }
+      const summary = det.querySelector("summary"), cs = getComputedStyle(sec);
+      const avail = sec.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+        - (summary ? summary.offsetHeight + 8 : 0);
+      list.style.maxHeight = Math.max(60, Math.floor(avail)) + "px";
+    }
+    new ResizeObserver(sizeFeed).observe(sec);
+    det.addEventListener("toggle", sizeFeed);
+    window.addEventListener("resize", () => { sizeFeed(); chartDirty = true; });
+    $("chartsDetails").addEventListener("toggle", () => { chartDirty = true; });
+    sizeFeed();
   })();
 
   (function () {
@@ -1206,7 +1721,9 @@
   // the default and carries on. Collapsing a grid column also hands its width
   // back via data attributes on <main>, so it does not leave a tall empty gap.
   (function () {
-    const GRID = { trackPanel: "track", standingsPanel: "standings" };
+    // The map and standings now share their columns with the feed and the
+    // charts, so collapsing one of them no longer hands its column's width back.
+    const GRID = {};
     const panels = [...document.querySelectorAll("details.panel")];
     const main = document.querySelector("main");
 

@@ -818,6 +818,356 @@ def test_bridge_survives_a_frame_the_normalizer_cannot_handle():
     assert WS.sent.count("state") >= 10, "the bridge stopped streaming after the bad frame"
 
 
+# --------------------------------------------------------------------------- #
+# Race engineer booth: lap history, gaps to you, pit loss, rejoin, undercut,
+# traffic, events and the feed.
+# --------------------------------------------------------------------------- #
+
+def _car(idx, **kw):
+    c = {"idx": idx, "lapCompleted": 0, "lastLapS": -1.0, "onPitRoad": False, "pos": idx, "classPos": idx,
+         "f2TimeS": 0.0, "gapValid": True, "classId": 10, "surface": "on_track", "pct": 0.0, "derived": {}}
+    c.update(kw)
+    return c
+
+
+def _laps(d, idx, times, t0=0.0):
+    """Feed a run of completed laps through record_lap; returns the time reached."""
+    t = t0
+    c = _car(idx, lapCompleted=0, lastLapS=-1.0)
+    d.record_lap(c, t)
+    for k, lt in enumerate(times, start=1):
+        t += lt
+        c = _car(idx, lapCompleted=k, lastLapS=lt)
+        d.record_lap(c, t)
+    return t
+
+
+def test_lap_entries_take_a_lap_time_that_arrives_late():
+    """The player's LapLastLapTime is known to update after the line; whether the
+    per-car array does is unverified. Both orders must credit the right lap."""
+    d = Deriver()
+    d.record_lap(_car(3, lapCompleted=4, lastLapS=101.0), 0.0)        # first sight: 101 is an old lap
+    assert d.record_lap(_car(3, lapCompleted=5, lastLapS=101.0), 100.0) is None   # line crossed, time not in yet
+    done = d.record_lap(_car(3, lapCompleted=5, lastLapS=99.5), 100.6)           # ...arrives 0.6 s later
+    assert done and done["lap"] == 5 and done["lapS"] == 99.5
+    # a time that is already new at the crossing is taken at once
+    done = d.record_lap(_car(3, lapCompleted=6, lastLapS=98.7), 199.0)
+    assert done and done["lap"] == 6 and done["lapS"] == 98.7
+    # and one that never changes is given up on, not credited with the old value
+    assert d.record_lap(_car(3, lapCompleted=7, lastLapS=98.7), 298.0) is None
+    done = d.record_lap(_car(3, lapCompleted=7, lastLapS=98.7), 298.0 + Deriver.LAP_TIME_WAIT_S)
+    assert done and done["lap"] == 7 and done["lapS"] is None
+
+
+def test_pace_ignores_pit_laps_and_wants_two_laps():
+    d = Deriver()
+    _laps(d, 1, [100.0])
+    assert d.pace(1) is None, "one lap is not a pace"
+    d = Deriver()
+    t = _laps(d, 1, [100.0, 101.0])
+    assert d.pace(1) == 100.5
+    # an in-lap and an out-lap: the car is on pit road during both
+    d.record_lap(_car(1, lapCompleted=2, lastLapS=101.0, onPitRoad=True), t + 50)
+    d.record_lap(_car(1, lapCompleted=3, lastLapS=130.0, onPitRoad=True), t + 130)
+    d.record_lap(_car(1, lapCompleted=4, lastLapS=160.0, onPitRoad=False), t + 290)
+    assert [e["pit"] for e in d._laps[1][-2:]] == [True, True]
+    assert d.pace(1) == 100.5, "pit laps leaked into the pace"
+
+
+def test_pit_lane_loss_is_lane_time_less_stationary_less_pace():
+    """Lane loss = time between the pit-road lines - stationary - same stretch at pace."""
+    d = Deriver()
+    t = _laps(d, 5, [99.9, 100.0, 100.1])                  # pace 100.0 (distinct times:
+    d.pit(5, t, False, False, 3, pct=0.90)                 # an identical one reads as not-yet-updated)                 # seed on track
+    d.pit(5, t + 5, True, False, 3, pct=0.95)              # pit entry line at 0.95
+    d.pit(5, t + 15, True, True, 3, pct=0.99)              # stops in the box
+    d.pit(5, t + 35, True, False, 4, pct=0.99)             # 20 s stationary
+    d.pit(5, t + 55, False, False, 4, pct=0.05)            # exit line at 0.05: 50 s in the lane
+    pl = d.pit_loss()
+    # 50 s in the lane - 20 s stationary - 0.10 lap x 100 s = 20 s
+    assert pl["samples"] == 1 and abs(pl["laneLossS"] - 20.0) < 0.01
+    assert pl["boxMedianS"] == 20.0
+
+
+def test_pit_lane_loss_ignores_a_reset_to_the_pits():
+    """A reset puts the car in its box without driving the lane. It still counts
+    as a stop seen, but timing it as lane loss would be nonsense."""
+    d = Deriver()
+    t = _laps(d, 5, [99.9, 100.0, 100.1])
+    d.pit(5, t, False, False, 3, pct=0.40)
+    d.pit(5, t + 1, True, True, 3, pct=0.40)               # on pit road...
+    d.pit(5, t + 2, True, True, 3, pct=0.99)               # ...and teleported to the box
+    d.pit(5, t + 30, True, False, 3, pct=0.99)
+    d.pit(5, t + 40, False, False, 4, pct=0.05)
+    assert d.pit_loss()["samples"] == 0
+
+
+def test_rejoin_places_you_by_your_gap_plus_the_loss():
+    d = Deriver()
+    _laps(d, 0, [99.9, 100.1])                             # your pace: 100.0
+    cars = [_car(1, f2TimeS=0.0), _car(2, f2TimeS=5.0), _car(0, f2TimeS=10.0),
+            _car(3, f2TimeS=18.0), _car(4, f2TimeS=31.0, classId=20), _car(5, f2TimeS=40.0)]
+    r = d.predict_rejoin(cars, 0, 25.0)                     # virtual gap 35
+    assert r["pos"] == 5 and r["classPos"] == 4             # behind 1, 2, 3 and car 4 (other class)
+    assert r["ahead"] == {"idx": 3, "gapS": 17.0} and r["behind"] == {"idx": 5, "gapS": 5.0}
+    # on track: car 4 is 4 s up the road, car 5 is 5 s back, car 1 is 35 s ahead -> not near
+    assert r["traffic"] == []
+    r = d.predict_rejoin(cars, 0, 22.0)                     # virtual 32: car 4 is 1 s ahead on track
+    assert r["traffic"] == [{"idx": 4, "onTrackS": -1.0}]
+    # a lapped car one full lap (100 s) behind on time is right beside you on track
+    cars.append(_car(6, f2TimeS=133.5))
+    r = d.predict_rejoin(cars, 0, 22.0)
+    assert {"idx": 6, "onTrackS": 1.5} in r["traffic"]
+    # no trustworthy gap for you: say nothing
+    cars[2]["gapValid"] = False
+    assert d.predict_rejoin(cars, 0, 22.0) is None
+
+
+def test_gaps_to_you_and_to_the_class_leader():
+    src = FakeSource(realtime=False, speed=4.0)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    for i in range(15 * 60 * 6):                           # 6 sim-minutes at 4x steps
+        src.tick()
+        if i % 4 == 0:
+            cars = build_cars(src, sess, d)
+    by = {c["idx"]: c for c in cars["cars"]}
+    me = by[0]
+    assert me["gapValid"]
+    checked = 0
+    for c in cars["cars"]:
+        dd = c["derived"]
+        if c is me or not c["gapValid"]:
+            assert dd["toPlayerS"] is None
+            continue
+        assert abs(dd["toPlayerS"] - (c["f2TimeS"] - me["f2TimeS"])) < 6e-4     # rounded to 1 ms
+        lead = next(x for x in cars["cars"] if x["classId"] == c["classId"] and x["classPos"] == 1)
+        if lead["gapValid"]:
+            assert abs(dd["classGapS"] - (c["f2TimeS"] - lead["f2TimeS"])) < 6e-4
+        else:
+            assert dd["classGapS"] is None
+        checked += 1
+    assert checked > 10
+    # outside a race F2Time is a best lap, not a gap: nothing is derived from it
+    src._vars["SessionNum"] = 0
+    cars = build_cars(src, sess, d)
+    assert all(c["derived"]["toPlayerS"] is None and c["derived"]["classGapS"] is None for c in cars["cars"])
+    assert cars["derived"]["isRace"] is False and cars["derived"]["rejoin"] is None
+
+
+def test_you_gain_is_positive_when_it_is_good_for_you():
+    """One sign for both sides: a car ahead coming back, or a car behind dropping back."""
+    d = Deriver()
+    for k in range(13):                                    # car ahead, -5.0 -> -4.0 over 60 s
+        out = d.to_player_trend(1, k * 5.0, -5.0 + k / 12, 100.0, 0)
+    assert out["youGainSPerLap"] > 0 and abs(out["youGainSPerLap"] - 100 / 60) < 0.01
+    assert out["youCatchLaps"] == round(4.0 / out["youGainSPerLap"], 1)
+    for k in range(13):                                    # car behind, 2.0 -> 1.5: it is catching you
+        out = d.to_player_trend(2, k * 5.0, 2.0 - 0.5 * k / 12, 100.0, 0)
+    assert out["youGainSPerLap"] < 0 and out["catchesYouLaps"] == round(1.5 / -out["youGainSPerLap"], 1)
+    out = d.to_player_trend(2, 65.0, 1.5, 100.0, 7)         # a different player car: history dropped
+    assert out["youGainSPerLap"] is None
+
+
+def test_traffic_meeting_time_and_place():
+    d = Deriver()
+    _laps(d, 0, [99.9, 100.1])                             # you: 100 s pace
+    _laps(d, 1, [109.9, 110.1])                            # slower car: 110
+    _laps(d, 2, [89.9, 90.1])                              # faster car: 90
+    cars = [_car(0, pct=0.20), _car(1, pct=0.25), _car(2, pct=0.15)]
+    tr = {x["idx"]: x for x in d.traffic(cars, 0)}
+    # 0.05 lap closes at 1/100 - 1/110 laps per second -> 55 s, 0.55 lap on
+    assert tr[1]["kind"] == "you_catch" and abs(tr[1]["inS"] - 55.0) < 0.05
+    assert abs(tr[1]["atPct"] - 0.75) < 1e-4
+    # faster car 0.05 behind closes at 1/90 - 1/100 -> 45 s
+    assert tr[2]["kind"] == "catches_you" and abs(tr[2]["inS"] - 45.0) < 0.05
+    assert abs(tr[2]["atPct"] - 0.65) < 1e-4
+    # beyond the horizon, or in the pits: not listed
+    cars[1]["pct"] = 0.40
+    cars[2]["surface"] = "approaching_pits"
+    assert d.traffic(cars, 0) == []
+
+
+_RACE = {}
+
+
+def _fake_race():
+    """One 25-minute fake race, run once and shared. The player stops on lap 7.
+
+    Records, for every stop by a non-player car once a pit loss is known, the
+    rejoin prediction made at pit entry (using the stationary time it really
+    took) and where the car actually was 8 s after rejoining.
+    """
+    if _RACE:
+        return _RACE
+    import copy
+    src = FakeSource(realtime=False, speed=4.0, player_pit_lap=7)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    prev, pending, checks, uc = {}, {}, [], []
+    for i in range(int(25 * 60 * 60 / 4)):
+        src.tick()
+        if i % 2 == 0:
+            build_state(src, d)
+        if i % 4:
+            continue
+        cars = build_cars(src, sess, d)
+        t = cars["t"]
+        by = {c["idx"]: c for c in cars["cars"]}
+        for idx, c in by.items():
+            was, now = prev.get(idx), bool(c["onPitRoad"])
+            if idx != 0 and was is False and now and d.pit_loss()["laneLossS"] is not None:
+                pending[idx] = {"snap": copy.deepcopy(cars["cars"]), "loss": d.pit_loss()["laneLossS"]}
+            if was and not now and idx in pending:
+                pending[idx].update(exitT=t, box=c["derived"]["lastStopS"])
+            prev[idx] = now
+        for idx, p in list(pending.items()):
+            if "exitT" in p and t - p["exitT"] >= 8:
+                r = d.predict_rejoin(p["snap"], idx, p["loss"] + (p["box"] or 0))
+                if r:
+                    checks.append((r["classPos"], by[idx]["classPos"]))
+                del pending[idx]
+        loss = d.typical_loss()
+        for u in cars["derived"]["undercut"]:
+            uc.append((dict(u), loss))
+    _RACE.update(d=d, cars=cars, checks=checks, uc=uc)
+    return _RACE
+
+
+def test_rejoin_prediction_matches_where_cars_actually_rejoin():
+    """The prediction made at pit entry against the class position the car really
+    had once back up to speed. It assumes everyone else keeps their gap, so a
+    rival pitting in the same window can move it by a place."""
+    r = _fake_race()
+    checks = r["checks"]
+    assert len(checks) >= 5, checks
+    within1 = sum(1 for p, a in checks if abs(p - a) <= 1)
+    exact = sum(1 for p, a in checks if p == a)
+    assert within1 >= 0.8 * len(checks), checks
+    assert exact >= 0.5 * len(checks), checks
+
+
+def test_pit_lane_loss_matches_the_fake_pit_lane():
+    """The fake lane runs 0.955 -> 0.045 (0.09 lap) at 16.7 m/s, so a car loses
+    0.09 * length / 16.7 minus the same 0.09 lap at its own pace."""
+    r = _fake_race()
+    d = r["d"]
+    src = FakeSource(realtime=False)
+    lane_t = 0.09 * src.length / FakeSource.PIT_LANE_MS
+    assert d._loss, "no lane loss measured in a 25-minute race"
+    for s in d._loss:
+        expect = lane_t - 0.09 * d.pace(s["idx"])
+        # entry, exit and the box are each sampled at ~4 Hz of sim time, and the
+        # pace drifts a little: within 0.8 s
+        assert abs(s["laneLossS"] - expect) < 0.8, (s, expect)
+
+
+def test_undercut_watch_after_your_stop():
+    r = _fake_race()
+    ys = [(u, loss) for u, loss in r["uc"] if u["kind"] == "you_stopped"]
+    assert ys, "the player stopped on lap 7 but no pit battle was opened"
+    for u, loss in ys:
+        if u["afterTheirStopS"] is not None:
+            assert abs(u["afterTheirStopS"] - (u["toPlayerS"] + loss)) < 0.02
+        if len(u["series"]) >= 2:
+            assert u["trendSPerLap"] == round(u["series"][-1] - u["series"][-2], 2)
+
+
+def test_race_events_from_the_fake_race():
+    d = _fake_race()["d"]
+    kinds = [e["kind"] for e in d.feed_events]
+    assert kinds.count("pit_out") >= 3 and kinds.count("pit_in") >= kinds.count("pit_out")
+    outs = [e for e in d.feed_events if e["kind"] == "pit_out" and e.get("laneLossS") is not None]
+    assert outs and all(e["stationaryS"] > 0 for e in outs)
+    assert "fastest_lap" in kinds
+    seqs = [e["seq"] for e in d.feed_events] + [x["seq"] for x in d.feed_laps]
+    assert len(seqs) == len(set(seqs)), "feed sequence numbers repeat"
+    # every completed lap of the player is in the lap history, in order
+    mine = [x["lap"] for x in d.feed_laps if x["idx"] == 0]
+    assert mine == sorted(mine) and len(mine) >= 10
+
+
+def test_fastest_lap_events_skip_what_was_already_on_the_board():
+    d = Deriver()
+    cars = [_car(1, bestLapS=100.0), _car(2, bestLapS=101.0, classId=20)]
+    d.field_events(cars, 0.0, None, {})
+    assert not [e for e in d.feed_events if e["kind"] == "fastest_lap"]
+    cars[1]["bestLapS"] = 100.5                                # class best, not overall
+    d.field_events(cars, 1.0, None, {})
+    cars[0]["bestLapS"] = 99.0                                 # overall best
+    d.field_events(cars, 2.0, None, {})
+    fl = [e for e in d.feed_events if e["kind"] == "fastest_lap"]
+    assert [(e["idx"], e["overall"]) for e in fl] == [(2, False), (1, True)]
+
+
+def test_state_events_incidents_flags_weather_engine():
+    d = Deriver()
+    d.incident_limit = 17
+    base = lambda **kw: ({"flags": kw.get("flags", ["green"])},
+                         {"lap": 3, "incidents": {"my": kw.get("inc", 2)},
+                          "engineWarnings": kw.get("warn", []), "towTimeS": kw.get("tow", 0.0)},
+                         {"wetness": kw.get("wet", "dry"), "precipitationPct": kw.get("rain", 0.0),
+                          "declaredWet": kw.get("dw", False)})
+    d.state_events(0.0, *base())                               # seeds silently
+    assert d.feed_events == []
+    d.state_events(1.0, *base(inc=4))
+    d.state_events(2.0, *base(inc=4, warn=["pit_speed_limiter"]))     # routine: not news
+    d.state_events(3.0, *base(inc=4, warn=["water_temp", "pit_speed_limiter"]))
+    d.state_events(4.0, *base(inc=4, flags=["yellow"]))
+    d.state_events(5.0, *base(inc=4, flags=["green"]))
+    d.state_events(6.0, *base(inc=4, flags=["yellow"]))       # back within 20 s: not repeated
+    d.state_events(7.0, *base(inc=4, rain=0.2, wet="lightly_wet", dw=True))
+    d.state_events(8.0, *base(inc=4, rain=0.2, wet="lightly_wet", dw=True, tow=30.0))
+    got = [(e["kind"], {k: v for k, v in e.items() if k not in ("t", "lap", "seq", "kind")}) for e in d.feed_events]
+    assert ("incident", {"delta": 2, "total": 4, "limit": 17}) in got
+    assert ("engine", {"warnings": ["water_temp"]}) in got
+    assert [g for g in got if g[0] == "flag"] == [("flag", {"flag": "yellow"}), ("flag", {"flag": "green"})]
+    assert ("rain_start", {"value": 0.2}) in got and ("declared_wet", {"value": True}) in got
+    assert ("track_wetness", {"value": "lightly_wet", "prev": "dry"}) in got
+    assert ("tow", {"towS": 30.0}) in got
+
+
+def test_incident_limit_comes_from_the_session():
+    src = FakeSource(realtime=False)
+    src.connect()
+    sess = build_session(src)
+    assert sess["options"]["IncidentLimit"] == 17
+    d = Deriver()
+    build_cars(src, sess, d)
+    assert d.incident_limit == 17
+    sess["options"]["IncidentLimit"] = "unlimited"
+    build_cars(src, sess, d)
+    assert d.incident_limit is None
+
+
+def test_bridge_sends_the_feed_whole_then_only_what_is_new():
+    from pitwall import bridge as bridge_mod
+    from relay.server import msg_is_full
+    src = FakeSource(realtime=False, speed=4.0)
+    src.connect()
+    b = bridge_mod.Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None)
+    feeds, now = [], 0.0
+    for i in range(15 * 60 * 3):
+        src.tick()
+        now += 1.0
+        feeds += [m for m in b._build(now) if m["type"] == "feed"]
+    assert feeds[0]["full"] is True and msg_is_full(json.dumps(feeds[0], separators=(",", ":")))
+    inc = [m for m in feeds[1:] if not m["full"]]
+    assert inc, "no incremental feed messages"
+    last = feeds[0]["seq"]
+    for m in inc:
+        seqs = [x["seq"] for x in m["laps"] + m["events"]]
+        assert seqs and min(seqs) > last and max(seqs) == m["seq"]
+        last = m["seq"]
+    b._feed_full_due = True                                    # a viewer asked for a resend
+    src.tick()
+    now += 1.0
+    full = [m for m in b._build(now) if m["type"] == "feed"]
+    assert full and full[0]["full"] and len(full[0]["laps"]) == len(b.deriver.feed_laps)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

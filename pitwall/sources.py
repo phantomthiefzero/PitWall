@@ -339,7 +339,12 @@ class _FakeCar:
         self.best_lap = 0.0
         self.lap_start_t = 0.0
         self.on_pit = False
-        self.pit_until = 0.0
+        # None, "lane_in", "box" or "lane_out". A stop is a sequence, as in the
+        # sim: drive in at the limiter, sit stationary in the box (TrackSurface
+        # in_pit_stall), drive out at the limiter.
+        self.pit_phase = None
+        self.pit_planned = False
+        self.box_until = 0.0
         self.compound = 0
         self.fast_repairs = 0
         self.gear = 4
@@ -358,9 +363,22 @@ class FakeSource(TelemetrySource):
     name = "fake"
     HZ = 60
 
-    def __init__(self, seed: int = 7, n_cars: int = 24, realtime: bool = True):
+    # Pit lane geometry on the synthetic circuit: the lane leaves the track just
+    # before the line, the boxes sit on the line, the lane rejoins just after it.
+    PIT_IN_PCT = 0.955
+    PIT_OUT_PCT = 0.045
+    PIT_LANE_MS = 16.7          # 60 km/h limiter
+
+    def __init__(self, seed: int = 7, n_cars: int = 24, realtime: bool = True,
+                 speed: float = 1.0, player_pit_lap: int | None = None):
         self.rng = random.Random(seed)
         self.realtime = realtime
+        # speed > 1 runs the race faster than real time (for looking at a whole
+        # race in a few minutes); it scales the simulated clock, not the rate.
+        self.speed = speed
+        # Lap on which the player car makes one stop (None = never). Opt-in so the
+        # older tests keep a player that never pits.
+        self.player_pit_lap = player_pit_lap
         self.n_cars = n_cars
         self.track = synthetic_track()
         self.cum, self.length = _arc_table(self.track)
@@ -483,6 +501,9 @@ class FakeSource(TelemetrySource):
                 "SessionID": 1,
                 "SubSessionID": 1,
                 "TeamRacing": 0,
+                # iRacing writes the limit as a number, or the word "unlimited".
+                "WeekendOptions": {"IncidentLimit": 17, "FastRepairsLimit": 1,
+                                   "StandingStart": 0, "NumStarters": self.n_cars},
             },
             "DriverInfo": {
                 "DriverCarIdx": 0,
@@ -528,7 +549,7 @@ class FakeSource(TelemetrySource):
             self._last_wall = now
         else:
             dt = 1.0 / self.HZ
-        self._step(dt)
+        self._step(dt * self.speed)
         return True
 
     def _step(self, dt: float):
@@ -547,14 +568,18 @@ class FakeSource(TelemetrySource):
         pcts, laps, lapsc, onpit, surf, last, best, comp, fr, gear, rpm = ([0] * 64 for _ in range(11))
         f2 = [0.0] * 64
         for c in self.cars:
-            if c.on_pit:
-                spd = 16.0  # pit lane
-                if self.t >= c.pit_until:
-                    c.on_pit = False
+            if c.pit_phase == "box":
+                spd = 0.0
+                if self.t >= c.box_until:
+                    c.pit_phase = "lane_out"
+            elif c.pit_phase is not None:
+                spd = self.PIT_LANE_MS
             else:
                 spd = (self.length / c.base_lap) * self.curvature_speed_factor(c.pct) / 0.83
                 spd += math.sin(self.t * 0.5 + c.idx) * 0.8
             new_pct = c.pct + spd * dt / self.length
+            if c.pit_phase is None and c.pit_planned and c.pct < self.PIT_IN_PCT <= new_pct:
+                c.pit_phase, c.pit_planned = "lane_in", False
             if new_pct >= 1.0:
                 new_pct -= 1.0
                 lap_time = self.t - c.lap_start_t
@@ -569,11 +594,22 @@ class FakeSource(TelemetrySource):
                     c.last_lap = lap_time
                     c.best_lap = lap_time if c.best_lap == 0 else min(c.best_lap, lap_time)
                 c.laps_completed += 1
-                # occasional pit stop at start/finish for a non-player car
-                if c.idx != 0 and rng.random() < 0.08 and c.laps_completed > 2:
-                    c.on_pit = True
-                    c.pit_until = self.t + 40.0
+                if c.pit_phase == "lane_in":
+                    # The boxes are on the line: stop there, stationary.
+                    new_pct = 0.0
+                    c.pit_phase = "box"
+                    c.box_until = self.t + 18.0 + rng.random() * 22.0
                     c.compound = (c.compound + 1) % 2
+                    if c.idx == 0:
+                        self.fuel = min(self.fuel_max, 60.0)
+                # occasional stop on the NEXT lap for a non-player car
+                if c.idx != 0 and rng.random() < 0.08 and c.laps_completed > 2:
+                    c.pit_planned = True
+                if c.idx == 0 and self.player_pit_lap is not None and c.laps_completed == self.player_pit_lap - 1:
+                    c.pit_planned = True
+            if c.pit_phase == "lane_out" and self.PIT_OUT_PCT <= new_pct < 0.5:
+                c.pit_phase = None
+            c.on_pit = c.pit_phase is not None
             c.pct = new_pct
             c.rpm = 5200 + 2800 * self.curvature_speed_factor(c.pct)
             c.gear = 2 + int(4 * self.curvature_speed_factor(c.pct))
@@ -582,7 +618,7 @@ class FakeSource(TelemetrySource):
             laps[i] = c.laps_completed + 1
             lapsc[i] = c.laps_completed
             onpit[i] = c.on_pit
-            surf[i] = 2 if c.on_pit else 3
+            surf[i] = 1 if c.pit_phase == "box" else 2 if c.on_pit else 3
             last[i] = c.last_lap
             best[i] = c.best_lap
             comp[i] = c.compound
@@ -610,7 +646,8 @@ class FakeSource(TelemetrySource):
                 # Verified against a live replay (Daytona, GR86 race, lap 1).
                 f2[c.idx] = round(0.001 * (p - 1), 4)
         player = self.cars[0]
-        speed = 0.0 if player.on_pit else (self.length / player.base_lap) * self.curvature_speed_factor(player.pct) / 0.83
+        speed = (0.0 if player.pit_phase == "box" else self.PIT_LANE_MS if player.on_pit
+                 else (self.length / player.base_lap) * self.curvature_speed_factor(player.pct) / 0.83)
         heading = self.heading_at(player.pct)
         fuel_rate_kg_h = 95.0 * (0.4 + 0.6 * self.curvature_speed_factor(player.pct))
         self.fuel -= (fuel_rate_kg_h / 3600.0) * dt / 0.75  # kg/h -> l/s with ~0.75 kg/l
@@ -640,10 +677,11 @@ class FakeSource(TelemetrySource):
             "LapLastLapTime": player.last_lap, "LapBestLapTime": player.best_lap,
             "LapCurrentLapTime": self.t - player.lap_start_t,
             "LapDeltaToBestLap": math.sin(self.t / 7) * 0.3, "LapDeltaToSessionBestLap": 0.4,
-            "OnPitRoad": player.on_pit, "PlayerCarInPitStall": False,
+            "OnPitRoad": player.on_pit, "PlayerCarInPitStall": player.pit_phase == "box",
             "PlayerCarPosition": pos[0], "PlayerCarClassPosition": pos[0],
             "PlayerCarMyIncidentCount": 2, "PlayerCarTeamIncidentCount": 2, "PlayerCarDriverIncidentCount": 2,
-            "PlayerCarTowTime": 0.0, "PlayerTrackSurface": 3,
+            "PlayerCarTowTime": 0.0,
+            "PlayerTrackSurface": 1 if player.pit_phase == "box" else 2 if player.on_pit else 3,
             "PitRepairLeft": 0.0, "PitOptRepairLeft": 0.0,
             "PitSvFlags": 0x1F, "PitSvFuel": 45.0, "PitSvLFP": 165.0, "PitSvRFP": 165.0,
             "PitSvLRP": 160.0, "PitSvRRP": 160.0, "PitSvTireCompound": 0, "PitstopActive": False,
