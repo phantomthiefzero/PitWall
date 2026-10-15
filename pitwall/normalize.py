@@ -1916,6 +1916,34 @@ def fuel_plan(fuel_l, fpl, laps_left, laps_left_est, lap_pct, lap_no, tank_l,
     return out
 
 
+# Sector boundaries are interpolated between samples, so a sum of best sectors
+# carries a few hundredths of error. Within this, it is still a theoretical best.
+THEO_SLACK_S = 0.05
+
+
+def theoretical_best(best_sectors, best_lap_s):
+    """(theoreticalBestS, bestLapLeftS), either may be None.
+
+    A theoretical best can never be slower than the real best lap: that lap is
+    made of sectors too, so the best of each is at most its own. When the sum of
+    the best sectors we have TIMED comes out slower, we have not seen enough to
+    know it -- the best lap was set before we connected (practice recording: the
+    sum was 5.86 s slower than iRacing's best), or one of its sectors went
+    untimed after an off (race recording: 0.655 s slower). Then there is nothing
+    honest to show, so nothing is. Within THEO_SLACK_S it is timing error, and
+    the real best lap is the tighter bound on the truth.
+    """
+    if not best_sectors or any(v is None for v in best_sectors):
+        return None, None
+    theo = round(sum(best_sectors), 3)
+    if not best_lap_s or best_lap_s <= 0:
+        return theo, None                       # no best lap reported: nothing to check against
+    if theo > best_lap_s + THEO_SLACK_S:
+        return None, None
+    theo = min(theo, round(best_lap_s, 3))
+    return theo, round(best_lap_s - theo, 3)
+
+
 def vs_you(c: dict, me: dict, their_pace, my_pace) -> dict:
     """Head-to-head: this car minus you. Negative = they are quicker."""
     def diff(a, b):
@@ -2464,12 +2492,11 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             # Theoretical best: this car's own best sectors added together. The
             # gap between it and the actual best lap is time the driver has
             # already shown they can find, just not on the same lap.
-            bs = c["derived"].get("bestSectorS")
-            if bs and all(v is not None for v in bs):
-                theo = round(sum(bs), 3)
+            theo, left = theoretical_best(c["derived"].get("bestSectorS"), c.get("bestLapS"))
+            if theo is not None:
                 c["derived"]["theoreticalBestS"] = theo
-                if c.get("bestLapS") and c["bestLapS"] > 0:
-                    c["derived"]["bestLapLeftS"] = round(c["bestLapS"] - theo, 3)
+            if left is not None:
+                c["derived"]["bestLapLeftS"] = left
 
     live_gaps(ordered)
     out = {"type": "cars", "schema": SCHEMA_VERSION, "t": _num(g("SessionTime")), "cars": cars}

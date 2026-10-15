@@ -663,6 +663,48 @@ def test_theoretical_best_is_the_sum_of_own_best_sectors():
             assert c["derived"]["bestLapLeftS"] >= -0.002, c["derived"]
 
 
+def test_theoretical_best_is_never_slower_than_the_best_lap():
+    """When the sectors we have timed sum to more than iRacing's best lap, we have
+    not seen enough to know a theoretical best, so none is shown."""
+    from pitwall.normalize import theoretical_best
+    assert theoretical_best([30.0, 40.0, 25.0], 96.0) == (95.0, 1.0)
+    assert theoretical_best([30.0, 40.0, 26.0], 95.98) == (95.98, 0.0)   # within timing slack: the lap bounds it
+    assert theoretical_best([30.0, 40.0, 27.0], 96.0) == (None, None)    # 1 s slower: not enough seen
+    assert theoretical_best([30.0, None, 25.0], 96.0) == (None, None)    # a sector never timed
+    assert theoretical_best([30.0, 40.0, 25.0], -1.0) == (95.0, None)    # no best lap reported yet
+
+
+def test_theoretical_best_when_the_best_lap_was_set_before_connecting():
+    """The sim's awkward shape, which the fake used to spare us: iRacing reports
+    a best lap set before we started watching, while our sectors only cover laps
+    since. In the practice recording that made the 'theoretical' 5.86 s slower
+    than the real best. Here the field runs a while unwatched first."""
+    src = FakeSource(realtime=False)
+    src.connect()
+    for _ in range(60 * 300):                  # five minutes nobody is watching
+        src.tick()
+    d, sess, cars = Deriver(), None, None
+    for i in range(60 * 400):
+        src.tick()
+        if i % 4 == 0:
+            sess = sess or build_session(src)
+            cars = build_cars(src, sess, d)
+    shown = hidden = 0
+    for c in cars["cars"]:
+        dd, best = c["derived"], c.get("bestLapS")
+        theo = dd.get("theoreticalBestS")
+        if theo is not None and best and best > 0:
+            shown += 1
+            assert theo <= best + 1e-9, (c["idx"], theo, best)
+            assert dd["bestLapLeftS"] >= 0, (c["idx"], dd["bestLapLeftS"])
+        bs = dd.get("bestSectorS")
+        if bs and all(v is not None for v in bs) and best and best > 0 and sum(bs) > best + 0.05:
+            hidden += 1
+            assert theo is None and dd.get("bestLapLeftS") is None, (c["idx"], theo)
+    assert shown, "no car showed a theoretical best at all"
+    assert hidden, "the scenario never produced a best lap from before we were watching"
+
+
 def test_multiclass_fields_carry_class_identity():
     """Class colour, id and per-class position must reach the client.
 
