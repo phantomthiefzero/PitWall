@@ -585,24 +585,7 @@
   "use strict";
   // ---------------------------------------------------------------- state
   const S = { session: null, map: null, state: null, cars: null, lastStateAt: 0, msgs: 0, bytes: 0,
-              rateAt: performance.now(), wx: [] };
-  // Observed weather history. iRacing publishes no forecast and no radar -- every
-  // weather variable is a single scalar for "right now" (verified: all count=1,
-  // and no variable name contains forecast/radar/grid). So this is not a
-  // prediction; it is what we have watched happen since connecting, and it is
-  // marked as computed here, never as something the sim reported.
-  const WX_EVERY_MS = 10000, WX_MAX = 90;   // ~15 minutes of samples
-  let wxLastAt = 0;
-  function recordWeather() {
-    if (!S.state || !S.state.weather) return;
-    const now = performance.now();
-    if (wxLastAt && now - wxLastAt < WX_EVERY_MS) return;
-    wxLastAt = now;
-    const w = S.state.weather;
-    S.wx.push({ t: now, airTempC: w.airTempC, trackTempC: w.trackTempC,
-                humidity: w.humidity, precipitationPct: w.precipitationPct, windMs: w.windMs });
-    if (S.wx.length > WX_MAX) S.wx.shift();
-  }
+              rateAt: performance.now() };
   const $ = id => document.getElementById(id);
   // Every string that came over the wire -- driver, team and car names, licence,
   // session YAML text -- is escaped before it goes into innerHTML. Those strings
@@ -655,7 +638,7 @@
   function applyUnits() {
     $("unitToggle").textContent = U.label;
     $("fuelUnit").textContent = U.fuelUnit;
-    if (S.state) { renderCar(); renderWeather(); }
+    if (S.state) { renderCar(); renderEngine(); renderWeather(); }
     if (S.map) renderMapNote(S.map);
   }
 
@@ -766,7 +749,7 @@
         S.state = m.full ? m : merge(S.state, m); S.lastStateAt = performance.now();
         // Recording keeps every sample (60 a second in the suite); drawing is
         // done by the frame loop, so a fast stream never queues up DOM work.
-        recordAccel(); recordWeather(); recordEngine(); recordInputs(); dirty.state = true; break;
+        recordAccel(); recordInputs(); dirty.state = true; break;
       case "cars":
         if (!m.full && !S.carsShared) break;
         S.carsShared = m.full ? m : merge(S.carsShared, m); viewCars(); recordTrace(); dirty.cars = true; chartDirty = true; break;
@@ -779,7 +762,19 @@
         if (!m.ok && m.idx === myRef) { followNote = m.error || "could not follow that car"; setFollow(null, false); }
         break;
       case "feed": handleFeed(m); break;
-      case "refgaps": S.refgaps = m; chartDirty = true; break;
+      // Whole when the reference changes, then only the new points (a gap at a
+      // lap line never changes once it exists).
+      case "refgaps":
+        if (m.full || !S.refgaps || S.refgaps.ref !== m.ref) {
+          if (m.full) S.refgaps = { ref: m.ref, series: m.series || {} };
+        } else {
+          for (const [k, pts] of Object.entries(m.series || {})) {
+            const a = S.refgaps.series[k] || (S.refgaps.series[k] = []);
+            a.push(...pts);
+            if (a.length > 200) a.splice(0, a.length - 200);
+          }
+        }
+        chartDirty = true; break;
       case "cmd_result": console.log("command result", m); break;
     }
   }
@@ -1051,33 +1046,38 @@
            `<polyline points="${pts.join(" ")}"/></svg>`;
   }
 
-  // What the conditions have DONE since we connected. Not a forecast: iRacing
+  // A trend the bridge computed (normalize: Deriver.trends): each value's change
+  // over the span watched, and a thinned series to draw. eps only decides when a
+  // change is worded "steady"; the numbers are the bridge's.
+  function trendRows(tr, metrics) {
+    return metrics.map(([label, key, fmtD, eps]) => {
+      const d = tr.change[key], vals = tr.series[key];
+      if (d == null || !vals) return "";
+      const cls = d > eps ? "up" : d < -eps ? "down" : "flat";
+      const txt = Math.abs(d) <= eps ? "steady" : (d > 0 ? "▲ " : "▼ ") + fmtD(Math.abs(d));
+      return `<div class="row2"><span>${label}</span>${spark(vals)}<span class="delta ${cls}">${txt}</span></div>`;
+    }).join("");
+  }
+  const trendMins = tr => Math.max(1, Math.round(tr.spanS / 60));
+
+  // What the conditions have DONE this session. Not a forecast: iRacing
   // publishes no future data at all, so this only ever looks backwards.
   function renderTrend() {
     const el = $("wxTrend");
-    if (S.wx.length < 2) {
+    const tr = S.state && S.state.derived && S.state.derived.weatherTrend;
+    if (!tr) {
       el.innerHTML = `<h3>Trend</h3><div class="row2"><span>watching… needs a minute of data</span><span></span><span></span></div>`;
       return;
     }
-    const mins = Math.max(1, Math.round((S.wx[S.wx.length - 1].t - S.wx[0].t) / 60000));
     const METRICS = [
-      ["Air",      "airTempC",         v => U.tempDelta(v)],
-      ["Track",    "trackTempC",       v => U.tempDelta(v)],
-      ["Humidity", "humidity",         v => (v * 100).toFixed(0) + "%"],
-      ["Rain",     "precipitationPct", v => (v * 100).toFixed(0) + "%"],
-      ["Wind",     "windMs",           v => U.wind(Math.abs(v)).replace(/^-/, "")],
+      ["Air",      "airTempC",         v => U.tempDelta(v), 0.05],
+      ["Track",    "trackTempC",       v => U.tempDelta(v), 0.05],
+      ["Humidity", "humidity",         v => (v * 100).toFixed(0) + "%", 0.005],
+      ["Rain",     "precipitationPct", v => (v * 100).toFixed(0) + "%", 0.005],
+      ["Wind",     "windMs",           v => U.wind(Math.abs(v)).replace(/^-/, ""), 0.15],
     ];
-    const rows = METRICS.map(([label, key, fmtD]) => {
-      const vals = S.wx.map(x => x[key]).filter(v => v != null);
-      if (vals.length < 2) return "";
-      const d = vals[vals.length - 1] - vals[0];
-      const eps = key === "windMs" ? 0.15 : (key.endsWith("TempC") ? 0.05 : 0.005);
-      const cls = d > eps ? "up" : d < -eps ? "down" : "flat";
-      const arrow = d > eps ? "▲" : d < -eps ? "▼" : "–";
-      const txt = Math.abs(d) <= eps ? "steady" : arrow + " " + fmtD(Math.abs(d));
-      return `<div class="row2"><span>${label}</span>${spark(vals)}<span class="delta ${cls}">${txt}</span></div>`;
-    }).join("");
-    el.innerHTML = `<h3><span class="derived" title="Computed here from what we have observed since connecting. iRacing publishes no forecast.">Trend over ${mins} min</span></h3>` + rows;
+    el.innerHTML = `<h3><span class="derived" title="Computed from what has been observed this session. iRacing publishes no forecast.">Trend over ${trendMins(tr)} min</span></h3>` +
+      trendRows(tr, METRICS);
   }
 
   function renderWeather() {
@@ -1659,31 +1659,18 @@
     if (chartTab === "inputs") chartDirty = true;
   }
 
-  // ---- engine trend (what water, oil and oil pressure have done this stint)
-  const ENG = [];
-  let engLastAt = 0;
-  function recordEngine() {
-    const p = S.state && S.state.player; if (!p || !playerBlockIsLive()) return;
-    const now = performance.now(); if (engLastAt && now - engLastAt < 5000) return;
-    engLastAt = now;
-    ENG.push({ t: now, w: p.waterTempC, o: p.oilTempC, op: p.oilPressBar });
-    if (ENG.length > 360) ENG.shift();
-    renderEngine();
-  }
+  // ---- engine trend (what water, oil and oil pressure have done this session)
   function renderEngine() {
     const el = $("engTrend");
-    if (ENG.length < 3) { el.innerHTML = ""; return; }
-    const mins = Math.max(1, Math.round((ENG[ENG.length - 1].t - ENG[0].t) / 60000));
-    const row = (label, key, f, eps) => {
-      const vals = ENG.map(x => x[key]).filter(v => v != null);
-      if (vals.length < 2) return "";
-      const dlt = vals[vals.length - 1] - vals[0];
-      const cls = dlt > eps ? "up" : dlt < -eps ? "down" : "flat";
-      return `<div class="row2"><span>${label}</span>${spark(vals)}<span class="delta ${cls}">${Math.abs(dlt) <= eps ? "steady" : (dlt > 0 ? "▲ " : "▼ ") + f(Math.abs(dlt))}</span></div>`;
-    };
-    el.innerHTML = `<h3><span class="derived" title="Computed here from what we have watched since connecting.">Engine over ${mins} min</span></h3>` +
-      row("Water", "w", v => U.tempDelta(v), 0.3) + row("Oil", "o", v => U.tempDelta(v), 0.3) +
-      row("Oil pressure", "op", v => U.press(v), 0.05);
+    const tr = S.state && S.state.derived && S.state.derived.engineTrend;
+    // A new sample every 5 s: redraw then, or on a unit switch, not every frame.
+    const key = tr ? tr.spanS + "|" + U.label : "";
+    if (el.dataset.k === key) return;
+    el.dataset.k = key;
+    if (!tr) { el.innerHTML = ""; return; }
+    el.innerHTML = `<h3><span class="derived" title="Computed from what has been observed this session, while your car was running.">Engine over ${trendMins(tr)} min</span></h3>` +
+      trendRows(tr, [["Water", "waterTempC", v => U.tempDelta(v), 0.3], ["Oil", "oilTempC", v => U.tempDelta(v), 0.3],
+                     ["Oil pressure", "oilPressBar", v => U.press(v), 0.05]]);
   }
 
   // ---- inputs trace for the engineer: this lap against the last one
@@ -2194,7 +2181,6 @@
   // so this is roughly 90 samples a second.
   const GG_MAX = 1800;
   const gg = [];
-  let ggPeak = 0;
   function recordAccel() {
     const a = S.state && S.state.player && S.state.player.accel;
     if (!a || !a.latG || !a.longG) return;
@@ -2204,8 +2190,6 @@
       const lat = a.latG[i], lon = a.longG[i];
       if (lat == null || lon == null) continue;
       gg.push([lat, lon]);
-      const m = Math.hypot(lat, lon);
-      if (m > ggPeak) ggPeak = m;
     }
     while (gg.length > GG_MAX) gg.shift();
   }
@@ -2236,8 +2220,9 @@
       // braking is negative long-g and should sit at the BOTTOM, so y is inverted
       ggCtx.fillRect(cx + gg[i][0] * scale - 1, cy - gg[i][1] * scale - 1, 2, 2);
     }
-    $("ggNote").textContent = ggPeak > 0.01
-      ? `Peak ${ggPeak.toFixed(2)} g · ${gg.length} samples at 360 Hz`
+    const ggPeak = S.state && S.state.derived && S.state.derived.ggPeakG;   // the session's, from the bridge
+    $("ggNote").textContent = ggPeak != null
+      ? `Peak ${ggPeak.toFixed(2)} g this session · ${gg.length} samples at 360 Hz`
       : (playerBlockIsLive()
          ? "Lateral against longitudinal g. The envelope fills in as the car is driven."
          : "No accelerometer data — these channels belong to your own car, and read zero while spectating.");
@@ -2345,7 +2330,7 @@
       renderFast();
       if (now - drawnAt.text >= 100) {
         drawnAt.text = now; dirty.state = false;
-        renderHeader(); renderCar(); renderWeather(); renderFuelPlan(); renderSpotterList();
+        renderHeader(); renderCar(); renderEngine(); renderWeather(); renderFuelPlan(); renderSpotterList();
       }
     }
     if (dirty.cars && now - drawnAt.cars >= 100) {

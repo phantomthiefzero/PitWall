@@ -1565,6 +1565,121 @@ def test_a_refview_keeps_its_own_history_and_nothing_else():
         raise AssertionError("writing shared state through a RefView must fail loudly")
 
 
+def test_gap_series_sent_as_new_points_rebuild_the_whole_chart():
+    """refgaps went out whole whenever any car finished a lap. Now: whole on a
+    reference change, then only new points. Merged the way the dashboard merges
+    them, they must give exactly the series the Deriver holds."""
+    from pitwall import bridge as bridge_mod
+    src = FakeSource(realtime=False, speed=4.0)
+    src.connect()
+    b = bridge_mod.Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None, render_cars=False)
+    now, msgs = 0.0, []
+    for _ in range(15 * 60 * 4):
+        src.tick()
+        now += 1.0
+        msgs += [m for m in b._build(now) if m["type"] == "refgaps"]
+    got = None
+    for m in msgs:                                    # client/index.html's merge
+        if m["full"] or got is None or got["ref"] != m["ref"]:
+            if m["full"]:
+                got = {"ref": m["ref"], "series": {k: list(v) for k, v in m["series"].items()}}
+        else:
+            for k, pts in m["series"].items():
+                got["series"].setdefault(k, []).extend(pts)
+                del got["series"][k][:-200]
+    want = b.deriver.ref_gaps()
+    assert got is not None and got["ref"] == b.deriver.ref_idx
+    assert got["series"] == {k: v[-200:] for k, v in want.items() if v}
+    assert sum(1 for m in msgs if m["full"]) == 1, "whole only once, for the one reference"
+    whole = sum(len(json.dumps(b.deriver.ref_gaps())) for _ in msgs)   # what sending it whole every time costs at the end
+    assert sum(len(json.dumps(m)) for m in msgs) < whole / 3
+
+
+def test_a_late_joiner_gets_the_whole_gap_chart():
+    import asyncio
+    import importlib.util
+    import websockets
+    from websockets.asyncio.server import serve
+    spec = importlib.util.spec_from_file_location(
+        "relay_server4", os.path.join(os.path.dirname(__file__), "..", "relay", "server.py"))
+    relay_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(relay_mod)
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None)
+        async with serve(relay.handler, "127.0.0.1", 0) as server:
+            u = f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+            async with websockets.connect(u + "/bridge?token=B") as br:
+                await br.send(json.dumps({"type": "refgaps", "full": True, "ref": 0, "series": {"1": [[1, 2.0]]}}))
+                await br.send(json.dumps({"type": "refgaps", "full": False, "ref": 0,
+                                          "series": {"1": [[2, 2.5]], "3": [[2, -1.0]]}}))
+                await asyncio.sleep(0.2)
+                async with websockets.connect(u + "/view?token=V") as v:
+                    got = []
+                    try:
+                        while True:
+                            got.append(json.loads(await asyncio.wait_for(v.recv(), 0.5)))
+                    except asyncio.TimeoutError:
+                        pass
+        return [m for m in got if m["type"] == "refgaps"]
+
+    rg = asyncio.run(run())
+    assert len(rg) == 1 and rg[0]["full"] and rg[0]["ref"] == 0
+    assert rg[0]["series"] == {"1": [[1, 2.0], [2, 2.5]], "3": [[2, -1.0]]}
+
+
+def test_trends_and_peak_g_are_derived_in_the_bridge():
+    """Weather and engine trends and the peak g were computed in the dashboard,
+    against the rule that every number comes from normalize.py."""
+    d = Deriver()
+    w = {"airTempC": 20.0, "trackTempC": 30.0, "humidity": 0.5, "precipitationPct": 0.0, "windMs": 3.0}
+    p = {"waterTempC": 90.0, "oilTempC": 100.0, "oilPressBar": 4.0,
+         "accel": {"latG": [0.5, 1.2, -1.6], "longG": [-0.3, 0.9, 0.4]}}
+    out = d.trends(0.0, w, p, player_live=True)
+    assert out["weatherTrend"] is None and out["engineTrend"] is None   # one sample is not a trend
+    assert out["ggPeakG"] == round(math.hypot(-1.6, 0.4), 2)            # the largest of the three: 1.65 g
+    for i in range(1, 400):
+        w = {**w, "airTempC": 20.0 + i * 0.01, "trackTempC": 30.0 - i * 0.02}
+        p = {**p, "waterTempC": 90.0 + i * 0.005, "accel": {"latG": [0.1], "longG": [0.1]}}
+        out = d.trends(i * 1.0, w, p, player_live=True)
+    wt, et = out["weatherTrend"], out["engineTrend"]
+    # 10 s samples, the last 90 kept: 15 minutes of a 400 s run is all of it
+    assert wt["spanS"] == 390.0
+    assert wt["change"]["airTempC"] == round(3.9, 4) and wt["change"]["trackTempC"] == round(-7.8, 4)
+    assert wt["change"]["humidity"] == 0.0
+    assert len(wt["series"]["airTempC"]) <= Deriver.TREND_DRAW_POINTS + 1
+    assert wt["series"]["airTempC"][-1] == round(20.0 + 390 * 0.01, 4)  # the line ends at the latest sample
+    assert et["change"]["waterTempC"] == round(395 * 0.005, 4)
+    # spectating: the player block reads zeros, so the engine trend stops sampling
+    before = d.trends(500.0, w, {**p, "waterTempC": 0.0}, player_live=False)["engineTrend"]
+    assert before["change"]["waterTempC"] == et["change"]["waterTempC"]
+    # and a state message carries them
+    src = FakeSource(realtime=False)
+    src.connect()
+    d2, st = Deriver(), None
+    for i in range(60 * 30):
+        src.tick()
+        if i % 4 == 0:
+            st = build_state(src, d2)
+    assert st["derived"]["weatherTrend"] is not None and "airTempC" in st["derived"]["weatherTrend"]["change"]
+
+
+def test_laps_led_and_top_speed_count_the_whole_race():
+    """The lap list keeps 200 laps per car, and laps led / top speed were counted
+    from it -- so past lap 200 a car's laps led silently stopped growing."""
+    d = Deriver()
+    for lap in range(1, 301):
+        d._lapst[7] = {"pend": {"idx": 7, "lap": lap, "lapS": 90.0 + (lap % 3) * 0.1, "pit": False,
+                                "pos": 1, "classPos": 1, "topSpeedMs": 80.0 + (5.0 if lap == 10 else 0.0),
+                                "jump": False, "_td": True, "t": lap * 90.0, "sectors": None}}
+        d._finish_lap(7, d._lapst[7])
+    assert len(d._laps[7]) == 200
+    ex = d.car_extras({"idx": 7, "pos": 1, "classPos": 1, "lap": 301}, 300 * 90.0, {}, None, True, False)
+    assert ex["lapsLedSeen"] == 300 and ex["classLapsLedSeen"] == 300
+    assert ex["topSpeedBestMs"] == 85.0, "the fastest lap was lap 10, long out of the 200 kept"
+    assert d.pace(7) is not None and ex["consistencyS"] is not None
+
+
 def test_relay_keeps_each_viewers_followed_car_to_that_viewer():
     """Following a car changes nothing for anyone else: the bridge is told which
     cars are wanted, and each car's view goes only to the viewers following it."""
@@ -1695,8 +1810,12 @@ def test_every_car_gets_its_stints_grid_and_consistency():
         d.pit(5, t + 30, True, False, lap + 1, pct=0.99)
         d.pit(5, t + 40, False, False, lap + 1, pct=0.05)
     c = _car(5, lap=30, pos=4, classPos=2, fastRepairsUsed=1, compound=0, lapCompleted=29)
-    d._laps[5] = [{"lap": k, "lapS": s, "pit": False, "pos": 1 if k < 3 else 4, "classPos": 1 if k < 5 else 2}
-                  for k, s in ((1, 100.0), (2, 100.4), (3, 99.8), (4, 100.2), (5, 100.0), (6, 100.6))]
+    # through the real path (record_lap -> _finish_lap), which keeps the running
+    # figures that laps led, top speed, pace and consistency are read from
+    for k, s in ((1, 100.0), (2, 100.4), (3, 99.8), (4, 100.2), (5, 100.0), (6, 100.6)):
+        d._lapst[5] = {"pend": {"idx": 5, "lap": k, "lapS": s, "pit": False, "pos": 1 if k < 3 else 4,
+                                "classPos": 1 if k < 5 else 2, "t": k * 100.0, "sectors": None}}
+        d._finish_lap(5, d._lapst[5])
     x = d.car_extras(c, 2200.0, {5: {"pos": 9, "classPos": 4}}, 2, True, False)
     assert x["stintsSeen"] == [12, 12] and x["stintStartLap"] == 26
     assert x["lapsThisStint"] == 4 and x["nextStopLapEst"] == 38

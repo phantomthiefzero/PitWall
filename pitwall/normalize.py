@@ -281,6 +281,18 @@ class Deriver:
         # booth
         self._lapst: dict[int, dict] = {}
         self._laps: dict[int, list[dict]] = {}
+        # Per-car running figures, updated as each lap is finished: pace and
+        # consistency read the last few racing laps, top speed and laps led the
+        # whole race. They were recomputed from the lap list for every car at
+        # every update -- which grew with the race -- and that list keeps only
+        # 200 laps, so laps led undercounted past lap 200.
+        self._lapsum: dict[int, dict] = {}
+        # Observed trends (weather, your engine) and the session's peak g. They
+        # were computed in the dashboard from what each screen had watched since
+        # it connected; here they cover the session, for everyone alike.
+        self._trend: dict[str, list] = {"weather": [], "engine": []}
+        self._trend_at: dict[str, float | None] = {"weather": None, "engine": None}
+        self.gg_peak = 0.0
         self._lap_finished: list[dict] = []
         self._loss: list[dict] = []
         self._stops_tick: dict[int, dict] = {}
@@ -589,6 +601,51 @@ class Deriver:
     # is taken at once, one that has not is waited for.
     LAP_TIME_WAIT_S = 10.0
     PACE_LAPS = 5
+    CONSISTENCY_LAPS = 5
+    # name: (sample every s, samples kept, keys, minimum samples to show a trend)
+    TRENDS = {"weather": (10.0, 90, ("airTempC", "trackTempC", "humidity", "precipitationPct", "windMs"), 2),
+              "engine": (5.0, 360, ("waterTempC", "oilTempC", "oilPressBar"), 3)}
+    TREND_DRAW_POINTS = 60      # a sparkline is ~60 px: more points draw nothing more
+
+    def trends(self, t, weather: dict, player: dict, player_live: bool) -> dict:
+        """What the weather and your engine have DONE: never a forecast (iRacing
+        publishes none). Per trend: the span watched, each value's change from
+        the first sample to the last, and a thinned series for a sparkline.
+        Engine samples only while the player block is live -- spectating, it
+        reads flat zeros. Also the session's peak combined g, from the same
+        360 Hz accelerometer samples the grip trace draws."""
+        out = {}
+        for name, (every, keep, keys, need) in self.TRENDS.items():
+            src = weather if name == "weather" else player
+            hist = self._trend[name]
+            last = self._trend_at[name]
+            if t is not None and (name == "weather" or player_live) and (last is None or t - last >= every or t < last):
+                if last is not None and t < last:
+                    hist.clear()                     # the clock went back: a new session or a replay jump
+                self._trend_at[name] = t
+                hist.append((t, {k: src.get(k) for k in keys}))
+                del hist[:-keep]
+            if len(hist) < need:
+                out[name + "Trend"] = None
+                continue
+            step = max(1, -(-len(hist) // self.TREND_DRAW_POINTS))
+            tr = {"spanS": round(hist[-1][0] - hist[0][0], 1), "change": {}, "series": {}}
+            for k in keys:
+                vals = [s[k] for _t, s in hist if s.get(k) is not None]
+                if len(vals) < 2:
+                    continue
+                tr["change"][k] = round(vals[-1] - vals[0], 4)
+                tr["series"][k] = [round(v, 4) for v in vals[::step]] + ([round(vals[-1], 4)] if (len(vals) - 1) % step else [])
+            out[name + "Trend"] = tr
+        acc = player.get("accel") or {}
+        if player_live:
+            for lat, lon in zip(acc.get("latG") or [], acc.get("longG") or []):
+                if lat is not None and lon is not None:
+                    m = math.hypot(lat, lon)
+                    if m > self.gg_peak:
+                        self.gg_peak = m
+        out["ggPeakG"] = round(self.gg_peak, 2) if self.gg_peak > 0.01 else None
+        return out
     FEED_MAX_LAPS = 6000
     FEED_MAX_EVENTS = 1500   # incidents for a whole field add up over a long race
 
@@ -692,6 +749,14 @@ class Deriver:
         lst = self._laps.setdefault(idx, [])
         lst.append(e)
         del lst[:-200]
+        s = self._lapsum.setdefault(idx, {"racing": [], "top": None, "led": 0, "classLed": 0})
+        if e["lapS"] and not e["pit"]:
+            s["racing"].append(e["lapS"])
+            del s["racing"][:-max(self.PACE_LAPS, self.CONSISTENCY_LAPS)]
+        if e.get("topSpeedMs") and (s["top"] is None or e["topSpeedMs"] > s["top"]):
+            s["top"] = e["topSpeedMs"]
+        s["led"] += e.get("pos") == 1
+        s["classLed"] += e.get("classPos") == 1
         self._feed_add("lap", e)
         self._lap_finished.append(e)
         return e
@@ -699,8 +764,7 @@ class Deriver:
     def pace(self, idx) -> float | None:
         """Median of this car's recent racing laps: no in- or out-laps, no
         unknown times. Two laps minimum, so one lap cannot stand for a pace."""
-        laps = [e["lapS"] for e in self._laps.get(idx, []) if e["lapS"] and not e["pit"]]
-        laps = laps[-self.PACE_LAPS:]
+        laps = (self._lapsum.get(idx) or {}).get("racing", [])[-self.PACE_LAPS:]
         if len(laps) < 2:
             return None
         s = sorted(laps)
@@ -1578,23 +1642,22 @@ class Deriver:
     def car_extras(self, c, t, grid_by_idx, fast_limit, is_race, team_race) -> dict:
         idx = c["idx"]
         out = {}
-        racing = [e["lapS"] for e in self._laps.get(idx, []) if e["lapS"] and not e["pit"]][-5:]
+        s = self._lapsum.get(idx) or {"racing": [], "top": None, "led": 0, "classLed": 0}
+        racing = s["racing"][-self.CONSISTENCY_LAPS:]
         if len(racing) >= 3:
             m = sum(racing) / len(racing)
             out["consistencyS"] = round(math.sqrt(sum((x - m) ** 2 for x in racing) / len(racing)), 3)
         else:
             out["consistencyS"] = None
-        tops = [e["topSpeedMs"] for e in self._laps.get(idx, []) if e.get("topSpeedMs")]
-        out["topSpeedBestMs"] = max(tops) if tops else None
+        out["topSpeedBestMs"] = s["top"]
         g = grid_by_idx.get(idx) if is_race else None
         out["gridPos"] = g["pos"] if g else None
         out["gridClassPos"] = g["classPos"] if g else None
         out["posGained"] = g["pos"] - c["pos"] if g and c.get("pos") else None
         out["classPosGained"] = (g["classPos"] - c["classPos"]
                                  if g and g.get("classPos") and c.get("classPos") else None)
-        laps = self._laps.get(idx, [])
-        out["lapsLedSeen"] = sum(1 for e in laps if e.get("pos") == 1)
-        out["classLapsLedSeen"] = sum(1 for e in laps if e.get("classPos") == 1)
+        out["lapsLedSeen"] = s["led"]
+        out["classLapsLedSeen"] = s["classLed"]
         # Stints, from stops watched entry to exit. A stint that started before
         # we connected (and not at the start of the race) has no known length.
         p = self._pit.get(idx) or {}
@@ -1966,13 +2029,15 @@ class RefView:
     Deriver methods as the shared stream (called with the RefView as self),
     without moving the shared reference or anyone else's.
     """
-    OWN = frozenset(("_tp_hist", "_tp_ref", "_tp_slope", "_uc", "_uc_inpit", "_near_hist", "ref_idx"))
+    OWN = frozenset(("_tp_hist", "_tp_ref", "_tp_slope", "_uc", "_uc_inpit", "_near_hist", "ref_idx",
+                     "_gaps", "_gaps_seq"))
 
     def __init__(self, base: "Deriver", ref_idx: int):
         object.__setattr__(self, "_base", base)
         self._tp_hist, self._tp_ref, self._tp_slope = {}, {}, {}
         self._uc, self._uc_inpit, self._near_hist = {}, {}, {}
         self.ref_idx = ref_idx
+        self._gaps, self._gaps_seq = {}, None     # gap series, rebuilt only when a lap is added
 
     def __getattr__(self, name):          # only reached for what is not owned here
         return getattr(self._base, name)
@@ -2041,7 +2106,10 @@ def relative_to(view: RefView, cars_msg: dict, session_msg: dict | None, now) ->
         "traffic": Deriver.traffic(view, vcars, ref),
         "nearby": Deriver.nearby(view, vcars, ref, track_len, now),
     })
-    out["gaps"] = Deriver.ref_gaps(view)
+    # Rebuilt only when a lap has been added; it was rebuilt at every update.
+    if view._gaps_seq != view._base._last_lap_seq:
+        view._gaps, view._gaps_seq = Deriver.ref_gaps(view), view._base._last_lap_seq
+    out["gaps"] = view._gaps
     return out
 
 
@@ -2228,6 +2296,9 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
     # Fuel time only: tyre changes and repairs add to it, and are not measured.
     plan["fuelTimeS"] = round(add / rate, 1) if add is not None and rate else None
     derived["liveEdge"] = live_edge(g)
+    # "live" as the dashboard judges the player block: spectating leaves it zero.
+    player_live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5 or (player["rpm"] or 0) > 500
+    derived.update(deriver.trends(session["timeS"], weather, player, player_live))
     deriver.state_events(session["timeS"], session, player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
             "session": session, "weather": weather, "player": player, "camera": camera, "derived": derived}

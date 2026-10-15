@@ -253,6 +253,8 @@ class Relay:
                     continue
                 if t == "feed":
                     self._merge_feed(obj)
+                elif t == "refgaps":
+                    self._merge_refgaps(obj)
                 elif t in SNAPSHOT_TYPES and (t not in ("state", "cars") or msg_is_full(raw)):
                     self.snapshot[t] = raw
                 elif t == "livery":
@@ -319,6 +321,23 @@ class Relay:
         else:
             return                      # a delta before any full copy: nothing to add it to
         self._feed_raw = None
+
+    def _merge_refgaps(self, obj: dict):
+        """Gap series to the shared reference: whole when it changes, then only new
+        points, which are kept here so a late joiner gets the whole chart."""
+        cur = self.snapshot.get("refgaps")
+        base = json.loads(cur) if cur else None
+        if obj.get("full") or base is None or base.get("ref") != obj.get("ref"):
+            if not obj.get("full"):
+                return                      # points with nothing to add them to
+            base = {"type": "refgaps", "full": True, "ref": obj.get("ref"), "series": {}}
+            base["series"] = dict(obj.get("series") or {})
+        else:
+            for k, pts in (obj.get("series") or {}).items():
+                s = base["series"].setdefault(k, [])
+                s.extend(pts)
+                del s[:-200]                # as many laps as the bridge keeps per car
+        self.snapshot["refgaps"] = json.dumps(base, separators=(",", ":"))
 
     def _feed_message(self) -> str | None:
         if self.feed is None:
