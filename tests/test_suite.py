@@ -8,6 +8,7 @@ Run:  python -m pytest tests -q   (or: python -m unittest tests.test_suite -v)
 """
 import asyncio
 import base64
+import gzip
 import json
 import os
 import pathlib
@@ -67,6 +68,28 @@ def write_ibt(path, rows=600):
         data += struct.pack("<iffff", lap, d, 50.0, (r % 300) / 60, 0.05)
     with open(path, "wb") as f:
         f.write(hdr + vh + session + data)
+
+
+def fetch(url, gzip_ok=True, timeout=5):
+    """GET like a browser: ask for compression and unpack it. Returns (status,
+    headers, body as served before compression). Large pages are fetched this way
+    because, uncompressed, they are exactly what stalled behind Norton 360's web
+    inspection (see suite.bridge.GZIP_MIN) -- a test that fetches them raw fails
+    on such a PC for reasons that have nothing to do with the code under test."""
+    req = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"} if gzip_ok else {})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        body = r.read()
+        if r.headers.get("Content-Encoding") == "gzip":
+            body = gzip.decompress(body)
+        return r.status, r.headers, body
+
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def on_disk(*parts):
+    with open(os.path.join(ROOT, *parts), "rb") as f:
+        return f.read()
 
 
 def ws_handshake(port, host=None, origin=None, timeout=10):
@@ -135,8 +158,8 @@ class SuiteTest(unittest.TestCase):
         time.sleep(0.5)
 
     def get(self, path):
-        with urllib.request.urlopen(self.engine.url.rstrip("/") + path, timeout=5) as r:
-            return r.status, r.read()
+        status, _headers, body = fetch(self.engine.url.rstrip("/") + path)
+        return status, body
 
     def test_pages(self):
         for path in ("/", "/analyzer/", "/analyzer/track-map.png", "/pitwall/"):
@@ -166,6 +189,48 @@ class SuiteTest(unittest.TestCase):
         tick = next(m for m in msgs if m["type"] == "tick")
         self.assertEqual(set(tick["v"]), {n for n, _ in VARS})
         self.assertAlmostEqual(tick["v"]["Speed"], 50.0, places=3)
+
+    def test_pages_are_compressed_for_browsers(self):
+        from suite.bridge import SUITE_LINK
+        base = self.engine.url.rstrip("/")
+        expect = {"/": on_disk("suite", "web", "index.html"),
+                  "/analyzer/": on_disk("suite", "web", "analyzer", "index.html"),
+                  "/pitwall/": on_disk("client", "index.html").replace(b"</body>", SUITE_LINK + b"</body>", 1)}
+        for path, want in expect.items():
+            _s, headers, body = fetch(base + path)
+            self.assertEqual(headers.get("Content-Encoding"), "gzip", path)
+            self.assertEqual(headers.get("Vary"), "Accept-Encoding", path)
+            self.assertEqual(body, want, path)
+        # not asked for: sent as it is (a small page, under the size that stalls)
+        _s, headers, body = fetch(base + "/", gzip_ok=False)
+        self.assertIsNone(headers.get("Content-Encoding"))
+        self.assertEqual(body, expect["/"])
+        # a PNG is compressed already
+        _s, headers, body = fetch(base + "/analyzer/track-map.png")
+        self.assertIsNone(headers.get("Content-Encoding"))
+        self.assertEqual(body, on_disk("suite", "web", "analyzer", "track-map.png"))
+
+    def test_everything_served_arrives_under_the_stall_size(self):
+        """Behind security software that inspects local web traffic (seen with Norton
+        360), web replies over ~128 KB stalled at exactly 130,560 bytes about 1 time
+        in 70, and the page hung. Every page and file the suite and its relay serve
+        must arrive smaller than that, as a browser receives it (compressed where it
+        can be). A new large file will fail here rather than hang for a user."""
+        from suite.bridge import compressible, TYPES
+        root = ROOT
+        limit = 120 * 1024
+        too_big = []
+        for folder in ("suite/web", "client", "broadcast"):
+            for dirpath, _dirs, files in os.walk(os.path.join(root, folder)):
+                for name in files:
+                    path = os.path.join(dirpath, name)
+                    with open(path, "rb") as f:
+                        data = f.read()
+                    ctype = TYPES.get(os.path.splitext(name)[1].lower(), "application/octet-stream")
+                    sent = len(gzip.compress(data, 6)) if compressible(ctype) else len(data)
+                    if sent >= limit:
+                        too_big.append((os.path.relpath(path, root), sent))
+        self.assertEqual(too_big, [], "files that would be sent at %d bytes or more" % limit)
 
     def test_other_websites_are_refused(self):
         """Any page in the user's browser can open a WebSocket to localhost, and /ws
@@ -203,8 +268,7 @@ class PitWallInSuiteTest(unittest.TestCase):
             pw = json.loads(r.read())["pitwall"]
         self.assertTrue(pw["ok"], pw)
         self.assertTrue(pw["relay"].startswith("ws://127.0.0.1:"))
-        with urllib.request.urlopen(self.engine.url + "pitwall/", timeout=5) as r:
-            html = r.read()
+        html = fetch(self.engine.url + "pitwall/")[2]
         self.assertIn(b"&larr; Suite", html)
 
     def test_relay_streams_pitwall_messages(self):
@@ -417,10 +481,27 @@ class GuestTokenTest(unittest.TestCase):
 
     def test_relay_serves_the_dashboard(self):
         http = self.relay_url.replace("ws://", "http://")
-        with urllib.request.urlopen(http + "/pitwall/", timeout=5) as r:
-            html = r.read()
+        html = fetch(http + "/pitwall/")[2]
         self.assertIn(b"<title>", html)
         self.assertNotIn(b"&larr; Suite", html)           # the suite's way home is not for remote crew
+
+    def test_relay_compresses_its_pages_for_browsers(self):
+        """The dashboard is ~160 KB: compressed, it loads faster over a share link
+        and stays under the size that stalled behind Norton (see GZIP_MIN)."""
+        http = self.relay_url.replace("ws://", "http://")
+        for path, want in (("/pitwall/", on_disk("client", "index.html")),
+                           ("/broadcast/producer.html", on_disk("broadcast", "producer.html")),
+                           ("/broadcast/overlay.html", on_disk("broadcast", "overlay.html"))):
+            req = urllib.request.Request(http + path, headers={"Accept-Encoding": "gzip, deflate"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                self.assertEqual(r.headers.get("Content-Encoding"), "gzip", path)
+                packed = r.read()
+            self.assertEqual(gzip.decompress(packed), want, path)
+            self.assertLess(len(packed), len(want) // 2, path)
+        # not asked for: sent as it is (a broadcast page, under the size that stalls)
+        _s, headers, body = fetch(http + "/broadcast/overlay.html", gzip_ok=False)
+        self.assertIsNone(headers.get("Content-Encoding"))
+        self.assertEqual(body, on_disk("broadcast", "overlay.html"))
 
     def test_guest_watches_cannot_command_and_is_cut_off_when_sharing_stops(self):
         import websockets.sync.client as wsc

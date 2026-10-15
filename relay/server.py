@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import gzip
 import hmac
 import http
 import json
@@ -100,6 +101,18 @@ BROADCAST_DIR = os.path.join(getattr(sys, "_MEIPASS", None) or os.path.dirname(o
 # PitWall's dashboard, served here too so crew reaching this relay from outside
 # (a VPS, or the suite's "Share online" tunnel) can load it from the same address.
 CLIENT_PAGE = os.path.join(os.path.dirname(BROADCAST_DIR), "client", "index.html")
+
+
+def page_response(request, body: bytes) -> Response:
+    """An HTML page, compressed for any browser that accepts it. The dashboard is
+    ~160 KB: compressed it loads faster over a share link, and it stays under
+    ~128 KB on the wire, the size above which uncompressed local web replies
+    stalled on a PC whose security software inspects them (seen with Norton 360)."""
+    headers = [("Content-Type", "text/html; charset=utf-8"), ("Cache-Control", "no-cache")]
+    if "gzip" in (request.headers.get("Accept-Encoding") or "").lower():
+        body = gzip.compress(body, compresslevel=6, mtime=0)
+        headers += [("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")]
+    return Response(200, "OK", Headers(headers + [("Content-Length", str(len(body)))]), body)
 CLIENT_PATHS = ("/pitwall/", "/pitwall", "/pitwall/index.html")
 BROADCAST_PAGES = {"/broadcast/overlay.html": "overlay.html", "/broadcast/producer.html": "producer.html",
                    "/broadcast/": "producer.html", "/broadcast": "producer.html"}
@@ -459,9 +472,7 @@ class Relay:
                     body = f.read()
             except OSError:
                 return connection.respond(http.HTTPStatus.NOT_FOUND, "the PitWall page is not installed\n")
-            headers = Headers([("Content-Type", "text/html; charset=utf-8"),
-                               ("Content-Length", str(len(body))), ("Cache-Control", "no-cache")])
-            return Response(200, "OK", headers, body)
+            return page_response(request, body)
         page = BROADCAST_PAGES.get(path)
         if page and request.headers.get("Upgrade") is None:
             try:
@@ -471,9 +482,7 @@ class Relay:
                 return connection.respond(http.HTTPStatus.NOT_FOUND, "broadcast pages are not installed\n")
             # No token is needed to load the page itself; it asks for one, and
             # every message still needs one.
-            headers = Headers([("Content-Type", "text/html; charset=utf-8"),
-                               ("Content-Length", str(len(body))), ("Cache-Control", "no-cache")])
-            return Response(200, "OK", headers, body)
+            return page_response(request, body)
         return None
 
 
