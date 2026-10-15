@@ -226,3 +226,33 @@ console.log(JSON.stringify({rows: S.rows.map(r => ({lap: r.lap, ok: r.ok, time: 
         self.assertIn(9, self.res["clean"])
         self.assertAlmostEqual(rows[4]["lf"], 172, delta=0.01)   # lap 2: 170 + lap
         self.assertAlmostEqual(rows[4]["tt"], 29.8, delta=0.01)
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class RacingLineTest(unittest.TestCase):
+    """Two half-circle corners from GPS positions: the reference on a 50 m radius,
+    you on 49 m (1 m inside) or 52 m (2 m outside). Left- and right-handers."""
+
+    def corner(self, left, your_radius):
+        return run_js("""
+const la0 = 39.79, lo0 = -86.23, k = Math.cos(la0 * Math.PI / 180), left = %s, ry = %f;
+const path = r => { const Lat = new Float64Array(N), Lon = new Float64Array(N);
+  for (let g = 0; g < N; g++) { const th = g / (N - 1) * Math.PI, x = left ? r * Math.cos(th) : -r * Math.cos(th), y = r * Math.sin(th);
+    Lat[g] = la0 + y / 110574; Lon[g] = lo0 + x / (111320 * k) } return { Lat, Lon } };
+R = { A: path(ry), B: path(50), cs: [] };
+const c = { s: 100, e: 900, b: { ba: 200, mg: 500, ta: 700 }, a: { ba: 210, mg: 505, ta: 690 } };
+const q = lineCorner(c);
+console.log(JSON.stringify({ left: q.left, turnIn: q.turnIn, apex: q.apex, exit: q.exit, words: lineWords(q.apex), svg: lineSvg(c, 200).length > 500 }));
+""" % ("true" if left else "false", your_radius))
+
+    def test_inside_and_outside_on_both_kinds_of_corner(self):
+        for left in (True, False):
+            q = self.corner(left, 49.0)
+            self.assertEqual(q["left"], left)
+            for k in ("turnIn", "apex", "exit"):
+                self.assertAlmostEqual(q[k], 1.0, delta=0.05)          # 1 m inside
+            self.assertIn("inside", q["words"])
+            self.assertTrue(q["svg"])
+            q = self.corner(left, 52.0)
+            self.assertAlmostEqual(q["apex"], -2.0, delta=0.05)        # 2 m outside
+            self.assertIn("outside", q["words"])
