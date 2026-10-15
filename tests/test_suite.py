@@ -69,12 +69,29 @@ def write_ibt(path, rows=600):
         f.write(hdr + vh + session + data)
 
 
+def ws_handshake(port, host=None, origin=None, timeout=10):
+    """Open /ws and return (socket, status line)."""
+    s = socket.create_connection(("127.0.0.1", port), timeout=timeout)
+    key = base64.b64encode(os.urandom(16)).decode()
+    extra = "Origin: %s\r\n" % origin if origin else ""
+    s.sendall(("GET /ws HTTP/1.1\r\nHost: %s\r\n%sUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n"
+               % (host or "127.0.0.1:%d" % port, extra, key)).encode())
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        buf += chunk
+    return s, buf.split(b"\r\n")[0]
+
+
 def ws_messages(port, count, timeout=10):
     """Tiny WebSocket client: handshake, then read `count` text frames."""
     s = socket.create_connection(("127.0.0.1", port), timeout=timeout)
     key = base64.b64encode(os.urandom(16)).decode()
-    s.sendall(("GET /ws HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-               "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n" % key).encode())
+    s.sendall(("GET /ws HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n" % (port, key)).encode())
     buf = b""
     while b"\r\n\r\n" not in buf:
         buf += s.recv(4096)
@@ -150,9 +167,26 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(set(tick["v"]), {n for n, _ in VARS})
         self.assertAlmostEqual(tick["v"]["Speed"], 50.0, places=3)
 
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    def test_other_websites_are_refused(self):
+        """Any page in the user's browser can open a WebSocket to localhost, and /ws
+        carries live telemetry and the session's driver list; /api/info carries
+        PitWall's producer token, readable by a DNS-rebinding page. Both refused."""
+        port = self.engine.port
+        for origin in ("https://evil.example", "null"):
+            s, status = ws_handshake(port, origin=origin)
+            s.close()
+            self.assertIn(b"403", status, origin)
+        s, status = ws_handshake(port, origin="http://127.0.0.1:%d" % port)
+        s.close()
+        self.assertIn(b"101", status, "the suite's own pages must still connect")
+        s, status = ws_handshake(port, host="rebind.evil.example")
+        s.close()
+        self.assertIn(b"403", status)
+        req = urllib.request.Request(self.engine.url.rstrip("/") + "/api/info",
+                                     headers={"Host": "rebind.evil.example"})
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(cm.exception.code, 403)
 
 
 class PitWallInSuiteTest(unittest.TestCase):
@@ -414,3 +448,7 @@ class GuestTokenTest(unittest.TestCase):
         with self.assertRaises(Exception):
             with wsc.connect("%s/view?token=guest-abc-123" % self.relay_url, open_timeout=5) as ws:
                 ws.recv(timeout=3)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

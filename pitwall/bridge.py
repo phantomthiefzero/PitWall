@@ -16,6 +16,7 @@ import traceback
 import urllib.parse
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from . import trackmap
 from .delta import DeltaEncoder, cars_to_wire
@@ -409,38 +410,61 @@ class Bridge:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if msg.get("type") == "cmd" and msg.get("cmd") in ("director", "livery"):
+            if not isinstance(msg, dict):
+                continue
+            try:
+                await self._handle(ws, msg)
+            except ConnectionClosed:
+                raise
+            except Exception as e:  # noqa: BLE001
+                # A malformed command (a producer's "holdS": "abc") raised out of
+                # here, out of run(), and the bridge process exited mid-broadcast.
+                # Answer the sender instead; the stream carries on.
+                self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} rejected: {type(e).__name__}: {e}")
+                if msg.get("type") == "cmd":
+                    await ws.send(json.dumps({"type": "cmd_result", "ok": False, "echo": msg,
+                                              "error": f"bad command: {type(e).__name__}: {e}"}))
+
+    async def _handle(self, ws, msg: dict):
+        if msg.get("type") == "cmd" and msg.get("cmd") in ("director", "livery"):
+            if msg.get("cmd") == "director":
+                # On the event loop, the thread director.tick() runs on: the
+                # Director has no locks, and a grid walk started from a worker
+                # thread could interleave with a tick halfway through a cut.
+                res = self._broadcast_cmd(msg)
+            else:
+                # Livery setup talks to OBS over the network; keep it off the loop.
                 res = await asyncio.get_running_loop().run_in_executor(None, self._broadcast_cmd, msg)
-                self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} -> {'ok' if res['ok'] else res['error']}")
-                await ws.send(json.dumps(res))
-            elif msg.get("type") == "cmd":
-                # A cut by hand takes the camera from the director, the grid walk
-                # or a followed battle: one owner at a time (pitwall/director.py).
-                # Replay commands do not: the owner simply waits for live.
-                if msg.get("cmd") == "camera" and self.gate.camera and self.director.manual():
-                    await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
-                # In a worker thread: a replay jump pauses between its seek and
-                # its play, and the stream must not stall while it does.
-                res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, msg)
-                self.log(f"cmd {msg} -> {'ok' if res['ok'] else res['error']}")
-                await ws.send(json.dumps(res))
-            elif msg.get("type") == "focus":
-                idx = msg.get("idx")
-                if idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64):
-                    self.focus_manual = idx
-                    self.log(f"following {'car ' + str(idx) if idx is not None else 'automatically'}")
-            elif msg.get("type") == "resend":
-                # a new viewer wants the slow-changing messages again + fresh keyframes
-                for m in (self.session_msg, self.map_msg, self.director.status(),
-                          self.capture.status_message(), self.packs_msg):
-                    if m:
-                        await ws.send(json.dumps(m, separators=(",", ":")))
-                self._liveries_sent.clear()
-                for m in self._livery_messages():
+            self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} -> {'ok' if res['ok'] else res['error']}")
+            await ws.send(json.dumps(res))
+        elif msg.get("type") == "cmd":
+            # A cut by hand takes the camera from the director, the grid walk
+            # or a followed battle: one owner at a time (pitwall/director.py).
+            # Replay commands do not: the owner simply waits for live.
+            if msg.get("cmd") == "camera" and self.gate.camera and self.director.manual():
+                await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
+            # In a worker thread: a replay jump pauses between its seek and
+            # its play, and the stream must not stall while it does.
+            res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, msg)
+            self.log(f"cmd {msg} -> {'ok' if res['ok'] else res['error']}")
+            await ws.send(json.dumps(res))
+        elif msg.get("type") == "focus":
+            idx = msg.get("idx")
+            if idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64):
+                self.focus_manual = idx
+                self.log(f"following {'car ' + str(idx) if idx is not None else 'automatically'}")
+        elif msg.get("type") == "resend":
+            # a new viewer wants the slow-changing messages again + fresh keyframes
+            for m in (self.session_msg, self.map_msg, self.director.status(),
+                      self.capture.status_message(), self.packs_msg):
+                if m:
                     await ws.send(json.dumps(m, separators=(",", ":")))
-                self.delta.reset()
-                self._feed_full_due = True
-                self._rg_key = None
+            self._liveries_sent.clear()
+            for m in self._livery_messages():
+                await ws.send(json.dumps(m, separators=(",", ":")))
+            self.delta.reset()
+            self._feed_full_due = True
+            self._rg_key = None
 
     async def run(self):
         self._loop = asyncio.get_running_loop()

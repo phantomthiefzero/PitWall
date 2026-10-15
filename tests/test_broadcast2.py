@@ -324,6 +324,123 @@ def test_a_producer_cut_through_the_bridge_takes_the_camera_back():
     assert b.director.owner == "battle"
 
 
+def test_a_malformed_producer_command_is_answered_and_the_bridge_carries_on():
+    """One bad value from a producer ("holdS": "abc") used to raise out of the
+    bridge's consumer and end the bridge process mid-broadcast."""
+    from pitwall.bridge import Bridge
+
+    class WS:
+        def __init__(self, msgs):
+            self.msgs, self.sent = [json.dumps(m) for m in msgs], []
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.msgs:
+                raise StopAsyncIteration
+            return self.msgs.pop(0)
+
+        async def send(self, raw):
+            self.sent.append(json.loads(raw))
+
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False,
+               livery_dir=tempfile.mkdtemp())
+    ws = WS([{"type": "cmd", "cmd": "director", "action": "set", "holdS": "abc"},
+             {"type": "cmd", "cmd": "director", "action": "follow_battle", "cars": ["x", "y"]},
+             {"type": "cmd", "cmd": "director", "action": "set", "gridHoldS": "x"},
+             [1, 2, 3],
+             {"type": "cmd", "cmd": "director", "action": "follow_battle", "cars": [1, 2]}])
+    asyncio.run(b._consumer(ws))          # must return, not raise
+    results = [m for m in ws.sent if m.get("type") == "cmd_result"]
+    assert [r["ok"] for r in results] == [False, False, False, True], results
+    assert all("bad command" in r["error"] for r in results[:3])
+    assert b.director.owner == "battle", "the good command after the bad ones still ran"
+
+
+def _serve_relay(relay_mod, relay):
+    from websockets.asyncio.server import serve
+    return serve(relay.handler, "127.0.0.1", 0, process_request=relay.process_request,
+                 max_size=relay_mod.WS_MAX_BYTES)
+
+
+def test_relay_refuses_an_oversized_graphics_patch_without_wiping_the_show():
+    """It used to replace the whole graphics state with {}: every graphic off air."""
+    import websockets
+    relay_mod = _relay_mod()
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None, producer_token="P", assets_dir=tempfile.mkdtemp())
+        async with _serve_relay(relay_mod, relay) as srv:
+            port = srv.sockets[0].getsockname()[1]
+            async with websockets.connect(f"ws://127.0.0.1:{port}/view?token=P", max_size=None) as p:
+                await p.send(json.dumps({"type": "gfx", "set": {"tower": {"on": True}}}))
+                # patches each under the per-message limit, together over the state limit
+                chunk = "x" * (relay_mod.GFX_MAX_BYTES // 3)
+                for i in range(4):
+                    await p.send(json.dumps({"type": "gfx", "set": {f"note{i}": chunk}}))
+                refused = None
+                for _ in range(40):
+                    m = json.loads(await asyncio.wait_for(p.recv(), 5))
+                    if m.get("type") == "gfx_result" and not m["ok"]:
+                        refused = m
+                        break
+            return relay.gfx, refused
+
+    gfx, refused = asyncio.run(run())
+    assert refused is not None, "the patch that overflows the state is refused, and the producer told"
+    assert gfx.get("tower") == {"on": True}, "graphics already on air stay on air"
+    assert len(json.dumps(gfx)) <= relay_mod.GFX_MAX_BYTES
+
+
+def test_a_producer_who_joins_late_gets_the_camera_packs():
+    """The relay kept camera_packs as a snapshot but never sent it to new viewers."""
+    import websockets
+    relay_mod = _relay_mod()
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None, producer_token="P", assets_dir=tempfile.mkdtemp())
+        async with _serve_relay(relay_mod, relay) as srv:
+            port = srv.sockets[0].getsockname()[1]
+            async with websockets.connect(f"ws://127.0.0.1:{port}/bridge?token=B") as br:
+                await br.send(json.dumps({"type": "camera_packs", "dir": "x", "exists": True}))
+                await asyncio.sleep(0.2)
+                async with websockets.connect(f"ws://127.0.0.1:{port}/view?token=P") as p:
+                    types = []
+                    try:
+                        while True:
+                            types.append(json.loads(await asyncio.wait_for(p.recv(), 1))["type"])
+                    except asyncio.TimeoutError:
+                        pass
+            return types
+
+    assert "camera_packs" in asyncio.run(run())
+
+
+def test_uploaded_assets_cannot_run_script_on_the_relay_origin():
+    import urllib.request
+    relay_mod = _relay_mod()
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "logo.svg"), "w", encoding="utf-8") as f:
+        f.write('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None, producer_token="P", assets_dir=d)
+        async with _serve_relay(relay_mod, relay) as srv:
+            port = srv.sockets[0].getsockname()[1]
+
+            def get():
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/broadcast/assets/logo.svg", timeout=5) as r:
+                    return dict(r.headers)
+            return await asyncio.get_running_loop().run_in_executor(None, get)
+
+    h = asyncio.run(run())
+    assert "sandbox" in h.get("Content-Security-Policy", "")
+    assert h.get("X-Content-Type-Options") == "nosniff"
+
+
 # --------------------------------------------------------------------- OBS + liveries
 
 def test_obs_auth_follows_the_protocol():

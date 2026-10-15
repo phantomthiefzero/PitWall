@@ -227,7 +227,9 @@ class Relay:
         # they arrive in order and the writer task is the only thing sending.
         q.put_nowait(json.dumps({"type": "relay", "bridge": "connected" if self.bridge else "disconnected",
                                  "engineer": engineer, "role": role, "viewers": len(self.viewers) + 1}))
-        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps"):
+        # Every snapshot type, in the order a page needs them. camera_packs was
+        # kept but never sent, so a producer who joined after the bridge saw no packs.
+        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps", "camera_packs"):
             if t in self.snapshot:
                 q.put_nowait(self.snapshot[t])
         q.put_nowait(self._gfx_message())
@@ -278,9 +280,15 @@ class Relay:
                     elif not isinstance(msg.get("set"), dict) or len(raw) > GFX_MAX_BYTES:
                         reply({"type": "gfx_result", "ok": False, "error": "a gfx message needs a small 'set' object"})
                     else:
-                        merge_gfx(self.gfx, msg["set"])
-                        if len(json.dumps(self.gfx)) > GFX_MAX_BYTES:
-                            self.gfx = {}
+                        # Merge into a copy: a patch that would push the state over
+                        # the limit is refused. It used to replace the state with {},
+                        # which took every graphic off air in the middle of a show.
+                        merged = merge_gfx(json.loads(json.dumps(self.gfx)), msg["set"])
+                        if len(json.dumps(merged)) > GFX_MAX_BYTES:
+                            reply({"type": "gfx_result", "ok": False,
+                                   "error": "graphics state would exceed %d KB; patch refused" % (GFX_MAX_BYTES // 1024)})
+                            continue
+                        self.gfx = merged
                         self.gfx_rev += 1
                         await self._fanout(self._gfx_message(by=msg.get("by") if isinstance(msg.get("by"), str) else None))
                 elif msg.get("type") == "cmd":
@@ -399,7 +407,12 @@ class Relay:
                 body = f.read()
             headers = Headers([("Content-Type", ASSET_TYPES[os.path.splitext(name)[1].lower()]),
                                ("Content-Length", str(len(body))), ("Cache-Control", "no-cache"),
-                               ("Access-Control-Allow-Origin", "*")])
+                               ("Access-Control-Allow-Origin", "*"),
+                               # Uploads are served from the same origin as the
+                               # producer page; an uploaded SVG opened directly must
+                               # not be able to run script there.
+                               ("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"),
+                               ("X-Content-Type-Options", "nosniff")])
             return Response(200, "OK", headers, body)
         if path in CLIENT_PATHS and request.headers.get("Upgrade") is None:
             try:

@@ -307,6 +307,8 @@ async def ws_session(hub, reader, writer, key):
                 n = struct.unpack(">H", await reader.readexactly(2))[0]
             elif n == 127:
                 n = struct.unpack(">Q", await reader.readexactly(8))[0]
+            if n > WS_MAX_IN:
+                break
             mask = await reader.readexactly(4) if b1 & 0x80 else b"\x00\x00\x00\x00"
             data = bytes(x ^ mask[i % 4] for i, x in enumerate(await reader.readexactly(n)))
             if opcode == 8:
@@ -338,6 +340,45 @@ def resolve(path):
     return full if os.path.isfile(full) else None
 
 
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
+
+
+def _hostname(value: str) -> str:
+    """'127.0.0.1:8123' -> '127.0.0.1', 'http://localhost:8123' -> 'localhost'."""
+    v = value.strip().lower()
+    if "://" in v:
+        v = v.split("://", 1)[1]
+    v = v.split("/", 1)[0]
+    if v.startswith("["):
+        return v.split("]", 1)[0] + "]"
+    return v.rsplit(":", 1)[0] if v.count(":") == 1 else v
+
+
+def request_allowed(headers: dict) -> bool:
+    """Only this PC's own pages may use the server.
+
+    Binding 127.0.0.1 keeps other machines out, but not other websites: any page
+    open in the user's browser can open a WebSocket to localhost (browsers apply
+    no same-origin rule to WebSockets), and a DNS-rebinding page can even read
+    plain HTTP replies. /ws carries live telemetry and the session's driver list,
+    and /api/info carries PitWall's view and producer tokens. So the Host must be
+    a loopback name (defeats rebinding) and a browser's Origin, when it sends
+    one, must be this PC too. The app window and local tools pass both checks.
+    """
+    host = headers.get("host")
+    if host is not None and _hostname(host) not in LOCAL_HOSTS:
+        return False
+    origin = headers.get("origin")
+    # "null" is refused too: a sandboxed iframe on any website sends exactly that.
+    if origin is not None and _hostname(origin) not in LOCAL_HOSTS:
+        return False
+    return True
+
+
+# Incoming frames are only pings and closes; anything bigger is not a client of ours.
+WS_MAX_IN = 64 * 1024
+
+
 def make_handler(hub):
     async def handle(reader, writer):
         try:
@@ -350,6 +391,9 @@ def make_handler(hub):
                 if ":" in line:
                     k, v = line.split(":", 1)
                     headers[k.strip().lower()] = v.strip()
+            if not request_allowed(headers):
+                await http_reply(writer, "403 Forbidden", b"Forbidden")
+                return
             if path.split("?")[0] == "/ws" and headers.get("upgrade", "").lower() == "websocket":
                 await ws_session(hub, reader, writer, headers.get("sec-websocket-key", ""))
                 return
