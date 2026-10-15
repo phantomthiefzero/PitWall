@@ -46,6 +46,9 @@ iRacing Suite app (suite/)
   to 127.0.0.1 with random tokens. Keep PitWall usable on its own (run-local.ps1,
   `python -m pitwall stream`); the suite is an extra way to run it.
 - The Lap Analyzer is one HTML file: `suite/web/analyzer/index.html`. No build step.
+  Its logic is tested in Node: `tests/analyzer_harness.js` runs the page's own script with a
+  stand-in page, and `tests/test_analyzer.py` feeds it synthetic .ibt files shaped like real ones
+  (lap counter going back, mid-lap joins, pit laps, refuels). Skipped when Node is missing.
 - `suite/bridge.py` uses only the standard library (plus pyirsdk). Its replay reads
   .ibt files; PitWall's replay reads its own .jsonl.gz captures. They are different.
 - `tests/test_suite.py` must pass along with `tests/test_pipeline.py`.
