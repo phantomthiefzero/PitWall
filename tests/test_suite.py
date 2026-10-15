@@ -306,7 +306,9 @@ class AppWindowApiTest(unittest.TestCase):
         api._window = object()
         public = {n for n in dir(api) if not n.startswith("_")}
         self.assertEqual(public, {"version", "pick_replay", "use_live", "install_camera_pack", "open_cameras_folder",
-                                  "share_start", "share_stop", "share_info"})
+                                  "share_start", "share_stop", "share_info",
+                                  "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
+                                  "update_open_key_page"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
 
@@ -603,3 +605,210 @@ class GuestTokenTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# --------------------------------------------------------------------------- #
+# Updates from GitHub releases
+# --------------------------------------------------------------------------- #
+class _MemKeys:
+    def __init__(self, t=None):
+        self.t = t
+
+    def load(self):
+        return self.t
+
+    def save(self, t):
+        self.t = t
+
+    def clear(self):
+        self.t = None
+
+
+class _Resp:
+    def __init__(self, body):
+        import io
+        self._b = io.BytesIO(body)
+
+    def read(self, n=-1):
+        return self._b.read(n)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _release(build=35, body=b"MZ" + b"x" * 3000, digest=True, commit="newsha"):
+    import hashlib
+    return {"tag_name": "build-%d" % build, "target_commitish": commit, "published_at": "2026-10-16T01:00:00Z",
+            "assets": [{"name": "iRacing.Suite.exe", "size": len(body),
+                        "url": "https://api.github.com/repos/phantomthiefzero/PitWall/releases/assets/777",
+                        **({"digest": "sha256:" + hashlib.sha256(body).hexdigest()} if digest else {})}]}
+
+
+class FakeGitHub:
+    """Answers the three calls the updater makes, and records each request."""
+    def __init__(self, rel, exe_body, status=200, commits=None):
+        self.rel, self.exe_body, self.status, self.reqs = rel, exe_body, status, []
+        self.commits = commits if commits is not None else [
+            {"commit": {"message": "Merge pull request #20 from x/y\n\nz"}},
+            {"commit": {"message": "Older change\n\nbody"}},
+            {"commit": {"message": "Newest change"}}]
+
+    def __call__(self, req, timeout=None):
+        import urllib.error
+        self.reqs.append(req)
+        if self.status != 200:
+            raise urllib.error.HTTPError(req.full_url, self.status, "nope", {}, None)
+        url = req.full_url
+        if url.endswith("/releases/latest"):
+            return _Resp(json.dumps(self.rel).encode())
+        if "/compare/" in url:
+            return _Resp(json.dumps({"commits": self.commits}).encode())
+        if "/releases/assets/" in url:
+            return _Resp(self.exe_body)
+        raise AssertionError(url)
+
+
+class UpdaterTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.exe = os.path.join(self.dir, "iRacing Suite.exe")
+        with open(self.exe, "wb") as f:
+            f.write(b"MZ-old-version")
+
+    def _up(self, gh, key="github_pat_" + "a" * 40, build=32, commit="oldsha"):
+        from suite.updater import Updater
+        return Updater(keys=_MemKeys(key), opener=gh, exe_path=self.exe, build=build, commit=commit,
+                       log=lambda *a: None)
+
+    def test_parse_release(self):
+        from suite.updater import parse_release, UpdateError
+        r = parse_release(_release(35))
+        self.assertEqual((r["build"], r["commit"], r["name"]), (35, "newsha", "iRacing.Suite.exe"))
+        self.assertEqual(len(r["sha256"]), 64)
+        with self.assertRaises(UpdateError):
+            parse_release({"tag_name": "v1.0", "assets": []})
+        with self.assertRaises(UpdateError):
+            parse_release({"tag_name": "build-3", "assets": [{"name": "notes.txt"}]})
+
+    def test_check_finds_a_newer_build_and_what_changed(self):
+        gh = FakeGitHub(_release(35), b"")
+        up = self._up(gh)
+        i = up.check()
+        self.assertTrue(i["available"])
+        self.assertEqual(i["latest"]["build"], 35)
+        self.assertEqual(i["changes"], ["Newest change", "Older change"])   # newest first, merges left out
+        self.assertIn("/compare/oldsha...newsha", gh.reqs[1].full_url)
+        self.assertFalse(self._up(FakeGitHub(_release(32), b"")).check()["available"])
+
+    def test_key_goes_only_to_github_api_and_not_to_redirects(self):
+        gh = FakeGitHub(_release(35), b"")
+        self._up(gh).check()
+        for r in gh.reqs:
+            self.assertTrue(r.full_url.startswith("https://api.github.com/"))
+            self.assertIn("Bearer github_pat_", r.unredirected_hdrs.get("Authorization", ""))
+            self.assertNotIn("Authorization", r.headers)     # headers a redirect would copy
+
+    def test_bad_or_rejected_key_is_not_kept(self):
+        from suite.updater import UpdateError
+        up = self._up(FakeGitHub(_release(35), b"", status=401), key=None)
+        with self.assertRaises(UpdateError):
+            up.set_key("hello")                               # not a GitHub key
+        with self.assertRaises(UpdateError) as cm:
+            up.set_key("github_pat_" + "b" * 40)              # GitHub says no
+        self.assertIn("did not accept", str(cm.exception))
+        self.assertIsNone(up.keys.load())
+        up404 = self._up(FakeGitHub(_release(35), b"", status=404), key=None)
+        with self.assertRaises(UpdateError) as cm:
+            up404.set_key("github_pat_" + "c" * 40)
+        self.assertIn("Only select", str(cm.exception))
+
+    def test_download_checks_size_and_fingerprint(self):
+        from suite.updater import UpdateError
+        good = b"MZ" + os.urandom(5000)
+        rel = _release(35, good)
+        up = self._up(FakeGitHub(rel, good[:-10]))           # cut short
+        with self.assertRaises(UpdateError):
+            up.download()
+        up = self._up(FakeGitHub(rel, b"MZ" + os.urandom(5000)))   # same size, wrong bytes
+        with self.assertRaises(UpdateError) as cm:
+            up.download()
+        self.assertIn("fingerprint", str(cm.exception))
+        self.assertEqual(sorted(os.listdir(self.dir)), ["iRacing Suite.exe"])   # nothing left behind
+        up = self._up(FakeGitHub(rel, good))
+        up.download()
+        self.assertEqual(up.state, "ready")
+        with open(up._new_path, "rb") as f:
+            self.assertEqual(f.read(), good)
+        self.assertEqual(os.path.dirname(up._new_path), self.dir)   # same drive: the swap is a rename
+
+    def test_apply_swaps_restarts_and_tidies(self):
+        from suite import updater
+        good = b"MZ-new-version" + os.urandom(100)
+        up = self._up(FakeGitHub(_release(35, good), good))
+        up.download()
+        started, quit_ = [], []
+        up.apply(lambda: quit_.append(1), popen=lambda args, **kw: started.append((args, kw)))
+        with open(self.exe, "rb") as f:
+            self.assertEqual(f.read(), good)
+        old = updater.old_path(self.exe)
+        with open(old, "rb") as f:
+            self.assertEqual(f.read(), b"MZ-old-version")
+        args, kw = started[0]
+        self.assertEqual(args[:2], [os.path.abspath(self.exe), "--after-update"])
+        self.assertIn(str(os.getpid()), args[2].split(","))
+        self.assertEqual(kw["env"]["PYINSTALLER_RESET_ENVIRONMENT"], "1")
+        self.assertEqual(quit_, [1])
+        self.assertTrue(updater.tidy_after_update(self.exe))
+        self.assertFalse(os.path.exists(old))
+
+    def test_apply_needs_a_download_and_puts_things_back_on_failure(self):
+        from suite.updater import UpdateError
+        up = self._up(FakeGitHub(_release(35), b""))
+        with self.assertRaises(UpdateError):
+            up.apply(lambda: None, popen=lambda *a, **k: None)
+        good = b"MZ" + b"n" * 50
+        up = self._up(FakeGitHub(_release(35, good), good))
+        up.download()
+        os.remove(up._new_path)                               # vanished before the swap
+        with self.assertRaises(UpdateError):
+            up.apply(lambda: None, popen=lambda *a, **k: None)
+        with open(self.exe, "rb") as f:
+            self.assertEqual(f.read(), b"MZ-old-version")     # the app is untouched
+
+    def test_from_source_cannot_update(self):
+        from suite.updater import Updater, UpdateError
+        up = Updater(keys=_MemKeys("github_pat_" + "a" * 40), opener=FakeGitHub(_release(35), b""),
+                     exe_path=None, build=None, commit=None, log=lambda *a: None)
+        up.exe = None
+        self.assertFalse(up.info()["canApply"])
+        with self.assertRaises(UpdateError):
+            up.download()
+
+    def test_key_store_round_trip(self):
+        from suite.updater import KeyStore
+        path = os.path.join(self.dir, "update.json")
+        ks = KeyStore(path)
+        self.assertIsNone(ks.load())
+        tok = "github_pat_" + "Z9" * 30
+        ks.save(tok)
+        self.assertEqual(ks.load(), tok)
+        if sys.platform == "win32":
+            with open(path, encoding="utf-8") as f:
+                self.assertNotIn(tok, f.read())               # encrypted for this Windows account
+        ks.clear()
+        self.assertIsNone(ks.load())
+
+    def test_new_copy_waits_for_the_old_one(self):
+        import subprocess
+        from suite.updater import wait_for_exit
+        p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.8)"])
+        t = time.time()
+        wait_for_exit([p.pid], timeout=10)
+        p.wait()
+        self.assertGreater(time.time() - t, 0.5)
+        t = time.time()
+        wait_for_exit([999999999], timeout=10)               # already gone: no wait
+        self.assertLess(time.time() - t, 0.5)

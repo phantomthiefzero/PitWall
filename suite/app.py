@@ -10,6 +10,7 @@ import asyncio
 import os
 import sys
 import threading
+import time
 import webbrowser
 
 from suite import __version__
@@ -42,6 +43,7 @@ class Engine:
         self.hub = Hub(LiveSource(), rate)
         self.pitwall = PitWallHost(pitwall_source)
         self.hub.extra = lambda: {"pitwall": self.pitwall.info()}
+        self.updater = None          # set by main(); suite.updater.Updater
         self.port = None
         self.error = None
         self._ready = threading.Event()
@@ -139,6 +141,43 @@ class Api:
         s = self._engine.pitwall.share
         return s.stop() if s else {"state": "off"}
 
+    # ---- Updates from the repo's GitHub releases (suite/updater.py)
+    def update_info(self):
+        u = self._engine.updater
+        return u.info() if u else {"state": "idle", "hasKey": False, "canApply": False, "build": None}
+
+    def update_set_key(self, token):
+        from suite.updater import UpdateError
+        try:
+            self._engine.updater.set_key(token)
+        except UpdateError as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, **self._engine.updater.info()}
+
+    def update_clear_key(self):
+        self._engine.updater.clear_key()
+        return self._engine.updater.info()
+
+    def update_open_key_page(self):
+        """GitHub's new-key page, in the browser. A fixed address: pages cannot open others."""
+        from suite.updater import KEY_PAGE
+        webbrowser.open(KEY_PAGE)
+        return {"ok": True}
+
+    def update_check(self):
+        _background(self._engine.updater.check)
+        return {"ok": True}
+
+    def update_install(self):
+        """Download the newest build, check it, swap it in and restart."""
+        u = self._engine.updater
+
+        def run():
+            u.download()
+            u.apply(lambda: quit_now(0))
+        _background(run)
+        return {"ok": True}
+
     def share_info(self):
         host = self._engine.pitwall
         s = host.share
@@ -159,6 +198,35 @@ class Api:
 
 
 _on_quit = []
+
+
+def _background(fn):
+    """Run fn on its own thread; its errors are reported through its own state."""
+    def run():
+        try:
+            fn()
+        except Exception as e:
+            print("background task: %s: %s" % (type(e).__name__, e))
+    threading.Thread(target=run, daemon=True).start()
+
+
+def selftest_rename(out):
+    """Hidden, for the release build check: can this running .exe be renamed
+    aside and back? That is how an update swaps the app while it runs."""
+    from suite.updater import old_path
+    exe = os.path.abspath(sys.executable)
+    old = old_path(exe)
+    try:
+        if not getattr(sys, "frozen", False):
+            raise RuntimeError("not a built app")
+        os.replace(exe, old)
+        os.replace(old, exe)
+        result = "ok"
+    except Exception as e:
+        result = "%s: %s" % (type(e).__name__, e)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(result)
+    return result
 
 
 def quit_now(code=0):
@@ -209,10 +277,35 @@ def main():
     ap.add_argument("--browser", action="store_true", help="use the web browser instead of the app window")
     ap.add_argument("--pitwall-source", choices=["live", "fake"], default="live",
                     help="PitWall's data: live iRacing, or its fake 24-car field for trying it out")
+    ap.add_argument("--after-update", metavar="PIDS", help=argparse.SUPPRESS)
+    ap.add_argument("--selftest-rename", metavar="FILE", help=argparse.SUPPRESS)
     a = ap.parse_args()
 
+    from suite import updater as upd
+    if a.selftest_rename:
+        selftest_rename(a.selftest_rename)
+        quit_now(0)
+    if a.after_update:
+        # The previous version is closing: let it release its ports and files
+        # first, or PitWall would move ports and break the OBS address.
+        pids = [int(x) for x in a.after_update.split(",") if x.strip().isdigit()]
+        upd.wait_for_exit(pids)
+        threading.Thread(target=upd.tidy_after_update, daemon=True).start()
+
     engine = Engine(a.rate, a.pitwall_source)
+    engine.updater = upd.Updater()
     engine.start(a.port)
+    if engine.updater.exe:
+        def auto_check():
+            # Quietly see whether a newer build is out: at launch, then every 6 hours.
+            while True:
+                if engine.updater.keys.load() and engine.updater.state in ("idle", "error"):
+                    try:
+                        engine.updater.check()
+                    except Exception:
+                        pass
+                time.sleep(6 * 3600)
+        threading.Thread(target=auto_check, daemon=True).start()
     # A shared link must never outlive the app.
     _on_quit.append(lambda: engine.pitwall.share and engine.pitwall.share.stop())
     print("iRacing Suite %s on %s" % (__version__, engine.url))

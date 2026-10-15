@@ -53,6 +53,12 @@ iRacing Suite app (suite/)
   only the relay's revocable guest token, never the kept view or producer tokens (the co-host
   producer link is shown separately, folded away). The relay serves the dashboard at /pitwall/.
 
+- Updates (`suite/updater.py`): the release build stamps `suite/_build.py` (BUILD = run number,
+  COMMIT); the app compares it with the newest `build-N` release, downloads next to itself,
+  verifies size + SHA-256, renames itself aside and restarts with `--after-update PIDS` (waits
+  for the old copy so the ports stay the same). The GitHub key goes only to api.github.com
+  (unredirected header). The build runs `--selftest-rename` on the real .exe.
+
 Broadcast (broadcast/)
 - `overlay.html` (OBS source) and `producer.html` (you + co-host) are single files, no build
   step. Same provenance rule for what is COMPUTED (only in normalize.py, under `derived`),
