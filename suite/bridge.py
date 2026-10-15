@@ -7,6 +7,7 @@ changes anything in iRacing.
 """
 import asyncio
 import base64
+import gzip
 import hashlib
 import json
 import math
@@ -281,9 +282,29 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
          ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2"}
 
 
-async def http_reply(writer, status, body=b"", ctype="text/plain; charset=utf-8"):
-    head = ("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nCache-Control: no-store\r\n"
-            "Connection: close\r\n\r\n" % (status, ctype, len(body)))
+# Text replies are compressed for any browser that accepts it. Besides being
+# smaller, it keeps the pages under ~128 KB on the wire: on a PC where security
+# software inspects local web traffic (seen with Norton 360), uncompressed web
+# replies over that size stalled at exactly 130,560 bytes about 1 time in 70
+# and the page hung, while the same page compressed to 65 KB never did in 600.
+GZIP_MIN = 1024
+
+
+def compressible(ctype: str) -> bool:
+    return ctype.startswith("text/") or any(k in ctype for k in ("json", "javascript", "svg"))
+
+
+def accepts_gzip(headers: dict) -> bool:
+    return "gzip" in (headers.get("accept-encoding") or "").lower()
+
+
+async def http_reply(writer, status, body=b"", ctype="text/plain; charset=utf-8", gzip_ok=False):
+    extra = ""
+    if gzip_ok and len(body) >= GZIP_MIN and compressible(ctype):
+        body = gzip.compress(body, compresslevel=6, mtime=0)
+        extra = "Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n"
+    head = ("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nCache-Control: no-store\r\n%s"
+            "Connection: close\r\n\r\n" % (status, ctype, len(body), extra))
     writer.write(head.encode("latin-1") + body)
     await writer.drain()
 
@@ -307,6 +328,8 @@ async def ws_session(hub, reader, writer, key):
                 n = struct.unpack(">H", await reader.readexactly(2))[0]
             elif n == 127:
                 n = struct.unpack(">Q", await reader.readexactly(8))[0]
+            if n > WS_MAX_IN:
+                break
             mask = await reader.readexactly(4) if b1 & 0x80 else b"\x00\x00\x00\x00"
             data = bytes(x ^ mask[i % 4] for i, x in enumerate(await reader.readexactly(n)))
             if opcode == 8:
@@ -338,6 +361,45 @@ def resolve(path):
     return full if os.path.isfile(full) else None
 
 
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
+
+
+def _hostname(value: str) -> str:
+    """'127.0.0.1:8123' -> '127.0.0.1', 'http://localhost:8123' -> 'localhost'."""
+    v = value.strip().lower()
+    if "://" in v:
+        v = v.split("://", 1)[1]
+    v = v.split("/", 1)[0]
+    if v.startswith("["):
+        return v.split("]", 1)[0] + "]"
+    return v.rsplit(":", 1)[0] if v.count(":") == 1 else v
+
+
+def request_allowed(headers: dict) -> bool:
+    """Only this PC's own pages may use the server.
+
+    Binding 127.0.0.1 keeps other machines out, but not other websites: any page
+    open in the user's browser can open a WebSocket to localhost (browsers apply
+    no same-origin rule to WebSockets), and a DNS-rebinding page can even read
+    plain HTTP replies. /ws carries live telemetry and the session's driver list,
+    and /api/info carries PitWall's view and producer tokens. So the Host must be
+    a loopback name (defeats rebinding) and a browser's Origin, when it sends
+    one, must be this PC too. The app window and local tools pass both checks.
+    """
+    host = headers.get("host")
+    if host is not None and _hostname(host) not in LOCAL_HOSTS:
+        return False
+    origin = headers.get("origin")
+    # "null" is refused too: a sandboxed iframe on any website sends exactly that.
+    if origin is not None and _hostname(origin) not in LOCAL_HOSTS:
+        return False
+    return True
+
+
+# Incoming frames are only pings and closes; anything bigger is not a client of ours.
+WS_MAX_IN = 64 * 1024
+
+
 def make_handler(hub):
     async def handle(reader, writer):
         try:
@@ -350,11 +412,15 @@ def make_handler(hub):
                 if ":" in line:
                     k, v = line.split(":", 1)
                     headers[k.strip().lower()] = v.strip()
+            if not request_allowed(headers):
+                await http_reply(writer, "403 Forbidden", b"Forbidden")
+                return
             if path.split("?")[0] == "/ws" and headers.get("upgrade", "").lower() == "websocket":
                 await ws_session(hub, reader, writer, headers.get("sec-websocket-key", ""))
                 return
             if path.split("?")[0] == "/api/info":
-                await http_reply(writer, "200 OK", json.dumps(hub.info()).encode(), "application/json")
+                await http_reply(writer, "200 OK", json.dumps(hub.info()).encode(), "application/json",
+                                 gzip_ok=accepts_gzip(headers))
                 return
             if path.split("?")[0] == "/favicon.ico":
                 await http_reply(writer, "204 No Content")
@@ -371,7 +437,8 @@ def make_handler(hub):
                 body = f.read()
             if full.startswith(os.path.realpath(pitwall_client_root())) and full.endswith(".html"):
                 body = body.replace(b"</body>", SUITE_LINK + b"</body>", 1)
-            await http_reply(writer, "200 OK", body, TYPES.get(os.path.splitext(full)[1].lower(), "application/octet-stream"))
+            await http_reply(writer, "200 OK", body, TYPES.get(os.path.splitext(full)[1].lower(), "application/octet-stream"),
+                             gzip_ok=accepts_gzip(headers))
         except Exception:
             pass
         finally:

@@ -142,7 +142,17 @@
   tr.player td { color: var(--player); font-weight: 600; }
   tr.focus td { background: #1B2A4D; }
   tr.focus td:first-child { box-shadow: inset 3px 0 0 var(--focus, #6FA8FF); }
-  #rows tr { cursor: pointer; }
+  #rows tr { cursor: pointer; touch-action: manipulation; }   /* no double-tap zoom on a row */
+  /* The car being compared with the followed one (click a row). */
+  tr.cmp td { background: #2A2350; }
+  tr.cmp td:first-child { box-shadow: inset 3px 0 0 var(--purple, #B98BFF); }
+  .cmp-head { font-size: 13px; margin: 0 0 6px; line-height: 1.5; }
+  .cmp-head .big2 { font-size: 18px; font-weight: 700; }
+  .cmp-2 { display: grid; grid-template-columns: auto 1fr 1fr auto; gap: 2px 10px; font-size: 12px; align-items: baseline; }
+  .cmp-2 > .h { color: var(--dim); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+  .cmp-2 > .k { color: var(--muted); }
+  .cmp-2 > .v { text-align: right; font-variant-numeric: tabular-nums; }
+  .cmp-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .fkv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12px; }
   .fkv dt { color: var(--muted); }
   .fkv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
@@ -378,7 +388,7 @@
   <div class="right">
     <span class="find"><input id="findDrv" type="search" placeholder="Find a driver…" autocomplete="off" spellcheck="false"
       title="Search this session's field by driver, team or car number, then follow that car"><div id="findList" class="find-list hidden"></div></span>
-    <label class="follow" title="The car every relative panel follows. Shared with everyone on this relay.">Following
+    <label class="follow" title="The car every relative panel follows, on this screen only. Nobody else's view changes.">Following
       <select id="followSel"><option value="">Auto</option></select> <span id="followSrc" class="note"></span></label>
     <button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button>
     <div class="clock"><span id="remain">–</span><small id="lapline">–</small></div>
@@ -507,6 +517,15 @@
       <div id="sectors" style="font-size:12px;margin:6px 0 0"></div>
       <div class="tires" id="tires"></div>
       <div style="margin-top:8px;font-size:12px;color:var(--muted)">Next stop: <span id="pitsv">–</span></div>
+      </details>
+    </section>
+
+    <section id="cmpPanel" class="hidden">
+      <details class="panel" id="cmpDetails" open>
+        <summary>Compare <span id="cmpWho" style="font-weight:500"></span>
+          <button type="button" id="cmpClose" class="unittoggle mini" title="Close the comparison (or click the row again)">close</button>
+        </summary>
+        <div id="cmp"></div>
       </details>
     </section>
 
@@ -688,7 +707,10 @@
       return;
     }
     ws = sock;
-    sock.onopen = () => { $("dotRelay").classList.add("on"); sock.send(JSON.stringify({ type: "resend" })); };
+    sock.onopen = () => {
+      $("dotRelay").classList.add("on"); sock.send(JSON.stringify({ type: "resend" }));
+      if (myRef != null) { S.refview = null; sock.send(JSON.stringify({ type: "focus", idx: myRef })); }
+    };
     sock.onclose = ev => {
       $("dotRelay").classList.remove("on"); $("dotBridge").classList.remove("on");
       if (ev.code === 4001) {
@@ -746,8 +768,16 @@
         // done by the frame loop, so a fast stream never queues up DOM work.
         recordAccel(); recordWeather(); recordEngine(); recordInputs(); dirty.state = true; break;
       case "cars":
-        if (!m.full && !S.cars) break;
-        S.cars = m.full ? m : merge(S.cars, m); recordTrace(); dirty.cars = true; chartDirty = true; break;
+        if (!m.full && !S.carsShared) break;
+        S.carsShared = m.full ? m : merge(S.carsShared, m); viewCars(); recordTrace(); dirty.cars = true; chartDirty = true; break;
+      // Everything measured from the car THIS viewer follows (bridge-computed,
+      // see normalize.relative_to). The relay sends it only to that car's viewers.
+      case "refview":
+        if (m.ref !== myRef || (!m.full && !S.refview)) break;
+        S.refview = m.full ? m : merge(S.refview, m); viewCars(); dirty.cars = true; chartDirty = true; break;
+      case "focus_result":
+        if (!m.ok && m.idx === myRef) { followNote = m.error || "could not follow that car"; setFollow(null, false); }
+        break;
       case "feed": handleFeed(m); break;
       case "refgaps": S.refgaps = m; chartDirty = true; break;
       case "cmd_result": console.log("command result", m); break;
@@ -829,11 +859,12 @@
     const cars = Object.values(S.cars.cars || {}).filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
     const me = refInfo().own;
     const focus = focusIdx();
+    const cmpC = cmpCar(), cmpIdxNow = cmpC ? cmpC.idx : null;
     const multi = isMulticlass();
     const html = cars.map(c => {
       const flags = (c.flags || []).filter(f => ["black", "repair", "furled", "disqualify"].includes(f)).map(f => `<span class="badge ${f}">${f}</span>`).join("");
       const pit = c.onPitRoad ? "pit" : (c.surface === "in_pit_stall" ? "box" : "");
-      return `<tr data-idx="${c.idx}" class="${c.idx === me ? "player" : ""} ${c.idx === focus ? "focus" : ""} ${pit ? "pit" : ""}">
+      return `<tr data-idx="${c.idx}" class="${c.idx === me ? "player" : ""} ${c.idx === focus ? "focus" : ""} ${c.idx === cmpIdxNow ? "cmp" : ""} ${pit ? "pit" : ""}">
         <td class="r c-pos"${multi && c.classColor != null ? ` style="box-shadow: inset 3px 0 0 ${classCss(c.classColor)}"` : ""}>${c.pos}${multi && c.classPos ? `<span class="cpos">${c.classPos}</span>` : ""}</td>
         <td class="driver c-driver" title="${esc(c.name ?? "")}"><span class="num">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}${flags}</td>
         <td class="c-car"${multi && c.classColor != null ? ` style="color:${classCss(c.classColor)}"` : ""}>${esc(c.className ?? c.car)}</td>
@@ -1102,9 +1133,35 @@
   const shortCar = i => { const c = carByIdx(i); return c ? "#" + esc(c.num ?? c.idx) : "car " + esc(i); };
   // ---------------------------------------------------------------- following
   // Spectating is the normal case for this booth. Everything "relative" follows
-  // one car: the one chosen here (shared with everyone on this relay), else your
-  // own car when you are driving, else the car the camera is on.
-  function refInfo() { return (S.cars && S.cars.derived && S.cars.derived.ref) || { idx: null, source: null, own: null }; }
+  // one car: the one chosen on this screen, else your own car when you are
+  // driving, else the car the camera is on.
+  // The car this viewer follows (null: automatic). Kept HERE, per viewer: the
+  // relay sends this viewer the numbers measured from it, and nobody else's
+  // screen changes. The shared stream always follows your car, else the camera.
+  let myRef = null, followNote = "";
+  function viewCars() {
+    const sh = S.carsShared, rv = myRef != null ? S.refview : null;
+    if (!sh || !rv) { S.cars = sh; return; }
+    const cars = {};
+    for (const [k, c] of Object.entries(sh.cars || {})) {
+      const r = rv.cars && rv.cars[k];
+      cars[k] = r ? { ...c, derived: { ...(c.derived || {}), ...r } } : c;
+    }
+    S.cars = { ...sh, cars, derived: { ...(sh.derived || {}), ...(rv.derived || {}) } };
+  }
+  function setFollow(idx, send = true) {
+    myRef = idx;
+    S.refview = null;
+    viewCars();
+    dirty.cars = true; chartDirty = true;
+    if (send) sendFocus(idx);
+  }
+  function refInfo() {
+    const sh = (S.carsShared && S.carsShared.derived && S.carsShared.derived.ref) || { idx: null, source: null, own: null };
+    if (myRef == null) return sh;
+    // chosen but its first view not here yet: say so straight away
+    return (S.refview && S.refview.derived && S.refview.derived.ref) || { ...sh, idx: myRef, source: "chosen" };
+  }
   const isOwnRef = () => { const r = refInfo(); return r.idx != null && r.idx === r.own; };
   const meCar = () => carByIdx(refInfo().idx);                 // the followed car
   const ownCar = () => carByIdx(refInfo().own);                // your car, only when driving
@@ -1129,9 +1186,9 @@
       sel.innerHTML = `<option value="">${auto}</option>` + cars.map(c =>
         `<option value="${c.idx}">#${esc(c.num ?? c.idx)} ${esc(c.name ?? "")}${isMulticlass() ? " · " + esc(c.className ?? "") : ""}</option>`).join("");
     }
-    if (document.activeElement !== sel) sel.value = r.source === "chosen" && r.idx != null ? String(r.idx) : "";
+    if (document.activeElement !== sel) sel.value = myRef != null ? String(myRef) : "";
     const src = { chosen: "chosen", your_car: "your car", camera: "camera" }[r.source] || "nobody";
-    $("followSrc").textContent = r.idx == null ? "nobody yet" : "(" + src + ")";
+    $("followSrc").textContent = followNote || (r.idx == null ? "nobody yet" : "(" + src + ")");
   }
   // ---- find a driver in this session by name, team, team-mate or number.
   // Only the field iRacing reports for the session you are connected to: there
@@ -1173,7 +1230,7 @@
   }
   function pickFind(idx) {
     if (idx == null) return;
-    sendFocus(idx);
+    setFollow(idx);
     $("findDrv").value = ""; $("findList").classList.add("hidden"); $("findDrv").blur();
   }
   $("findDrv").addEventListener("input", () => { FIND.sel = 0; renderFind(); });
@@ -1198,7 +1255,8 @@
 
   $("followSel").addEventListener("change", e => {
     const v = e.target.value;
-    sendFocus(v === "" ? null : Number(v));
+    followNote = "";
+    setFollow(v === "" ? null : Number(v));
   });
 
   // ---------------------------------------------------------------- car data
@@ -1210,7 +1268,7 @@
     const el = $("focus");
     const c = meCar();
     if (!c) {
-      el.innerHTML = `<div class="note">Waiting for the field. Pick a car in the Following menu or click a row in the standings.</div>`;
+      el.innerHTML = `<div class="note">Waiting for the field. Pick a car in the Following menu or double-click a row in the standings.</div>`;
       return;
     }
     const d = c.derived || {};
@@ -1391,31 +1449,46 @@
 
   // ---- battle box: the class car directly ahead and directly behind
   function lapSeries(idx, key, n = 10) {
+    // The shared lap feed records gaps to the SHARED reference; a viewer's own
+    // car has its own per-lap series in the view.
+    if (key === "toPlayerS" && myRef != null) {
+      const g = (S.refview && S.refview.gaps && S.refview.gaps[String(idx)]) || [];
+      return g.slice(-n).map(p => p[1]);
+    }
     return S.feed.laps.filter(e => e.idx === idx && e[key] != null).slice(-n).map(e => e[key]);
   }
+  // How the gap between car c and the followed car is moving, in words. One
+  // wording for the battle box and the compare card. youGainSPerLap is positive
+  // when it is GOOD for the followed car, whichever side c is on (normalize:
+  // to_player_trend); side is where c is: "ahead" or "behind".
+  function gapTrend(side, d) {
+    const w = RW(), gain = d.youGainSPerLap;
+    if (gain == null) return "";
+    if (gain === 0) return `<span class="flat">level</span>`;
+    if (side === "ahead") return gain > 0
+      ? `<span class="gain">${w.sub} ${w.y ? "gain" : "gains"} ${gain.toFixed(2)} s/lap</span>` + (d.youCatchLaps != null ? ` · catch in ${d.youCatchLaps} laps` : "")
+      : `<span class="lose">pulling away ${(-gain).toFixed(2)} s/lap</span>`;
+    return gain > 0
+      ? `<span class="gain">${w.sub} ${w.y ? "pull" : "pulls"} away ${gain.toFixed(2)} s/lap</span>`
+      : `<span class="lose">closing ${(-gain).toFixed(2)} s/lap</span>` + (d.catchesYouLaps != null ? ` · on ${w.obj} in ${d.catchesYouLaps} laps` : "");
+  }
+  const TREND_TIP = "Computed here: least-squares trend of the gap over the last 90 s, per lap of the followed car's pace.";
+  // Their value minus the followed car's (normalize.vs_you). Negative = they are
+  // quicker, which is bad news for the followed car, hence red.
+  const vsDelta = x => x == null ? "–" : `<span class="${x < 0 ? "lose" : x > 0 ? "gain" : "flat"}">${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(3)}</span>`;
   function battleRow(side, c) {
     const w = RW();
     if (!c) return `<div class="bb-row"><span class="bb-side">${side}</span><span class="note">${side === "ahead" ? `${w.Sub} ${w.y ? "lead" : "leads"} the class.` : "Nobody behind in the class."}</span><span></span></div>`;
     const d = c.derived || {};
     const tp = d.toPlayerS;
-    const gain = d.youGainSPerLap;
-    let trend = "";
-    if (gain != null) {
-      if (gain === 0) trend = `<span class="flat">level</span>`;
-      else if (side === "ahead") trend = gain > 0
-        ? `<span class="gain">${w.sub} ${w.y ? "gain" : "gains"} ${gain.toFixed(2)} s/lap</span>` + (d.youCatchLaps != null ? ` · catch in ${d.youCatchLaps} laps` : "")
-        : `<span class="lose">pulling away ${(-gain).toFixed(2)} s/lap</span>`;
-      else trend = gain > 0
-        ? `<span class="gain">${w.sub} ${w.y ? "pull" : "pulls"} away ${gain.toFixed(2)} s/lap</span>`
-        : `<span class="lose">closing ${(-gain).toFixed(2)} s/lap</span>` + (d.catchesYouLaps != null ? ` · on ${w.obj} in ${d.catchesYouLaps} laps` : "");
-    }
+    const trend = gapTrend(side, d);
     const me = meCar();
     const sp = spark(lapSeries(c.idx, "toPlayerS").map(v => Math.abs(v)), 90, 18);
     const pit = c.onPitRoad ? ` <span class="badge" style="background:var(--orange);color:#2A1A00">in pit</span>` : "";
     return `<div class="bb-row"><span class="bb-side">${side}</span>` +
       `<span class="bb-who">${carLabel(c.idx)}${pit}</span>` +
       `<span class="bb-gap">${tp == null ? "–" : D(Math.abs(tp).toFixed(2), "Computed here: the difference between the two cars' time behind the leader (CarIdxF2Time).")}</span>` +
-      `<div class="bb-sub">${trend ? D(trend, "Computed here: least-squares trend of the gap over the last 90 s, per lap of the followed car's pace.") : `<span class="note">trend needs ~20 s of gaps</span>`}` +
+      `<div class="bb-sub">${trend ? D(trend, TREND_TIP) : `<span class="note">trend needs ~20 s of gaps</span>`}` +
       `<span title="Their last lap / the followed car's">last <span class="mono">${fmt.lap(c.lastLapS)}</span> vs <span class="mono">${fmt.lap(me && me.lastLapS)}</span></span>` +
       (sp ? `<span title="Gap at each of their lap crossings">${sp}</span>` : "") + `</div></div>`;
   }
@@ -1423,7 +1496,7 @@
     const el = $("bb");
     if (!S.cars) return;
     const me = meCar();
-    if (!me) { el.innerHTML = `<div class="note">Pick a car to follow (the Following menu at the top, or click a row in the standings).</div>`; return; }
+    if (!me) { el.innerHTML = `<div class="note">Pick a car to follow (the Following menu at the top, or double-click a row in the standings).</div>`; return; }
     if (S.cars.derived && S.cars.derived.isRace === false) { el.innerHTML = `<div class="note">Battles are measured in races, where iRacing reports each car's time behind the leader. In practice and qualifying that number is a best lap instead.</div>`; return; }
     const cars = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
     const ahead = cars.find(c => c.classPos === me.classPos - 1);
@@ -1722,7 +1795,8 @@
     }
     const cars = chartCars();
     const key = chartTab === "gap" ? "classGapS" : chartTab === "you" ? "toPlayerS" : "classPos";
-    const refIdx = refInfo().idx, rg = (S.refgaps && S.refgaps.ref === refIdx && S.refgaps.series) || {};
+    const refIdx = refInfo().idx, rg = (myRef != null ? (S.refview && S.refview.gaps)
+      : (S.refgaps && S.refgaps.ref === refIdx && S.refgaps.series)) || {};
     const series = cars.map((c, i) => ({ c, col: c.idx === refIdx ? "#FFB23F" : PALETTE[i % PALETTE.length],
       pts: key === "toPlayerS" ? (rg[String(c.idx)] || [])
         : S.feed.laps.filter(e => e.idx === c.idx && e[key] != null).map(e => [e.lap, e[key]]) })).filter(s => s.pts.length);
@@ -1897,7 +1971,7 @@
             `<span class="muted">compared with ${RW().obj}</span></div>`;
     if (!r) return h + `<div class="note">Pick a car.</div>`;
     const v = (r.derived && r.derived.vsYou) || {};
-    const dd = x => x == null ? "–" : `<span class="${x < 0 ? "lose" : x > 0 ? "gain" : "flat"}">${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(3)}</span>`;
+    const dd = vsDelta;
     const wv = RW();
     const tip = `Computed here: their time minus ${wv.y ? "yours" : wv.pos}. Green = ${wv.y ? "you are" : wv.sub + " is"} quicker, red = they are.`;
     h += `<div class="h2h-sum">` +
@@ -1925,6 +1999,74 @@
     return h + `<table><thead><tr><th class="r">Lap</th><th class="r">${wv.y ? "You" : wv.Sub}</th><th class="r">#${esc(r.num ?? r.idx)}</th>${secHead}<th></th></tr></thead><tbody>${rows}</tbody></table>` +
       `<div class="note" style="margin-top:4px">Same lap numbers side by side; the quicker of each pair is green. Lap times are iRacing's, sector times are timed here.</div>`;
   }
+  // ---- compare: the clicked car against the followed one. The same car as the
+  // head-to-head tab's "Against", so the two never disagree. Display only: every
+  // number is iRacing's or bridge-computed (relative to THIS viewer's followed
+  // car, via its refview). Where no difference is computed, both values are
+  // shown side by side rather than subtracted here.
+  function cmpCar() {
+    const me = meCar(), c = carByIdx(h2hIdx);
+    return c && !(me && c.idx === me.idx) ? c : null;
+  }
+  function setCompare(idx) {
+    h2hIdx = idx;
+    try { localStorage.setItem("pitwall.h2h", idx == null ? "" : String(idx)); } catch (e) {}
+    renderStandings(); renderFocus(); renderCompare(); renderTabView();
+    if (idx != null) { const s = $("cmpPanel"); if (s && !s.classList.contains("hidden")) s.scrollIntoView({ block: "nearest" }); }
+  }
+  function renderCompare() {
+    const sec = $("cmpPanel"), c = cmpCar(), me = meCar();
+    sec.classList.toggle("hidden", !c);
+    if (!c) return;
+    $("cmpWho").innerHTML = carLabel(c.idx);
+    const el = $("cmp");
+    if (!me) {
+      el.innerHTML = `<div class="note">Pick a car to follow (the Following menu, or double-click a row) to compare ${carLabel(c.idx)} against it.</div>` + cmpActions(c, null);
+      return;
+    }
+    const w = RW(), d = c.derived || {}, md = me.derived || {}, v = d.vsYou || {};
+    const tp = d.toPlayerS, side = tp == null ? null : tp < 0 ? "ahead" : "behind";
+    const pit = c.onPitRoad ? ` <span class="badge" style="background:var(--orange);color:#2A1A00">in pit</span>` : "";
+    let head;
+    if (tp == null) {
+      head = `<span class="note">No gap yet: it needs a race, and a timed lap from both cars.</span>`;
+    } else {
+      const trend = gapTrend(side, d);
+      head = `<span class="big2">${D(Math.abs(tp).toFixed(2) + " s", "Computed here: the difference between the two cars' time behind the leader (CarIdxF2Time).")}</span> ` +
+        `${side === "ahead" ? "ahead of" : "behind"} ${w.obj}${pit}<br>` +
+        (trend ? D(trend, TREND_TIP) : `<span class="note">trend needs ~20 s of gaps</span>`);
+      const sp = spark(lapSeries(c.idx, "toPlayerS").map(x => Math.abs(x)), 120, 20);
+      if (sp) head += ` <span title="Gap at each of their lap crossings">${sp}</span>`;
+    }
+    const posTxt = x => x.pos > 0 ? "P" + x.pos + (isMulticlass() && x.classPos ? ` (class P${x.classPos})` : "") : "–";
+    const lapOr = x => x != null && x > 0 ? `<span class="mono">${fmt.lap(x)}</span>` : "–";
+    const n = x => x == null ? "–" : x;
+    const degTxt = x => x == null ? "–" : D((x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(2) + " s/lap",
+      "Computed here: lap-time trend across this stint. Positive = dropping off.");
+    const row = (k, a, b, diff = "") => `<span class="k">${k}</span><span class="v">${a}</span><span class="v">${b}</span><span class="v">${diff}</span>`;
+    const tip = `Computed here: their time minus ${w.y ? "yours" : w.pos}. Green = ${w.y ? "you are" : w.sub + " is"} quicker, red = they are.`;
+    let rows =
+      `<span class="h"></span><span class="h v">${esc("#" + (c.num ?? c.idx))}</span><span class="h v">${w.y ? "you" : esc("#" + (me.num ?? me.idx))}</span><span class="h v">${D("diff", tip)}</span>` +
+      row("Position", posTxt(c), posTxt(me)) +
+      row("Last lap", lapOr(c.lastLapS), lapOr(me.lastLapS), vsDelta(v.lastLapS)) +
+      row("Best lap", lapOr(c.bestLapS), lapOr(me.bestLapS), vsDelta(v.bestLapS)) +
+      row(D("Pace", "Computed here: median of recent racing laps."), lapOr(d.paceS), lapOr(md.paceS), vsDelta(v.paceS));
+    if (v.bestSectorS) rows += row("Best sectors", "", "", v.bestSectorS.map(vsDelta).join(" "));
+    rows +=
+      `<span class="h">Stint</span><span></span><span></span><span></span>` +
+      row(D("Stops seen", "Stops watched since connecting; a car may have stopped before that."), n(d.stopsSeen), n(md.stopsSeen)) +
+      row("Laps since stop", n(d.lapsSincePit), n(md.lapsSincePit)) +
+      row("Stint laps", n(d.stintLaps), n(md.stintLaps)) +
+      row("Tyre drop-off", degTxt(d.degSPerLap), degTxt(md.degSPerLap));
+    el.innerHTML = `<div class="cmp-head">${head}</div><div class="cmp-2">${rows}</div>` + cmpActions(c, me);
+  }
+  function cmpActions(c, me) {
+    return `<div class="cmp-acts">` +
+      `<button type="button" class="unittoggle" data-cmp-follow="${c.idx}" title="Follow this car instead; ${me ? "the car you follow now becomes the comparison" : "compare others against it"}">Follow ${esc("#" + (c.num ?? c.idx))} instead</button>` +
+      (me ? `<button type="button" class="unittoggle" data-cmp-h2h="1" title="Lap by lap and sector by sector, in the chart area">Full head-to-head</button>` : "") +
+      `</div>`;
+  }
+
   function renderTabView() {
     const v = $("tabView");
     if (chartTab === "log") v.innerHTML = lapLogHtml();
@@ -1933,11 +2075,7 @@
       if (document.activeElement && document.activeElement.id === "h2hSel") return;
       v.innerHTML = h2hHtml();
       const sel = $("h2hSel");
-      if (sel) sel.onchange = () => {
-        h2hIdx = Number(sel.value);
-        try { localStorage.setItem("pitwall.h2h", String(h2hIdx)); } catch (e) {}
-        renderTabView(); renderStandings(); renderFocus();
-      };
+      if (sel) sel.onchange = () => setCompare(Number(sel.value));
     }
   }
 
@@ -2138,6 +2276,7 @@
     if (!S.cars) return;
     const me = refInfo().own;
     const focus = focusIdx();
+    const cmpC = cmpCar(), cmpIdxNow = cmpC ? cmpC.idx : null;
     const multi = isMulticlass();
     const cars = Object.values(S.cars.cars || {}).filter(c => c.pct != null && c.pct >= 0 && c.surface !== "not_in_world");
     // Incidents of the followed car, where on the lap they happened: predicted
@@ -2160,6 +2299,10 @@
       if (c.idx === focus) {   // ring the car being watched so it is findable at a glance
         ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(x, y, mine ? 12 : 10, 0, 7); ctx.stroke();
+      }
+      if (c.idx === cmpIdxNow) {   // and the car it is being compared with, dashed
+        ctx.strokeStyle = "#B98BFF"; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.arc(x, y, mine ? 12 : 10, 0, 7); ctx.stroke(); ctx.setLineDash([]);
       }
       ctx.fillStyle = mine ? "#2A1A00" : "#08203F";
       // In position mode an unscored car (pos 0 -- not yet classified, in the
@@ -2207,7 +2350,7 @@
     }
     if (dirty.cars && now - drawnAt.cars >= 100) {
       drawnAt.cars = now; dirty.cars = false;
-      renderStandings(); renderFocus(); renderBattle(); renderStrategy(); renderTraffic(); renderFollow(); renderTires();
+      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderStrategy(); renderTraffic(); renderFollow(); renderTires();
     }
     if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {
       chartDirty = false; chartAt = now; drawCharts();
@@ -2312,15 +2455,54 @@
     sync();
   })();
 
-  $("rows").addEventListener("click", e => {
+  // Click (tap) a row: compare that car with the one you follow; again: close it.
+  // Double-click (double-tap): follow it instead. Your followed car only changes
+  // on purpose.
+  // The table is rebuilt on every update -- up to 30 a second in the suite -- so
+  // the row under the pointer is usually a NEW element by the time the button
+  // comes up, and by the second click of a double-click. The browser's own click
+  // and dblclick can then be lost (they want one element throughout). So the car
+  // is noted when the pointer goes down and acted on when it comes up, and the
+  // double is timed here. Pointer events: mouse, touch and pen alike.
+  const TAP_SLOP_PX = 8, DOUBLE_MS = 400;
+  let down = null, lastTap = null;
+  $("rows").addEventListener("pointerdown", e => {
     const tr = e.target.closest("tr[data-idx]");
-    if (!tr) return;
-    const idx = Number(tr.dataset.idx);
-    // Clicking a row follows that car (for everyone on this relay); clicking
-    // the car already chosen goes back to automatic.
-    const r = refInfo();
-    sendFocus(r.source === "chosen" && r.idx === idx ? null : idx);
+    down = tr && e.button === 0 ? { idx: Number(tr.dataset.idx), x: e.clientX, y: e.clientY } : null;
   });
+  $("rows").addEventListener("pointercancel", () => { down = null; });   // became a scroll
+  $("rows").addEventListener("pointerup", e => {
+    const d = down; down = null;
+    if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > TAP_SLOP_PX) return;
+    const now = performance.now();
+    if (lastTap && lastTap.idx === d.idx && now - lastTap.t < DOUBLE_MS) {
+      lastTap = null;
+      followInstead(d.idx);
+      return;
+    }
+    lastTap = { idx: d.idx, t: now };
+    const me = meCar();
+    if (me && d.idx === me.idx) return;        // the followed car itself: nothing to compare
+    setCompare(h2hIdx === d.idx && cmpCar() ? null : d.idx);
+  });
+  // Follow c instead of the current car; the current one becomes the comparison,
+  // so swapping back and forth is one click each way.
+  function followInstead(idx) {
+    const prev = meCar();
+    if (prev && prev.idx === idx && myRef === idx) return;    // already following it
+    followNote = "";
+    setFollow(idx);
+    setCompare(prev && prev.idx !== idx ? prev.idx : null);
+  }
+  $("cmp").addEventListener("click", e => {
+    const f = e.target.closest("[data-cmp-follow]");
+    if (f) { followInstead(Number(f.dataset.cmpFollow)); return; }
+    if (e.target.closest("[data-cmp-h2h]")) {
+      const b = $("chartTabs").querySelector('button[data-c="h2h"]');
+      if (b) { b.click(); b.scrollIntoView({ block: "nearest" }); }
+    }
+  });
+  $("cmpClose").addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setCompare(null); });
 
   $("unitToggle").addEventListener("click", () => {
     U = (U === UNITS.imperial) ? UNITS.metric : UNITS.imperial;

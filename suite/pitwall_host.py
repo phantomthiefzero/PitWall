@@ -101,8 +101,19 @@ class PitWallHost:
         # message including encoding, a few percent of one core.
         self.bridge = Bridge(src, "ws://127.0.0.1:%d" % self.port, self._bridge_token,
                              state_hz=60.0, cars_hz=30.0, allow_camera=True, log=self.log)
-        asyncio.get_running_loop().create_task(self.bridge.run())
+        # Keep the task: asyncio holds only a weak reference to a running task,
+        # and a bridge that ends must say so rather than leave PitWall silently dead.
+        self._bridge_task = asyncio.get_running_loop().create_task(self.bridge.run())
+        self._bridge_task.add_done_callback(self._bridge_ended)
         self.log("PitWall relay on ws://127.0.0.1:%d, bridge source: %s" % (self.port, self.source_kind))
+
+    def _bridge_ended(self, task):
+        if task.cancelled():
+            return
+        e = task.exception()
+        self.error = ("PitWall's bridge stopped: %s: %s" % (type(e).__name__, e)) if e else \
+            "PitWall's bridge stopped. Restart the suite to bring it back."
+        self.log(self.error)
 
     def _set_guest_token(self, token):
         """Called from the share thread; the relay lives on the event loop."""

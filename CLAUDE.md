@@ -24,9 +24,14 @@ Verification status
   and replay commands (broadcast); see VARIABLES_TO_VERIFY.md, "Broadcast".
 
 Spectator first: the booth is mostly used spectating. Relative values follow the
-REFERENCE car (`cars.derived.ref`: chosen by a viewer, else your car when driving, else
-the camera car), never PlayerCarIdx directly -- while spectating that is slot 63, not a
-car. Only fuel, tyre sets, in-car settings and CarLeftRight are your-car-only.
+REFERENCE car (`cars.derived.ref`: your car when driving, else the camera car), never
+PlayerCarIdx directly -- while spectating that is slot 63, not a car. Only fuel, tyre
+sets, in-car settings and CarLeftRight are your-car-only.
+- A PitWall viewer's choices change only their own screen. Following another car is per
+  viewer: the bridge computes a `RefView` per followed car (normalize.relative_to, same
+  methods, own history) and the relay sends each car's `refview` only to its viewers.
+  Nothing a view or guest token sends may change what another viewer sees. The broadcast
+  is the exception by design: producer graphics and camera are shared and synced.
 
 A recurring trap, worth stating plainly: FakeSource repeatedly encoded the same
 assumption as the code under test, so the suite passed while the sim disagreed.

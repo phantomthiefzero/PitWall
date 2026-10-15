@@ -207,20 +207,32 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
 ### Following a car (spectator first)
 
 Every relative value (`toPlayerS`, `youGainSPerLap`, `vsYou`, `rejoin`, `undercut`, `traffic`,
-`nearby`, battle, gap chart) is measured from ONE reference car, reported as
-`cars.derived.ref = {"idx", "source": "chosen"|"your_car"|"camera", "own", "camera"}`:
-the car a viewer chose, else your own car when driving, else the camera car while
-spectating. The "player"/"you" key names are kept for compatibility; they mean the
-reference car. Fuel, tyre sets, in-car settings and iRacing's left/right spotter exist
-for your own car only (`ref.own`).
+`nearby`, battle, gap chart) is measured from a reference car. In the SHARED stream that
+is reported as `cars.derived.ref = {"idx", "source": "your_car"|"camera", "own", "camera"}`:
+your own car when driving, else the camera car while spectating. No viewer can move it.
+The "player"/"you" key names are kept for compatibility; they mean the reference car.
+Fuel, tyre sets, in-car settings and iRacing's left/right spotter exist for your own car
+only (`ref.own`).
 
-`{"type":"focus","idx":N}` (viewer → relay → bridge) chooses the car; `"idx":null` goes
-back to automatic. It does not touch the sim, so any viewer may send it, and the relay
-forwards only a clean car index (0-63 or null). The choice is shared by everyone on the
-relay and survives a session change.
+A viewer may follow another car **for themselves only**:
+
+- `{"type":"focus","idx":N}` (viewer → relay) chooses it; `"idx":null` goes back to
+  automatic. Any role may send it, guests included, because it changes nothing for anyone
+  else. The relay answers `{"type":"focus_result","ok","idx","error"}`; it refuses a car
+  beyond `MAX_REFS` (12) different cars followed at once. A viewer re-sends its choice
+  after a reconnect; the relay forgets it when the viewer leaves.
+- `{"type":"refs","idxs":[N,...],"fresh":N|null}` (relay → bridge): the cars viewers
+  follow, sent whenever that set changes and to a bridge that connects while any are
+  followed. `fresh` is a car just chosen; its next view is sent whole.
+- `{"type":"refview","ref":N,"full",...}` (bridge → relay → ONLY the viewers following N),
+  delta-encoded like `cars`, at the cars rate: `cars` (`"<idx>"` → the per-car fields in
+  `normalize.REF_CAR_FIELDS`, measured from N), `derived` (`ref` with `"source":"chosen"`,
+  `rejoin`, `undercut`, `traffic`, `nearby`) and `gaps` (as `refgaps.series`, from N).
+  Computed by `normalize.relative_to` with a `RefView`: the same Deriver methods as the
+  shared stream, with that car's own history. The client layers it over the shared `cars`.
 
 `{"type":"refgaps","ref":N,"series":{"<idx>":[[lap,gapS],...]}}` (bridge, whole, on every
-new lap line or reference change): each car's gap to the reference at each lap line --
+new lap line or reference change): each car's gap to the shared reference at each lap line --
 the moment it crossed minus the moment the reference crossed (sector-timer interpolated
 when available). Derived.
 

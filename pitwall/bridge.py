@@ -12,10 +12,15 @@ import threading
 import time
 
 now_m = time.monotonic
+
+# Cars that may be followed individually at once. Each costs one relative_to per
+# cars message; the relay refuses a choice beyond this rather than load the PC.
+MAX_REFS = 12
 import traceback
 import urllib.parse
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from . import trackmap
 from .delta import DeltaEncoder, cars_to_wire
@@ -24,7 +29,7 @@ from .camerapacks import packs_message
 from .carrender import CarRenderer, render_key
 from .director import Director
 from .liveries import LiveryCapture, LiveryStore, livery_key
-from .normalize import Deriver, build_cars, build_session, build_state
+from .normalize import Deriver, RefView, build_cars, build_session, build_state, relative_to
 from .sources import TelemetrySource
 
 
@@ -75,10 +80,13 @@ class Bridge:
         # otherwise; feed_seq says how far each viewer has been sent.
         self._feed_sent = 0
         self._feed_full_due = True
-        # The car a viewer chose to follow. Kept here, not in the Deriver, so a
-        # session change (which replaces the Deriver) does not drop the choice.
-        self.focus_manual: int | None = None
         self._rg_key = None
+        # Cars that viewers have chosen to follow, each for themselves alone
+        # (the relay says which; see _set_refs). The shared stream's reference
+        # never moves for them. One RefView and one delta encoder per car.
+        self._refs: set[int] = set()
+        self._ref_views: dict[int, RefView] = {}
+        self._ref_enc: dict[int, DeltaEncoder] = {}
 
     def _ws_url(self) -> str:
         sep = "&" if "?" in self.relay_url else "?"
@@ -186,14 +194,12 @@ class Bridge:
             if restarts != self._src_restarts:
                 self._src_restarts = restarts
                 self._session_num = session_num
-                self.deriver = Deriver()
-                self._feed_full_due = True
+                self._new_deriver()
                 self.log("source restarted; derived history reset")
             elif session_num is not None and session_num != self._session_num:
                 prev, self._session_num = self._session_num, session_num
                 if prev is not None:
-                    self.deriver = Deriver()
-                    self._feed_full_due = True
+                    self._new_deriver()
                     self.log(f"session {prev} -> {session_num}; derived history reset")
             st = build_state(self.src, self.deriver)
             self._last_state = st
@@ -203,7 +209,6 @@ class Bridge:
                 outbox.append(enc)
         if now >= self._next_cars:
             self._next_cars = now + self.cars_dt
-            self.deriver.focus_manual = self.focus_manual
             cars_msg = build_cars(self.src, self.session_msg, self.deriver)
             self._last_cars = cars_msg
             self._broadcast_tick(cars_msg, outbox)
@@ -216,7 +221,39 @@ class Bridge:
             rg = self._refgaps_message()
             if rg:
                 outbox.append(rg)
+            outbox.extend(self._ref_messages(cars_msg, now))
         return outbox
+
+    def _new_deriver(self):
+        self.deriver = Deriver()
+        self._feed_full_due = True
+        self._ref_views.clear()           # they read the old Deriver's history
+        self._ref_enc.clear()             # and their viewers need a fresh keyframe
+
+    def _set_refs(self, idxs, fresh=None):
+        """The relay's list of cars viewers are following. Views nobody wants are
+        dropped; `fresh` is a car someone has just chosen, who needs a keyframe."""
+        clean = {i for i in (idxs or []) if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < 64}
+        self._refs = set(sorted(clean)[:MAX_REFS])
+        for i in list(self._ref_views):
+            if i not in self._refs:
+                self._ref_views.pop(i, None)
+                self._ref_enc.pop(i, None)
+        if fresh in self._ref_enc:
+            self._ref_enc[fresh].reset()
+
+    def _ref_messages(self, cars_msg: dict, now: float) -> list[dict]:
+        out = []
+        for idx in sorted(self._refs):
+            view = self._ref_views.get(idx)
+            if view is None:
+                view = self._ref_views[idx] = RefView(self.deriver, idx)
+            msg = relative_to(view, cars_msg, self.session_msg, cars_msg.get("t"))
+            enc = self._ref_enc.setdefault(idx, DeltaEncoder()).encode(msg, now)
+            if enc:
+                enc["ref"] = idx          # a delta drops unchanged keys; routing needs this one
+                out.append(enc)
+        return out
 
     # ------------------------------------------------------------------ #
     # broadcast: director, livery photos
@@ -409,38 +446,62 @@ class Bridge:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if msg.get("type") == "cmd" and msg.get("cmd") in ("director", "livery"):
+            if not isinstance(msg, dict):
+                continue
+            try:
+                await self._handle(ws, msg)
+            except ConnectionClosed:
+                raise
+            except Exception as e:  # noqa: BLE001
+                # A malformed command (a producer's "holdS": "abc") raised out of
+                # here, out of run(), and the bridge process exited mid-broadcast.
+                # Answer the sender instead; the stream carries on.
+                self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} rejected: {type(e).__name__}: {e}")
+                if msg.get("type") == "cmd":
+                    await ws.send(json.dumps({"type": "cmd_result", "ok": False, "echo": msg,
+                                              "error": f"bad command: {type(e).__name__}: {e}"}))
+
+    async def _handle(self, ws, msg: dict):
+        if msg.get("type") == "cmd" and msg.get("cmd") in ("director", "livery"):
+            if msg.get("cmd") == "director":
+                # On the event loop, the thread director.tick() runs on: the
+                # Director has no locks, and a grid walk started from a worker
+                # thread could interleave with a tick halfway through a cut.
+                res = self._broadcast_cmd(msg)
+            else:
+                # Livery setup talks to OBS over the network; keep it off the loop.
                 res = await asyncio.get_running_loop().run_in_executor(None, self._broadcast_cmd, msg)
-                self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} -> {'ok' if res['ok'] else res['error']}")
-                await ws.send(json.dumps(res))
-            elif msg.get("type") == "cmd":
-                # A cut by hand takes the camera from the director, the grid walk
-                # or a followed battle: one owner at a time (pitwall/director.py).
-                # Replay commands do not: the owner simply waits for live.
-                if msg.get("cmd") == "camera" and self.gate.camera and self.director.manual():
-                    await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
-                # In a worker thread: a replay jump pauses between its seek and
-                # its play, and the stream must not stall while it does.
-                res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, msg)
-                self.log(f"cmd {msg} -> {'ok' if res['ok'] else res['error']}")
-                await ws.send(json.dumps(res))
-            elif msg.get("type") == "focus":
-                idx = msg.get("idx")
-                if idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64):
-                    self.focus_manual = idx
-                    self.log(f"following {'car ' + str(idx) if idx is not None else 'automatically'}")
-            elif msg.get("type") == "resend":
-                # a new viewer wants the slow-changing messages again + fresh keyframes
-                for m in (self.session_msg, self.map_msg, self.director.status(),
-                          self.capture.status_message(), self.packs_msg):
-                    if m:
-                        await ws.send(json.dumps(m, separators=(",", ":")))
-                self._liveries_sent.clear()
-                for m in self._livery_messages():
+            self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} -> {'ok' if res['ok'] else res['error']}")
+            await ws.send(json.dumps(res))
+        elif msg.get("type") == "cmd":
+            # A cut by hand takes the camera from the director, the grid walk
+            # or a followed battle: one owner at a time (pitwall/director.py).
+            # Replay commands do not: the owner simply waits for live.
+            if msg.get("cmd") == "camera" and self.gate.camera and self.director.manual():
+                await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
+            # In a worker thread: a replay jump pauses between its seek and
+            # its play, and the stream must not stall while it does.
+            res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, msg)
+            self.log(f"cmd {msg} -> {'ok' if res['ok'] else res['error']}")
+            await ws.send(json.dumps(res))
+        elif msg.get("type") == "refs":
+            # Which cars viewers follow, each for themselves. Nothing here moves
+            # the shared stream's reference; it only adds a view for each car.
+            self._set_refs(msg.get("idxs"), msg.get("fresh"))
+        elif msg.get("type") == "resend":
+            # a new viewer wants the slow-changing messages again + fresh keyframes
+            for m in (self.session_msg, self.map_msg, self.director.status(),
+                      self.capture.status_message(), self.packs_msg):
+                if m:
                     await ws.send(json.dumps(m, separators=(",", ":")))
-                self.delta.reset()
-                self._feed_full_due = True
-                self._rg_key = None
+            self._liveries_sent.clear()
+            for m in self._livery_messages():
+                await ws.send(json.dumps(m, separators=(",", ":")))
+            self.delta.reset()
+            self._feed_full_due = True
+            self._rg_key = None
+            for e in self._ref_enc.values():
+                e.reset()
 
     async def run(self):
         self._loop = asyncio.get_running_loop()
@@ -458,6 +519,7 @@ class Bridge:
                     self._liveries_sent.clear()
                     self.delta.reset()
                     self._feed_full_due = True
+                    self._set_refs([])     # the relay sends its own list on connect
                     await asyncio.gather(self._producer(ws), self._consumer(ws))
             except (OSError, websockets.exceptions.WebSocketException) as e:
                 # The relay accepts one bridge and closes the previous one with

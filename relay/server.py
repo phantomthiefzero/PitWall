@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import gzip
 import hmac
 import http
 import json
@@ -56,6 +57,10 @@ VIEWER_QUEUE = 1000
 CLOSE_TOO_SLOW = 4002
 
 # Which viewer role may send which command kind on to the bridge.
+# Cars that viewers may follow individually at once (the bridge computes one
+# view per car). Matches pitwall.bridge.MAX_REFS.
+MAX_REFS = 12
+
 CMD_ROLE = {"pit": "engineer", "camera": "producer", "replay": "producer",
             "director": "producer", "livery": "producer"}
 
@@ -96,6 +101,18 @@ BROADCAST_DIR = os.path.join(getattr(sys, "_MEIPASS", None) or os.path.dirname(o
 # PitWall's dashboard, served here too so crew reaching this relay from outside
 # (a VPS, or the suite's "Share online" tunnel) can load it from the same address.
 CLIENT_PAGE = os.path.join(os.path.dirname(BROADCAST_DIR), "client", "index.html")
+
+
+def page_response(request, body: bytes) -> Response:
+    """An HTML page, compressed for any browser that accepts it. The dashboard is
+    ~160 KB: compressed it loads faster over a share link, and it stays under
+    ~128 KB on the wire, the size above which uncompressed local web replies
+    stalled on a PC whose security software inspects them (seen with Norton 360)."""
+    headers = [("Content-Type", "text/html; charset=utf-8"), ("Cache-Control", "no-cache")]
+    if "gzip" in (request.headers.get("Accept-Encoding") or "").lower():
+        body = gzip.compress(body, compresslevel=6, mtime=0)
+        headers += [("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")]
+    return Response(200, "OK", Headers(headers + [("Content-Length", str(len(body)))]), body)
 CLIENT_PATHS = ("/pitwall/", "/pitwall", "/pitwall/index.html")
 BROADCAST_PAGES = {"/broadcast/overlay.html": "overlay.html", "/broadcast/producer.html": "producer.html",
                    "/broadcast/": "producer.html", "/broadcast": "producer.html"}
@@ -139,6 +156,10 @@ class Relay:
         # sharing online. Setting a new one (or None) disconnects its holders.
         self.guest_token: str | None = None
         self._guests: set = set()
+        # The car each viewer follows, for that viewer alone. Choosing one never
+        # changes what anyone else sees: the bridge computes a view per chosen car
+        # and only that car's viewers are sent it.
+        self.view_ref: dict = {}     # ws -> carIdx
         self.gfx: dict = {}
         self.gfx_rev = 0
         self.bridge = None
@@ -146,9 +167,11 @@ class Relay:
         self.snapshot: dict[str, str] = {}
         self.stats = {"in": 0, "out": 0, "dropped_slow": 0, "started": time.time()}
 
-    async def _fanout(self, raw: str):
+    async def _fanout(self, raw: str, only=None):
         # Never awaits a viewer: each one has its own queue and writer task.
         for ws, q in list(self.viewers.items()):
+            if only is not None and not only(ws):
+                continue
             try:
                 q.put_nowait(raw)
             except asyncio.QueueFull:
@@ -165,6 +188,13 @@ class Relay:
                 self.stats["out"] += 1
         except websockets.exceptions.ConnectionClosed:
             pass
+
+    async def _send_refs(self, fresh=None):
+        """Tell the bridge which cars viewers follow. `fresh`: just chosen, so
+        the bridge sends that car's next view whole, not as a delta."""
+        if self.bridge is not None:
+            await self._to_bridge(json.dumps({"type": "refs", "idxs": sorted(set(self.view_ref.values())),
+                                              "fresh": fresh}))
 
     async def _to_bridge(self, raw: str):
         # The bridge closing between the check and the send is the bridge's
@@ -183,12 +213,21 @@ class Relay:
         self.bridge = ws
         print(f"[relay] bridge connected from {ws.remote_address}")
         await self._fanout(json.dumps({"type": "relay", "bridge": "connected"}))
+        if self.view_ref:            # a new bridge starts with none; tell it who follows what
+            await self._send_refs()
         try:
             async for raw in ws:
                 self.stats["in"] += 1
                 try:
-                    t = json.loads(raw).get("type")
+                    obj = json.loads(raw)
+                    t = obj.get("type")
                 except Exception:
+                    continue
+                if t == "refview":
+                    # Measured from one viewer-chosen car: only its viewers get it.
+                    ref = obj.get("ref")
+                    await self._fanout(raw, only=lambda v, ref=ref: self.view_ref.get(v) == ref)
+                    await asyncio.sleep(0)
                     continue
                 if t in SNAPSHOT_TYPES and (t not in ("state", "cars", "feed") or msg_is_full(raw)):
                     self.snapshot[t] = raw
@@ -227,7 +266,9 @@ class Relay:
         # they arrive in order and the writer task is the only thing sending.
         q.put_nowait(json.dumps({"type": "relay", "bridge": "connected" if self.bridge else "disconnected",
                                  "engineer": engineer, "role": role, "viewers": len(self.viewers) + 1}))
-        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps"):
+        # Every snapshot type, in the order a page needs them. camera_packs was
+        # kept but never sent, so a producer who joined after the bridge saw no packs.
+        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps", "camera_packs"):
             if t in self.snapshot:
                 q.put_nowait(self.snapshot[t])
         q.put_nowait(self._gfx_message())
@@ -278,9 +319,15 @@ class Relay:
                     elif not isinstance(msg.get("set"), dict) or len(raw) > GFX_MAX_BYTES:
                         reply({"type": "gfx_result", "ok": False, "error": "a gfx message needs a small 'set' object"})
                     else:
-                        merge_gfx(self.gfx, msg["set"])
-                        if len(json.dumps(self.gfx)) > GFX_MAX_BYTES:
-                            self.gfx = {}
+                        # Merge into a copy: a patch that would push the state over
+                        # the limit is refused. It used to replace the state with {},
+                        # which took every graphic off air in the middle of a show.
+                        merged = merge_gfx(json.loads(json.dumps(self.gfx)), msg["set"])
+                        if len(json.dumps(merged)) > GFX_MAX_BYTES:
+                            reply({"type": "gfx_result", "ok": False,
+                                   "error": "graphics state would exceed %d KB; patch refused" % (GFX_MAX_BYTES // 1024)})
+                            continue
+                        self.gfx = merged
                         self.gfx_rev += 1
                         await self._fanout(self._gfx_message(by=msg.get("by") if isinstance(msg.get("by"), str) else None))
                 elif msg.get("type") == "cmd":
@@ -295,12 +342,23 @@ class Relay:
                         await self._to_bridge(raw)
                 elif msg.get("type") == "resend" and self.bridge is not None:
                     await self._to_bridge(raw)
-                elif msg.get("type") == "focus" and self.bridge is not None:
-                    # Which car PitWall follows. It does not touch the sim, so any
-                    # viewer may send it; only a clean car index goes through.
+                elif msg.get("type") == "focus":
+                    # Which car THIS viewer follows. Any role may choose, guests
+                    # included, because it changes nothing for anyone else.
                     idx = msg.get("idx")
-                    if idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64):
-                        await self._to_bridge(json.dumps({"type": "focus", "idx": idx}))
+                    if not (idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64)):
+                        continue
+                    if idx is not None and idx not in self.view_ref.values() and                             len(set(self.view_ref.values())) >= MAX_REFS:
+                        reply({"type": "focus_result", "ok": False, "idx": idx,
+                               "error": f"{MAX_REFS} cars are already being followed on this relay; "
+                                        "follow one of those, or automatic"})
+                        continue
+                    if idx is None:
+                        self.view_ref.pop(ws, None)
+                    else:
+                        self.view_ref[ws] = idx
+                    reply({"type": "focus_result", "ok": True, "idx": idx})
+                    await self._send_refs(fresh=idx)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
@@ -308,6 +366,8 @@ class Relay:
             lv_task.cancel()
             self.viewers.pop(ws, None)
             self._guests.discard(ws)
+            if self.view_ref.pop(ws, None) is not None:
+                await self._send_refs()
             print(f"[relay] viewer left, {len(self.viewers)} total")
 
     async def handler(self, ws):
@@ -399,7 +459,12 @@ class Relay:
                 body = f.read()
             headers = Headers([("Content-Type", ASSET_TYPES[os.path.splitext(name)[1].lower()]),
                                ("Content-Length", str(len(body))), ("Cache-Control", "no-cache"),
-                               ("Access-Control-Allow-Origin", "*")])
+                               ("Access-Control-Allow-Origin", "*"),
+                               # Uploads are served from the same origin as the
+                               # producer page; an uploaded SVG opened directly must
+                               # not be able to run script there.
+                               ("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"),
+                               ("X-Content-Type-Options", "nosniff")])
             return Response(200, "OK", headers, body)
         if path in CLIENT_PATHS and request.headers.get("Upgrade") is None:
             try:
@@ -407,9 +472,7 @@ class Relay:
                     body = f.read()
             except OSError:
                 return connection.respond(http.HTTPStatus.NOT_FOUND, "the PitWall page is not installed\n")
-            headers = Headers([("Content-Type", "text/html; charset=utf-8"),
-                               ("Content-Length", str(len(body))), ("Cache-Control", "no-cache")])
-            return Response(200, "OK", headers, body)
+            return page_response(request, body)
         page = BROADCAST_PAGES.get(path)
         if page and request.headers.get("Upgrade") is None:
             try:
@@ -419,9 +482,7 @@ class Relay:
                 return connection.respond(http.HTTPStatus.NOT_FOUND, "broadcast pages are not installed\n")
             # No token is needed to load the page itself; it asks for one, and
             # every message still needs one.
-            headers = Headers([("Content-Type", "text/html; charset=utf-8"),
-                               ("Content-Length", str(len(body))), ("Cache-Control", "no-cache")])
-            return Response(200, "OK", headers, body)
+            return page_response(request, body)
         return None
 
 
