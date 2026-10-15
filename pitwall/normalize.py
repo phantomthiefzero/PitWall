@@ -179,6 +179,8 @@ def build_session(src: TelemetrySource) -> dict:
         "event": {k: wk.get(k) for k in ("EventType", "Category", "SeriesID", "SeasonID", "SessionID",
                                           "SubSessionID", "LeagueID", "Official", "TeamRacing", "NumCarClasses",
                                           "TrackWeatherType", "TrackSkies", "SimMode")},
+        "driverTires": [{"index": t.get("TireIndex"), "type": t.get("TireCompoundType")}
+                        for t in (di.get("DriverTires") or []) if isinstance(t, dict)],
         "driverCar": {k: di.get(k) for k in ("DriverCarIdx", "DriverUserID", "DriverCarFuelMaxLtr",
                                               "DriverCarMaxFuelPct", "DriverCarSLShiftRPM",
                                               "DriverCarSLBlinkRPM", "DriverCarRedLine", "DriverCarFuelKgPerLtr",
@@ -288,6 +290,19 @@ class Deriver:
         self._uc_inpit: dict[int, bool] = {}
         self._player_lap = None
         self._player_idx = None
+        # The car everything relative is measured from: one a viewer chose,
+        # else your own car when driving, else the camera car when spectating.
+        self.focus_manual: int | None = None
+        self.ref_idx: int | None = None
+        self.ref_source: str | None = None
+        self._last_lap_seq = 0
+        self._spd: dict[int, dict] = {}
+        self._cmp: dict[int, dict] = {}
+        self._drv: dict[int, dict] = {}
+        self._rf_samples: list[tuple[float, float]] = []
+        self._rf_rates: list[float] = []
+        self._adj_base: dict | None = None
+        self._adj_pend: dict[str, dict] = {}
         self.tank_l: float | None = None
         self._fuel_by_lap: dict[int, dict] = {}
         self._fuel_lap_pit = False
@@ -406,7 +421,10 @@ class Deriver:
             # what put a bogus 204 s "stop" on 13 of 16 cars in the VIR race.
             self._pit[idx] = {"stops": 0, "lastStopS": None, "lastStopLap": None,
                               "enterT": None, "enterLap": None, "boxT": None, "boxS": None,
-                              "onRoad": on_pit_road, "inBox": in_box}
+                              "onRoad": on_pit_road, "inBox": in_box,
+                              # a stint's length is only known if we saw it start:
+                              # at the start of the race, or at a stop we watched
+                              "stints": [], "stintStart": lap if lap is not None and 0 <= lap <= 1 else None}
             out["inPit"] = on_pit_road
             return out
         if on_pit_road and not st["onRoad"]:                 # entered the lane
@@ -435,6 +453,10 @@ class Deriver:
                 rec = self._pit_lane_sample(idx, st, t, pct, st["boxS"])
                 if rec is not None:
                     self._stops_tick[idx] = rec
+                if st.get("stintStart") is not None and st["enterLap"] is not None:
+                    st["stints"].append(st["enterLap"] - st["stintStart"])
+                    del st["stints"][:-20]
+                st["stintStart"] = lap
             st["enterT"] = st["enterLap"] = st["boxS"] = None
         st["onRoad"], st["inBox"] = on_pit_road, in_box
 
@@ -613,7 +635,8 @@ class Deriver:
                           "gapS": c.get("f2TimeS") if c.get("gapValid") else None,
                           "classGapS": d.get("classGapS"), "toPlayerS": d.get("toPlayerS"),
                           "pit": st["pit"] or bool(c.get("onPitRoad")),
-                          "jump": lc - st["lc"] != 1, "t": round(t, 2), "sectors": None}
+                          "jump": lc - st["lc"] != 1, "t": round(t, 2), "sectors": None,
+                          "topSpeedMs": self._take_top_speed(idx)}
             if idx == self._player_idx:
                 st["pend"]["fuelL"] = None
             st["pendT"], st["stale"], st["lc"] = t, st["final"], lc
@@ -651,6 +674,7 @@ class Deriver:
             sd = (self._sect.get(idx) or {}).get("lapDone")
             if sd and abs(sd[0] - pend["t"]) <= self.LAP_EXTRAS_WAIT_S:
                 pend["sectors"] = sd[1]
+                pend["tx"] = round(sd[0], 3)          # interpolated line crossing
         if idx == self._player_idx:
             f = self._fuel_by_lap.get(pend["lap"])
             if f is not None:
@@ -664,6 +688,7 @@ class Deriver:
         st["pend"] = None
         e.pop("jump", None)
         e.pop("_td", None)
+        self._last_lap_seq += 1
         lst = self._laps.setdefault(idx, [])
         lst.append(e)
         del lst[:-200]
@@ -899,7 +924,7 @@ class Deriver:
                     and not in_pit.get(j) and not in_pit.get(player_idx) and tp is not None:
                 rec["settled"] = round(tp, 2)
                 rec["settledT"] = t
-                self.event(t, "pit_battle", idx=j, preS=round(rec["pre"], 2), nowS=rec["settled"],
+                self.event(t, "pit_battle", idx=j, ref=player_idx, preS=round(rec["pre"], 2), nowS=rec["settled"],
                            first="them" if rec["kind"] == "they_stopped" else "you")
             stopper = c if rec["kind"] == "they_stopped" else me
             laps_since = None
@@ -1085,12 +1110,12 @@ class Deriver:
                     key = "you_closing"
             prevk = ev["closing"].get(i)
             if key and key != prevk:
-                self.event(t, key, idx=i, gapS=round(abs(tp), 2), rateSPerLap=round(abs(gain), 2))
+                self.event(t, key, idx=i, ref=player_idx, gapS=round(abs(tp), 2), rateSPerLap=round(abs(gain), 2))
             if key or (gain is not None and abs(gain) < 0.1) or tp is None:
                 ev["closing"][i] = key
         # your class position, once it has held for 3 s
         cp = me.get("classPos") or None
-        self._stable(ev, "pos", cp, t, 3.0, lambda old, new: self.event(t, "position", fromPos=old, toPos=new))
+        self._stable(ev, "pos", cp, t, 3.0, lambda old, new: self.event(t, "position", idx=player_idx, fromPos=old, toPos=new))
         # class leader changes, held for 5 s
         leader = next((c["idx"] for c in cars if c.get("classPos") == 1 and c.get("classId") == me.get("classId")), None)
         self._stable(ev, "lead", leader, t, 5.0, lambda old, new: self.event(t, "lead_change", idx=new, prevIdx=old))
@@ -1138,7 +1163,9 @@ class Deriver:
         inc = (player.get("incidents") or {}).get("my")
         if inc is not None:
             if ev["inc"] is not None and inc > ev["inc"]:
-                self.event(t, "incident", delta=inc - ev["inc"], total=inc, limit=self.incident_limit)
+                self.event(t, "incident", delta=inc - ev["inc"], total=inc, limit=self.incident_limit,
+                           idx=self._player_idx, pct=None if player.get("lapPct") is None
+                           else round(player["lapPct"], 4))
             ev["inc"] = inc
         warn = set(player.get("engineWarnings") or []) - self.QUIET_WARNINGS
         if ev["warn"] is not None:
@@ -1504,6 +1531,225 @@ class Deriver:
         st["lapDone"] = (t, list(st["lap"]))
         st["lap"] = [None] * n
 
+    # ------------------------------------------------------------------ #
+    # Everything about one car that can be had for ANY car: the booth is
+    # mostly used spectating, where only the CarIdx* arrays and the session
+    # info are available. Fuel, tyres and in-car settings are your car only.
+    # ------------------------------------------------------------------ #
+
+    # Measured on the fake against its true speed: 0.25 s smoothing lagged
+    # braking by up to 4 m/s (95th percentile), 0.08 s by 1.3. The fake has no
+    # sampling noise and the sim's network-updated positions may, so 0.1 s.
+    SPEED_SMOOTH_S = 0.1
+
+    def car_speed(self, c, t, track_len):
+        """Speed from how far along the lap the car moved since the last sample.
+        iRacing gives other cars' positions but not their speed. Smoothed over
+        ~0.1 s; a jump in position (reset, tow, replay cut) starts it again."""
+        idx, pct = c.get("idx"), c.get("pct")
+        sp = self._spd.setdefault(idx, {"t": None, "pct": None, "v": None, "max": None})
+        if (not track_len or pct is None or pct < 0 or t is None
+                or c.get("surface") in (None, "not_in_world")):
+            sp.update(t=None, pct=None, v=None)
+            return None
+        v = None
+        if sp["t"] is not None and t > sp["t"]:
+            dt = t - sp["t"]
+            d = ((pct - sp["pct"] + 0.5) % 1.0) - 0.5        # signed lap fraction
+            if -0.001 < d < 0:
+                d = 0.0                                      # sampling jitter, not reversing
+            if 0 <= d < 0.05 and dt < 1.0:
+                raw = d * track_len / dt
+                if raw < 150.0:                              # 540 km/h: anything above is a glitch
+                    a = 1.0 - math.exp(-dt / self.SPEED_SMOOTH_S)
+                    v = raw if sp["v"] is None else sp["v"] + a * (raw - sp["v"])
+        sp["t"], sp["pct"], sp["v"] = t, pct, v
+        if v is not None and not c.get("onPitRoad"):
+            sp["max"] = v if sp["max"] is None else max(sp["max"], v)
+        return v
+
+    def _take_top_speed(self, idx):
+        sp = self._spd.get(idx)
+        if not sp or sp["max"] is None:
+            return None
+        top, sp["max"] = sp["max"], None
+        return round(top, 1)
+
+    def car_extras(self, c, t, grid_by_idx, fast_limit, is_race, team_race) -> dict:
+        idx = c["idx"]
+        out = {}
+        racing = [e["lapS"] for e in self._laps.get(idx, []) if e["lapS"] and not e["pit"]][-5:]
+        if len(racing) >= 3:
+            m = sum(racing) / len(racing)
+            out["consistencyS"] = round(math.sqrt(sum((x - m) ** 2 for x in racing) / len(racing)), 3)
+        else:
+            out["consistencyS"] = None
+        tops = [e["topSpeedMs"] for e in self._laps.get(idx, []) if e.get("topSpeedMs")]
+        out["topSpeedBestMs"] = max(tops) if tops else None
+        g = grid_by_idx.get(idx) if is_race else None
+        out["gridPos"] = g["pos"] if g else None
+        out["gridClassPos"] = g["classPos"] if g else None
+        out["posGained"] = g["pos"] - c["pos"] if g and c.get("pos") else None
+        out["classPosGained"] = (g["classPos"] - c["classPos"]
+                                 if g and g.get("classPos") and c.get("classPos") else None)
+        laps = self._laps.get(idx, [])
+        out["lapsLedSeen"] = sum(1 for e in laps if e.get("pos") == 1)
+        out["classLapsLedSeen"] = sum(1 for e in laps if e.get("classPos") == 1)
+        # Stints, from stops watched entry to exit. A stint that started before
+        # we connected (and not at the start of the race) has no known length.
+        p = self._pit.get(idx) or {}
+        stints = list(p.get("stints") or [])
+        start = p.get("stintStart")
+        out["stintsSeen"] = stints
+        out["stintStartLap"] = start
+        out["lapsThisStint"] = (c["lap"] - start) if start is not None and c.get("lap") is not None else None
+        out["longestStintLaps"] = max(stints) if stints else None
+        out["nextStopLapEst"] = start + max(stints) if stints and start is not None else None
+        # Tyres: a compound change is the only tyre fact iRacing gives for
+        # another car (same-compound changes are invisible).
+        cs = self._cmp.get(idx)
+        comp = c.get("compound")
+        if cs is None:
+            self._cmp[idx] = cs = {"c": comp, "changes": 0}
+        elif comp is not None and comp != cs["c"]:
+            if cs["c"] is not None:
+                cs["changes"] += 1
+                self.event(t, "compound_change", idx=idx, fromCompound=cs["c"], toCompound=comp)
+            cs["c"] = comp
+        out["compoundChanges"] = cs["changes"]
+        used = c.get("fastRepairsUsed")
+        out["fastRepairsLeft"] = (max(0, fast_limit - used)
+                                  if isinstance(fast_limit, int) and isinstance(used, (int, float)) and used >= 0
+                                  else None)
+        out["drivers"] = self._driver_stints(c, t, team_race)
+        return out
+
+    def _driver_stints(self, c, t, team_race):
+        """Team races: who is driving, and how long each driver has been in the
+        car since we connected. iRacing names the current driver per car in the
+        session info; a change there is a driver swap."""
+        idx = c["idx"]
+        key = c.get("userId") if c.get("userId") is not None else c.get("name")
+        if key is None or t is None:
+            return None
+        st = self._drv.get(idx)
+        if st is None:
+            st = self._drv[idx] = {"cur": key, "t": t, "lap": c.get("lapCompleted"), "tot": {}}
+            st["tot"][key] = {"name": c.get("name"), "timeS": 0.0, "laps": 0}
+        rec = st["tot"].setdefault(st["cur"], {"name": c.get("name"), "timeS": 0.0, "laps": 0})
+        rec["timeS"] += max(0.0, t - st["t"])
+        lc = c.get("lapCompleted")
+        if lc is not None and st["lap"] is not None and lc > st["lap"]:
+            rec["laps"] += lc - st["lap"]
+        st["t"], st["lap"] = t, lc
+        if key != st["cur"]:
+            prev = st["tot"].get(st["cur"], {}).get("name")
+            self.event(t, "driver_change", idx=idx, fromName=prev, toName=c.get("name"))
+            st["cur"] = key
+            st["tot"].setdefault(key, {"name": c.get("name"), "timeS": 0.0, "laps": 0})
+        if not team_race and len(st["tot"]) < 2:
+            return None
+        return [{"name": v["name"], "timeS": round(v["timeS"], 1), "laps": v["laps"], "current": k == st["cur"]}
+                for k, v in st["tot"].items()]
+
+    def compound_pace(self, cars) -> list:
+        """Wet or dry: each class's cars grouped by tyre compound, with the
+        middle of their last racing laps. Only cars whose last lap was a racing
+        lap count. The call is when the other compound's group is quicker."""
+        groups = {}
+        for c in cars:
+            last = next((e for e in reversed(self._laps.get(c["idx"], [])) if e["lapS"]), None)
+            if last is None or last["pit"] or c.get("compound") is None:
+                continue
+            groups.setdefault((c.get("classId"), c["compound"]), []).append(last["lapS"])
+        out = []
+        for (cls, comp), laps in groups.items():
+            out.append({"classId": cls, "compound": comp, "cars": len(laps),
+                        "medianLastLapS": round(self._median(laps), 3)})
+        for cls in {o["classId"] for o in out}:
+            g = [o for o in out if o["classId"] == cls]
+            best = min(o["medianLastLapS"] for o in g)
+            for o in g:
+                o["fastest"] = o["medianLastLapS"] == best and len(g) > 1
+                o["vsFastestS"] = round(o["medianLastLapS"] - best, 3) if len(g) > 1 else None
+        return sorted(out, key=lambda o: (str(o["classId"]), o["compound"]))
+
+    # ---- your car: refuel rate, adjustments --------------------------------
+    def refuel(self, t, fuel_level, in_stall):
+        """Refuel rate measured at your own stops: the rising part of the fuel
+        level while in the box (2.60 L/s in the Indianapolis capture)."""
+        if in_stall and fuel_level is not None and t is not None:
+            self._rf_samples.append((t, fuel_level))
+            return
+        s, self._rf_samples = self._rf_samples, []
+        rise = [i for i in range(1, len(s)) if s[i][1] > s[i - 1][1] + 1e-5]
+        if len(rise) >= 2:
+            a, b = s[rise[0] - 1], s[rise[-1]]
+            if b[1] - a[1] > 1.0 and b[0] - a[0] > 1.0:
+                self._rf_rates.append((b[1] - a[1]) / (b[0] - a[0]))
+                del self._rf_rates[:-10]
+
+    def refuel_rate(self):
+        return round(self._median(self._rf_rates), 3) if self._rf_rates else None
+
+    ADJUST_QUIET_S = 3.0
+    ADJUST_SKIP = {"dashPage"}
+
+    def adjustments(self, t, dc: dict, lap, live: bool):
+        """In-car adjustments (brake bias, TC, ABS...), your car only. Clicking
+        through several steps is one change: it is reported once the control
+        has been left alone for 3 s."""
+        if not live or t is None:
+            return
+        cur = {k: v for k, v in (dc or {}).items() if v is not None and k not in self.ADJUST_SKIP}
+        base, pend = self._adj_base, self._adj_pend
+        if base is None:
+            self._adj_base = dict(cur)
+            return
+        for k, v in cur.items():
+            if k not in base:
+                base[k] = v
+            elif v != (pend[k]["to"] if k in pend else base[k]):
+                if k in pend:
+                    pend[k].update(to=v, t=t)
+                else:
+                    pend[k] = {"from": base[k], "to": v, "t": t, "lap": lap}
+        for k in list(pend):
+            if t - pend[k]["t"] >= self.ADJUST_QUIET_S:
+                p = pend.pop(k)
+                if p["to"] != p["from"]:
+                    self.event(t, "adjust", control=k, fromValue=p["from"], toValue=p["to"], onLap=p["lap"])
+                base[k] = p["to"]
+
+    def set_ref(self, idx):
+        """A different reference car: everything measured FROM the old one is
+        void. Without this, switching cars reads as the reference jumping from
+        P8 to P3, or a car 'closing' by the gap between two different cars."""
+        self.ref_idx = idx
+        self._tp_hist.clear()
+        self._tp_ref.clear()
+        self._tp_slope.clear()
+        self._uc.clear()
+        self._uc_inpit = {}
+        self._near_hist.clear()
+        self._ev["closing"] = {}
+        self._ev["stable"].pop("pos", None)
+
+    def ref_gaps(self) -> dict:
+        """Gap to the reference car at each lap line, for every car: the time
+        each crossed the line on lap N minus the time the reference crossed it.
+        Recomputed whole, so it is right for whichever car is the reference."""
+        ref = self.ref_idx
+        rl = {e["lap"]: e.get("tx", e["t"]) for e in self._laps.get(ref, [])} if ref is not None else {}
+        out = {}
+        for idx, laps in self._laps.items():
+            if idx == ref:
+                continue
+            s = [[e["lap"], round(e.get("tx", e["t"]) - rl[e["lap"]], 2)] for e in laps if e["lap"] in rl]
+            if s:
+                out[str(idx)] = s
+        return out
+
     def session_best_sectors(self) -> list:
         return list(self._sect_best)
 
@@ -1779,6 +2025,16 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
             "clockSkewS": _num(g("ChanClockSkew")),
         }, "replayFrame": _num(g("ReplayFrameNum")),
         "p2p": {"status": _num(g("PushToPass")), "count": _num(g("P2P_Count"))},
+        # Tyre sets (your car): what has been used and what the rules leave.
+        "tireSets": {"used": _num(g("TireSetsUsed")), "available": _num(g("TireSetsAvailable")),
+                     "dryLimit": _num(g("PlayerCarDryTireSetLimit")),
+                     "frontUsed": _num(g("FrontTireSetsUsed")), "rearUsed": _num(g("RearTireSetsUsed")),
+                     "leftUsed": _num(g("LeftTireSetsUsed")), "rightUsed": _num(g("RightTireSetsUsed")),
+                     "frontAvailable": _num(g("FrontTireSetsAvailable")),
+                     "rearAvailable": _num(g("RearTireSetsAvailable")),
+                     "perTireUsed": {c: _num(g(f"{c}TiresUsed")) for c in ("LF", "RF", "LR", "RR")},
+                     "perTireAvailable": {c: _num(g(f"{c}TiresAvailable")) for c in ("LF", "RF", "LR", "RR")}},
+        "fastRepairs": {"used": _num(g("PlayerFastRepairsUsed")), "available": _num(g("FastRepairAvailable"))},
         # iRacing's spotter: whether a car is alongside, and on which side.
         "carLeftRight": CAR_LEFT_RIGHT.get(g("CarLeftRight")) if g("CarLeftRight") is not None else None,
         "carLeftRightRaw": _num(g("CarLeftRight")),
@@ -1840,10 +2096,19 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
                            time_remain_s=_num(g("SessionTimeRemain")),
                            lap_time_s=_num(g("LapLastLapTime")),
                            on_pit_road=player["onPitRoad"], lap_pct=player["lapPct"])
+    deriver.refuel(session["timeS"], player["fuelL"], bool(player["inPitStall"]))
+    derived["refuelLps"] = deriver.refuel_rate()
+    live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5
+    deriver.adjustments(session["timeS"], player["dc"], player["lap"], live)
     sv = player["pitService"]
     derived["plan"] = fuel_plan(player["fuelL"], derived["fuelPerLap"], derived["lapsRemaining"],
                                 derived["lapsRemainingIsEstimate"], player["lapPct"], player["lap"],
                                 deriver.tank_l, sv.get("fuel"), "fuel" in (sv.get("flags") or []))
+    plan = derived["plan"]
+    add = plan["addThisLapL"] if plan["addThisLapL"] is not None else plan["addAtOpenL"]
+    rate = derived["refuelLps"]
+    # Fuel time only: tyre changes and repairs add to it, and are not measured.
+    plan["fuelTimeS"] = round(add / rate, 1) if add is not None and rate else None
     derived["liveEdge"] = live_edge(g)
     deriver.state_events(session["timeS"], session, player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
@@ -1902,6 +2167,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     p2pc = g("CarIdxP2P_Count")
     gear = g("CarIdxGear")
     rpm = g("CarIdxRPM")
+    steer = g("CarIdxSteer")
     pace = g("CarIdxPaceFlags")
     cls = g("CarIdxClass")
 
@@ -1954,7 +2220,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "flags": decode_bits(_arr(cflags, i), FLAG_BITS),
             "fastRepairsUsed": _arr(frep, i),
             "p2pActive": _arr(p2ps, i), "p2pCount": _arr(p2pc, i),
-            "gear": _arr(gear, i), "rpm": _arr(rpm, i),
+            "gear": _arr(gear, i), "rpm": _arr(rpm, i), "steerRad": _arr(steer, i),
             "paceFlagsRaw": _arr(pace, i),
             # From the session info, not telemetry: iRacing's own counted
             # incident points for the car (team total) and its current driver.
@@ -2019,9 +2285,26 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     # passed the checks above; anything else stays null.
     session_num = _num(g("SessionNum"))
     is_race = _is_race(session_msg, session_num)
-    player_idx = _num(g("PlayerCarIdx"))
     by_idx = {c["idx"]: c for c in cars}
+    own_idx = _num(g("PlayerCarIdx"))
+    own = by_idx.get(own_idx)                  # your car, when you are driving
+    cam_idx = _num(g("CamCarIdx"))
+    manual = deriver.focus_manual if deriver is not None else None
+    # Spectating is the normal case for this booth: PlayerCarIdx is then a
+    # spectator slot with no car, and the camera car is what is being watched.
+    if manual is not None and manual in by_idx:
+        player_idx, ref_source = manual, "chosen"
+    elif own is not None:
+        player_idx, ref_source = own_idx, "your_car"
+    elif cam_idx in by_idx:
+        player_idx, ref_source = cam_idx, "camera"
+    else:
+        player_idx, ref_source = None, None
     me = by_idx.get(player_idx)
+    if deriver is not None and player_idx != deriver.ref_idx:
+        deriver.set_ref(player_idx)
+    if deriver is not None:
+        deriver.ref_source = ref_source
     class_leader = {}
     for c in ordered:
         if c["gapValid"] and c.get("classPos") == 1:
@@ -2055,7 +2338,15 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             deriver.tank_l = cap * pct if cap else None
         except (TypeError, ValueError):
             deriver.tank_l = None
-        deriver._player_idx = player_idx if me is not None else None
+        deriver._player_idx = own_idx if own is not None else None
+        track_len = track_length_m(session_msg)
+        opts = (session_msg or {}).get("options") or {}
+        try:
+            fast_limit = int(str(opts.get("FastRepairsLimit")).split()[0]) if opts.get("FastRepairsLimit") is not None else None
+        except ValueError:
+            fast_limit = None                    # "unlimited"
+        grid_by_idx = {r["idx"]: r for r in (((session_msg or {}).get("grid") or {}).get("rows") or [])}
+        team_race = bool(((session_msg or {}).get("event") or {}).get("TeamRacing"))
         sector_starts = [s.get("SectorStartPct") for s in ((session_msg or {}).get("sectors") or [])
                          if s.get("SectorStartPct") is not None]
         ahead_of = {}                      # carIdx -> idx of the car it is measured against
@@ -2073,6 +2364,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             c["derived"].update(deriver.pit(
                 c.get("idx"), now, c.get("onPitRoad"),
                 c.get("surface") == "in_pit_stall", c.get("lap"), pct=c.get("pct")))
+            v = deriver.car_speed(c, now, track_len)
+            c["derived"]["speedMs"] = None if v is None else round(v, 1)
             c["derived"].update(deriver.stint(
                 c.get("idx"), c.get("lapCompleted"), c.get("lastLapS"),
                 c["derived"].get("stopsSeen")))
@@ -2094,6 +2387,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     if deriver is not None:
         for c in cars:
             deriver.record_lap(c, now)
+        for c in cars:
+            c["derived"].update(deriver.car_extras(c, now, grid_by_idx, fast_limit, is_race, team_race))
         my_lap = deriver.pace(player_idx) if me is not None else None
         if my_lap is None and me is not None and me.get("lastLapS") and me["lastLapS"] > 0:
             my_lap = me["lastLapS"]
@@ -2107,12 +2402,15 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             if me is not None:
                 c["derived"]["vsYou"] = vs_you(c, me, p, deriver.pace(player_idx))
         out["derived"] = {
+            "ref": {"idx": player_idx, "source": ref_source, "own": own_idx if own is not None else None,
+                    "camera": cam_idx if cam_idx in by_idx else None},
             "sessionBestSectorS": deriver.session_best_sectors(),
             "isRace": is_race,
             "pitLoss": deriver.pit_loss(),
             "rejoin": deriver.rejoin(cars, player_idx) if is_race and me is not None else None,
             "undercut": deriver.undercut(cars, player_idx, now) if is_race and me is not None else [],
             "traffic": deriver.traffic(cars, player_idx),
+            "compoundPace": deriver.compound_pace(cars),
             "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
             "battles": deriver.battles(cars, ahead_of, is_race),
             "predictedIncidents": deriver.predicted_incidents(),

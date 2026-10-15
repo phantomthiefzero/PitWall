@@ -291,6 +291,13 @@
   .fp-line { font-size: 12.5px; margin-top: 4px; }
   .fp-urgent { color: var(--red); font-weight: 700; }
 
+  .follow { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .follow select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+                   font: inherit; font-size: 12px; padding: 4px 6px; max-width: 220px; }
+  .cd-sec { margin: 8px 0 3px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  .cd-sec:first-of-type { margin-top: 4px; }
+  tr.ref td:first-child { box-shadow: inset 3px 0 0 #FFFFFF; }
+
   /* footer */
   footer { display: flex; gap: 18px; align-items: center; padding: 8px 18px; border-top: 1px solid var(--line);
     font-size: 12px; color: var(--muted); }
@@ -349,6 +356,8 @@
   <div class="track"><span id="trackName">Waiting for the bridge</span><small id="sessionType"></small></div>
   <div class="flag" id="flag" data-flag="">No flag</div>
   <div class="right">
+    <label class="follow" title="The car every relative panel follows. Shared with everyone on this relay.">Following
+      <select id="followSel"><option value="">Auto</option></select> <span id="followSrc" class="note"></span></label>
     <button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button>
     <div class="clock"><span id="remain">–</span><small id="lapline">–</small></div>
   </div>
@@ -401,7 +410,7 @@
   <section id="chartsPanel">
     <details class="panel" id="chartsDetails" open>
       <summary>Analysis
-        <span class="tabs" id="chartTabs"><button type="button" data-c="gap" class="on">gap to class leader</button><button type="button" data-c="you">gap to you</button><button type="button" data-c="pos">positions</button><button type="button" data-c="inputs">inputs</button><button type="button" data-c="log">lap log</button><button type="button" data-c="h2h">head-to-head</button></span>
+        <span class="tabs" id="chartTabs"><button type="button" data-c="gap" class="on">gap to class leader</button><button type="button" data-c="you">gap to followed</button><button type="button" data-c="pos">positions</button><button type="button" data-c="inputs">trace</button><button type="button" data-c="log">lap log</button><button type="button" data-c="h2h">head-to-head</button></span>
       </summary>
       <canvas id="chart"></canvas>
       <div id="tabView" class="tabview hidden"></div>
@@ -442,6 +451,13 @@
       </details>
     </section>
 
+    <section id="tiresPanel">
+      <details class="panel" id="tiresDetails" open>
+        <summary>Tyres &amp; stints</summary>
+        <div id="tiresBox"><div class="note">Waiting for the field.</div></div>
+      </details>
+    </section>
+
     <section id="car">
       <details class="panel" id="carPanel" open>
       <summary>Your car</summary>
@@ -474,7 +490,7 @@
 
     <section id="focusPanel">
       <details class="panel" id="focusDetails" open>
-        <summary>Watching <span id="focusPinned" style="margin-left:auto;font-weight:500"></span></summary>
+        <summary>Car data</summary>
         <div id="focus"></div>
       </details>
     </section>
@@ -703,8 +719,9 @@
         recordAccel(); recordWeather(); recordEngine(); recordInputs(); dirty.state = true; break;
       case "cars":
         if (!m.full && !S.cars) break;
-        S.cars = m.full ? m : merge(S.cars, m); dirty.cars = true; chartDirty = true; break;
+        S.cars = m.full ? m : merge(S.cars, m); recordTrace(); dirty.cars = true; chartDirty = true; break;
       case "feed": handleFeed(m); break;
+      case "refgaps": S.refgaps = m; chartDirty = true; break;
       case "cmd_result": console.log("command result", m); break;
     }
   }
@@ -782,7 +799,7 @@
   function renderStandings() {
     if (!S.cars) return;
     const cars = Object.values(S.cars.cars || {}).filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
-    const me = S.state && S.state.player.carIdx;
+    const me = refInfo().own;
     const focus = focusIdx();
     const multi = isMulticlass();
     const html = cars.map(c => {
@@ -938,59 +955,6 @@
     return (p.speedMs || 0) > 0.5 || (p.rpm || 0) > 500;
   }
 
-  function renderFocus() {
-    const el = $("focus");
-    const c = focusCar();
-    const p = S.state && S.state.player;
-    $("focusPinned").textContent = pinnedIdx != null ? "pinned · click row to release" : "";
-    if (!c) {
-      const cam = p ? p.camCarIdx : null;
-      el.innerHTML = `<div style="color:var(--muted);font-size:12px">` +
-        (cam != null && cam === (p && p.carIdx)
-          ? "The camera is not on a car in the field. Click a row in the standings to follow one."
-          : "Waiting for the field. Click a row in the standings to follow a car.") +
-        `</div>`;
-      return;
-    }
-    const d = c.derived || {};
-    const isCam = p && c.idx === p.camCarIdx;
-    const row = (k, v) => v == null || v === "" ? "" : `<dt>${k}</dt><dd>${v}</dd>`;
-    const sec = d.sectorS && d.sectorS.some(v => v != null)
-      ? d.sectorS.map(v => v == null ? "–" : v.toFixed(2)).join(" | ") : null;
-    const deg = d.degSPerLap == null ? null
-      : `<span class="${d.degSPerLap > 0.05 ? "lose" : d.degSPerLap < -0.05 ? "gain" : "flat"}">${d.degSPerLap > 0 ? "+" : ""}${d.degSPerLap.toFixed(2)} s/lap</span>`;
-    const closing = d.closingSPerLap == null ? null
-      : (d.closingSPerLap === 0 ? "level"
-         : `<span class="${d.closingSPerLap > 0 ? "gain" : "lose"}">${d.closingSPerLap > 0 ? "+" : ""}${d.closingSPerLap.toFixed(2)} s/lap</span>` +
-           (d.catchLaps != null ? `<span style="color:var(--muted)"> · ${d.catchLaps} laps</span>` : ""));
-    el.innerHTML =
-      `<div class="fhead"><span class="fnum">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}` +
-      (c.licString ? `<span class="lic"${c.licColor != null ? ` style="background:${classCss(c.licColor)}"` : ""}>${esc(c.licString)}</span>` : "") +
-      (c.iRating ? `<span class="ir" title="iRating">${fmt.irating(c.iRating)}</span>` : "") +
-      (isCam ? `<span style="color:var(--muted);font-weight:400"> · on camera</span>` : "") + `</div>` +
-      `<dl class="fkv">` +
-      row("Car", esc(c.car ?? c.className)) +
-      row("Position", c.pos ? c.pos + (c.classPos && c.classPos !== c.pos ? ` (class ${c.classPos})` : "") : null) +
-      row("Interval", d.intervalS != null ? fmt.gap(d.intervalS) : null) +
-      row("Gap to leader", c.gapValid ? fmt.gap(c.f2TimeS) : null) +
-      row("Closing", closing) +
-      row("Last lap", c.lastLapS > 0 ? fmt.lap(c.lastLapS) : null) +
-      row("Best lap", c.bestLapS > 0 ? fmt.lap(c.bestLapS) : null) +
-      row("Theoretical", d.theoreticalBestS != null ? fmt.lap(d.theoreticalBestS) +
-          (d.bestLapLeftS > 0.001 ? ` <span style="color:var(--muted)">(${d.bestLapLeftS.toFixed(3)} left)</span>` : "") : null) +
-      row("Sectors", sec) +
-      row("Stint", d.stintLaps ? `${d.stintLaps} laps` + (d.stintAvgS ? ` · avg ${fmt.lap(d.stintAvgS)}` : "") : null) +
-      row("Degradation", deg) +
-      row("Stops seen", d.stopsSeen ? `${d.stopsSeen}` + (d.lastStopS != null ? ` · ${d.lastStopS.toFixed(1)} s` : "") +
-          (d.lapsSincePit != null ? ` · ${d.lapsSincePit} laps ago` : "") : null) +
-      row("On track", c.surface ? esc(words(c.surface)) : null) +
-      row("Laps", c.lapCompleted != null && c.lapCompleted >= 0 ? c.lapCompleted : null) +
-      row("Gear / rpm", c.gear != null && c.gear >= 0 ? `${c.gear === 0 ? "N" : c.gear} · ${Math.round(c.rpm || 0)}` : null) +
-      (isCam && playerBlockIsLive() ? row("Speed", U.speed(p.speedMs)) : "") +
-      (c.flags && c.flags.length ? row("Flags", esc(c.flags.map(words).join(", "))) : "") +
-      `</dl>`;
-  }
-
   // ---------------------------------------------------------------- weather
   // Track rubber, as iRacing words it. Two things make this awkward to show
   // honestly, and both are handled here rather than papered over:
@@ -1108,7 +1072,130 @@
     return `<span class="mono" style="color:var(--muted)">#${esc(c.num ?? c.idx)}</span> ${esc(c.name ?? "car " + c.idx)}`;
   };
   const shortCar = i => { const c = carByIdx(i); return c ? "#" + esc(c.num ?? c.idx) : "car " + esc(i); };
-  const meCar = () => carByIdx(S.state && S.state.player ? S.state.player.carIdx : null);
+  // ---------------------------------------------------------------- following
+  // Spectating is the normal case for this booth. Everything "relative" follows
+  // one car: the one chosen here (shared with everyone on this relay), else your
+  // own car when you are driving, else the car the camera is on.
+  function refInfo() { return (S.cars && S.cars.derived && S.cars.derived.ref) || { idx: null, source: null, own: null }; }
+  const isOwnRef = () => { const r = refInfo(); return r.idx != null && r.idx === r.own; };
+  const meCar = () => carByIdx(refInfo().idx);                 // the followed car
+  const ownCar = () => carByIdx(refInfo().own);                // your car, only when driving
+  // Words for the followed car: "you gain" for your own, "#23 gains" otherwise.
+  function RW() {
+    if (isOwnRef()) return { y: true, Sub: "You", sub: "you", obj: "you", pos: "your", Pos: "Your" };
+    const c = meCar(), n = c ? "#" + esc(c.num ?? c.idx) : "the followed car";
+    return { y: false, Sub: n, sub: n, obj: n, pos: n + "'s", Pos: n + "'s" };
+  }
+  function sendFocus(idx) {
+    try { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "focus", idx })); } catch (e) {}
+  }
+  let followRoster = "";
+  function renderFollow() {
+    const sel = $("followSel"), r = refInfo();
+    const cars = Object.values((S.cars && S.cars.cars) || {}).filter(c => c.pos > 0 || c.idx === r.idx)
+      .sort((a, b) => (a.pos || 999) - (b.pos || 999));
+    const roster = cars.map(c => c.idx + ":" + c.num + ":" + c.name).join("|") + "|" + r.source + r.idx;
+    if (roster !== followRoster && document.activeElement !== sel) {
+      followRoster = roster;
+      const auto = r.own != null ? "Auto: your car" : "Auto: camera car";
+      sel.innerHTML = `<option value="">${auto}</option>` + cars.map(c =>
+        `<option value="${c.idx}">#${esc(c.num ?? c.idx)} ${esc(c.name ?? "")}${isMulticlass() ? " · " + esc(c.className ?? "") : ""}</option>`).join("");
+    }
+    if (document.activeElement !== sel) sel.value = r.source === "chosen" && r.idx != null ? String(r.idx) : "";
+    const src = { chosen: "chosen", your_car: "your car", camera: "camera" }[r.source] || "nobody";
+    $("followSrc").textContent = r.idx == null ? "nobody yet" : "(" + src + ")";
+  }
+  $("followSel").addEventListener("change", e => {
+    const v = e.target.value;
+    sendFocus(v === "" ? null : Number(v));
+  });
+
+  // ---------------------------------------------------------------- car data
+  // Everything known about one car. For any car iRacing gives position, laps,
+  // lap times, gaps, pit road, tyre compound, gear, rpm, steering and flags;
+  // the rest is computed here from those (dotted). Fuel, tyre wear and in-car
+  // settings exist for your own car only.
+  function renderFocus() {
+    const el = $("focus");
+    const c = meCar();
+    if (!c) {
+      el.innerHTML = `<div class="note">Waiting for the field. Pick a car in the Following menu or click a row in the standings.</div>`;
+      return;
+    }
+    const d = c.derived || {};
+    const p = S.state && S.state.player;
+    const isCam = p && c.idx === p.camCarIdx;
+    const row = (k, v) => v == null || v === "" ? "" : `<dt>${k}</dt><dd>${v}</dd>`;
+    const sec = (title, body) => body ? `<div class="cd-sec">${title}</div><dl class="fkv">${body}</dl>` : "";
+    const sgn = (v, dec = 2) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(dec);
+    const deg = d.degSPerLap == null ? null
+      : `<span class="${d.degSPerLap > 0.05 ? "lose" : d.degSPerLap < -0.05 ? "gain" : "flat"}">${sgn(d.degSPerLap)} s/lap</span>`;
+    const closing = d.closingSPerLap == null ? null
+      : (d.closingSPerLap === 0 ? "level"
+         : `<span class="${d.closingSPerLap > 0 ? "gain" : "lose"}">${sgn(d.closingSPerLap)} s/lap</span>` +
+           (d.catchLaps != null ? `<span class="note"> · ${d.catchLaps} laps</span>` : ""));
+    const secs3 = a => a && a.some(v => v != null) ? a.map(v => v == null ? "–" : v.toFixed(2)).join(" | ") : null;
+    const gained = (g, n) => g == null ? null : `${n} · <span class="${g > 0 ? "gain" : g < 0 ? "lose" : "flat"}">${g > 0 ? "+" + g : g < 0 ? "−" + (-g) : "±0"}</span>`;
+    const tires = (S.session && S.session.driverTires) || [];
+    const own = ownCar();
+    const tname = idx => { const t = own && c.classId === own.classId ? tires.find(x => x.index === idx) : null; return t ? esc(t.type) : null; };
+    const comp = c.compound == null ? null : `${tname(c.compound) || "compound " + esc(c.compound)}`;
+    const drv = d.drivers;
+    const incs = S.feed.events.filter(e => e.idx === c.idx && (e.kind === "car_incident" || e.kind === "off_track" || e.kind === "slowed")).length;
+    el.innerHTML =
+      `<div class="fhead"><span class="fnum">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}` +
+      (c.licString ? `<span class="lic"${c.licColor != null ? ` style="background:${classCss(c.licColor)}"` : ""}>${esc(c.licString)}</span>` : "") +
+      (c.iRating ? `<span class="ir" title="iRating">${fmt.irating(c.iRating)}</span>` : "") +
+      (isCam ? `<span class="note" style="font-weight:400"> · on camera</span>` : "") + `</div>` +
+      sec("Car",
+        row("Team", c.team && c.team !== c.name ? esc(c.team) : null) +
+        row("Car", esc(c.car ?? c.className)) +
+        row("Position", c.pos ? `P${c.pos}` + (c.classPos && isMulticlass() ? ` · class P${c.classPos}` : "") : null) +
+        row(D("Started", "From the qualifying results / starting grid in the session info; the change is computed here."),
+            d.gridPos != null ? gained(d.posGained, "P" + d.gridPos) + (isMulticlass() && d.gridClassPos != null ? ` · class ${gained(d.classPosGained, "P" + d.gridClassPos)}` : "") : null) +
+        row("Laps", c.lapCompleted != null && c.lapCompleted >= 0 ? c.lapCompleted : null) +
+        row(D("Laps led", "Computed here: laps this car crossed the line in the lead, of those we watched."),
+            d.lapsLedSeen || d.classLapsLedSeen ? `${d.lapsLedSeen}` + (isMulticlass() ? ` · class ${d.classLapsLedSeen}` : "") : null)) +
+      sec("Gaps",
+        row(D("Interval", "Computed here: gap to the car ahead."), d.intervalS != null ? fmt.gap(d.intervalS) : null) +
+        row("Gap to leader", c.gapValid ? fmt.gap(c.f2TimeS) : null) +
+        row(D("Gap to class leader", "Computed here."), isMulticlass() && d.classGapS != null ? fmt.gap(d.classGapS) : null) +
+        row(D("Closing on car ahead", "Computed here from the interval's trend over 90 s."), closing)) +
+      sec("Timing",
+        row("Last lap", c.lastLapS > 0 ? fmt.lap(c.lastLapS) : null) +
+        row("Best lap", c.bestLapS > 0 ? fmt.lap(c.bestLapS) + (c.bestLapNum > 0 ? ` <span class="note">(lap ${c.bestLapNum})</span>` : "") : null) +
+        row(D("Theoretical best", "Computed here: this car's best sectors added together."), d.theoreticalBestS != null ? fmt.lap(d.theoreticalBestS) +
+            (d.bestLapLeftS > 0.001 ? ` <span class="note">(${d.bestLapLeftS.toFixed(3)} left)</span>` : "") : null) +
+        row(D("Pace", "Computed here: the middle of its last five racing laps."), d.paceS != null ? fmt.lap(d.paceS) : null) +
+        row(D("Consistency", "Computed here: how much its last five racing laps vary (standard deviation)."), d.consistencyS != null ? "± " + d.consistencyS.toFixed(3) + " s" : null) +
+        row(D("Degradation", "Computed here: lap-time trend over this stint."), deg) +
+        row(D("Sectors (last)", "Computed here from lap-distance crossings."), secs3(d.sectorS)) +
+        row(D("Sectors (best)", "Computed here."), secs3(d.bestSectorS)) +
+        row(D("Speed", "Computed here from how far along the lap it moved; iRacing does not give other cars' speed."), d.speedMs != null ? U.speed(d.speedMs) : null) +
+        row(D("Top speed (best lap)", "Computed here: the highest speed seen on any of its laps."), d.topSpeedBestMs != null ? U.speed(d.topSpeedBestMs) : null)) +
+      sec("Pit, tyres &amp; stints",
+        row(D("Stops seen", "Computed here: stops watched since connecting. A stop before that is not counted."),
+            d.stopsSeen ? `${d.stopsSeen}` + (d.lastStopS != null ? ` · last ${d.lastStopS.toFixed(1)} s stationary` : "") : "0") +
+        row("Tyres", comp ? comp + (d.compoundChanges ? ` <span class="note">(${d.compoundChanges} compound change${d.compoundChanges > 1 ? "s" : ""})</span>` : "") : null) +
+        row(D("Laps on these tyres", "Computed here: laps since its last stop, assuming tyres were changed there. iRacing does not say whether another car changed tyres unless the compound changed."),
+            d.lapsSincePit != null ? d.lapsSincePit : null) +
+        row(D("This stint", "Computed here: laps since its last stop or the start."), d.lapsThisStint != null ? `${d.lapsThisStint} laps` + (d.stintAvgS ? ` · avg ${fmt.lap(d.stintAvgS)}` : "") : null) +
+        row(D("Stints seen", "Computed here: stint lengths between stops we watched."), d.stintsSeen && d.stintsSeen.length ? d.stintsSeen.join(", ") + " laps" : null) +
+        row(D("Next stop expected", "Computed here: stint start plus its longest stint so far. iRacing does not share other cars' fuel, so this is a pattern, not a measurement."),
+            d.nextStopLapEst != null ? "around lap " + d.nextStopLapEst : null) +
+        row("Fast repairs used", c.fastRepairsUsed != null ? c.fastRepairsUsed + (d.fastRepairsLeft != null ? ` <span class="note">· ${d.fastRepairsLeft} left</span>` : "") : null)) +
+      sec("Status",
+        row("On track", c.surface ? esc(words(c.surface)) : null) +
+        row("Pit road", c.onPitRoad ? "yes" : null) +
+        row("Flags", c.flags && c.flags.length ? esc(c.flags.map(words).join(", ")) : null) +
+        row("Gear / rpm", c.gear != null && c.gear >= 0 ? `${c.gear === 0 ? "N" : c.gear} · ${Math.round(c.rpm || 0)}` : null) +
+        row("Steering", c.steerRad != null ? Math.round(c.steerRad * 57.2958) + "°" : null) +
+        row("Push to pass", c.p2pCount != null && (c.p2pCount > 0 || c.p2pActive) ? `${c.p2pActive ? "active · " : ""}${c.p2pCount} left` : null) +
+        row(D("Incidents seen", "Computed here: incidents predicted from telemetry. iRacing hides other cars' counts from a spectator until the finish."), incs ? String(incs) : null)) +
+      (drv && drv.length ? sec("Drivers", drv.map(x => row(esc(x.name) + (x.current ? " <span class='gain'>●</span>" : ""),
+          D(`${fmt.clock(x.timeS)} · ${x.laps} laps`, "Computed here: time and laps in the car since we connected."))).join("")) : "");
+  }
+
   const sessClock = t => t == null ? "" : fmt.clock(t);
   const D = (txt, title) => `<span class="derived" title="${esc(title)}">${txt}</span>`;
   const secs = (v, d = 1) => v == null ? "–" : Math.abs(v).toFixed(d) + " s";
@@ -1128,7 +1215,8 @@
     const cls = { pit_in: "dim", pit_out: "info", fastest_lap: "purple", incident: "hot", behind_closing: "warn2",
                   you_closing: "good", position: "info", lead_change: "info", flag: "info", engine: "hot",
                   tow: "hot", rain_start: "info", rain_stop: "info", track_wetness: "info", declared_wet: "info",
-                  pit_battle: "info", class_lead: "info", car_incident: "hot", off_track: "dim", slowed: "warn2" }[e.kind] || "info";
+                  pit_battle: "info", class_lead: "info", car_incident: "hot", off_track: "dim", slowed: "warn2",
+                  compound_change: "info", driver_change: "info", adjust: "dim", race_incident: "warn2" }[e.kind] || "info";
     let t = "";
     switch (e.kind) {
       case "pit_in": t = `${carLabel(e.idx)} into the pits`; break;
@@ -1141,10 +1229,15 @@
         t = `<b>${scope}</b> ${carLabel(e.idx)} <span class="mono">${fmt.lap(e.lapS)}</span>`; break;
       }
       case "incident": t = `<b>Incident +${esc(e.delta)}x</b> · ${esc(e.total)}x` + (e.limit != null ? ` of ${esc(e.limit)}` : ""); break;
-      case "behind_closing": t = `${carLabel(e.idx)} closing on you: ${secs(e.gapS, 2)} behind, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
-      case "you_closing": t = `You are closing on ${carLabel(e.idx)}: ${secs(e.gapS, 2)} ahead, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
+      case "behind_closing": t = `${carLabel(e.idx)} closing on ${evWho(e, false)}: ${secs(e.gapS, 2)} behind, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
+      case "you_closing": t = `${evWho(e, true)} closing on ${carLabel(e.idx)}: ${secs(e.gapS, 2)} ahead, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
       case "position": { const better = e.toPos < e.fromPos;
-        t = `<span class="${better ? "gain" : "lose"}">You ${isMulticlass() ? "class " : ""}P${esc(e.fromPos)} → P${esc(e.toPos)}</span>`; break; }
+        t = `<span class="${better ? "gain" : "lose"}">${e.idx != null && e.idx !== refInfo().own ? carLabel(e.idx) : "You"} ${isMulticlass() ? "class " : ""}P${esc(e.fromPos)} → P${esc(e.toPos)}</span>`; break; }
+      case "race_incident": t = `${carLabel(e.idx)} ${D(esc(words(e.what || "incident")) + (e.likelyPoints ? ` (likely ${e.likelyPoints}x)` : ""), "Predicted here from telemetry (off track, a spin, slowing, contact). iRacing hides other cars' incident counts from a spectator until the finish.")}` +
+        (e.contactWith && e.contactWith.length ? ` with ${e.contactWith.map(shortCar).join(", ")}` : ""); break;
+      case "compound_change": t = `${carLabel(e.idx)} changed tyre compound (${esc(e.fromCompound)} → ${esc(e.toCompound)})`; break;
+      case "driver_change": t = `${carLabel(e.idx)} driver change: ${esc(e.fromName ?? "?")} → <b>${esc(e.toName ?? "?")}</b>`; break;
+      case "adjust": t = `You adjusted <b>${esc(words(e.control))}</b> ${esc(e.fromValue)} → ${esc(e.toValue)}`; break;
       case "lead_change": t = `${carLabel(e.idx)} takes the ${isMulticlass() ? "class " : ""}lead`; break;
       case "car_incident": t = `${carLabel(e.idx)} <b>+${esc(e.points)}x</b> · ${esc(e.total)}x` +
         (e.limit != null ? ` of ${esc(e.limit)}` : "") + (e.causes && e.causes.length ? ` · ${esc(e.causes.join(" or "))}` : ""); break;
@@ -1163,14 +1256,21 @@
       case "declared_wet": t = e.value ? "Wet declared: rain tires allowed" : "Wet declaration lifted"; break;
       case "pit_battle": {
         const was = e.preS, now = e.nowS;
-        const side = v => v < 0 ? secs(v, 1) + " ahead of you" : secs(v, 1) + " behind you";
+        const who = evWho(e, false);
+        const side = v => v < 0 ? secs(v, 1) + " ahead of " + who : secs(v, 1) + " behind " + who;
         const good = now > was;
-        t = `Pit battle with ${carLabel(e.idx)} settled (${e.first === "you" ? "you stopped first" : "they stopped first"}): ` +
+        t = `Pit battle between ${carLabel(e.idx)} and ${who} settled (${e.first === "you" ? who + " stopped first" : "they stopped first"}): ` +
             `was ${side(was)}, now ${D(`<span class="${good ? "gain" : "lose"}">${side(now)}</span>`, "Computed here from the gaps before both stops and after both.")}`; break;
       }
       default: t = esc(e.kind);
     }
     return `<div class="ev ${cls} k-${esc(e.kind)}"><span class="tm">${e.lap != null ? "L" + esc(e.lap) + " · " : ""}${sessClock(e.t)}</span><span>${t}</span></div>`;
+  }
+  // Who an event was measured from: "you" for your own car (and for events
+  // recorded before this field existed), else that car.
+  function evWho(e, cap) {
+    if (e.ref == null || e.ref === refInfo().own) return cap ? "You are" : "you";
+    return cap ? carLabel(e.ref) + " is" : carLabel(e.ref);
   }
   function renderFeed() {
     const el = $("feed");
@@ -1203,7 +1303,8 @@
     return S.feed.laps.filter(e => e.idx === idx && e[key] != null).slice(-n).map(e => e[key]);
   }
   function battleRow(side, c) {
-    if (!c) return `<div class="bb-row"><span class="bb-side">${side}</span><span class="note">${side === "ahead" ? "You lead your class." : "Nobody behind in your class."}</span><span></span></div>`;
+    const w = RW();
+    if (!c) return `<div class="bb-row"><span class="bb-side">${side}</span><span class="note">${side === "ahead" ? `${w.Sub} ${w.y ? "lead" : "leads"} the class.` : "Nobody behind in the class."}</span><span></span></div>`;
     const d = c.derived || {};
     const tp = d.toPlayerS;
     const gain = d.youGainSPerLap;
@@ -1211,11 +1312,11 @@
     if (gain != null) {
       if (gain === 0) trend = `<span class="flat">level</span>`;
       else if (side === "ahead") trend = gain > 0
-        ? `<span class="gain">you gain ${gain.toFixed(2)} s/lap</span>` + (d.youCatchLaps != null ? ` · catch in ${d.youCatchLaps} laps` : "")
+        ? `<span class="gain">${w.sub} ${w.y ? "gain" : "gains"} ${gain.toFixed(2)} s/lap</span>` + (d.youCatchLaps != null ? ` · catch in ${d.youCatchLaps} laps` : "")
         : `<span class="lose">pulling away ${(-gain).toFixed(2)} s/lap</span>`;
       else trend = gain > 0
-        ? `<span class="gain">you pull away ${gain.toFixed(2)} s/lap</span>`
-        : `<span class="lose">closing ${(-gain).toFixed(2)} s/lap</span>` + (d.catchesYouLaps != null ? ` · on you in ${d.catchesYouLaps} laps` : "");
+        ? `<span class="gain">${w.sub} ${w.y ? "pull" : "pulls"} away ${gain.toFixed(2)} s/lap</span>`
+        : `<span class="lose">closing ${(-gain).toFixed(2)} s/lap</span>` + (d.catchesYouLaps != null ? ` · on ${w.obj} in ${d.catchesYouLaps} laps` : "");
     }
     const me = meCar();
     const sp = spark(lapSeries(c.idx, "toPlayerS").map(v => Math.abs(v)), 90, 18);
@@ -1223,15 +1324,15 @@
     return `<div class="bb-row"><span class="bb-side">${side}</span>` +
       `<span class="bb-who">${carLabel(c.idx)}${pit}</span>` +
       `<span class="bb-gap">${tp == null ? "–" : D(Math.abs(tp).toFixed(2), "Computed here: the difference between the two cars' time behind the leader (CarIdxF2Time).")}</span>` +
-      `<div class="bb-sub">${trend ? D(trend, "Computed here: least-squares trend of the gap over the last 90 s, per lap of your pace.") : `<span class="note">trend needs ~20 s of gaps</span>`}` +
-      `<span title="Their last lap / yours">last <span class="mono">${fmt.lap(c.lastLapS)}</span> vs <span class="mono">${fmt.lap(me && me.lastLapS)}</span></span>` +
+      `<div class="bb-sub">${trend ? D(trend, "Computed here: least-squares trend of the gap over the last 90 s, per lap of the followed car's pace.") : `<span class="note">trend needs ~20 s of gaps</span>`}` +
+      `<span title="Their last lap / the followed car's">last <span class="mono">${fmt.lap(c.lastLapS)}</span> vs <span class="mono">${fmt.lap(me && me.lastLapS)}</span></span>` +
       (sp ? `<span title="Gap at each of their lap crossings">${sp}</span>` : "") + `</div></div>`;
   }
   function renderBattle() {
     const el = $("bb");
     if (!S.cars) return;
     const me = meCar();
-    if (!me) { el.innerHTML = `<div class="note">The battle box follows your own car. While spectating there is no car of yours in the field.</div>`; return; }
+    if (!me) { el.innerHTML = `<div class="note">Pick a car to follow (the Following menu at the top, or click a row in the standings).</div>`; return; }
     if (S.cars.derived && S.cars.derived.isRace === false) { el.innerHTML = `<div class="note">Battles are measured in races, where iRacing reports each car's time behind the leader. In practice and qualifying that number is a best lap instead.</div>`; return; }
     const cars = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
     const ahead = cars.find(c => c.classPos === me.classPos - 1);
@@ -1239,12 +1340,12 @@
     el.innerHTML = battleRow("ahead", ahead) + battleRow("behind", behind);
   }
 
-  // ---- pit strategy: lane loss, where you would rejoin, pit battles
-  const KIND_LABEL = { zero_stationary: "Lane only", typical_stop: "Typical stop", your_last_stop: "Your last stop" };
+  // ---- pit strategy: lane loss, where the followed car would rejoin, pit battles
   function renderStrategy() {
     const el = $("strat");
     if (!S.cars || !S.cars.derived) return;
-    const d = S.cars.derived;
+    const d = S.cars.derived, w = RW();
+    const KIND_LABEL = { zero_stationary: "Lane only", typical_stop: "Typical stop", your_last_stop: w.y ? "Your last stop" : "Their last stop" };
     if (d.isRace === false) { el.innerHTML = `<div class="note">Pit strategy works in races: rejoin positions come from each car's time behind the leader, which iRacing only reports in a race.</div>`; return; }
     const pl = d.pitLoss || {};
     let h = "";
@@ -1253,22 +1354,22 @@
     } else {
       h += `<div style="font-size:12.5px">${D(`Pit lane loss <b class="mono">${pl.laneLossS.toFixed(1)} s</b>`, "Computed here from stops watched this session: time between the pit-road lines, minus the stationary time, minus the time the same car takes to cover that stretch at its own pace. It leaves out the slowing down before the entry line and the speeding up after the exit line.")}` +
            ` <span class="note">from ${pl.samples} stop${pl.samples === 1 ? "" : "s"}</span>` +
-           (pl.boxMedianS != null ? ` · ${D(`typical stationary <b class="mono">${pl.boxMedianS.toFixed(1)} s</b>`, "Computed here: the middle value of the stationary times seen this session. Your own stop depends on what you ask for.")}` : "") + `</div>`;
+           (pl.boxMedianS != null ? ` · ${D(`typical stationary <b class="mono">${pl.boxMedianS.toFixed(1)} s</b>`, "Computed here: the middle value of the stationary times seen this session.")}` : "") + `</div>`;
     }
     const rj = d.rejoin;
     if (rj && rj.options && rj.options.length) {
       h += `<table class="rj" style="margin-top:6px"><tbody>` + rj.options.map(o => {
-        const a = o.ahead ? `behind ${shortCar(o.ahead.idx)} by ${o.ahead.gapS.toFixed(1)} s` : "leading your class";
+        const a = o.ahead ? `behind ${shortCar(o.ahead.idx)} by ${o.ahead.gapS.toFixed(1)} s` : "leading the class";
         const b = o.behind ? `ahead of ${shortCar(o.behind.idx)} by ${o.behind.gapS.toFixed(1)} s` : "last in class";
         const tr = (o.traffic || []).map(x => `${shortCar(x.idx)} ${Math.abs(x.onTrackS).toFixed(1)} s ${x.onTrackS < 0 ? "ahead" : "behind"}`).join(", ");
         return `<tr><td>${KIND_LABEL[o.kind] || esc(o.kind)}<br><span class="note">${o.stationaryS.toFixed(1)} s stopped</span></td>` +
-          `<td>${D(`<b>P${o.pos}</b>${isMulticlass() ? ` · class P${o.classPos}` : ""}`, "Computed here: your time behind the leader plus this loss, placed among every other car's time behind the leader.")}` +
+          `<td>${D(`<b>P${o.pos}</b>${isMulticlass() ? ` · class P${o.classPos}` : ""}`, "Computed here: the followed car's time behind the leader plus this loss, placed among every other car's time behind the leader.")}` +
           ` <span class="note">(${o.lossS.toFixed(1)} s)</span><br>${a} · ${b}` +
           (tr ? `<br><span style="color:var(--orange)">on track at the exit: ${tr}</span>` : "") + `</td></tr>`;
       }).join("") + `</tbody></table>` +
-      `<div class="note" style="margin-top:4px">If you pit this lap, where you would come out. Assumes everyone else keeps their current gap.</div>`;
+      `<div class="note" style="margin-top:4px">If ${w.sub} ${w.y ? "pit" : "pits"} this lap, where ${w.sub} would come out. Assumes everyone else keeps their current gap.</div>`;
     } else if (pl.laneLossS != null) {
-      h += `<div class="note" style="margin-top:4px">Rejoin positions need a gap to the leader for your car (after your first lap).</div>`;
+      h += `<div class="note" style="margin-top:4px">Rejoin positions need a gap to the leader for the followed car (after its first lap).</div>`;
     }
     const ucAll = d.undercut || [];
     const open_ = ucAll.filter(u => u.settledToPlayerS == null)
@@ -1279,20 +1380,20 @@
         const sp = spark(u.series || [], 70, 16);
         const tr = u.trendSPerLap == null ? "" : ` · <span class="${u.trendSPerLap > 0 ? "gain" : u.trendSPerLap < 0 ? "lose" : "flat"}">${u.trendSPerLap > 0 ? "+" : ""}${u.trendSPerLap.toFixed(2)} s last lap</span>`;
         const side = v => v < 0 ? `<span class="lose">${secs(v)} behind them</span>` : `<span class="gain">${secs(v)} ahead of them</span>`;
-        const sideT = v => v < 0 ? `<span class="lose">${secs(v)} ahead of you</span>` : `<span class="gain">${secs(v)} behind you</span>`;
+        const sideT = v => v < 0 ? `<span class="lose">${secs(v)} ahead of ${w.obj}</span>` : `<span class="gain">${secs(v)} behind ${w.obj}</span>`;
         if (u.settledToPlayerS != null) {
           return `<div class="uc">Pit battle with ${carLabel(u.idx)}: settled, they are now ${sideT(u.settledToPlayerS)} <span class="note">(were ${secs(u.preStopToPlayerS)} ${u.preStopToPlayerS < 0 ? "ahead" : "behind"} before the stops)</span></div>`;
         }
         if (u.kind === "they_stopped") {
           return `<div class="uc"><b>${carLabel(u.idx)}</b> stopped${u.lapsSince != null ? ` ${u.lapsSince} lap${u.lapsSince === 1 ? "" : "s"} ago` : ""}` +
             (u.inPit ? ` <span class="note">(still in the lane)</span>` : "") +
-            `<br>If you stop now you come out ${u.afterYourStopS == null ? "<span class=note>– (needs a pit loss)</span>" : D(side(u.afterYourStopS), "Computed here: your current gap to them minus the typical pit loss (lane loss + typical stationary time).")}${tr} ${sp}</div>`;
+            `<br>If ${w.sub} ${w.y ? "stop" : "stops"} now, ${w.sub} ${w.y ? "come" : "comes"} out ${u.afterYourStopS == null ? "<span class=note>– (needs a pit loss)</span>" : D(side(u.afterYourStopS), "Computed here: the current gap to them minus the typical pit loss (lane loss + typical stationary time).")}${tr} ${sp}</div>`;
         }
-        return `<div class="uc">You stopped${u.lapsSince != null ? ` ${u.lapsSince} lap${u.lapsSince === 1 ? "" : "s"} ago` : ""}; <b>${carLabel(u.idx)}</b> has not.` +
-          `<br>If they stop now they come out ${u.afterTheirStopS == null ? "<span class=note>–</span>" : D(sideT(u.afterTheirStopS), "Computed here: their current gap to you plus the typical pit loss.")}${tr} ${sp}</div>`;
+        return `<div class="uc">${w.Sub} stopped${u.lapsSince != null ? ` ${u.lapsSince} lap${u.lapsSince === 1 ? "" : "s"} ago` : ""}; <b>${carLabel(u.idx)}</b> has not.` +
+          `<br>If they stop now they come out ${u.afterTheirStopS == null ? "<span class=note>–</span>" : D(sideT(u.afterTheirStopS), "Computed here: their current gap plus the typical pit loss.")}${tr} ${sp}</div>`;
       }).join("");
     } else if (pl.laneLossS != null) {
-      h += `<div class="note" style="margin-top:6px">Undercut watch: when a car near you in your class stops (or you do), the swing shows here lap by lap.</div>`;
+      h += `<div class="note" style="margin-top:6px">Undercut watch: when a car near ${w.obj} in the class stops (or ${w.sub} ${w.y ? "do" : "does"}), the swing shows here lap by lap.</div>`;
     }
     el.innerHTML = h;
   }
@@ -1308,12 +1409,90 @@
     const el = $("traffic");
     const list = (S.cars && S.cars.derived && S.cars.derived.traffic) || [];
     if (!list.length) { el.innerHTML = ""; return; }
+    const w = RW();
     el.innerHTML = list.slice(0, 4).map(x => {
       const c = carByIdx(x.idx), cls = c && isMulticlass() && c.className ? " " + esc(c.className) : "";
       return x.kind === "you_catch"
-        ? `<div class="catch">${D(`You catch ${shortCar(x.idx)}${cls} in ${Math.round(x.inS)} s`, "Computed here at both cars' current lap pace. Speeds vary around a lap, so the place is approximate.")} <span class="note">${sectorOf(x.atPct)}</span></div>`
-        : `<div class="caught">${D(`${shortCar(x.idx)}${cls} catches you in ${Math.round(x.inS)} s`, "Computed here at both cars' current lap pace. Speeds vary around a lap, so the place is approximate.")} <span class="note">${sectorOf(x.atPct)}</span></div>`;
+        ? `<div class="catch">${D(`${w.Sub} ${w.y ? "catch" : "catches"} ${shortCar(x.idx)}${cls} in ${Math.round(x.inS)} s`, "Computed here at both cars' current lap pace. Speeds vary around a lap, so the place is approximate.")} <span class="note">${sectorOf(x.atPct)}</span></div>`
+        : `<div class="caught">${D(`${shortCar(x.idx)}${cls} catches ${w.obj} in ${Math.round(x.inS)} s`, "Computed here at both cars' current lap pace. Speeds vary around a lap, so the place is approximate.")} <span class="note">${sectorOf(x.atPct)}</span></div>`;
     }).join("");
+  }
+
+  // ---- tyres, stints, wet or dry, team drivers
+  function renderTires() {
+    const el = $("tiresBox");
+    if (!S.cars) return;
+    const c = meCar(), w = RW();
+    let h = "";
+    if (c) {
+      const d = c.derived || {};
+      const tires = (S.session && S.session.driverTires) || [];
+      const own = ownCar();
+      const tname = idx => { const t = own && c.classId === own.classId ? tires.find(x => x.index === idx) : null; return t ? esc(t.type) : "compound " + esc(idx); };
+      h += `<div class="fp-line"><b>${w.Pos} tyres:</b> ${c.compound == null ? "–" : tname(c.compound)}` +
+           (d.lapsSincePit != null ? ` · ${D(d.lapsSincePit + " laps on them", "Computed here: laps since the last stop, assuming tyres were changed there.")}` : "") +
+           (d.compoundChanges ? ` · ${d.compoundChanges} compound change${d.compoundChanges > 1 ? "s" : ""}` : "") + `</div>`;
+      if (d.stintsSeen && d.stintsSeen.length) h += `<div class="fp-line">${D("Stints seen: " + d.stintsSeen.join(", ") + " laps", "Computed here: between stops we watched.")}` +
+           (d.nextStopLapEst != null ? ` · ${D("next stop around lap " + d.nextStopLapEst, "Computed here: stint start plus the longest stint so far. A pattern, not a fuel reading.")}` : "") + `</div>`;
+      if (c.fastRepairsUsed != null) h += `<div class="fp-line">Fast repairs used: ${c.fastRepairsUsed}${d.fastRepairsLeft != null ? ` · ${D(d.fastRepairsLeft + " left", "Computed here: the session's limit minus those used.")}` : ""}</div>`;
+      if (isOwnRef() && S.state && S.state.player && S.state.player.tireSets) {
+        const ts = S.state.player.tireSets;
+        if (ts.used != null || ts.available != null)
+          h += `<div class="fp-line">Tyre sets: ${ts.used ?? "–"} used · ${ts.available ?? "–"} left` +
+               (ts.dryLimit ? ` <span class="note">(limit ${ts.dryLimit})</span>` : "") + `</div>`;
+        const rr = S.state.derived && S.state.derived.refuelLps;
+        const pl = S.state.derived && S.state.derived.plan;
+        if (rr) h += `<div class="fp-line">${D(`Refuel ${U.fuel(rr, 2)} ${U.fuelAbbr}/s`, "Computed here: measured at your own stops, from the fuel level rising in the box.")}` +
+                     (pl && pl.fuelTimeS != null ? ` · ${D(`fuel for the next stop takes ${pl.fuelTimeS.toFixed(1)} s`, "Computed here: the planned fuel divided by the measured refuel rate. Tyre changes and repairs come on top and are not measured.")}` : "") + `</div>`;
+      }
+      if (d.drivers && d.drivers.length) {
+        h += `<div class="fp-line"><b>Drivers</b></div>` + d.drivers.map(x =>
+          `<div class="fp-line">${x.current ? `<span class="gain">●</span> ` : ""}${esc(x.name)} · ${D(`${fmt.clock(x.timeS)} · ${x.laps} laps`, "Computed here: time and laps in the car since we connected.")}</div>`).join("");
+      }
+    }
+    // wet or dry: each class split by compound, from their last racing laps
+    const cp = (S.cars.derived && S.cars.derived.compoundPace) || [];
+    const mixed = [...new Set(cp.map(o => o.classId))].filter(cls => cp.filter(o => o.classId === cls).length > 1);
+    if (mixed.length) {
+      h += `<div class="fp-line" style="margin-top:6px"><b>${D("Pace by compound", "Computed here: the middle of each group's last racing laps. When the other compound's group is quicker, it is time to switch.")}</b></div>`;
+      for (const cls of mixed) {
+        const g = cp.filter(o => o.classId === cls);
+        const cname = (Object.values(S.cars.cars || {}).find(x => x.classId === cls) || {}).className;
+        h += `<div class="fp-line">${isMulticlass() && cname ? esc(cname) + ": " : ""}` + g.map(o =>
+          `<span class="${o.fastest ? "gain" : ""}">compound ${esc(o.compound)} ${fmt.lap(o.medianLastLapS)} (${o.cars} car${o.cars > 1 ? "s" : ""})${o.vsFastestS ? " +" + o.vsFastestS.toFixed(2) : ""}</span>`).join(" · ") + `</div>`;
+      }
+    }
+    el.innerHTML = h || `<div class="note">Waiting for the field.</div>`;
+  }
+
+  // ---- stop forecast for a car whose fuel iRacing does not share
+  function stintForecastHtml(c) {
+    const d = c.derived || {}, w = RW();
+    let h = `<div class="note">iRacing does not share other cars' fuel. This is what ${w.pos} stints say so far.</div>`;
+    h += `<div class="fp-line">${d.lapsThisStint != null ? D(`${d.lapsThisStint} laps into this stint`, "Computed here: since the last stop or the start.") : "Stint start not seen"}` +
+         (d.longestStintLaps != null ? ` · ${D(`longest stint ${d.longestStintLaps} laps`, "Computed here: between stops we watched.")}` : "") + `</div>`;
+    if (d.nextStopLapEst != null) {
+      const cur = c.lap;
+      h += `<div class="fp-big">${D("Lap " + d.nextStopLapEst, "Computed here: stint start plus the longest stint so far.")}</div>` +
+           `<div class="fp-line">${cur != null ? (d.nextStopLapEst > cur ? `next stop expected in about ${d.nextStopLapEst - cur} laps` : "past its longest stint: a stop is due") : ""}</div>`;
+    } else {
+      h += `<div class="fp-line note">A forecast needs one full stint seen (start to stop).</div>`;
+    }
+    return h;
+  }
+
+  // ---- trace for any car: speed (computed), gear and rpm by track position
+  const TRACE = { idx: null, cur: [], prev: [], lastPct: null };
+  function recordTrace() {
+    const c = meCar();
+    if (!c || c.pct == null || c.pct < 0) return;
+    if (TRACE.idx !== c.idx) { TRACE.idx = c.idx; TRACE.cur = []; TRACE.prev = []; TRACE.lastPct = null; }
+    if (TRACE.lastPct != null && c.pct + 0.5 < TRACE.lastPct) { TRACE.prev = TRACE.cur; TRACE.cur = []; }
+    TRACE.lastPct = c.pct;
+    const v = c.derived ? c.derived.speedMs : null;
+    TRACE.cur.push([c.pct, v, c.gear, c.rpm]);
+    if (TRACE.cur.length > 8000) TRACE.cur.shift();
+    if (chartTab === "inputs") chartDirty = true;
   }
 
   // ---- engine trend (what water, oil and oil pressure have done this stint)
@@ -1402,6 +1581,27 @@
       for (let v = Math.ceil(x0); v <= x1; v += step) g.fillText(xfmt(v), X(v), H - 6);
       return [X, Y];
     };
+    if (chartTab === "inputs" && !(isOwnRef() && playerBlockIsLive())) {
+      const c = meCar();
+      if (!c || (!TRACE.cur.length && !TRACE.prev.length)) { note.textContent = c ? "Builds as the car goes round." : "Pick a car to follow."; return; }
+      const vals = TRACE.cur.concat(TRACE.prev).map(p => p[1]).filter(v => v != null);
+      const vmax = Math.max(10, ...vals);
+      const [X, Y] = axes(0, 1, 0, vmax, v => U.speed(v), v => "", false);
+      [TRACE.prev, TRACE.cur].forEach((pts, k) => {
+        g.strokeStyle = "#6FA8FF"; g.globalAlpha = k ? 1 : 0.3; g.lineWidth = k ? 1.8 : 1.2; g.beginPath();
+        let pen = false, lp = -1;
+        for (const p of pts) { if (p[1] == null || p[0] < lp) { pen = false; lp = p[0]; continue; } lp = p[0]; const x = X(p[0]), y = Y(p[1]); pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; }
+        g.stroke();
+      });
+      g.globalAlpha = 1;
+      // gear as a step line on its own scale along the bottom
+      const gmax = Math.max(1, ...TRACE.cur.map(p => p[2] || 0));
+      g.strokeStyle = "#FFD23F"; g.lineWidth = 1.2; g.beginPath(); let pen = false;
+      for (const p of TRACE.cur) { if (p[2] == null || p[2] < 0) { pen = false; continue; } const x = X(p[0]), y = H - B - (p[2] / gmax) * (H - T - B) * 0.35; pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; }
+      g.stroke();
+      note.innerHTML = `${carLabel(c.idx)}: ${D("speed", "Computed here from how far along the lap the car moved; iRacing does not give other cars' speed.")} by track position, this lap bright and last lap faint; yellow is the gear (iRacing's). Throttle and brake exist for your own car only.`;
+      return;
+    }
     if (chartTab === "inputs") {
       const tr = [INP.prev, INP.cur];
       if (!INP.cur.length && !INP.prev.length) { note.textContent = playerBlockIsLive() ? "Builds as the car is driven." : "Inputs are your own car's channels; they read zero while spectating."; return; }
@@ -1431,10 +1631,12 @@
     }
     const cars = chartCars();
     const key = chartTab === "gap" ? "classGapS" : chartTab === "you" ? "toPlayerS" : "classPos";
-    const series = cars.map((c, i) => ({ c, col: c.idx === (S.state && S.state.player.carIdx) ? "#FFB23F" : PALETTE[i % PALETTE.length],
-      pts: S.feed.laps.filter(e => e.idx === c.idx && e[key] != null).map(e => [e.lap, e[key]]) })).filter(s => s.pts.length);
+    const refIdx = refInfo().idx, rg = (S.refgaps && S.refgaps.ref === refIdx && S.refgaps.series) || {};
+    const series = cars.map((c, i) => ({ c, col: c.idx === refIdx ? "#FFB23F" : PALETTE[i % PALETTE.length],
+      pts: key === "toPlayerS" ? (rg[String(c.idx)] || [])
+        : S.feed.laps.filter(e => e.idx === c.idx && e[key] != null).map(e => [e.lap, e[key]]) })).filter(s => s.pts.length);
     if (!series.length) {
-      note.textContent = chartTab === "you" && !meCar() ? "Gap to you needs your own car in the race."
+      note.textContent = chartTab === "you" && !meCar() ? "Pick a car to follow."
         : S.cars && S.cars.derived && S.cars.derived.isRace === false ? "Race-only: gaps come from each car's time behind the leader, which iRacing reports in races."
         : "Builds lap by lap as cars cross the line.";
       return;
@@ -1447,7 +1649,7 @@
     if (key === "classGapS") { y0 = 0; y1 = Math.max(1, y1); }
     const dec = Math.abs(y1 - y0) < 10 ? 1 : 0;
     const yfmt = key === "classPos" ? (v => "P" + Math.round(v))
-      : key === "toPlayerS" ? (v => Math.abs(v) < 1e-9 ? "you" : Math.abs(v).toFixed(dec) + (v < 0 ? " ahead" : " behind"))
+      : key === "toPlayerS" ? (v => Math.abs(v) < 1e-9 ? RW().obj.replace(/<[^>]*>/g, "") : Math.abs(v).toFixed(dec) + (v < 0 ? " ahead" : " behind"))
       : (v => v.toFixed(dec) + " s");
     const [X, Y] = axes(x0, x1, y0, y1, yfmt, v => "L" + v, true, key === "classPos");
     if (key === "toPlayerS") {
@@ -1468,7 +1670,7 @@
     for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 11) labels[i].y = labels[i - 1].y + 11;
     for (const l of labels) { g.fillStyle = l.col; g.textAlign = "left"; g.font = (l.mine ? "bold " : "") + "10px system-ui, sans-serif"; g.fillText(l.txt, l.x, l.y); }
     note.innerHTML = chartTab === "gap" ? `<span class="derived" title="Computed here: each car's time behind the leader minus the class leader's, at every lap crossing.">Gap to your class leader at each lap</span>, your class leader and the cars within four places of you. You are orange.`
-      : chartTab === "you" ? `<span class="derived" title="Computed here from the two cars' time behind the leader, at each of their lap crossings.">Gap to you at each lap</span>: above the middle line is ahead of you, below is behind.`
+      : chartTab === "you" ? `<span class="derived" title="Computed here: the moment each car crossed the line on that lap minus the moment the followed car did.">Gap to ${RW().obj} at each lap line</span>: above the middle line is ahead, below is behind. Orange is the followed car.`
       : "Class position at each lap crossing, as iRacing scored it.";
   }
 
@@ -1493,6 +1695,11 @@
     const el = $("fuelBox");
     const st = S.state; if (!st) return;
     const d = st.derived || {}, pl = d.plan;
+    if (!isOwnRef()) {
+      const c = meCar();
+      el.innerHTML = c ? stintForecastHtml(c) : `<div class="note">Pick a car to follow.</div>`;
+      return;
+    }
     if (!pl || d.fuelPerLap == null) {
       el.innerHTML = `<div class="note">${playerBlockIsLive() ? "Needs a full green lap of fuel readings (laps that touch pit road are left out)." : "Fuel planning follows your own car; while spectating there is none."}</div>`;
       return;
@@ -1541,9 +1748,11 @@
   // ---- lap log
   function lapLogHtml() {
     const me = meCar();
-    if (!me) return `<div class="note">The lap log follows your own car; while spectating there is none.</div>`;
+    if (!me) return `<div class="note">Pick a car to follow.</div>`;
     const laps = S.feed.laps.filter(e => e.idx === me.idx);
-    if (!laps.length) return `<div class="note">Your laps appear here as you cross the line.</div>`;
+    if (!laps.length) return `<div class="note">${RW().Pos} laps appear here as the car crosses the line.</div>`;
+    const ownRef = isOwnRef();
+    const adj = ownRef ? S.feed.events.filter(e => e.kind === "adjust") : [];
     const timed = laps.filter(e => e.lapS != null && !e.pit);
     const best = timed.length ? Math.min(...timed.map(e => e.lapS)) : null;
     const sb = (S.cars && S.cars.derived && S.cars.derived.sessionBestSectorS) || [];
@@ -1560,24 +1769,27 @@
       const isBest = best != null && e.lapS === best;
       const fuel = e.refuel ? `<span class="muted">refuel</span>` : e.fuelL != null ? U.fuel(e.fuelL, 2) : "–";
       const inc = e.incL ? `<span class="lose">+${e.incL}x</span>` : e.incL === 0 ? `<span class="muted">0</span>` : "–";
-      const note = [e.pit ? "pit lane" : "", e.lapS == null ? "no time" : ""].filter(Boolean).join(" · ");
+      // in-car changes made during this lap (your car only)
+      const ch = adj.filter(a => a.onLap === e.lap).map(a => `${esc(words(a.control))} ${esc(a.fromValue)}→${esc(a.toValue)}`).join(", ");
+      const note = [e.pit ? "pit lane" : "", e.lapS == null ? "no time" : "", ch].filter(Boolean).join(" · ");
       return `<tr class="${isBest ? "best" : ""}"><td class="r mono">${e.lap}</td>` +
         `<td class="r mono ${isBest ? "s-purple" : ""}">${fmt.lap(e.lapS)}</td>${sec}` +
-        `<td class="r mono">${fuel}</td><td class="r">${inc}</td><td class="muted">${note}</td></tr>`;
+        `<td class="r mono">${e.topSpeedMs != null ? U.speed(e.topSpeedMs) : "–"}</td>` +
+        (ownRef ? `<td class="r mono">${fuel}</td><td class="r">${inc}</td>` : "") + `<td class="muted">${note}</td></tr>`;
     }).join("");
     return `<table><thead><tr><th class="r">Lap</th><th class="r">Time</th>${secHead}` +
-      `<th class="r"><span class="derived" title="Computed here: fuel level at the start of the lap minus at the end.">Fuel ${U.fuelAbbr}</span></th>` +
-      `<th class="r"><span class="derived" title="Computed here: your incident count at the end of the lap minus at its start.">Inc</span></th><th></th></tr></thead>` +
-      `<tbody>${rows}</tbody></table>` +
-      `<div class="note" style="margin-top:4px">Best lap highlighted. Sectors: purple = session best, green = your best. <span class="derived" title="Computed here from lap-distance crossings">Sector times</span> are timed here; lap times are iRacing's.</div>`;
+      `<th class="r"><span class="derived" title="Computed here: the highest speed on the lap, from how far along the lap the car moved.">Top</span></th>` +
+      (ownRef ? `<th class="r"><span class="derived" title="Computed here: fuel level at the start of the lap minus at the end.">Fuel ${U.fuelAbbr}</span></th>` +
+                `<th class="r"><span class="derived" title="Computed here: your incident count at the end of the lap minus at its start.">Inc</span></th>` : "") +
+      `<th></th></tr></thead><tbody>${rows}</tbody></table>` +
+      `<div class="note" style="margin-top:4px">${RW().Pos} laps. Best lap highlighted. Sectors: purple = session best, green = this car's best. <span class="derived" title="Computed here from lap-distance crossings">Sector times</span> are timed here; lap times are iRacing's.` +
+      (ownRef ? " In-car changes are listed on the lap they were made." : " Fuel and incidents per lap exist for your own car only.") + `</div>`;
   }
 
   // ---- head-to-head
   let h2hIdx = null;
   try { const v = localStorage.getItem("pitwall.h2h"); if (v != null && v !== "") h2hIdx = Number(v); } catch (e) {}
   function h2hRival(me) {
-    const pinned = pinnedIdx != null && pinnedIdx !== me.idx ? carByIdx(pinnedIdx) : null;
-    if (pinned) return pinned;
     const chosen = carByIdx(h2hIdx);
     if (chosen && chosen.idx !== me.idx) return chosen;
     const cls = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
@@ -1585,22 +1797,23 @@
   }
   function h2hHtml() {
     const me = meCar();
-    if (!me || !S.cars) return `<div class="note">Head-to-head compares a car with your own; while spectating there is none.</div>`;
+    if (!me || !S.cars) return `<div class="note">Pick a car to follow; head-to-head compares it with any other.</div>`;
     const r = h2hRival(me);
     const opts = Object.values(S.cars.cars || {}).filter(c => c.idx !== me.idx && c.pos > 0)
       .sort((a, b) => (a.classId === me.classId ? 0 : 1) - (b.classId === me.classId ? 0 : 1) || a.pos - b.pos)
       .map(c => `<option value="${c.idx}"${r && c.idx === r.idx ? " selected" : ""}>#${esc(c.num ?? c.idx)} ${esc(c.name ?? "")}${isMulticlass() ? " (" + esc(c.className ?? "") + ")" : ""}</option>`).join("");
     let h = `<div class="h2h-sum"><label class="muted">Against <select id="h2hSel">${opts}</select></label>` +
-            (pinnedIdx != null ? `<span class="muted">(the car pinned in the standings)</span>` : "") + `</div>`;
+            `<span class="muted">compared with ${RW().obj}</span></div>`;
     if (!r) return h + `<div class="note">Pick a car.</div>`;
     const v = (r.derived && r.derived.vsYou) || {};
     const dd = x => x == null ? "–" : `<span class="${x < 0 ? "lose" : x > 0 ? "gain" : "flat"}">${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(3)}</span>`;
-    const tip = "Computed here: their time minus yours. Green = you are quicker, red = they are.";
+    const wv = RW();
+    const tip = `Computed here: their time minus ${wv.y ? "yours" : wv.pos}. Green = ${wv.y ? "you are" : wv.sub + " is"} quicker, red = they are.`;
     h += `<div class="h2h-sum">` +
       `<span>${D("Last lap", tip)} ${dd(v.lastLapS)}</span><span>${D("Best lap", tip)} ${dd(v.bestLapS)}</span>` +
       `<span>${D("Pace", "Computed here: their median racing lap minus yours.")} ${dd(v.paceS)}</span>` +
       (v.bestSectorS ? `<span>${D("Best sectors", tip)} ${v.bestSectorS.map(dd).join(" ")}</span>` : "") +
-      (r.derived && r.derived.toPlayerS != null ? `<span>${D("Gap", "Computed here from the two cars' time behind the leader.")} ${Math.abs(r.derived.toPlayerS).toFixed(2)} s ${r.derived.toPlayerS < 0 ? "ahead of you" : "behind you"}</span>` : "") +
+      (r.derived && r.derived.toPlayerS != null ? `<span>${D("Gap", "Computed here from the two cars' time behind the leader.")} ${Math.abs(r.derived.toPlayerS).toFixed(2)} s ${r.derived.toPlayerS < 0 ? "ahead of " + wv.obj : "behind " + wv.obj}</span>` : "") +
       `</div>`;
     const mine = new Map(S.feed.laps.filter(e => e.idx === me.idx).map(e => [e.lap, e]));
     const theirs = new Map(S.feed.laps.filter(e => e.idx === r.idx).map(e => [e.lap, e]));
@@ -1615,10 +1828,10 @@
       const ms = (m && m.sectors) || [], ts = (t && t.sectors) || [];
       const secs = Array.from({ length: nSec }, (_, i) => cell(ms[i], ts[i]) + cell(ts[i], ms[i])).join("");
       return `<tr><td class="r mono">${n}</td>${lapCell(ml, tl)}${lapCell(tl, ml)}${secs}` +
-        `<td class="muted">${[m && m.pit ? "you pitted" : "", t && t.pit ? "they pitted" : ""].filter(Boolean).join(", ")}</td></tr>`;
+        `<td class="muted">${[m && m.pit ? wv.sub + " pitted" : "", t && t.pit ? "they pitted" : ""].filter(Boolean).join(", ")}</td></tr>`;
     }).join("");
-    const secHead = Array.from({ length: nSec }, (_, i) => `<th class="r">S${i + 1} you</th><th class="r">them</th>`).join("");
-    return h + `<table><thead><tr><th class="r">Lap</th><th class="r">You</th><th class="r">#${esc(r.num ?? r.idx)}</th>${secHead}<th></th></tr></thead><tbody>${rows}</tbody></table>` +
+    const secHead = Array.from({ length: nSec }, (_, i) => `<th class="r">S${i + 1} ${wv.y ? "you" : wv.sub}</th><th class="r">them</th>`).join("");
+    return h + `<table><thead><tr><th class="r">Lap</th><th class="r">${wv.y ? "You" : wv.Sub}</th><th class="r">#${esc(r.num ?? r.idx)}</th>${secHead}<th></th></tr></thead><tbody>${rows}</tbody></table>` +
       `<div class="note" style="margin-top:4px">Same lap numbers side by side; the quicker of each pair is green. Lap times are iRacing's, sector times are timed here.</div>`;
   }
   function renderTabView() {
@@ -1630,7 +1843,7 @@
       v.innerHTML = h2hHtml();
       const sel = $("h2hSel");
       if (sel) sel.onchange = () => {
-        h2hIdx = Number(sel.value); pinnedIdx = null;
+        h2hIdx = Number(sel.value);
         try { localStorage.setItem("pitwall.h2h", String(h2hIdx)); } catch (e) {}
         renderTabView(); renderStandings(); renderFocus();
       };
@@ -1643,12 +1856,18 @@
   function renderSpotterList() {
     const p = S.state && S.state.player;
     const call = $("spotCall"), list = $("spotList");
-    if (!p || !playerBlockIsLive()) {
+    const ownLive = p && isOwnRef() && playerBlockIsLive();
+    if (!meCar()) {
       call.textContent = "–"; call.className = "spot-call off";
-      list.innerHTML = `<div class="note">The spotter follows your own car. While spectating there is none.</div>`;
+      list.innerHTML = `<div class="note">Pick a car to follow.</div>`;
       return;
     }
-    const c = CALL[p.carLeftRight] || ["–", "off"];
+    const nearAll = (S.cars && S.cars.derived && S.cars.derived.nearby) || [];
+    // iRacing's own left/right call exists for your car only. For any other
+    // car, a car within a car's length along the track is alongside -- but
+    // which side cannot be known.
+    const alongside = nearAll.some(n => Math.abs(n.meters) < 5 && !n.inPit);
+    const c = ownLive ? (CALL[p.carLeftRight] || ["–", "off"]) : alongside ? ["ALONGSIDE", "busy"] : ["CLEAR", "clear"];
     call.textContent = c[0]; call.className = "spot-call " + c[1];
     const near = (S.cars && S.cars.derived && S.cars.derived.nearby) || [];
     list.innerHTML = near.length ? near.slice(0, 6).map(n => {
@@ -1671,8 +1890,8 @@
     g.strokeStyle = "#2F3F63"; g.lineWidth = 1;
     for (const m of [-40, -20, 20, 40]) { g.beginPath(); g.moveTo(10, Y(m)); g.lineTo(W - 10, Y(m)); g.stroke(); }
     const p = S.state && S.state.player;
-    const live = p && playerBlockIsLive();
-    const lr = live ? p.carLeftRight : null;
+    const live = !!meCar();
+    const lr = p && isOwnRef() && playerBlockIsLive() ? p.carLeftRight : null;
     const left = lr === "car_left" || lr === "car_left_right" || lr === "two_cars_left";
     const right = lr === "car_right" || lr === "car_left_right" || lr === "two_cars_right";
     // alongside: iRacing says WHICH side, not how far across, so the side lights up
@@ -1727,7 +1946,7 @@
   // as PlayerCarIdx), which is in no standings row. Falling through rather than
   // resolving to a car that is not there is what keeps the panel honest.
   function focusCar() {
-    for (const i of [pinnedIdx,
+    for (const i of [refInfo().idx,
                      S.state && S.state.player ? S.state.player.camCarIdx : null,
                      S.state && S.state.player ? S.state.player.carIdx : null]) {
       const c = carByIdx(i);
@@ -1826,10 +2045,19 @@
     ctx.fillStyle = "#5A6784"; for (const s of sectors) { if (!s.SectorStartPct) continue; const [x, y] = P(s.SectorStartPct); ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
     // cars
     if (!S.cars) return;
-    const me = S.state && S.state.player.carIdx;
+    const me = refInfo().own;
     const focus = focusIdx();
     const multi = isMulticlass();
     const cars = Object.values(S.cars.cars || {}).filter(c => c.pct != null && c.pct >= 0 && c.surface !== "not_in_world");
+    // Incidents of the followed car, where on the lap they happened: predicted
+    // from telemetry for any car, and your own counted incidents when driving.
+    ctx.font = "bold 10px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (const e of S.feed.events.slice(-300)) {
+      if (e.idx !== focus || e.pct == null || !["race_incident", "car_incident", "incident", "off_track", "slowed"].includes(e.kind)) continue;
+      const [x, y] = P(e.pct);
+      ctx.strokeStyle = "#FF5A5A"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke();
+    }
     ctx.font = "bold 10px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const c of cars.sort((a, b) => (a.idx === me) - (b.idx === me))) {
       const [x, y] = P(c.pct); const mine = c.idx === me;
@@ -1888,7 +2116,7 @@
     }
     if (dirty.cars && now - drawnAt.cars >= 100) {
       drawnAt.cars = now; dirty.cars = false;
-      renderStandings(); renderFocus(); renderBattle(); renderStrategy(); renderTraffic();
+      renderStandings(); renderFocus(); renderBattle(); renderStrategy(); renderTraffic(); renderFollow(); renderTires();
     }
     if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {
       chartDirty = false; chartAt = now; drawCharts();
@@ -1997,9 +2225,10 @@
     const tr = e.target.closest("tr[data-idx]");
     if (!tr) return;
     const idx = Number(tr.dataset.idx);
-    pinnedIdx = (pinnedIdx === idx) ? null : idx;   // clicking the pinned car releases it
-    renderStandings();
-    renderFocus();
+    // Clicking a row follows that car (for everyone on this relay); clicking
+    // the car already chosen goes back to automatic.
+    const r = refInfo();
+    sendFocus(r.source === "chosen" && r.idx === idx ? null : idx);
   });
 
   $("unitToggle").addEventListener("click", () => {

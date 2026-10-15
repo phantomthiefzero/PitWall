@@ -23,6 +23,11 @@ Verification status
 - `commands.py` (phase 2 pit service) is still UNTESTED against the sim. So are its camera
   and replay commands (broadcast); see VARIABLES_TO_VERIFY.md, "Broadcast".
 
+Spectator first: the booth is mostly used spectating. Relative values follow the
+REFERENCE car (`cars.derived.ref`: chosen by a viewer, else your car when driving, else
+the camera car), never PlayerCarIdx directly -- while spectating that is slot 63, not a
+car. Only fuel, tyre sets, in-car settings and CarLeftRight are your-car-only.
+
 A recurring trap, worth stating plainly: FakeSource repeatedly encoded the same
 assumption as the code under test, so the suite passed while the sim disagreed.
 It has now been corrected five times -- the F2Time placeholder, gap monotonicity,

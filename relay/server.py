@@ -40,16 +40,19 @@ from websockets.datastructures import Headers
 from websockets.http11 import Response
 
 SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director", "livery_status",
-                  "camera_packs")
+                  "camera_packs", "refgaps")
 
 # Messages a viewer may have queued before it is judged too slow and dropped.
-# At ~20 msg/s this is ~10 s of stream. Each viewer drains its own queue, so a
+# (See the figure below for how many seconds of stream that is.) Each viewer drains its own queue, so a
 # phone that backgrounds its tab or loses signal can no longer stall the
 # fan-out -- measured before this existed: one viewer that stopped reading took
 # every other viewer from 20 msg/s to 0 within 5 s. A dropped viewer
 # reconnects and gets a fresh snapshot, which a delta stream needs anyway after
 # a gap.
-VIEWER_QUEUE = 200
+# 1000: the suite streams ~80 msg/s since the rates went up (60/30), so 200 was
+# only ~2.5 s of slack -- a phone locking its screen for a moment would be
+# dropped. 1000 is ~12 s at that rate and ~25 s at the standalone 30/15.
+VIEWER_QUEUE = 1000
 CLOSE_TOO_SLOW = 4002
 
 # Which viewer role may send which command kind on to the bridge.
@@ -216,7 +219,7 @@ class Relay:
         # they arrive in order and the writer task is the only thing sending.
         q.put_nowait(json.dumps({"type": "relay", "bridge": "connected" if self.bridge else "disconnected",
                                  "engineer": engineer, "role": role, "viewers": len(self.viewers) + 1}))
-        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status"):
+        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps"):
             if t in self.snapshot:
                 q.put_nowait(self.snapshot[t])
         q.put_nowait(self._gfx_message())
@@ -282,6 +285,12 @@ class Relay:
                         await self._to_bridge(raw)
                 elif msg.get("type") == "resend" and self.bridge is not None:
                     await self._to_bridge(raw)
+                elif msg.get("type") == "focus" and self.bridge is not None:
+                    # Which car PitWall follows. It does not touch the sim, so any
+                    # viewer may send it; only a clean car index goes through.
+                    idx = msg.get("idx")
+                    if idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64):
+                        await self._to_bridge(json.dumps({"type": "focus", "idx": idx}))
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:

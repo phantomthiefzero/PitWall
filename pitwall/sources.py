@@ -383,7 +383,11 @@ class FakeSource(TelemetrySource):
                  speed: float = 1.0, player_pit_lap: int | None = None, spectator: bool = False,
                  incidents: bool | None = None, incident_every_s: float = 25.0,
                  hide_incident_counts: bool | None = None, parade_s: float = 0.0,
-                 grid_s: float = 0.0):
+                 grid_s: float = 0.0, team: bool = False):
+        # team=True: a team race. Each car's driver swaps at every stop, and the
+        # session info names the new driver -- iRacing's shape (DriverInfo gives
+        # the CURRENT driver per car, and the session info update count ticks).
+        self.team = team
         # spectator=True behaves like a spectator slot, as observed live:
         # PlayerCarIdx is 63 (not a car), the session is a replay at speed 1,
         # kinematics follow the camera car, and private car state (fuel, tyres,
@@ -523,9 +527,10 @@ class FakeSource(TelemetrySource):
     def _build_session_info(self) -> dict:
         drivers = []
         for c in self.cars:
+            second = getattr(c, "driver", 0) == 1
             drivers.append({
                 "CarIdx": c.idx,
-                "UserName": f"Driver {c.idx:02d}" if c.idx else "Andrew",
+                "UserName": (f"Driver {c.idx:02d}" if c.idx else "Andrew") + (" (B)" if second else ""),
                 "TeamName": f"Team {c.idx // 3}",
                 "CarNumber": str(10 + c.idx * 3),
                 "CarClassID": c.cls["id"],
@@ -536,7 +541,8 @@ class FakeSource(TelemetrySource):
                 "CarClassEstLapTime": c.cls["lap"],
                 "CarDesignStr": ["0,ff3b30,ffffff,111111", "3,1c6dd0,f2c200,ffffff", "7,0b8f4d,ffffff,000000"][c.idx % 3],
                 "HelmetDesignStr": "1,ffffff,ff3b30,111111",
-                "CarID": 100 + c.cls["id"], "UserID": 300000 + c.idx, "TeamID": 0,
+                "CarID": 100 + c.cls["id"], "UserID": 300000 + c.idx + (500 if second else 0),
+                "TeamID": (900 + c.idx) if self.team else 0,
                 # Spread licences across classes with iRacing's own colours, so the
                 # badge path is exercised rather than assumed: A blue, B green,
                 # C yellow, D orange.
@@ -563,13 +569,17 @@ class FakeSource(TelemetrySource):
                 "Category": "Road",
                 "SessionID": 1,
                 "SubSessionID": 1,
-                "TeamRacing": 0,
+                "TeamRacing": 1 if self.team else 0,
                 # iRacing writes the limit as a number, or the word "unlimited".
                 "WeekendOptions": {"IncidentLimit": 17, "FastRepairsLimit": 1,
                                    "StandingStart": 0, "NumStarters": self.n_cars},
             },
             "DriverInfo": {
                 "DriverCarIdx": 0,
+                # As in the real Indianapolis session info: the compounds the
+                # player's car class can run, by CarIdxTireCompound index.
+                "DriverTires": [{"TireIndex": 0, "TireCompoundType": "Hard"},
+                                {"TireIndex": 1, "TireCompoundType": "Wet"}],
                 "DriverCarFuelMaxLtr": self.fuel_max,
                 "DriverCarMaxFuelPct": 1.0,
                 "DriverCarSLShiftRPM": 7600,
@@ -652,11 +662,14 @@ class FakeSource(TelemetrySource):
             else:
                 spd = (self.length / c.base_lap) * self.curvature_speed_factor(c.pct) / 0.83
                 spd += math.sin(self.t * 0.5 + c.idx) * 0.8
+                if c.compound == 1:
+                    spd *= 0.96                 # the other compound: ~4 % off in the dry
                 if self.t < self.parade_s and self.grid_s:
                     spd *= 0.4                  # behind the pace car
                 eff = self.inc_effect.get(c.idx)
                 if eff and self.t < eff["until"]:
                     spd *= -0.25 if self.t < eff.get("back_until", 0) else eff["speed"]
+            c.v = abs(spd)                      # what the car is really doing (Speed is a magnitude)
             new_pct = max(0.0, c.pct + spd * dt / self.length)
             if c.pit_phase is None and c.pit_planned and c.pct < self.PIT_IN_PCT <= new_pct:
                 c.pit_phase, c.pit_planned = "lane_in", False
@@ -681,7 +694,14 @@ class FakeSource(TelemetrySource):
                     c.box_until = self.t + 18.0 + rng.random() * 22.0
                     c.compound = (c.compound + 1) % 2
                     if c.idx == 0:
-                        self.fuel = min(self.fuel_max, 60.0)
+                        # Fuel goes in at a rate, as in the sim: 2.60 L/s in the
+                        # real Indianapolis stop. The stop lasts at least as long.
+                        self.fuel_target = min(self.fuel_max, 60.0)
+                        c.box_until = max(c.box_until, self.t + (self.fuel_target - self.fuel) / 2.6 + 1.0)
+                    if self.team:
+                        c.driver = 1 - getattr(c, "driver", 0)
+                        self._session = self._build_session_info()
+                        self._siu += 1
                 # occasional stop on the NEXT lap for a non-player car
                 if c.idx != 0 and rng.random() < 0.08 and c.laps_completed > 2:
                     c.pit_planned = True
@@ -732,8 +752,10 @@ class FakeSource(TelemetrySource):
             # Kinematics follow the camera car; there is no car of our own.
             player = self.cars[self.cam["car"]] if self.cam["car"] < self.n_cars else self.cars[0]
         self._pos = pos
-        speed = (0.0 if player.pit_phase == "box" else self.PIT_LANE_MS if player.on_pit
-                 else (self.length / player.base_lap) * self.curvature_speed_factor(player.pct) / 0.83)
+        # Speed is the speed the car actually moved at this step. It used to be
+        # recomputed from a formula without the pace wobble and the compound
+        # penalty, so the fake's Speed disagreed with its own positions.
+        speed = getattr(player, "v", 0.0)
         heading = self.heading_at(player.pct)
         fuel_rate_kg_h = 95.0 * (0.4 + 0.6 * self.curvature_speed_factor(player.pct))
         # At the limiter the engine barely works, and stationary it idles: the
@@ -759,6 +781,8 @@ class FakeSource(TelemetrySource):
         car_lr = (1 if not (left or right) else 4 if left and right else
                   5 if left >= 2 else 6 if right >= 2 else 2 if left else 3)
         self.fuel -= (fuel_rate_kg_h / 3600.0) * dt / 0.75  # kg/h -> l/s with ~0.75 kg/l
+        if self.cars[0].pit_phase == "box" and getattr(self, "fuel_target", None) is not None:
+            self.fuel = min(self.fuel_target, self.fuel + 2.6 * dt)
         x, y = self.pos_at(player.pct)
         v.update({
             "SessionTime": self.t, "SessionNum": 1,

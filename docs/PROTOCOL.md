@@ -204,6 +204,40 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
 - cars carry `classEstLapS`, `carDesign` (CarDesignStr), `helmetDesign`, `carId`, `userId`, `teamId`;
   session drivers also carry CarNumberDesignStr, CarSponsor_1/2 and ClubID for the car renders.
 
+### Following a car (spectator first)
+
+Every relative value (`toPlayerS`, `youGainSPerLap`, `vsYou`, `rejoin`, `undercut`, `traffic`,
+`nearby`, battle, gap chart) is measured from ONE reference car, reported as
+`cars.derived.ref = {"idx", "source": "chosen"|"your_car"|"camera", "own", "camera"}`:
+the car a viewer chose, else your own car when driving, else the camera car while
+spectating. The "player"/"you" key names are kept for compatibility; they mean the
+reference car. Fuel, tyre sets, in-car settings and iRacing's left/right spotter exist
+for your own car only (`ref.own`).
+
+`{"type":"focus","idx":N}` (viewer → relay → bridge) chooses the car; `"idx":null` goes
+back to automatic. It does not touch the sim, so any viewer may send it, and the relay
+forwards only a clean car index (0-63 or null). The choice is shared by everyone on the
+relay and survives a session change.
+
+`{"type":"refgaps","ref":N,"series":{"<idx>":[[lap,gapS],...]}}` (bridge, whole, on every
+new lap line or reference change): each car's gap to the reference at each lap line --
+the moment it crossed minus the moment the reference crossed (sector-timer interpolated
+when available). Derived.
+
+Per-car additions under `derived` (any car): `speedMs` (from lap-distance movement and the
+track length; iRacing does not give other cars' speed), `topSpeedBestMs`, `consistencyS`,
+`gridPos`, `gridClassPos`, `posGained`, `classPosGained`, `lapsLedSeen`, `classLapsLedSeen`,
+`stintsSeen`, `stintStartLap`, `lapsThisStint`, `longestStintLaps`, `nextStopLapEst`,
+`compoundChanges`, `fastRepairsLeft`, `drivers` (team races: [{"name","timeS","laps","current"}]).
+Plain per car: `steerRad` (CarIdxSteer). Lap entries also carry `topSpeedMs` and `tx`
+(interpolated line crossing). `cars.derived.compoundPace`: per class and compound, the
+middle of the cars' last racing laps, `fastest`, `vsFastestS`. Session: `driverTires`
+(compound names by index, for your car's class). State (your car): `player.tireSets`,
+`player.fastRepairs`, `derived.refuelLps` (measured at your stops), `derived.plan.fuelTimeS`.
+New events: `compound_change`, `driver_change`, `adjust` (your in-car changes, reported
+once a control has been left alone for 3 s); `behind_closing`, `you_closing`, `position`
+and `pit_battle` carry `ref` (the car they were measured from); your `incident` carries `pct`.
+
 ### Delta encoding
 `full:true` = complete message (sent every 5 s and on every reconnect / `resend`).
 `full:false` = only keys that changed since the last message of that type; nested

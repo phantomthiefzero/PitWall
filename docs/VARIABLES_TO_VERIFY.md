@@ -115,6 +115,20 @@ needed a player car, so a spectator never saw a lead change; `class_lead` covers
 | spotter distances (`nearby`) | `CarIdxLapDistPct` gap x `TrackLength` | `TrackLength` is rounded to 10 m in the session info, about 0.2 % -- under a metre at spotter range. Closing is a 1.5 s least-squares slope. Unit-tested. |
 | `CarLeftRight` | plain | **Never yet seen from the live sim** -- it is not saved in .ibt files and no live capture includes it. Decoded with irsdk's own table; the fake produces every value. |
 
+### Spectator-first additions
+
+| Value | Inputs | Validation |
+|---|---|---|
+| reference car | chosen > `PlayerCarIdx` (if a car) > `CamCarIdx` | Unit-tested in all three modes. Switching cars resets everything measured from the old one (no fake "P8 -> P3"). |
+| per-car speed | `CarIdxLapDistPct` change x `TrackLength` / time | **On the fake against its true speed** (camera car, spectating): median error < 0.3 m/s, 95th percentile < 2.5 m/s (smoothing lag under hard braking). **Not yet compared with the sim**: if the sim's network-updated positions for other cars are jerky, the smoothing (0.1 s) may need raising. |
+| gap to the followed car per lap | each car's line-crossing time minus the reference's, same lap number | Unit-tested. |
+| stints, next stop | stops watched entry to exit | A stint is only counted if we saw it start (race start or a watched stop). "Next stop" is stint start + longest stint: a pattern, not fuel. |
+| refuel rate | your `FuelLevel` rising while `PlayerCarInPitStall` | **Real Indianapolis stop: 2.60 L/s** (31 L in ~12 s). Unit-tested; the fake now refuels at that rate. |
+| tyre sets | `TireSetsUsed`, `TireSetsAvailable`, `*TiresUsed` etc. | Present in the real 296 .ibt (288 vars). Plain. |
+| compound names | `DriverInfo/DriverTires` | Real file: index 0 "Hard", 1 "Wet". This list is for YOUR car's class; other classes show the index only. |
+| driver changes | `DriverInfo/Drivers[].UserID` for a CarIdx changing in the session info | **Not yet seen in a real team race.** Assumes DriverInfo lists the CURRENT driver per car and is refreshed at a swap; the fake does exactly that. |
+| `CarIdxSteer` | plain, every car | Present in the variable list; not yet compared with what is seen on screen. |
+
 ## Group D — believed unavailable (do not fake)
 
 Other cars' fuel, tire state, damage, pedal inputs, setup. Player damage as a
