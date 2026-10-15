@@ -131,6 +131,18 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": "Could not install that pack: %s" % e}
 
+    # ---- Share online (Cloudflare quick tunnel to PitWall's relay)
+    def share_start(self):
+        return self._engine.pitwall.share_service().start()
+
+    def share_stop(self):
+        s = self._engine.pitwall.share
+        return s.stop() if s else {"state": "off"}
+
+    def share_info(self):
+        s = self._engine.pitwall.share
+        return s.info() if s else {"state": "off", "downloaded": None}
+
     def open_cameras_folder(self):
         from suite.cameras import cameras_dir
         d = cameras_dir()
@@ -142,9 +154,17 @@ class Api:
         return {"ok": True, "path": d}
 
 
+_on_quit = []
+
+
 def quit_now(code=0):
     """End the process. Background threads (iRacing reader, thread pools) must not
     keep the app alive after its window is closed."""
+    for f in _on_quit:
+        try:
+            f()
+        except Exception:
+            pass
     try:
         print("iRacing Suite closed.")
         sys.stdout.flush()
@@ -189,6 +209,8 @@ def main():
 
     engine = Engine(a.rate, a.pitwall_source)
     engine.start(a.port)
+    # A shared link must never outlive the app.
+    _on_quit.append(lambda: engine.pitwall.share and engine.pitwall.share.stop())
     print("iRacing Suite %s on %s" % (__version__, engine.url))
     if a.replay:
         engine.replay(a.replay, a.speed)

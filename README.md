@@ -16,9 +16,29 @@ One Windows app for the iRacing tools, fed by a built-in telemetry bridge:
 4. No iRacing handy? **Replay a telemetry file…** plays any `.ibt` back as if live (Lap Analyzer).
 
 Everything runs on this PC and only reads iRacing's telemetry. PitWall's relay runs inside the app on
-127.0.0.1 with fresh tokens each launch, so it is not reachable from other machines. Sharing PitWall
-with remote crew still uses a public relay as described below. A log is written to
-`%LOCALAPPDATA%\iRacingSuite\suite.log`.
+127.0.0.1 with fresh tokens each launch, so it is not reachable from other machines until you
+press **Share online** (below). A log is written to `%LOCALAPPDATA%\iRacingSuite\suite.log`.
+
+### Share online (remote crew, no setup)
+
+**Share online** on the home screen gives PitWall a temporary public address through a free
+Cloudflare quick tunnel (no account, nothing on the router), and shows the link and a QR code.
+Anyone with the link opens PitWall in a browser, phone or computer, anywhere.
+
+- The first time, the suite downloads Cloudflare's `cloudflared.exe` (from Cloudflare's GitHub
+  releases) into `%LOCALAPPDATA%\iRacingSuite`.
+- The link carries a fresh **guest token**: watch only, no camera, graphics or pit commands.
+  Stopping sharing, or closing the suite, revokes it and disconnects everyone; the next share has
+  a new address and token. The tunnel runs in a Windows job object, so it ends with the suite even
+  after a crash.
+- Choosing which car to follow is shared by everyone on the relay, guests included.
+- Each viewer costs about 1.6 Mbit/s of upload at the suite's 60/30 updates per second.
+- Live data only exists on a PC running iRacing in that session. To watch a race from away
+  from home, that PC spectates the race (iRacing's Spectate) with the suite running and shared.
+- The find box at the top of PitWall searches the connected session's field by driver, team
+  mate, team or car number. Looking up drivers outside the session needs iRacing's Data API,
+  whose new client registrations are paused by iRacing (2026); the old password login was
+  retired in December 2025.
 
 ## How the app is put together
 
@@ -224,7 +244,8 @@ Relay (a small VPS, Fly.io, Railway, or a machine at home with a forwarded port)
 python relay/server.py --port 8765 --bridge-token <secret1> --view-token <secret2> [--engineer-token <secret3>]
 ```
 
-Health check: `http://host:8765/health`.
+Health check: `http://host:8765/health`. The relay also serves the dashboard itself at
+`http://host:8765/pitwall/?token=<view token>` (it connects back to the same host).
 
 Measured locally against a replayed 18-car race (`--source replay`), so these are
 real numbers rather than estimates:

@@ -93,6 +93,10 @@ def safe_asset_name(name) -> str | None:
 # Next to relay/ in the repo; inside the suite's .exe, in the unpacked bundle.
 BROADCAST_DIR = os.path.join(getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "broadcast")
+# PitWall's dashboard, served here too so crew reaching this relay from outside
+# (a VPS, or the suite's "Share online" tunnel) can load it from the same address.
+CLIENT_PAGE = os.path.join(os.path.dirname(BROADCAST_DIR), "client", "index.html")
+CLIENT_PATHS = ("/pitwall/", "/pitwall", "/pitwall/index.html")
 BROADCAST_PAGES = {"/broadcast/overlay.html": "overlay.html", "/broadcast/producer.html": "producer.html",
                    "/broadcast/": "producer.html", "/broadcast": "producer.html"}
 
@@ -131,6 +135,10 @@ class Relay:
         self.view_token = view_token
         self.engineer_token = engineer_token
         self.producer_token = producer_token
+        # A second, revocable watch-only token for links handed out while
+        # sharing online. Setting a new one (or None) disconnects its holders.
+        self.guest_token: str | None = None
+        self._guests: set = set()
         self.gfx: dict = {}
         self.gfx_rev = 0
         self.bridge = None
@@ -225,6 +233,8 @@ class Relay:
         q.put_nowait(self._gfx_message())
         q.put_nowait(self._assets_message())
         self.viewers[ws] = q
+        if role == "guest":
+            self._guests.add(ws)
         # Livery photos are large; they go after the live stream has started,
         # through the same queue, a few at a time so a slow link is not dropped.
         pending_liveries = list(self.liveries.values())
@@ -276,7 +286,7 @@ class Relay:
                 elif msg.get("type") == "cmd":
                     needs = CMD_ROLE.get(msg.get("cmd"))
                     if role != needs:
-                        why = ("this connection is view-only" if role == "view" else
+                        why = ("this connection is view-only" if role in ("view", "guest") else
                                f"{msg.get('cmd')!r} commands need the {needs or 'right'} token")
                         reply({"type": "cmd_result", "ok": False, "echo": msg, "error": why})
                     elif self.bridge is None:
@@ -297,6 +307,7 @@ class Relay:
             writer.cancel()
             lv_task.cancel()
             self.viewers.pop(ws, None)
+            self._guests.discard(ws)
             print(f"[relay] viewer left, {len(self.viewers)} total")
 
     async def handler(self, ws):
@@ -308,12 +319,23 @@ class Relay:
             await self.handle_bridge(ws)
         elif parsed.path == "/view" and token_ok(token, self.view_token):
             await self.handle_viewer(ws, engineer=False)
+        elif parsed.path == "/view" and self.guest_token and token_ok(token, self.guest_token):
+            await self.handle_viewer(ws, role="guest")
         elif parsed.path == "/view" and token_ok(token, self.engineer_token):
             await self.handle_viewer(ws, role="engineer")
         elif parsed.path == "/view" and token_ok(token, self.producer_token):
             await self.handle_viewer(ws, role="producer")
         else:
             await ws.close(code=4001, reason="bad path or token")
+
+    def set_guest_token(self, token: str | None):
+        """Replace the guest token; everyone who joined with the old one is
+        disconnected. Call on the relay's event loop."""
+        self.guest_token = token or None
+        for ws in list(self._guests):
+            self._guests.discard(ws)
+            self.viewers.pop(ws, None)
+            asyncio.ensure_future(ws.close(code=4003, reason="sharing stopped"))
 
     # ------------------------------------------------------------ assets
     def _asset_list(self) -> list[dict]:
@@ -378,6 +400,15 @@ class Relay:
             headers = Headers([("Content-Type", ASSET_TYPES[os.path.splitext(name)[1].lower()]),
                                ("Content-Length", str(len(body))), ("Cache-Control", "no-cache"),
                                ("Access-Control-Allow-Origin", "*")])
+            return Response(200, "OK", headers, body)
+        if path in CLIENT_PATHS and request.headers.get("Upgrade") is None:
+            try:
+                with open(CLIENT_PAGE, "rb") as f:
+                    body = f.read()
+            except OSError:
+                return connection.respond(http.HTTPStatus.NOT_FOUND, "the PitWall page is not installed\n")
+            headers = Headers([("Content-Type", "text/html; charset=utf-8"),
+                               ("Content-Length", str(len(body))), ("Cache-Control", "no-cache")])
             return Response(200, "OK", headers, body)
         page = BROADCAST_PAGES.get(path)
         if page and request.headers.get("Upgrade") is None:

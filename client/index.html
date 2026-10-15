@@ -294,6 +294,19 @@
   .follow { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
   .follow select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
                    font: inherit; font-size: 12px; padding: 4px 6px; max-width: 220px; }
+  .find { position: relative; }
+  header .clock, #followSrc { white-space: nowrap; }
+  .find input { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+                font: inherit; font-size: 12px; padding: 4px 8px; width: 140px; }
+  .find-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50; min-width: 280px; max-height: 340px;
+               overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+               box-shadow: 0 8px 24px rgba(0,0,0,.35); padding: 4px; }
+  .find-list button { display: flex; width: 100%; gap: 8px; align-items: baseline; text-align: left; background: none;
+                      border: 0; color: var(--text); font: inherit; font-size: 12.5px; padding: 6px 8px; border-radius: 5px; cursor: pointer; }
+  .find-list button:hover, .find-list button.sel { background: rgba(127,127,127,.18); }
+  .find-list .fnum2 { font-family: var(--mono); color: var(--muted); min-width: 34px; }
+  .find-list .why { margin-left: auto; color: var(--dim); font-size: 11px; white-space: nowrap; }
+  .find-list .none { padding: 6px 8px; font-size: 12px; color: var(--muted); }
   .cd-sec { margin: 8px 0 3px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
   .cd-sec:first-of-type { margin-top: 4px; }
   tr.ref td:first-child { box-shadow: inset 3px 0 0 #FFFFFF; }
@@ -345,6 +358,13 @@
     header .track { grid-column: 1 / -1; font-size: 17px; }
     header .flag { justify-self: start; min-width: 0; font-size: 15px; padding: 4px 14px; }
     header .clock { font-size: 17px; }
+    header .right { grid-column: 1 / -1; justify-self: stretch; flex-wrap: wrap; gap: 8px 10px; min-width: 0; }
+    header .find { flex: 1 1 140px; min-width: 0; }
+    header .find input { width: 100%; }
+    header .find-list { left: 0; right: auto; min-width: 0; width: min(320px, calc(100vw - 24px)); }
+    header .follow { min-width: 0; }
+    header .follow select { max-width: 52vw; }
+    header .clock { margin-left: auto; }
     footer { padding: 6px 12px; gap: 4px 12px; }
     footer .legend { margin-left: 0; }
   }
@@ -356,6 +376,8 @@
   <div class="track"><span id="trackName">Waiting for the bridge</span><small id="sessionType"></small></div>
   <div class="flag" id="flag" data-flag="">No flag</div>
   <div class="right">
+    <span class="find"><input id="findDrv" type="search" placeholder="Find a driver…" autocomplete="off" spellcheck="false"
+      title="Search this session's field by driver, team or car number, then follow that car"><div id="findList" class="find-list hidden"></div></span>
     <label class="follow" title="The car every relative panel follows. Shared with everyone on this relay.">Following
       <select id="followSel"><option value="">Auto</option></select> <span id="followSrc" class="note"></span></label>
     <button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button>
@@ -673,7 +695,13 @@
         // The relay accepted the socket, then refused the token. Retrying with
         // the same token can never work, so stop and say why instead of sitting
         // on an empty dashboard reconnecting every 3 s.
-        formError("The relay refused that token. Check it is the view (or engineer) token the relay was started with.");
+        formError("The relay refused that token. Check it is the view (or engineer) token the relay was started with. A share link stops working when sharing is turned off: ask for a new one.");
+        $("connect").classList.remove("hidden");
+        return;
+      }
+      if (ev.code === 4003) {
+        // The person sharing turned sharing off; this link is finished.
+        formError("Sharing was turned off. Ask for a new link to watch again.");
         $("connect").classList.remove("hidden");
         return;
       }
@@ -1105,6 +1133,69 @@
     const src = { chosen: "chosen", your_car: "your car", camera: "camera" }[r.source] || "nobody";
     $("followSrc").textContent = r.idx == null ? "nobody yet" : "(" + src + ")";
   }
+  // ---- find a driver in this session by name, team, team-mate or number.
+  // Only the field iRacing reports for the session you are connected to: there
+  // is no way to look up a driver outside it from the sim.
+  const FIND = { hits: [], sel: 0 };
+  function findHits(qs) {
+    const q = qs.trim().toLowerCase().replace(/^#/, "");
+    if (!q || !S.cars || !S.cars.cars) return [];
+    const out = [];
+    for (const c of Object.values(S.cars.cars)) {
+      const d = c.derived || {};
+      let score = null, why = "";
+      const name = String(c.name || "").toLowerCase(), team = String(c.team || "").toLowerCase();
+      const num = String(c.num ?? "").toLowerCase();
+      if (num === q) { score = 0; why = "car number"; }
+      else if (name.startsWith(q) || name.split(/\s+/).some(w => w.startsWith(q))) { score = 1; }
+      else if (name.includes(q)) { score = 2; }
+      else if (team && team.includes(q)) { score = 3; why = "team " + c.team; }
+      else {
+        const mate = (d.drivers || []).find(x => !x.current && String(x.name || "").toLowerCase().includes(q));
+        if (mate) { score = 4; why = "drove earlier: " + mate.name; }
+      }
+      if (score != null) out.push({ c, score, why });
+    }
+    return out.sort((a, b) => a.score - b.score || (a.c.pos || 999) - (b.c.pos || 999)).slice(0, 10);
+  }
+  function renderFind() {
+    const list = $("findList"), v = $("findDrv").value;
+    if (!v.trim()) { list.classList.add("hidden"); return; }
+    FIND.hits = findHits(v);
+    FIND.sel = Math.min(FIND.sel, Math.max(0, FIND.hits.length - 1));
+    list.innerHTML = FIND.hits.length ? FIND.hits.map((h, i) => {
+      const c = h.c;
+      return `<button type="button" data-idx="${c.idx}" class="${i === FIND.sel ? "sel" : ""}"><span class="fnum2">#${esc(c.num ?? c.idx)}</span>` +
+        `<span>${esc(c.name ?? "car " + c.idx)}${isMulticlass() && c.className ? ` <span class="note">${esc(c.className)}</span>` : ""}</span>` +
+        `<span class="why">${h.why ? esc(h.why) : c.pos ? "P" + c.pos : ""}</span></button>`;
+    }).join("") : `<div class="none">Nobody in this session matches. Only drivers in the session you are connected to can be found.</div>`;
+    list.classList.remove("hidden");
+  }
+  function pickFind(idx) {
+    if (idx == null) return;
+    sendFocus(idx);
+    $("findDrv").value = ""; $("findList").classList.add("hidden"); $("findDrv").blur();
+  }
+  $("findDrv").addEventListener("input", () => { FIND.sel = 0; renderFind(); });
+  $("findDrv").addEventListener("focus", renderFind);
+  $("findDrv").addEventListener("keydown", e => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      FIND.sel = Math.max(0, Math.min(FIND.hits.length - 1, FIND.sel + (e.key === "ArrowDown" ? 1 : -1)));
+      renderFind();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const h = FIND.hits[FIND.sel]; if (h) pickFind(h.c.idx);
+    } else if (e.key === "Escape") {
+      $("findDrv").value = ""; $("findList").classList.add("hidden");
+    }
+  });
+  $("findList").addEventListener("mousedown", e => {
+    const b = e.target.closest("button[data-idx]");
+    if (b) { e.preventDefault(); pickFind(Number(b.dataset.idx)); }
+  });
+  $("findDrv").addEventListener("blur", () => setTimeout(() => $("findList").classList.add("hidden"), 120));
+
   $("followSel").addEventListener("change", e => {
     const v = e.target.value;
     sendFocus(v === "" ? null : Number(v));
@@ -2274,7 +2365,8 @@
   $("relay").value = q.get("relay") || (location.host ? relayGuess : "");
   $("token").value = q.get("token") || "";
   $("connectForm").addEventListener("submit", e => { e.preventDefault(); formError(""); connect($("relay").value.trim(), $("token").value.trim()); });
-  if (q.get("relay") && q.get("token")) connect(q.get("relay"), q.get("token"));
+  // A token in the address is enough: the relay is the page's own host unless given.
+  if (q.get("token") && $("relay").value) connect($("relay").value, q.get("token"));
 })();
 </script>
 </body>

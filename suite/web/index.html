@@ -18,7 +18,15 @@ button{font:inherit;font-size:14px;padding:7px 14px;border-radius:7px;border:1px
 .app{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
 a.app:hover{border-color:var(--acc);transform:translateY(-2px)}.app h2{margin:0;font-size:19px}.app p{margin:0;color:var(--mut);font-size:14px}
 .tag{align-self:flex-start;font-size:12px;font-weight:600;padding:2px 9px;border-radius:10px;background:rgba(127,127,127,.15);color:var(--mut)}.tag.ok{background:rgba(47,179,106,.15);color:var(--good)}
-.open{margin-top:auto;font-weight:600;color:var(--acc)}
+.hidden{display:none!important}.open{margin-top:auto;font-weight:600;color:var(--acc)}
+.share{margin-top:16px;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:20px;display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+.share h2{margin:0 0 4px;font-size:19px}.share p{margin:0 0 8px;color:var(--mut);font-size:14px}.share .sh-main{flex:1;min-width:280px}
+.share .qr{width:190px;height:190px;background:#fff;border-radius:8px;padding:6px;flex:none}.share .qr svg{width:100%;height:100%;display:block}
+.share code{display:block;font-size:12.5px;background:var(--bg);border:1px solid var(--ln);border-radius:6px;padding:7px 9px;word-break:break-all;user-select:all;margin:4px 0 8px}
+.share .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.share .err{color:#e05a4f;font-size:14px;margin:0 0 8px}
+.share .bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin:6px 0 10px;max-width:360px}.share .bar i{display:block;height:100%;background:var(--acc);width:0}
+.share details{margin-top:10px;font-size:13px;color:var(--mut)}.share details summary{cursor:pointer}
+.live-pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:10px;background:rgba(47,179,106,.15);color:var(--good);margin-left:8px;vertical-align:middle}
 footer{margin-top:28px;color:var(--mut);font-size:13px}
 </style></head><body><div class="wrap">
 <header><h1>iRacing <span>Suite</span></h1><span class="ver" id="ver"></span><button class="theme" id="themeBtn" type="button"></button></header>
@@ -32,6 +40,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <div style="display:flex;gap:8px;margin-top:auto;padding-top:8px"><button type="button" id="bcCopy" style="white-space:nowrap">Copy OBS address</button><a class="open" id="bcOpen" style="align-self:center;margin-left:auto;text-decoration:none;white-space:nowrap">Open producer panel →</a></div></div>
 <a class="app" href="/pitwall/" id="pwTile"><span class="tag" id="pwTag">Starting</span><h2>PitWall</h2><p>Engineer and spotter dashboard: track map, standings, flags, weather and car systems. Runs on this PC through the built-in bridge.</p><span class="open">Open →</span></a>
 </div>
+<div class="share hidden" id="share"></div>
 <footer>The suite reads iRacing's telemetry. The only thing it ever changes in the sim is the replay camera, and only when you use the Broadcast producer panel. Everything stays on this PC unless you choose to share it.</footer>
 </div>
 <script>
@@ -55,9 +64,40 @@ mk('Install a camera pack…',async()=>{const r=await window.pywebview.api.insta
 mk('Open the cameras folder',async()=>{const r=await window.pywebview.api.open_cameras_folder();if(r&&!r.ok)alert(r.error||'Could not open '+r.path)})}
 window.addEventListener('pywebviewready',camBtns);setTimeout(camBtns,1500);
 $('bcCopy').onclick=async()=>{const v=$('bcObs').textContent;try{await navigator.clipboard.writeText(v);$('bcCopy').textContent='Copied'}catch(e){const r=document.createRange();r.selectNodeContents($('bcObs'));const s=getSelection();s.removeAllRanges();s.addRange(r);$('bcCopy').textContent='Press Ctrl+C'}setTimeout(()=>{$('bcCopy').textContent='Copy OBS address'},2000)};
-async function poll(){try{const r=await fetch('/api/info',{cache:'no-store'});Object.assign(info,await r.json());render();pitwallTile();broadcastTile()}catch(e){}}
+async function poll(){try{const r=await fetch('/api/info',{cache:'no-store'});Object.assign(info,await r.json());render();pitwallTile();broadcastTile();shareCard()}catch(e){}}
 function themeLabel(){$('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'\u263E Dark mode':'\u2600 Light mode'}
 $('themeBtn').onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}themeLabel()};themeLabel();
+// ---- Share online: a Cloudflare quick tunnel to PitWall's relay, started from the app window
+let sh={state:'off'},shUrl=null,shTimer=null;
+async function copyText(v,btn,label){try{await navigator.clipboard.writeText(v);btn.textContent='Copied'}catch(e){btn.textContent='Select and Ctrl+C'}setTimeout(()=>{btn.textContent=label},2000)}
+function shareCard(){const el=$('share');if(!hasApi()||!info.pitwall||!info.pitwall.ok){el.classList.add('hidden');return}el.classList.remove('hidden');
+const st=sh.state;let h='';
+if(st==='on'&&sh.links){if(shUrl===sh.links.pitwall&&el.dataset.on==='1')return;shUrl=sh.links.pitwall;el.dataset.on='1';el.dataset.key='';
+h=(sh.qr?'<div class="qr" title="Scan with a phone camera">'+sh.qr+'</div>':'')+'<div class="sh-main"><h2>Sharing PitWall online<span class="live-pill">LIVE</span></h2>'+
+'<p>Send this link to your crew. It opens PitWall in any browser, on a phone or a computer, anywhere.</p><code id="shLink"></code>'+
+'<div class="row"><button type="button" id="shCopy">Copy link</button><button type="button" id="shStop">Stop sharing</button></div>'+
+'<p style="margin-top:10px;font-size:13px">Watch only: the link cannot change anything in iRacing. Choosing which car to follow is shared by everyone watching. Each person watching uses about 1.6 Mbit/s of this PC\'s upload. Stopping (or closing the suite) ends the link for everyone; the next share gets a new address.</p>'+
+(sh.links.producer?'<details><summary>Broadcast co-host link</summary><p style="margin-top:6px">Lets a co-host run the producer panel through this share. It cuts your camera and changes your graphics, so give it to your co-host only.</p><code id="shProd"></code><button type="button" id="shProdCopy">Copy co-host link</button></details>':'')+'</div>';
+el.innerHTML=h;$('shLink').textContent=sh.links.pitwall;$('shCopy').onclick=()=>copyText(sh.links.pitwall,$('shCopy'),'Copy link');
+if(sh.links.producer){$('shProd').textContent=sh.links.producer;$('shProdCopy').onclick=()=>copyText(sh.links.producer,$('shProdCopy'),'Copy co-host link')}
+$('shStop').onclick=shareStop;return}
+el.dataset.on='';shUrl=null;const key=[st,sh.progress,sh.error,sh.downloaded].join('|');if(el.dataset.key===key)return;el.dataset.key=key;
+h='<div class="sh-main"><h2>Share online</h2>';
+if(st==='off')h+='<p>Let your crew watch PitWall from anywhere: a phone at the track, a laptop at work, a friend\'s house. This gives PitWall a temporary web address through a free Cloudflare tunnel. Nothing to set up on your router.</p>'+
+(sh.downloaded===false||sh.downloaded==null?'<p style="font-size:13px">The first time, the suite downloads Cloudflare\'s tunnel program (cloudflared) from Cloudflare\'s GitHub page.</p>':'')+
+'<div class="row"><button type="button" id="shStart">Share online</button></div>';
+else if(st==='downloading')h+='<p>Downloading Cloudflare\'s tunnel program'+(sh.progress!=null?' ('+Math.round(sh.progress*100)+'%)':'')+'…</p><div class="bar"><i style="width:'+Math.round((sh.progress||0)*100)+'%"></i></div><div class="row"><button type="button" id="shStop">Cancel</button></div>';
+else if(st==='starting')h+='<p>Getting a web address from Cloudflare… this takes a few seconds.</p><div class="row"><button type="button" id="shStop">Cancel</button></div>';
+else if(st==='error')h+='<p class="err"></p><div class="row"><button type="button" id="shStart">Try again</button></div>';
+el.innerHTML=h+'</div>';
+if(st==='error')el.querySelector('.err').textContent=sh.error||'Sharing stopped.';
+if($('shStart'))$('shStart').onclick=shareStart;if($('shStop'))$('shStop').onclick=shareStop}
+async function sharePoll(){clearTimeout(shTimer);if(!hasApi()){shTimer=setTimeout(sharePoll,1500);return}
+try{sh=await window.pywebview.api.share_info()||{state:'off'}}catch(e){}shareCard();
+shTimer=setTimeout(sharePoll,(sh.state==='downloading'||sh.state==='starting')?500:3000)}
+async function shareStart(){try{sh=await window.pywebview.api.share_start()}catch(e){sh={state:'error',error:String(e)}}shareCard();sharePoll()}
+async function shareStop(){try{sh=await window.pywebview.api.share_stop()}catch(e){}shareCard();sharePoll()}
+window.addEventListener('pywebviewready',sharePoll);setTimeout(sharePoll,1500);
 window.addEventListener('pywebviewready',render);
 render();poll();setInterval(poll,3000);connect();
 </script></body></html>

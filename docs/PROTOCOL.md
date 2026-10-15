@@ -304,6 +304,10 @@ layout: {<graphic>: {x, y, s}}}`. A rejected patch gets
 Asks for `session`, `map` and fresh keyframes. Sent by the client on connect.
 
 ### `relay` (relay → viewer)
-`{"type":"relay","bridge":"connected"|"disconnected","engineer":bool,"role":"view"|"engineer"|"producer","viewers":n}`
+`{"type":"relay","bridge":"connected"|"disconnected","engineer":bool,"role":"view"|"guest"|"engineer"|"producer","viewers":n}`
 
-Tokens: view (read-only), engineer (pit commands), producer (camera, replay, gfx).
+Tokens: view (read-only), engineer (pit commands), producer (camera, replay, gfx), guest
+(read-only, revocable: set by the suite's Share online for the links it hands out;
+`Relay.set_guest_token(None)` closes every guest with code **4003** "sharing stopped").
+Close codes: 4001 bad path or token, 4002 viewer fell behind, 4003 sharing stopped.
+The relay serves the dashboard at `/pitwall/`; with `?token=` it connects to its own host.

@@ -38,6 +38,8 @@ jobs:
           --collect-submodules pitwall
           --hidden-import relay.server
           --hidden-import suite.cameras
+          --hidden-import suite.share
+          --hidden-import segno
           --hidden-import websockets.sync.client
           run_suite.py
 

@@ -129,6 +129,14 @@ needed a player car, so a spectator never saw a lead change; `class_lead` covers
 | driver changes | `DriverInfo/Drivers[].UserID` for a CarIdx changing in the session info | **Not yet seen in a real team race.** Assumes DriverInfo lists the CURRENT driver per car and is refreshed at a swap; the fake does exactly that. |
 | `CarIdxSteer` | plain, every car | Present in the variable list; not yet compared with what is seen on screen. |
 
+### Share online (suite)
+
+| Item | Validation |
+|---|---|
+| cloudflared output | **Real cloudflared 2026.10.0 (Linux) run** through `suite/share.py`: startup lines as expected; with Cloudflare unreachable it named `https://api.trycloudflare.com/tunnel` in its error, which was first mistaken for the link (fixed, tested). **A successful quick tunnel has not been run yet** (the dev sandbox cannot reach Cloudflare): the address-box and "Registered tunnel connection" lines are from Cloudflare's usual output, with an 8 s fallback if the second never shows. |
+| Windows job object (tunnel ends with the app) | **Not yet run on Windows.** Without it the tunnel is still stopped on a normal close. |
+| Relay through the tunnel | Guest token, read-only, 4003 on stop: tested on the local relay. WebSockets through Cloudflare's tunnel: not yet seen. |
+
 ## Group D — believed unavailable (do not fake)
 
 Other cars' fuel, tire state, damage, pedal inputs, setup. Player damage as a

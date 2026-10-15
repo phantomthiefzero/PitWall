@@ -55,6 +55,9 @@ class PitWallHost:
         self.view_token = tokens["view"]
         self.producer_token = tokens["producer"]
         self._bridge_token = secrets.token_urlsafe(16)
+        self.relay = None
+        self._loop = None
+        self.share = None
 
     async def start(self, port=8765):
         try:
@@ -66,6 +69,7 @@ class PitWallHost:
             self.error = "PitWall could not load: %s: %s" % (type(e).__name__, e)
             self.log(self.error)
             return
+        self._loop = asyncio.get_running_loop()
         relay = Relay(self._bridge_token, self.view_token, None, self.producer_token,
                       assets_dir=os.path.join(os.path.dirname(_token_file()), "broadcast_assets"))
         for p in range(port, port + 10):
@@ -76,6 +80,7 @@ class PitWallHost:
                 break
             except OSError:
                 continue
+        self.relay = relay
         if self.port is None:
             self.error = "No free port for PitWall's relay between %d and %d" % (port, port + 9)
             self.log(self.error)
@@ -98,6 +103,20 @@ class PitWallHost:
                              state_hz=60.0, cars_hz=30.0, allow_camera=True, log=self.log)
         asyncio.get_running_loop().create_task(self.bridge.run())
         self.log("PitWall relay on ws://127.0.0.1:%d, bridge source: %s" % (self.port, self.source_kind))
+
+    def _set_guest_token(self, token):
+        """Called from the share thread; the relay lives on the event loop."""
+        if self.relay is None or self._loop is None:
+            raise RuntimeError("the relay is not running")
+        self._loop.call_soon_threadsafe(self.relay.set_guest_token, token)
+
+    def share_service(self, **kw):
+        """The "Share online" tunnel for this relay (created on first use)."""
+        if self.share is None:
+            from suite.share import Share
+            self.share = Share(lambda: self.port if self.error is None else None, self._set_guest_token,
+                               producer_token=self.producer_token, view_token=self.view_token, log=self.log, **kw)
+        return self.share
 
     def info(self):
         ok = self.port is not None and self.error is None
