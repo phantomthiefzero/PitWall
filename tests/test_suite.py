@@ -529,6 +529,32 @@ class GuestTokenTest(unittest.TestCase):
         self.assertIn(b"<title>", html)
         self.assertNotIn(b"&larr; Suite", html)           # the suite's way home is not for remote crew
 
+    def test_share_panel_reports_what_guests_really_use(self):
+        """The Share panel shows how many are watching through the link and the
+        upload they use, counted on the wire: after compression, which message
+        sizes overstate about five times."""
+        import websockets.sync.client as wsc
+        host = self.engine.pitwall
+        host._set_guest_token("guest-usage-1")
+        self.assertTrue(_wait(lambda: host.relay.guest_token == "guest-usage-1"))
+        before = host.relay.guest_bytes
+        msg_bytes = 0
+        with wsc.connect("%s/view?token=guest-usage-1" % self.relay_url, open_timeout=5,
+                         compression="deflate", max_size=None) as ws:
+            end = time.time() + 3
+            while time.time() < end:
+                try:
+                    msg_bytes += len(ws.recv(timeout=1))
+                except TimeoutError:
+                    pass
+            self.assertEqual(host.relay.guest_usage()["guests"], 1)
+            wire = host.relay.guest_bytes - before
+        host._set_guest_token(None)
+        self.assertGreater(msg_bytes, 10_000, "the guest should have been sent the stream")
+        self.assertGreater(wire, 0)
+        self.assertLess(wire, msg_bytes * 0.6, "counted before compression, not on the wire")
+        self.assertTrue(_wait(lambda: host.relay.guest_usage()["guests"] == 0))
+
     def test_relay_compresses_its_pages_for_browsers(self):
         """The dashboard is ~160 KB: compressed, it loads faster over a share link
         and stays under the size that stalled behind Norton (see GZIP_MIN)."""

@@ -184,6 +184,10 @@ class Relay:
         self.stats = {"in": 0, "out": 0, "dropped_slow": 0, "started": time.time()}
         self.feed: dict | None = None          # the race feed, kept current from the bridge's deltas
         self._feed_raw: str | None = None      # its JSON, made once per change
+        # Bytes actually written to the network for share-link guests (after
+        # compression -- message sizes overstate it ~5x), for the Share panel.
+        self.guest_bytes = 0
+        self._guest_rate = (time.monotonic(), 0, 0.0)
 
     async def _fanout(self, raw: str, only=None):
         # Never awaits a viewer: each one has its own queue and writer task.
@@ -275,6 +279,30 @@ class Relay:
                 await self._fanout(json.dumps({"type": "relay", "bridge": "disconnected"}))
             print("[relay] bridge disconnected")
 
+    def _count_wire(self, ws):
+        """Count what this connection really sends. websockets writes every frame
+        through transport.write, after permessage-deflate, so wrapping it per
+        connection measures the network cost and nothing else."""
+        transport = ws.transport
+        write = transport.write
+
+        def counted(data, _write=write):
+            self.guest_bytes += len(data)
+            _write(data)
+        try:
+            transport.write = counted
+        except (AttributeError, TypeError):
+            pass                          # a transport that will not take it: just not counted
+
+    def guest_usage(self) -> dict:
+        """Share-link viewers and the upload they use, averaged over >= 2 s."""
+        now = time.monotonic()
+        t0, b0, rate = self._guest_rate
+        if now - t0 >= 2.0:
+            rate = (self.guest_bytes - b0) / (now - t0)
+            self._guest_rate = (now, self.guest_bytes, rate)
+        return {"guests": len(self._guests), "upBytesPerS": round(rate)}
+
     def _merge_feed(self, obj: dict):
         """The feed is append-only: a full copy replaces, a delta's new entries are
         added. Kept current so a late joiner's snapshot is the race so far, not the
@@ -327,6 +355,7 @@ class Relay:
             ws.protocol.max_message_size = VIEWER_MAX_BYTES
         if role == "guest":
             self._guests.add(ws)
+            self._count_wire(ws)
         # Livery photos are large; they go after the live stream has started,
         # through the same queue, a few at a time so a slow link is not dropped.
         pending_liveries = list(self.liveries.values())

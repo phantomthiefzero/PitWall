@@ -72,15 +72,16 @@ let sh={state:'off'},shUrl=null,shTimer=null;
 async function copyText(v,btn,label){try{await navigator.clipboard.writeText(v);btn.textContent='Copied'}catch(e){btn.textContent='Select and Ctrl+C'}setTimeout(()=>{btn.textContent=label},2000)}
 function shareCard(){const el=$('share');if(!hasApi()||!info.pitwall||!info.pitwall.ok){el.classList.add('hidden');return}el.classList.remove('hidden');
 const st=sh.state;let h='';
-if(st==='on'&&sh.links){if(shUrl===sh.links.pitwall&&el.dataset.on==='1')return;shUrl=sh.links.pitwall;el.dataset.on='1';el.dataset.key='';
+if(st==='on'&&sh.links){if(shUrl===sh.links.pitwall&&el.dataset.on==='1'){shareUsage();return}shUrl=sh.links.pitwall;el.dataset.on='1';el.dataset.key='';
 h=(sh.qr?'<div class="qr" title="Scan with a phone camera">'+sh.qr+'</div>':'')+'<div class="sh-main"><h2>Sharing PitWall online<span class="live-pill">LIVE</span></h2>'+
 '<p>Send this link to your crew. It opens PitWall in any browser, on a phone or a computer, anywhere.</p><code id="shLink"></code>'+
 '<div class="row"><button type="button" id="shCopy">Copy link</button><button type="button" id="shStop">Stop sharing</button></div>'+
-'<p style="margin-top:10px;font-size:13px">Watch only: the link cannot change anything in iRacing. Choosing which car to follow is shared by everyone watching. Each person watching uses about 1.6 Mbit/s of this PC\'s upload. Stopping (or closing the suite) ends the link for everyone; the next share gets a new address.</p>'+
+'<p id="shUse" style="margin-top:8px;font-size:13px"></p>'+
+'<p style="margin-top:10px;font-size:13px">Watch only: the link cannot change anything in iRacing, and each person can follow any car without changing anyone else\'s screen. Each person watching uses roughly 0.25 Mbit/s of this PC\'s upload. Stopping (or closing the suite) ends the link for everyone; the next share gets a new address.</p>'+
 (sh.links.producer?'<details><summary>Broadcast co-host link</summary><p style="margin-top:6px">Lets a co-host run the producer panel through this share. It cuts your camera and changes your graphics, so give it to your co-host only.</p><code id="shProd"></code><button type="button" id="shProdCopy">Copy co-host link</button></details>':'')+'</div>';
 el.innerHTML=h;$('shLink').textContent=sh.links.pitwall;$('shCopy').onclick=()=>copyText(sh.links.pitwall,$('shCopy'),'Copy link');
 if(sh.links.producer){$('shProd').textContent=sh.links.producer;$('shProdCopy').onclick=()=>copyText(sh.links.producer,$('shProdCopy'),'Copy co-host link')}
-$('shStop').onclick=shareStop;return}
+$('shStop').onclick=shareStop;shareUsage();return}
 el.dataset.on='';shUrl=null;const key=[st,sh.progress,sh.error,sh.downloaded].join('|');if(el.dataset.key===key)return;el.dataset.key=key;
 h='<div class="sh-main"><h2>Share online</h2>';
 if(st==='off')h+='<p>Let your crew watch PitWall from anywhere: a phone at the track, a laptop at work, a friend\'s house. This gives PitWall a temporary web address through a free Cloudflare tunnel. Nothing to set up on your router.</p>'+
@@ -92,6 +93,11 @@ else if(st==='error')h+='<p class="err"></p><div class="row"><button type="butto
 el.innerHTML=h+'</div>';
 if(st==='error')el.querySelector('.err').textContent=sh.error||'Sharing stopped.';
 if($('shStart'))$('shStart').onclick=shareStart;if($('shStop'))$('shStop').onclick=shareStop}
+// Who is watching through the link, and the upload they really use (measured
+// on the wire by the relay, after compression).
+function shareUsage(){const el=$('shUse');if(!el)return;const u=sh.usage;if(!u){el.textContent='';return}
+const kb=u.upBytesPerS/1024,mbit=u.upBytesPerS*8/1e6;
+el.textContent=u.guests?(u.guests+(u.guests===1?' person':' people')+' watching \u00b7 using '+kb.toFixed(0)+' KB/s ('+mbit.toFixed(2)+' Mbit/s) of this PC\'s upload'):'Nobody is watching through the link yet.'}
 async function sharePoll(){clearTimeout(shTimer);if(!hasApi()){shTimer=setTimeout(sharePoll,1500);return}
 try{sh=await window.pywebview.api.share_info()||{state:'off'}}catch(e){}shareCard();
 shTimer=setTimeout(sharePoll,(sh.state==='downloading'||sh.state==='starting')?500:3000)}
