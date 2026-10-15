@@ -133,9 +133,9 @@ needed a player car, so a spectator never saw a lead change; `class_lead` covers
 
 | Item | Validation |
 |---|---|
-| cloudflared output | **Real cloudflared 2026.10.0 (Linux) run** through `suite/share.py`: startup lines as expected; with Cloudflare unreachable it named `https://api.trycloudflare.com/tunnel` in its error, which was first mistaken for the link (fixed, tested). **A successful quick tunnel has not been run yet** (the dev sandbox cannot reach Cloudflare): the address-box and "Registered tunnel connection" lines are from Cloudflare's usual output, with an 8 s fallback if the second never shows. |
+| cloudflared output | **Real cloudflared 2026.10.0 (Linux) run** through `suite/share.py`: startup lines as expected; with Cloudflare unreachable it named `https://api.trycloudflare.com/tunnel` in its error, which was first mistaken for the link (fixed, tested). **A real share worked on Andrew's PC (2026-10-15)**: Share online produced a link and the dashboard opened through it in a browser and ran solidly. (Whether the "Registered tunnel connection" line or the 8 s fallback made it go live was not recorded.) |
 | Windows job object (tunnel ends with the app) | **Not yet run on Windows.** Without it the tunnel is still stopped on a normal close. |
-| Relay through the tunnel | Guest token, read-only, 4003 on stop: tested on the local relay. WebSockets through Cloudflare's tunnel: not yet seen. |
+| Relay through the tunnel | **WebSockets through Cloudflare's tunnel work** (the 2026-10-15 share: live dashboard through the link). Guest token, read-only, 4003 on stop: tested on the local relay; the link ending on Stop sharing was not checked in that test. |
 
 ## Group D — believed unavailable (do not fake)
 
