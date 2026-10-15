@@ -81,6 +81,7 @@ class Bridge:
         self._feed_sent = 0
         self._feed_full_due = True
         self._rg_key = None
+        self._rg_last: dict = {}                  # car -> last lap whose gap was sent
         # Cars that viewers have chosen to follow, each for themselves alone
         # (the relay says which; see _set_refs). The shared stream's reference
         # never moves for them. One RefView and one delta encoder per car.
@@ -371,7 +372,15 @@ class Bridge:
         if kind == "livery":
             if action == "setup":
                 cfg = self.livery_store.cfg
-                for k in ("url", "source", "group"):
+                url = msg.get("url").strip() if isinstance(msg.get("url"), str) else ""
+                if url:                                  # blank keeps the address already set
+                    from .obs import obs_url_problem
+                    why = obs_url_problem(url)
+                    if why:
+                        res["error"] = why
+                        return res
+                    cfg["url"] = url
+                for k in ("source", "group"):
                     if isinstance(msg.get(k), str):
                         cfg[k] = msg[k].strip()
                 if isinstance(msg.get("password"), str) and msg["password"] != "":
@@ -418,14 +427,29 @@ class Bridge:
         return None
 
     def _refgaps_message(self) -> dict | None:
-        """Gap to the reference car at each lap line, whole, whenever the
-        reference changes or a lap is added (about once a second at most)."""
+        """Gap to the reference car at each lap line. Whole when the reference
+        changes (or after a resend/reconnect); otherwise only the points added
+        since, because a gap at a lap line never changes once it exists. It went
+        out whole every time ANY car finished a lap: ~60 KB for 24 cars near the
+        200-lap cap, every couple of seconds, to every viewer."""
         d = self.deriver
         key = (id(d), d.ref_idx, d._last_lap_seq)
         if key == self._rg_key:
             return None
+        full = self._rg_key is None or self._rg_key[:2] != key[:2]
         self._rg_key = key
-        return {"type": "refgaps", "ref": d.ref_idx, "series": d.ref_gaps()}
+        series = d.ref_gaps()
+        if full:
+            self._rg_last = {k: v[-1][0] for k, v in series.items() if v}
+            return {"type": "refgaps", "full": True, "ref": d.ref_idx, "series": series}
+        add = {}
+        for k, pts in series.items():
+            last = self._rg_last.get(k)
+            new = [p for p in pts if last is None or p[0] > last]
+            if new:
+                add[k] = new
+                self._rg_last[k] = new[-1][0]
+        return {"type": "refgaps", "full": False, "ref": d.ref_idx, "series": add} if add else None
 
     def _feed_message(self) -> dict | None:
         d = self.deriver

@@ -140,8 +140,12 @@ class Api:
         return s.stop() if s else {"state": "off"}
 
     def share_info(self):
-        s = self._engine.pitwall.share
-        return s.info() if s else {"state": "off", "downloaded": None}
+        host = self._engine.pitwall
+        s = host.share
+        d = s.info() if s else {"state": "off", "downloaded": None}
+        if d.get("state") == "on" and host.relay is not None:
+            d["usage"] = host.relay.guest_usage()
+        return d
 
     def open_cameras_folder(self):
         from suite.cameras import cameras_dir

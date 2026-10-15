@@ -17,6 +17,7 @@ relay serves the dashboard page itself at /pitwall/.
 
 Nothing here reads iRacing; it only moves the relay's existing stream.
 """
+import json
 import os
 import re
 import secrets
@@ -37,6 +38,45 @@ READY_RE = re.compile(r"Registered tunnel connection", re.I)
 # offered anyway after this long.
 READY_FALLBACK_S = 8.0
 MIN_EXE_BYTES = 5 * 1024 * 1024
+
+
+# cloudflared.exe is run with the user's rights, so it must be Cloudflare's own:
+# a valid Authenticode signature from this organisation (verified on the real
+# release, 2026-10-16: "Cloudflare, Inc.", DigiCert code-signing CA, timestamped).
+# Checked after every download and before every launch -- the file in the app
+# folder could have been replaced between sessions.
+SIGNER_ORG = "Cloudflare, Inc."
+_SIG_PS = ("$s = Get-AuthenticodeSignature -LiteralPath $env:PITWALL_SIG_PATH; "
+           "[pscustomobject]@{status=[string]$s.Status; "
+           "subject=$(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { '' })} "
+           "| ConvertTo-Json -Compress")
+
+
+def signer_org(subject: str) -> str | None:
+    """The O= (organisation) of a certificate subject, quoted or not."""
+    m = re.search(r'(?:^|,\s*)O=("(?:[^"]|"")*"|[^,]*)', subject or "")
+    if not m:
+        return None
+    v = m.group(1)
+    return v[1:-1].replace('""', '"') if v.startswith('"') else v.strip()
+
+
+def signature_problem(path: str) -> str | None:
+    """Why this program must not be run, or None when it is signed by Cloudflare."""
+    if sys.platform != "win32":
+        return "the tunnel program can only be checked on Windows"
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _SIG_PS],
+                           env={**os.environ, "PITWALL_SIG_PATH": path}, capture_output=True, text=True,
+                           timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        sig = json.loads(r.stdout or "{}")
+    except Exception as e:  # noqa: BLE001
+        return "could not check its signature (%s)" % e
+    if sig.get("status") != "Valid":
+        return "it is not validly signed (%s)" % (sig.get("status") or "no signature")
+    if signer_org(sig.get("subject", "")) != SIGNER_ORG:
+        return "it is signed by %s, not %s" % (signer_org(sig.get("subject", "")) or "someone else", SIGNER_ORG)
+    return None
 
 
 def app_folder():
@@ -130,7 +170,7 @@ class Share:
 
     def __init__(self, relay_port_fn, set_guest_token, producer_token=None, view_token=None,
                  exe_path=None, download_url=DOWNLOAD_URL, log=print, popen=subprocess.Popen,
-                 ready_fallback_s=READY_FALLBACK_S):
+                 ready_fallback_s=READY_FALLBACK_S, verify=signature_problem):
         self._port = relay_port_fn
         self._set_guest = set_guest_token
         self._producer = producer_token
@@ -139,6 +179,7 @@ class Share:
         self.download_url = download_url
         self.log = log
         self._popen = popen
+        self._verify = verify
         self._ready_fallback_s = ready_fallback_s
         self._lock = threading.Lock()
         self._proc = None
@@ -237,6 +278,9 @@ class Share:
                 head = f.read(2)
             if head != b"MZ" or os.path.getsize(part) < MIN_EXE_BYTES:
                 raise ValueError("the download was not a Windows program")
+            why = self._verify(part)
+            if why:
+                raise ValueError("the download is not Cloudflare's program: " + why)
             os.replace(part, self.exe)
         finally:
             try:
@@ -259,6 +303,15 @@ class Share:
                                        "Check the internet connection and try again." % e)
         if not self._current(gen):
             return
+        why = self._verify(self.exe)
+        if why:
+            try:
+                os.remove(self.exe)          # the next share downloads a fresh copy
+            except OSError:
+                pass
+            return self._fail(gen, "The tunnel program in the app folder is not Cloudflare's, so it was "
+                                   "not run (%s). It has been removed; Share online again to download "
+                                   "a fresh copy." % why)
         self.state = "starting"
         token = secrets.token_urlsafe(16)
         try:

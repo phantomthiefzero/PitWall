@@ -61,7 +61,9 @@ integration missed closing the loop before correction; treat > 30 m as suspect.
  "derived":{"fuelPerLap","lapsOfFuel","fuelPerLapSamples",...,
             "plan":{"tankL","lapsLeft","lapsLeftIsEstimate","finishLap","needL","stops","windowOpenLap",
                     "windowCloseLap","boxNow","fillToFull","addThisLapL","addThisLapSpareL","addAtOpenL",
-                    "addAtOpenSpareL","addAtCloseL","spareAtFlagL","spareAtFlagLaps","menuFuelL","menuVsPlanL"}}}
+                    "addAtOpenSpareL","addAtCloseL","spareAtFlagL","spareAtFlagLaps","menuFuelL","menuVsPlanL"},
+            "weatherTrend":{"spanS","change":{key:delta},"series":{key:[...]}} | null,
+            "engineTrend":{...same shape...} | null, "ggPeakG"}}
 ```
 `camera` is what the broadcast is looking at: `CamCarIdx`, `CamGroupNumber`, `CamCameraNumber`,
 `CamCameraState` (decoded) and the replay variables. Spectating is a replay at `replaySpeed` 1;
@@ -231,10 +233,18 @@ A viewer may follow another car **for themselves only**:
   Computed by `normalize.relative_to` with a `RefView`: the same Deriver methods as the
   shared stream, with that car's own history. The client layers it over the shared `cars`.
 
-`{"type":"refgaps","ref":N,"series":{"<idx>":[[lap,gapS],...]}}` (bridge, whole, on every
-new lap line or reference change): each car's gap to the shared reference at each lap line --
-the moment it crossed minus the moment the reference crossed (sector-timer interpolated
-when available). Derived.
+`{"type":"refgaps","full":true|false,"ref":N,"series":{"<idx>":[[lap,gapS],...]}}` (bridge):
+each car's gap to the shared reference at each lap line -- the moment it crossed minus the
+moment the reference crossed (sector-timer interpolated when available). Derived. `full:true`
+on a reference change, a reconnect or a resend; otherwise only the points added since (a gap
+at a lap line never changes once it exists): append them per car, keeping 200 per car. The
+relay keeps the merged chart, so a viewer that joins late is sent it whole.
+
+`derived.weatherTrend` / `derived.engineTrend` (state): what the weather and your engine have
+done this session, from samples every 10 s (15 min kept) and 5 s (30 min kept, only while the
+player block is live). `change` is last minus first sample over `spanS`; `series` is thinned to
+at most ~60 points for a sparkline. Never a forecast: iRacing publishes none. `ggPeakG` is the
+session's peak combined g from the 360 Hz accelerometer samples.
 
 Per-car additions under `derived` (any car): `speedMs` (from lap-distance movement and the
 track length; iRacing does not give other cars' speed), `topSpeedBestMs`, `consistencyS`,
@@ -312,8 +322,14 @@ bannerLogo, stinger: {video, logo, durationMs, cutMs, sound}, livery: {source: r
 layout: {<graphic>: {x, y, s}}}`. A rejected patch gets
 `gfx_result {ok:false, error}`.
 
-### `resend` (viewer → bridge)
-Asks for `session`, `map` and fresh keyframes. Sent by the client on connect.
+### `resend` (viewer → relay)
+Asks for everything a page needs to start (`session`, `map`, the latest keyframes, the
+race feed and gap chart so far, graphics, assets). The relay answers from what it holds,
+to that viewer alone, at most every 5 s; the bridge is not involved. A page sends it on
+connect, which the snapshot it was just sent already covers.
+
+Message size: only the producer may send large messages (asset uploads). Every other
+viewer is limited to 64 KB per message and disconnected (1009) beyond it.
 
 ### `relay` (relay → viewer)
 `{"type":"relay","bridge":"connected"|"disconnected","engineer":bool,"role":"view"|"guest"|"engineer"|"producer","viewers":n}`

@@ -64,6 +64,22 @@ MAX_REFS = 12
 CMD_ROLE = {"pit": "engineer", "camera": "producer", "replay": "producer",
             "director": "producer", "livery": "producer"}
 
+# What a viewer may send in one message. Only the producer uploads files (logos,
+# stingers, fonts); anyone else sends a few hundred bytes at most, and a 40 MB
+# message from a guest on a share link froze the stream for everyone ~0.1 s.
+VIEWER_MAX_BYTES = 64 * 1024
+
+# A viewer's "resend" is answered by the relay from what it holds, to that viewer
+# only, at most this often. It used to be forwarded to the bridge, which sent the
+# session, the whole race feed and fresh keyframes to EVERY viewer: one guest
+# asking 10x a second took everyone from 136 to 695 KB/s, and six hours into a
+# race the feed alone was 1 MB per viewer per ask.
+RESEND_MIN_S = 5.0
+
+# The race feed (lap history and events) as the bridge keeps it; the relay keeps
+# the same, current, so a late joiner gets it without asking the bridge.
+FEED_MAX_LAPS, FEED_MAX_EVENTS = 6000, 1500   # pitwall.normalize.Deriver.FEED_MAX_*
+
 # A graphics patch is a few toggles and car indexes; anything bigger is a bug or
 # abuse, and the merged state is copied to every viewer.
 GFX_MAX_BYTES = 64 * 1024
@@ -166,6 +182,12 @@ class Relay:
         self.viewers: dict = {}      # ws -> asyncio.Queue of outgoing frames
         self.snapshot: dict[str, str] = {}
         self.stats = {"in": 0, "out": 0, "dropped_slow": 0, "started": time.time()}
+        self.feed: dict | None = None          # the race feed, kept current from the bridge's deltas
+        self._feed_raw: str | None = None      # its JSON, made once per change
+        # Bytes actually written to the network for share-link guests (after
+        # compression -- message sizes overstate it ~5x), for the Share panel.
+        self.guest_bytes = 0
+        self._guest_rate = (time.monotonic(), 0, 0.0)
 
     async def _fanout(self, raw: str, only=None):
         # Never awaits a viewer: each one has its own queue and writer task.
@@ -229,7 +251,11 @@ class Relay:
                     await self._fanout(raw, only=lambda v, ref=ref: self.view_ref.get(v) == ref)
                     await asyncio.sleep(0)
                     continue
-                if t in SNAPSHOT_TYPES and (t not in ("state", "cars", "feed") or msg_is_full(raw)):
+                if t == "feed":
+                    self._merge_feed(obj)
+                elif t == "refgaps":
+                    self._merge_refgaps(obj)
+                elif t in SNAPSHOT_TYPES and (t not in ("state", "cars") or msg_is_full(raw)):
                     self.snapshot[t] = raw
                 elif t == "livery":
                     # One photo per car, kept so an OBS source that reloads gets them all.
@@ -255,6 +281,80 @@ class Relay:
                 await self._fanout(json.dumps({"type": "relay", "bridge": "disconnected"}))
             print("[relay] bridge disconnected")
 
+    def _count_wire(self, ws):
+        """Count what this connection really sends. websockets writes every frame
+        through transport.write, after permessage-deflate, so wrapping it per
+        connection measures the network cost and nothing else."""
+        transport = ws.transport
+        write = transport.write
+
+        def counted(data, _write=write):
+            self.guest_bytes += len(data)
+            _write(data)
+        try:
+            transport.write = counted
+        except (AttributeError, TypeError):
+            pass                          # a transport that will not take it: just not counted
+
+    def guest_usage(self) -> dict:
+        """Share-link viewers and the upload they use, averaged over >= 2 s."""
+        now = time.monotonic()
+        t0, b0, rate = self._guest_rate
+        if now - t0 >= 2.0:
+            rate = (self.guest_bytes - b0) / (now - t0)
+            self._guest_rate = (now, self.guest_bytes, rate)
+        return {"guests": len(self._guests), "upBytesPerS": round(rate)}
+
+    def _merge_feed(self, obj: dict):
+        """The feed is append-only: a full copy replaces, a delta's new entries are
+        added. Kept current so a late joiner's snapshot is the race so far, not the
+        feed as it was the last time somebody asked the bridge for it."""
+        if obj.get("full"):
+            self.feed = {"type": "feed", "full": True, "seq": obj.get("seq") or 0,
+                         "laps": list(obj.get("laps") or []), "events": list(obj.get("events") or [])}
+        elif self.feed is not None:
+            self.feed["laps"].extend(obj.get("laps") or [])
+            self.feed["events"].extend(obj.get("events") or [])
+            del self.feed["laps"][:-FEED_MAX_LAPS]
+            del self.feed["events"][:-FEED_MAX_EVENTS]
+            self.feed["seq"] = max(self.feed["seq"], obj.get("seq") or 0)
+        else:
+            return                      # a delta before any full copy: nothing to add it to
+        self._feed_raw = None
+
+    def _merge_refgaps(self, obj: dict):
+        """Gap series to the shared reference: whole when it changes, then only new
+        points, which are kept here so a late joiner gets the whole chart."""
+        cur = self.snapshot.get("refgaps")
+        base = json.loads(cur) if cur else None
+        if obj.get("full") or base is None or base.get("ref") != obj.get("ref"):
+            if not obj.get("full"):
+                return                      # points with nothing to add them to
+            base = {"type": "refgaps", "full": True, "ref": obj.get("ref"), "series": {}}
+            base["series"] = dict(obj.get("series") or {})
+        else:
+            for k, pts in (obj.get("series") or {}).items():
+                s = base["series"].setdefault(k, [])
+                s.extend(pts)
+                del s[:-200]                # as many laps as the bridge keeps per car
+        self.snapshot["refgaps"] = json.dumps(base, separators=(",", ":"))
+
+    def _feed_message(self) -> str | None:
+        if self.feed is None:
+            return None
+        if self._feed_raw is None:
+            self._feed_raw = json.dumps(self.feed, separators=(",", ":"))
+        return self._feed_raw
+
+    def _queue_snapshot(self, q: asyncio.Queue):
+        """Everything a page needs to start, in the order it needs it."""
+        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps", "camera_packs"):
+            raw = self._feed_message() if t == "feed" else self.snapshot.get(t)
+            if raw:
+                q.put_nowait(raw)
+        q.put_nowait(self._gfx_message())
+        q.put_nowait(self._assets_message())
+
     def _gfx_message(self, by: str | None = None) -> str:
         return json.dumps({"type": "gfx", "rev": self.gfx_rev, "state": self.gfx, "by": by})
 
@@ -266,16 +366,15 @@ class Relay:
         # they arrive in order and the writer task is the only thing sending.
         q.put_nowait(json.dumps({"type": "relay", "bridge": "connected" if self.bridge else "disconnected",
                                  "engineer": engineer, "role": role, "viewers": len(self.viewers) + 1}))
-        # Every snapshot type, in the order a page needs them. camera_packs was
-        # kept but never sent, so a producer who joined after the bridge saw no packs.
-        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps", "camera_packs"):
-            if t in self.snapshot:
-                q.put_nowait(self.snapshot[t])
-        q.put_nowait(self._gfx_message())
-        q.put_nowait(self._assets_message())
+        self._queue_snapshot(q)
+        snapshot_at = time.monotonic()
         self.viewers[ws] = q
+        if role != "producer":
+            # Only the producer uploads files; see VIEWER_MAX_BYTES.
+            ws.protocol.max_message_size = VIEWER_MAX_BYTES
         if role == "guest":
             self._guests.add(ws)
+            self._count_wire(ws)
         # Livery photos are large; they go after the live stream has started,
         # through the same queue, a few at a time so a slow link is not dropped.
         pending_liveries = list(self.liveries.values())
@@ -340,8 +439,15 @@ class Relay:
                         reply({"type": "cmd_result", "ok": False, "echo": msg, "error": "no bridge connected"})
                     else:
                         await self._to_bridge(raw)
-                elif msg.get("type") == "resend" and self.bridge is not None:
-                    await self._to_bridge(raw)
+                elif msg.get("type") == "resend":
+                    # From what the relay holds, to this viewer alone. A page asks
+                    # right after connecting, when it has just been sent all of it.
+                    if time.monotonic() - snapshot_at >= RESEND_MIN_S:
+                        snapshot_at = time.monotonic()
+                        try:
+                            self._queue_snapshot(q)
+                        except asyncio.QueueFull:
+                            pass       # already being dropped for falling behind
                 elif msg.get("type") == "focus":
                     # Which car THIS viewer follows. Any role may choose, guests
                     # included, because it changes nothing for anyone else.

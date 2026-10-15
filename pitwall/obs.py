@@ -24,6 +24,39 @@ import json
 import threading
 
 
+def obs_url_problem(url: str) -> str | None:
+    """Why this OBS address is refused, or None if it is fine.
+
+    OBS runs on this PC or on a streaming PC on the same network. The address is
+    set from the producer panel, and connecting runs OBS's login exchange with
+    the stored password -- which hands anyone at the far end material to guess
+    that password offline. So only this PC and private network addresses are
+    accepted; a hostname must resolve to nothing else.
+    """
+    import ipaddress
+    import socket
+    import urllib.parse
+    try:
+        u = urllib.parse.urlparse((url or "").strip())
+        host, port = u.hostname, u.port
+    except ValueError:
+        return "that is not a valid address"
+    if u.scheme not in ("ws", "wss") or not host:
+        return "the OBS address starts ws:// (OBS > Tools > WebSocket Server Settings shows it)"
+    try:
+        addrs = {ipaddress.ip_address(host)}
+    except ValueError:
+        try:
+            addrs = {ipaddress.ip_address(a[4][0].split("%")[0])
+                     for a in socket.getaddrinfo(host, port or 4455, proto=socket.IPPROTO_TCP)}
+        except OSError:
+            return f"cannot find {host} on this network"
+    for a in addrs:
+        if a.is_unspecified or not (a.is_loopback or a.is_private or a.is_link_local):
+            return "OBS must be on this PC or your local network, not an internet address"
+    return None
+
+
 def auth_string(password: str, salt: str, challenge: str) -> str:
     secret = base64.b64encode(hashlib.sha256((password + salt).encode()).digest()).decode()
     return base64.b64encode(hashlib.sha256((secret + challenge).encode()).digest()).decode()

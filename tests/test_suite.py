@@ -375,6 +375,7 @@ class ShareTest(unittest.TestCase):
             p.args = args
             made.append(p)
             return p
+        kw.setdefault("verify", lambda p: None)      # the fake tunnel programs here are not signed
         sh = Share(lambda: 8765, self.guest.append, producer_token="P", view_token="V", exe_path=path,
                    log=lambda *a: None, popen=popen, **kw)
         return sh, made
@@ -462,6 +463,49 @@ class ShareTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(sh.exe))
         sh.stop()
 
+    def test_a_tunnel_program_that_is_not_cloudflares_is_never_run(self):
+        """It runs with the user's rights: only Cloudflare's own, by signature."""
+        from suite import share as share_mod
+        # swapped on disk between sessions: refused, removed, not run
+        sh, made = self._share([FakeTunnel(TUNNEL_OUTPUT)], verify=lambda p: "it is signed by Evil Corp")
+        sh.start()
+        self.assertTrue(_wait(lambda: sh.state == "error"), sh.info())
+        self.assertIn("not Cloudflare's", sh.info()["error"])
+        self.assertEqual(made, [], "the program was run")
+        self.assertFalse(os.path.exists(sh.exe), "the program was kept")
+        self.assertEqual(self.guest, [], "a share token was set up anyway")
+        # a fresh download that is not Cloudflare's: refused before it is kept
+        good = os.path.join(tempfile.mkdtemp(), "dl.exe")
+        with open(good, "wb") as f:
+            f.write(b"MZ" + b"\0" * share_mod.MIN_EXE_BYTES)
+        sh, made = self._share([FakeTunnel(TUNNEL_OUTPUT)], exe=False, download_url=pathlib.Path(good).as_uri(),
+                               verify=lambda p: "it is not validly signed (NotSigned)")
+        sh.start()
+        self.assertTrue(_wait(lambda: sh.state == "error"), sh.info())
+        self.assertIn("not Cloudflare's program", sh.info()["error"])
+        self.assertFalse(os.path.exists(sh.exe))
+        self.assertEqual(made, [])
+
+    def test_signer_organisation_is_read_from_the_certificate(self):
+        from suite.share import signer_org
+        self.assertEqual(signer_org('CN="Cloudflare, Inc.", O="Cloudflare, Inc.", L=San Francisco, C=US'),
+                         "Cloudflare, Inc.")
+        self.assertEqual(signer_org("CN=Cloudflare, O=Evil Corp, C=US"), "Evil Corp")   # a CN alone proves nothing
+        self.assertIsNone(signer_org("CN=nobody"))
+
+    @unittest.skipUnless(sys.platform == "win32", "Authenticode is Windows")
+    def test_signature_check_on_real_files(self):
+        from suite.share import signature_problem
+        unsigned = os.path.join(tempfile.mkdtemp(), "fake.exe")
+        with open(unsigned, "wb") as f:
+            f.write(b"MZ" + b"\0" * 4096)
+        self.assertIn("not validly signed", signature_problem(unsigned))
+        # validly signed, but by Microsoft: still refused
+        notepad = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "notepad.exe")
+        why = signature_problem(notepad)
+        self.assertIsNotNone(why)
+        self.assertNotIn("Cloudflare, Inc., not", why or "")
+
     def test_no_relay_means_no_share(self):
         from suite.share import Share
         sh = Share(lambda: None, lambda t: None, exe_path="x", log=lambda *a: None)
@@ -484,6 +528,32 @@ class GuestTokenTest(unittest.TestCase):
         html = fetch(http + "/pitwall/")[2]
         self.assertIn(b"<title>", html)
         self.assertNotIn(b"&larr; Suite", html)           # the suite's way home is not for remote crew
+
+    def test_share_panel_reports_what_guests_really_use(self):
+        """The Share panel shows how many are watching through the link and the
+        upload they use, counted on the wire: after compression, which message
+        sizes overstate about five times."""
+        import websockets.sync.client as wsc
+        host = self.engine.pitwall
+        host._set_guest_token("guest-usage-1")
+        self.assertTrue(_wait(lambda: host.relay.guest_token == "guest-usage-1"))
+        before = host.relay.guest_bytes
+        msg_bytes = 0
+        with wsc.connect("%s/view?token=guest-usage-1" % self.relay_url, open_timeout=5,
+                         compression="deflate", max_size=None) as ws:
+            end = time.time() + 3
+            while time.time() < end:
+                try:
+                    msg_bytes += len(ws.recv(timeout=1))
+                except TimeoutError:
+                    pass
+            self.assertEqual(host.relay.guest_usage()["guests"], 1)
+            wire = host.relay.guest_bytes - before
+        host._set_guest_token(None)
+        self.assertGreater(msg_bytes, 10_000, "the guest should have been sent the stream")
+        self.assertGreater(wire, 0)
+        self.assertLess(wire, msg_bytes * 0.6, "counted before compression, not on the wire")
+        self.assertTrue(_wait(lambda: host.relay.guest_usage()["guests"] == 0))
 
     def test_relay_compresses_its_pages_for_browsers(self):
         """The dashboard is ~160 KB: compressed, it loads faster over a share link
