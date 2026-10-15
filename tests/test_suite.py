@@ -10,6 +10,7 @@ import asyncio
 import base64
 import json
 import os
+import pathlib
 import socket
 import struct
 import sys
@@ -352,12 +353,12 @@ class ShareTest(unittest.TestCase):
         bad = os.path.join(tempfile.mkdtemp(), "bad.html")
         with open(bad, "wb") as f:
             f.write(b"<html>rate limited</html>" * 300000)
-        sh, _ = self._share([FakeTunnel(TUNNEL_OUTPUT)], exe=False, download_url="file://" + bad)
+        sh, _ = self._share([FakeTunnel(TUNNEL_OUTPUT)], exe=False, download_url=pathlib.Path(bad).as_uri())
         sh.start()
         self.assertTrue(_wait(lambda: sh.state == "error"), sh.info())
         self.assertIn("not a Windows program", sh.info()["error"])
         self.assertFalse(os.path.exists(sh.exe))
-        sh.download_url = "file://" + good
+        sh.download_url = pathlib.Path(good).as_uri()
         sh.start()
         self.assertTrue(_wait(lambda: sh.state == "on"), sh.info())
         self.assertTrue(os.path.isfile(sh.exe))
