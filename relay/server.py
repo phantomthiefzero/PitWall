@@ -40,16 +40,19 @@ from websockets.datastructures import Headers
 from websockets.http11 import Response
 
 SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director", "livery_status",
-                  "camera_packs")
+                  "camera_packs", "refgaps")
 
 # Messages a viewer may have queued before it is judged too slow and dropped.
-# At ~20 msg/s this is ~10 s of stream. Each viewer drains its own queue, so a
+# (See the figure below for how many seconds of stream that is.) Each viewer drains its own queue, so a
 # phone that backgrounds its tab or loses signal can no longer stall the
 # fan-out -- measured before this existed: one viewer that stopped reading took
 # every other viewer from 20 msg/s to 0 within 5 s. A dropped viewer
 # reconnects and gets a fresh snapshot, which a delta stream needs anyway after
 # a gap.
-VIEWER_QUEUE = 200
+# 1000: the suite streams ~80 msg/s since the rates went up (60/30), so 200 was
+# only ~2.5 s of slack -- a phone locking its screen for a moment would be
+# dropped. 1000 is ~12 s at that rate and ~25 s at the standalone 30/15.
+VIEWER_QUEUE = 1000
 CLOSE_TOO_SLOW = 4002
 
 # Which viewer role may send which command kind on to the bridge.
@@ -90,6 +93,10 @@ def safe_asset_name(name) -> str | None:
 # Next to relay/ in the repo; inside the suite's .exe, in the unpacked bundle.
 BROADCAST_DIR = os.path.join(getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "broadcast")
+# PitWall's dashboard, served here too so crew reaching this relay from outside
+# (a VPS, or the suite's "Share online" tunnel) can load it from the same address.
+CLIENT_PAGE = os.path.join(os.path.dirname(BROADCAST_DIR), "client", "index.html")
+CLIENT_PATHS = ("/pitwall/", "/pitwall", "/pitwall/index.html")
 BROADCAST_PAGES = {"/broadcast/overlay.html": "overlay.html", "/broadcast/producer.html": "producer.html",
                    "/broadcast/": "producer.html", "/broadcast": "producer.html"}
 
@@ -128,6 +135,10 @@ class Relay:
         self.view_token = view_token
         self.engineer_token = engineer_token
         self.producer_token = producer_token
+        # A second, revocable watch-only token for links handed out while
+        # sharing online. Setting a new one (or None) disconnects its holders.
+        self.guest_token: str | None = None
+        self._guests: set = set()
         self.gfx: dict = {}
         self.gfx_rev = 0
         self.bridge = None
@@ -216,12 +227,14 @@ class Relay:
         # they arrive in order and the writer task is the only thing sending.
         q.put_nowait(json.dumps({"type": "relay", "bridge": "connected" if self.bridge else "disconnected",
                                  "engineer": engineer, "role": role, "viewers": len(self.viewers) + 1}))
-        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status"):
+        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps"):
             if t in self.snapshot:
                 q.put_nowait(self.snapshot[t])
         q.put_nowait(self._gfx_message())
         q.put_nowait(self._assets_message())
         self.viewers[ws] = q
+        if role == "guest":
+            self._guests.add(ws)
         # Livery photos are large; they go after the live stream has started,
         # through the same queue, a few at a time so a slow link is not dropped.
         pending_liveries = list(self.liveries.values())
@@ -273,7 +286,7 @@ class Relay:
                 elif msg.get("type") == "cmd":
                     needs = CMD_ROLE.get(msg.get("cmd"))
                     if role != needs:
-                        why = ("this connection is view-only" if role == "view" else
+                        why = ("this connection is view-only" if role in ("view", "guest") else
                                f"{msg.get('cmd')!r} commands need the {needs or 'right'} token")
                         reply({"type": "cmd_result", "ok": False, "echo": msg, "error": why})
                     elif self.bridge is None:
@@ -282,12 +295,19 @@ class Relay:
                         await self._to_bridge(raw)
                 elif msg.get("type") == "resend" and self.bridge is not None:
                     await self._to_bridge(raw)
+                elif msg.get("type") == "focus" and self.bridge is not None:
+                    # Which car PitWall follows. It does not touch the sim, so any
+                    # viewer may send it; only a clean car index goes through.
+                    idx = msg.get("idx")
+                    if idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64):
+                        await self._to_bridge(json.dumps({"type": "focus", "idx": idx}))
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
             writer.cancel()
             lv_task.cancel()
             self.viewers.pop(ws, None)
+            self._guests.discard(ws)
             print(f"[relay] viewer left, {len(self.viewers)} total")
 
     async def handler(self, ws):
@@ -299,12 +319,23 @@ class Relay:
             await self.handle_bridge(ws)
         elif parsed.path == "/view" and token_ok(token, self.view_token):
             await self.handle_viewer(ws, engineer=False)
+        elif parsed.path == "/view" and self.guest_token and token_ok(token, self.guest_token):
+            await self.handle_viewer(ws, role="guest")
         elif parsed.path == "/view" and token_ok(token, self.engineer_token):
             await self.handle_viewer(ws, role="engineer")
         elif parsed.path == "/view" and token_ok(token, self.producer_token):
             await self.handle_viewer(ws, role="producer")
         else:
             await ws.close(code=4001, reason="bad path or token")
+
+    def set_guest_token(self, token: str | None):
+        """Replace the guest token; everyone who joined with the old one is
+        disconnected. Call on the relay's event loop."""
+        self.guest_token = token or None
+        for ws in list(self._guests):
+            self._guests.discard(ws)
+            self.viewers.pop(ws, None)
+            asyncio.ensure_future(ws.close(code=4003, reason="sharing stopped"))
 
     # ------------------------------------------------------------ assets
     def _asset_list(self) -> list[dict]:
@@ -369,6 +400,15 @@ class Relay:
             headers = Headers([("Content-Type", ASSET_TYPES[os.path.splitext(name)[1].lower()]),
                                ("Content-Length", str(len(body))), ("Cache-Control", "no-cache"),
                                ("Access-Control-Allow-Origin", "*")])
+            return Response(200, "OK", headers, body)
+        if path in CLIENT_PATHS and request.headers.get("Upgrade") is None:
+            try:
+                with open(CLIENT_PAGE, "rb") as f:
+                    body = f.read()
+            except OSError:
+                return connection.respond(http.HTTPStatus.NOT_FOUND, "the PitWall page is not installed\n")
+            headers = Headers([("Content-Type", "text/html; charset=utf-8"),
+                               ("Content-Length", str(len(body))), ("Cache-Control", "no-cache")])
             return Response(200, "OK", headers, body)
         page = BROADCAST_PAGES.get(path)
         if page and request.headers.get("Upgrade") is None:

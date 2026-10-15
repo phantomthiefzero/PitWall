@@ -23,6 +23,11 @@ Verification status
 - `commands.py` (phase 2 pit service) is still UNTESTED against the sim. So are its camera
   and replay commands (broadcast); see VARIABLES_TO_VERIFY.md, "Broadcast".
 
+Spectator first: the booth is mostly used spectating. Relative values follow the
+REFERENCE car (`cars.derived.ref`: chosen by a viewer, else your car when driving, else
+the camera car), never PlayerCarIdx directly -- while spectating that is slot 63, not a
+car. Only fuel, tyre sets, in-car settings and CarLeftRight are your-car-only.
+
 A recurring trap, worth stating plainly: FakeSource repeatedly encoded the same
 assumption as the code under test, so the suite passed while the sim disagreed.
 It has now been corrected five times -- the F2Time placeholder, gap monotonicity,
@@ -39,6 +44,9 @@ iRacing Suite app (suite/)
 - `suite/bridge.py` uses only the standard library (plus pyirsdk). Its replay reads
   .ibt files; PitWall's replay reads its own .jsonl.gz captures. They are different.
 - `tests/test_suite.py` must pass along with `tests/test_pipeline.py`.
+- Share online (`suite/share.py`): a Cloudflare quick tunnel to the suite's relay. Links carry
+  only the relay's revocable guest token, never the kept view or producer tokens (the co-host
+  producer link is shown separately, folded away). The relay serves the dashboard at /pitwall/.
 
 Broadcast (broadcast/)
 - `overlay.html` (OBS source) and `producer.html` (you + co-host) are single files, no build

@@ -39,7 +39,7 @@ differ by track, so camera commands always take them from here.
 Entirely derived (see `pitwall/trackmap.py`). `closureErrorM` is how far the raw
 integration missed closing the loop before correction; treat > 30 m as suspect.
 
-### `state` (bridge, 15 Hz, delta-encoded)
+### `state` (bridge, 30 Hz by default, 60 Hz in the suite; delta-encoded)
 ```json
 {"type":"state","full":true,"t":<SessionTime>,
  "session":{"num","state","stateRaw","flags":["green"],"flagsRaw","timeS","timeRemainS","lapsRemain","timeOfDayS","paceMode"},
@@ -53,16 +53,21 @@ integration missed closing the loop before correction; treat > 30 m as suspect.
            "pitService":{"flags":[...],"fuel","pressuresKPa":{LF,RF,LR,RR},"tireCompound"},
            "dc":{"brakeBias","abs","tractionControl","antiRollFront","antiRollRear","fuelMixture",...},
            "tires":{"LF":{"carcassTempC":[l,m,r],"wearPct":[l,m,r],"coldPressureKPa","pressureKPa"},...},
-           "isOnTrack","isInGarage","isReplayPlaying","replayFrame"},
+           "isOnTrack","isInGarage","isReplayPlaying","replayFrame",
+           "carLeftRight":"off"|"clear"|"car_left"|"car_right"|"car_left_right"|"two_cars_left"|"two_cars_right",
+           "carLeftRightRaw"},
  "camera":{"carIdx","group","num","state":[...],"stateRaw","replaySpeed","replaySlowMotion",
            "replaySessionNum","replaySessionTimeS","replayFramesFromEnd"},
- "derived":{"fuelPerLap","lapsOfFuel","fuelPerLapSamples"}}
+ "derived":{"fuelPerLap","lapsOfFuel","fuelPerLapSamples",...,
+            "plan":{"tankL","lapsLeft","lapsLeftIsEstimate","finishLap","needL","stops","windowOpenLap",
+                    "windowCloseLap","boxNow","fillToFull","addThisLapL","addThisLapSpareL","addAtOpenL",
+                    "addAtOpenSpareL","addAtCloseL","spareAtFlagL","spareAtFlagLaps","menuFuelL","menuVsPlanL"}}}
 ```
 `camera` is what the broadcast is looking at: `CamCarIdx`, `CamGroupNumber`, `CamCameraNumber`,
 `CamCameraState` (decoded) and the replay variables. Spectating is a replay at `replaySpeed` 1;
 any other speed, or slow motion, means the picture is not the race as it happens.
 
-### `cars` (bridge, 8 Hz, delta-encoded; keyed by car index as a string)
+### `cars` (bridge, 15 Hz by default, 30 Hz in the suite; delta-encoded; keyed by car index as a string)
 ```json
 {"type":"cars","full":true,"t":<SessionTime>,
  "cars":{"12":{"idx":12,"num":"34","name":"...","team":"...","classId","className","car","iRating",
@@ -91,6 +96,14 @@ front to back. `gapsS[k]` is between `cars[k]` and `cars[k+1]`. `closingSPerLap[
 are the behind car's own closing trend, and only when the pair is also adjacent overall --
 otherwise null, because that trend is measured against some other car. Neither car may be on
 pit road. Ordered by class position of the front car.
+Engineer additions: each car's `derived.vsYou` is {"lastLapS","bestLapS","paceS","bestSectorS":[...]},
+that car minus you (negative = they are quicker). The cars message's `derived.nearby` lists cars
+within 150 m along the track: [{"idx","meters" (+ ahead / - behind),"closingMs" (+ = the gap is
+shrinking),"inPit"}], from the lap-distance gap and the session's TrackLength. `state.derived.plan`
+is the fuel and stop plan (see normalize.fuel_plan for exactly what each key means). Lap entries in
+the feed also carry `sectors` (that lap's own sector times, null where void) and, for your car only,
+`fuelL`, `refuel` and `incL`.
+
 Sign conventions: `toPlayerS` is + when that car is BEHIND you. `youGainSPerLap` is + when the
 trend is good for you (a car ahead coming back, a car behind dropping back). `onTrackS` uses
 the same sign as `toPlayerS`. Race-only values (`toPlayerS`, `classGapS`, `rejoin`,
@@ -191,6 +204,40 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
 - cars carry `classEstLapS`, `carDesign` (CarDesignStr), `helmetDesign`, `carId`, `userId`, `teamId`;
   session drivers also carry CarNumberDesignStr, CarSponsor_1/2 and ClubID for the car renders.
 
+### Following a car (spectator first)
+
+Every relative value (`toPlayerS`, `youGainSPerLap`, `vsYou`, `rejoin`, `undercut`, `traffic`,
+`nearby`, battle, gap chart) is measured from ONE reference car, reported as
+`cars.derived.ref = {"idx", "source": "chosen"|"your_car"|"camera", "own", "camera"}`:
+the car a viewer chose, else your own car when driving, else the camera car while
+spectating. The "player"/"you" key names are kept for compatibility; they mean the
+reference car. Fuel, tyre sets, in-car settings and iRacing's left/right spotter exist
+for your own car only (`ref.own`).
+
+`{"type":"focus","idx":N}` (viewer → relay → bridge) chooses the car; `"idx":null` goes
+back to automatic. It does not touch the sim, so any viewer may send it, and the relay
+forwards only a clean car index (0-63 or null). The choice is shared by everyone on the
+relay and survives a session change.
+
+`{"type":"refgaps","ref":N,"series":{"<idx>":[[lap,gapS],...]}}` (bridge, whole, on every
+new lap line or reference change): each car's gap to the reference at each lap line --
+the moment it crossed minus the moment the reference crossed (sector-timer interpolated
+when available). Derived.
+
+Per-car additions under `derived` (any car): `speedMs` (from lap-distance movement and the
+track length; iRacing does not give other cars' speed), `topSpeedBestMs`, `consistencyS`,
+`gridPos`, `gridClassPos`, `posGained`, `classPosGained`, `lapsLedSeen`, `classLapsLedSeen`,
+`stintsSeen`, `stintStartLap`, `lapsThisStint`, `longestStintLaps`, `nextStopLapEst`,
+`compoundChanges`, `fastRepairsLeft`, `drivers` (team races: [{"name","timeS","laps","current"}]).
+Plain per car: `steerRad` (CarIdxSteer). Lap entries also carry `topSpeedMs` and `tx`
+(interpolated line crossing). `cars.derived.compoundPace`: per class and compound, the
+middle of the cars' last racing laps, `fastest`, `vsFastestS`. Session: `driverTires`
+(compound names by index, for your car's class). State (your car): `player.tireSets`,
+`player.fastRepairs`, `derived.refuelLps` (measured at your stops), `derived.plan.fuelTimeS`.
+New events: `compound_change`, `driver_change`, `adjust` (your in-car changes, reported
+once a control has been left alone for 3 s); `behind_closing`, `you_closing`, `position`
+and `pit_battle` carry `ref` (the car they were measured from); your `incident` carries `pct`.
+
 ### Delta encoding
 `full:true` = complete message (sent every 5 s and on every reconnect / `resend`).
 `full:false` = only keys that changed since the last message of that type; nested
@@ -257,6 +304,10 @@ layout: {<graphic>: {x, y, s}}}`. A rejected patch gets
 Asks for `session`, `map` and fresh keyframes. Sent by the client on connect.
 
 ### `relay` (relay → viewer)
-`{"type":"relay","bridge":"connected"|"disconnected","engineer":bool,"role":"view"|"engineer"|"producer","viewers":n}`
+`{"type":"relay","bridge":"connected"|"disconnected","engineer":bool,"role":"view"|"guest"|"engineer"|"producer","viewers":n}`
 
-Tokens: view (read-only), engineer (pit commands), producer (camera, replay, gfx).
+Tokens: view (read-only), engineer (pit commands), producer (camera, replay, gfx), guest
+(read-only, revocable: set by the suite's Share online for the links it hands out;
+`Relay.set_guest_token(None)` closes every guest with code **4003** "sharing stopped").
+Close codes: 4001 bad path or token, 4002 viewer fell behind, 4003 sharing stopped.
+The relay serves the dashboard at `/pitwall/`; with `?token=` it connects to its own host.

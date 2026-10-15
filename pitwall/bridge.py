@@ -30,7 +30,7 @@ from .sources import TelemetrySource
 
 class Bridge:
     def __init__(self, src: TelemetrySource, relay_url: str, token: str,
-                 state_hz: float = 15.0, cars_hz: float = 8.0, allow_commands: bool = False,
+                 state_hz: float = 30.0, cars_hz: float = 15.0, allow_commands: bool = False,
                  allow_camera: bool = False, log=print, livery_dir: str | None = None,
                  render_cars: bool = True):
         self.src = src
@@ -75,6 +75,10 @@ class Bridge:
         # otherwise; feed_seq says how far each viewer has been sent.
         self._feed_sent = 0
         self._feed_full_due = True
+        # The car a viewer chose to follow. Kept here, not in the Deriver, so a
+        # session change (which replaces the Deriver) does not drop the choice.
+        self.focus_manual: int | None = None
+        self._rg_key = None
 
     def _ws_url(self) -> str:
         sep = "&" if "?" in self.relay_url else "?"
@@ -199,6 +203,7 @@ class Bridge:
                 outbox.append(enc)
         if now >= self._next_cars:
             self._next_cars = now + self.cars_dt
+            self.deriver.focus_manual = self.focus_manual
             cars_msg = build_cars(self.src, self.session_msg, self.deriver)
             self._last_cars = cars_msg
             self._broadcast_tick(cars_msg, outbox)
@@ -208,6 +213,9 @@ class Bridge:
             feed = self._feed_message()
             if feed:
                 outbox.append(feed)
+            rg = self._refgaps_message()
+            if rg:
+                outbox.append(rg)
         return outbox
 
     # ------------------------------------------------------------------ #
@@ -372,6 +380,16 @@ class Bridge:
                 return g.get("num")
         return None
 
+    def _refgaps_message(self) -> dict | None:
+        """Gap to the reference car at each lap line, whole, whenever the
+        reference changes or a lap is added (about once a second at most)."""
+        d = self.deriver
+        key = (id(d), d.ref_idx, d._last_lap_seq)
+        if key == self._rg_key:
+            return None
+        self._rg_key = key
+        return {"type": "refgaps", "ref": d.ref_idx, "series": d.ref_gaps()}
+
     def _feed_message(self) -> dict | None:
         d = self.deriver
         if self._feed_full_due:
@@ -406,6 +424,11 @@ class Bridge:
                 res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, msg)
                 self.log(f"cmd {msg} -> {'ok' if res['ok'] else res['error']}")
                 await ws.send(json.dumps(res))
+            elif msg.get("type") == "focus":
+                idx = msg.get("idx")
+                if idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64):
+                    self.focus_manual = idx
+                    self.log(f"following {'car ' + str(idx) if idx is not None else 'automatically'}")
             elif msg.get("type") == "resend":
                 # a new viewer wants the slow-changing messages again + fresh keyframes
                 for m in (self.session_msg, self.map_msg, self.director.status(),
@@ -417,6 +440,7 @@ class Bridge:
                     await ws.send(json.dumps(m, separators=(",", ":")))
                 self.delta.reset()
                 self._feed_full_due = True
+                self._rg_key = None
 
     async def run(self):
         self._loop = asyncio.get_running_loop()

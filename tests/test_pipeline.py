@@ -89,7 +89,9 @@ def test_derived_fuel_needs_completed_laps():
     d = Deriver()
     st = build_state(src, d)
     assert st["derived"]["fuelPerLap"] is None              # no evidence yet -> no number
-    for _ in range(60 * 200):                               # ~2 laps
+    # ~3 laps: the fake starts part-way round, and that first partial lap is
+    # (rightly) not counted as a lap of fuel, so two full crossings are needed.
+    for _ in range(60 * 360):
         src.tick()
         st = build_state(src, d)
     assert st["derived"]["fuelPerLap"] is not None and st["derived"]["fuelPerLap"] > 0
@@ -733,7 +735,9 @@ def test_relay_does_not_stall_behind_a_viewer_that_stops_reading():
     relay_mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(relay_mod)
 
-    N, PAYLOAD = 1500, "x" * 4000
+    # Enough messages to overflow the per-viewer queue several times over, so
+    # the test keeps meaning the same thing if VIEWER_QUEUE is tuned.
+    N, PAYLOAD = max(1500, relay_mod.VIEWER_QUEUE * 3), "x" * 4000
 
     async def run():
         relay = relay_mod.Relay("B", "V", None)
@@ -1121,7 +1125,9 @@ def test_state_events_incidents_flags_weather_engine():
     d.state_events(7.0, *base(inc=4, rain=0.2, wet="lightly_wet", dw=True))
     d.state_events(8.0, *base(inc=4, rain=0.2, wet="lightly_wet", dw=True, tow=30.0))
     got = [(e["kind"], {k: v for k, v in e.items() if k not in ("t", "lap", "seq", "kind")}) for e in d.feed_events]
-    assert ("incident", {"delta": 2, "total": 4, "limit": 17}) in got
+    inc = [g[1] for g in got if g[0] == "incident"]
+    assert len(inc) == 1 and {k: inc[0][k] for k in ("delta", "total", "limit")} == {"delta": 2, "total": 4, "limit": 17}
+    assert "idx" in inc[0] and "pct" in inc[0]   # for the map's incident marks
     assert ("engine", {"warnings": ["water_temp"]}) in got
     assert [g for g in got if g[0] == "flag"] == [("flag", {"flag": "yellow"}), ("flag", {"flag": "green"})]
     assert ("rain_start", {"value": 0.2}) in got and ("declared_wet", {"value": True}) in got
@@ -1166,6 +1172,482 @@ def test_bridge_sends_the_feed_whole_then_only_what_is_new():
     now += 1.0
     full = [m for m in b._build(now) if m["type"] == "feed"]
     assert full and full[0]["full"] and len(full[0]["laps"]) == len(b.deriver.feed_laps)
+
+
+# --------------------------------------------------------------------------- #
+# Engineer: fuel & stops, lap log, head-to-head, spotter.
+# --------------------------------------------------------------------------- #
+
+from pitwall.normalize import CAR_LEFT_RIGHT, fuel_plan, track_length_m, vs_you  # noqa: E402
+
+# Fuel used per lap in the real Indianapolis capture (ferrari296gt3, 2026-10-10),
+# in order from lap 1, with whether the lap touched pit road. Lap 20 is the in-lap
+# (2.21 L at the limiter), lap 21 the out-lap with ~31 L added.
+INDY_FUEL = [(2.41, False), (2.48, False), (2.48, False), (2.45, False), (2.49, False), (2.44, False),
+             (2.44, False), (2.47, False), (2.51, False), (2.51, False), (2.50, False), (2.47, False),
+             (2.45, False), (2.49, False), (2.48, False), (2.49, False), (2.49, False), (2.48, False),
+             (2.46, False), (2.21, True), (-28.55, True), (2.49, False), (2.49, False), (2.47, False)]
+
+
+def _drive_fuel(d, laps, start=50.0, first_lap=0):
+    """Feed fuel() the way the bridge does: mid-lap samples, then the line."""
+    fuel, out = start, None
+    d.fuel(first_lap, fuel)                                    # first sight, on the line
+    for k, (used, pit) in enumerate(laps, start=first_lap + 1):
+        out = d.fuel(k - 1, fuel - used / 2, on_pit_road=pit)  # half-way round
+        fuel -= used
+        out = d.fuel(k, fuel, on_pit_road=pit and k - first_lap == len(laps))
+    return out
+
+
+def test_fuel_burn_leaves_out_pit_laps_real_indianapolis():
+    """The in-lap burned 2.21 L against ~2.47 on a racing lap. Averaging it in
+    would make the car look more economical than it is."""
+    d = Deriver()
+    out = _drive_fuel(d, INDY_FUEL[:20])                       # up to and including the in-lap
+    green = [u for u, p in INDY_FUEL[:20] if not p][-5:]
+    assert abs(out["fuelPerLap"] - sum(green) / 5) < 0.002, out["fuelPerLap"]
+    assert d._fuel_by_lap[20]["pit"] is True
+    out = _drive_fuel(d, INDY_FUEL[20:24], start=20.0, first_lap=20)
+    assert d._fuel_by_lap[21]["refuel"] is True and d._fuel_by_lap[21]["usedL"] is None
+    assert 2.4 < out["fuelPerLap"] < 2.55
+
+
+def test_fuel_skips_a_partial_first_lap_and_a_counter_that_goes_back():
+    d = Deriver()
+    d.fuel(4, 50.0)                                            # connected part-way round lap 5
+    d.fuel(5, 49.1)                                            # 0.9 L: only part of a lap
+    assert d._fuel_per_lap_samples == [] and d._fuel_by_lap[5]["usedL"] is None
+    d.fuel(6, 46.6)
+    assert d._fuel_per_lap_samples == [2.5] or abs(d._fuel_per_lap_samples[0] - 2.5) < 1e-9
+    d.fuel(5, 46.5)                                            # the counter went back (seen at Indianapolis)
+    d.fuel(6, 45.9)                                            # ...and forward again: not a lap
+    assert len(d._fuel_per_lap_samples) == 1
+
+
+def test_fuel_plan_no_stop():
+    # 30 L, 2.5 L/lap, half-way round lap 16 of 25 (10 to go counting this one)
+    p = fuel_plan(30.0, 2.5, 10, False, 0.5, 16, 100.0)
+    assert p["stops"] == 0 and p["finishLap"] == 25
+    assert p["needL"] == 23.75 and p["spareAtFlagL"] == 6.25 and p["spareAtFlagLaps"] == 2.5
+
+
+def test_fuel_plan_one_stop_window_and_amounts():
+    # 20 L, 2.5 L/lap, on the line at lap 6 with 20 to go (flag after lap 25),
+    # 40 L tank. Need 50, short 30: one stop.
+    p = fuel_plan(20.0, 2.5, 20, False, 0.0, 6, 40.0, menu_fuel_l=35.0, menu_fuel_on=True)
+    assert p["stops"] == 1 and not p["fillToFull"]
+    # latest: 20 L reaches the end of lap 6 + 7 = 13 (8 lines at 2.5 L)
+    # earliest: after lap 9 the 16 laps left need 40 L, a full tank
+    assert p["windowOpenLap"] == 9 and p["windowCloseLap"] == 13 and not p["boxNow"]
+    assert p["addThisLapL"] is None, "boxing now cannot reach the flag on one stop"
+    assert p["addAtOpenL"] == 30.0 and p["addAtCloseL"] == 30.0
+    assert p["addAtOpenSpareL"] == 30.0                        # a spare lap does not fit in the tank
+    assert p["menuVsPlanL"] == 5.0                             # menu 35 against 30 needed
+
+
+def test_fuel_plan_two_stops_fill_and_box_now():
+    # 20 L, 2.5 L/lap, 40 to go from lap 6, 40 L tank: short 80 -> two stops, fill at the first
+    p = fuel_plan(20.0, 2.5, 40, False, 0.0, 6, 40.0)
+    assert p["stops"] == 2 and p["fillToFull"] and p["windowCloseLap"] == 13
+    assert p["addAtCloseL"] == 40.0
+    # 1.0 L at 80 % of a lap: just enough to reach the line -- this lap is the last chance
+    p = fuel_plan(1.0, 2.5, 10, False, 0.8, 6, 40.0)
+    assert p["boxNow"] and p["windowCloseLap"] == 6
+    # 0.3 L at half-way: cannot finish this lap
+    p = fuel_plan(0.3, 2.5, 10, False, 0.5, 6, 40.0)
+    assert p["boxNow"] and p["windowCloseLap"] is None
+    # no burn measured yet: no plan
+    assert fuel_plan(20.0, None, 10, False, 0.5, 6, 40.0)["stops"] is None
+
+
+def test_usable_tank_comes_from_the_session():
+    src = FakeSource(realtime=False)
+    src.connect()
+    sess = build_session(src)
+    d = Deriver()
+    build_cars(src, sess, d)
+    assert d.tank_l == 110.0
+    sess["driverCar"]["DriverCarMaxFuelPct"] = 0.5            # a series restricting the tank
+    build_cars(src, sess, d)
+    assert d.tank_l == 55.0
+
+
+def test_sector_timing_waits_for_a_line_and_keeps_each_lap():
+    """30 s laps at constant speed, sampled every 0.25 s; S1/S2/S3 start at
+    0, 0.33, 0.66, so on a full lap they are 9.9, 9.9 and 10.2 s."""
+    d = Deriver()
+    starts = [0.0, 0.33, 0.66]
+    t, pct, out = 0.0, 0.20, None
+
+    def run_to(stop_t, on_track=lambda p: True):
+        nonlocal t, pct, out
+        while t < stop_t - 1e-9:
+            t = round(t + 0.25, 4)
+            pct = (pct + 0.25 / 30.0) % 1.0
+            out = d.sectors(1, t, pct, starts, on_track(pct))
+
+    d.sectors(1, t, pct, starts, True)                        # first sight inside sector 1
+    run_to(15.0)                                              # through the S2 line and the S3 line
+    assert out["sectorS"][0] is None, "a partial sector was banked"
+    assert abs(out["sectorS"][1] - 9.9) < 1e-6
+    run_to(24.5)                                              # across the start/finish line
+    lap = d._sect[1]["lapDone"][1]
+    assert lap[0] is None and abs(lap[1] - 9.9) < 1e-6 and abs(lap[2] - 10.2) < 1e-6
+    # next lap: an off in S2 leaves S2 empty for THAT lap, not last lap's 9.9
+    run_to(54.5, on_track=lambda p: not (0.45 < p < 0.5))
+    lap = d._sect[1]["lapDone"][1]
+    assert abs(lap[0] - 9.9) < 1e-6 and lap[1] is None and abs(lap[2] - 10.2) < 1e-6
+
+
+def test_lap_log_entries_carry_sectors_fuel_and_incidents():
+    r = _fake_race()
+    d = r["d"]
+    mine = [e for e in d.feed_laps if e["idx"] == 0]
+    green = [e for e in mine if e["lapS"] and not e["pit"] and e["sectors"] and all(e["sectors"])]
+    assert len(green) >= 5
+    for e in green:
+        assert abs(sum(e["sectors"]) - e["lapS"]) < 0.35, e    # timed here vs iRacing's lap
+        assert e["fuelL"] and 2.0 < e["fuelL"] < 5.0, e
+        assert e["incL"] == 0
+    assert any(e.get("refuel") for e in mine), "the stop lap was not marked as a refuel"
+    others = [e for e in d.feed_laps if e["idx"] != 0]
+    assert all("fuelL" not in e for e in others), "fuel is only known for your own car"
+
+
+def test_head_to_head_is_their_time_minus_yours():
+    me = _car(0, lastLapS=100.0, bestLapS=99.0, derived={"bestSectorS": [33.0, 33.0, 33.0]})
+    c = _car(1, lastLapS=99.5, bestLapS=99.4, derived={"bestSectorS": [32.9, 33.2, None]})
+    v = vs_you(c, me, 99.6, 100.2)
+    assert v == {"lastLapS": -0.5, "bestLapS": 0.4, "paceS": -0.6, "bestSectorS": [-0.1, 0.2, None]}
+    assert vs_you(_car(2, lastLapS=-1.0), me, None, 100.0)["lastLapS"] is None
+
+
+def test_spotter_distances_and_closing():
+    d = Deriver()
+    for k in range(12):                                        # 1.1 s at ~10 Hz
+        t = k * 0.1
+        cars = [_car(0, pct=0.5),
+                _car(1, pct=0.5 + (50.0 - 5.0 * t) / 5000.0),   # 50 m ahead, you close at 5 m/s
+                _car(2, pct=0.5 - (100.0 - 3.0 * t) / 5000.0),  # 100 m behind, closing at 3 m/s
+                _car(3, pct=0.5 + 200.0 / 5000.0),             # out of range
+                _car(4, pct=0.49, onPitRoad=True)]             # in the pit lane alongside
+        near = {n["idx"]: n for n in d.nearby(cars, 0, 5000.0, t)}
+    assert set(near) == {1, 2, 4}
+    assert abs(near[1]["meters"] - (50.0 - 5.5)) < 0.2 and abs(near[1]["closingMs"] - 5.0) < 0.15
+    assert abs(near[2]["meters"] + (100.0 - 3.3)) < 0.2 and abs(near[2]["closingMs"] - 3.0) < 0.15
+    assert near[4]["inPit"] is True
+    assert d.nearby(cars, 0, None, 2.0) == []                  # no track length: nothing
+
+
+def test_track_length_and_spotter_decoding():
+    assert track_length_m({"track": {"TrackLength": "5.10 km"}}) == 5100.0
+    assert abs(track_length_m({"track": {"TrackLength": "2.50 mi"}}) - 4023.36) < 0.01
+    assert track_length_m({"track": {"TrackLength": None}}) is None
+    src = FakeSource(realtime=False)
+    src.connect()
+    d = Deriver()
+    for raw, name in CAR_LEFT_RIGHT.items():
+        src._vars["CarLeftRight"] = raw
+        st = build_state(src, d)
+        assert st["player"]["carLeftRight"] == name and st["player"]["carLeftRightRaw"] == raw
+
+
+def test_fuel_to_finish_and_the_plan_agree():
+    """Two panels showing two different 'fuel needed' numbers is worse than one."""
+    src = FakeSource(realtime=False, speed=4.0)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    checked = 0
+    for i in range(15 * 60 * 9):
+        src.tick()
+        if i % 4 == 0:
+            build_cars(src, sess, d)
+        st = build_state(src, d)
+        dv = st["derived"]
+        if dv["fuelToFinishL"] is not None and dv["plan"]["needL"] is not None:
+            assert abs(dv["fuelToFinishL"] - dv["plan"]["needL"]) < 0.011
+            checked += 1
+    assert checked > 100
+
+
+# --------------------------------------------------------------------------- #
+# Spectator first: follow any car, and everything known about every car.
+# --------------------------------------------------------------------------- #
+
+def _spectate(src_kw=None, minutes=4.0, every=2, focus=None, cam=5, sess_follow=True):
+    src = FakeSource(realtime=False, **(src_kw or {}))
+    src.connect()
+    src.cam["car"] = cam
+    d = Deriver()
+    d.focus_manual = focus
+    sess, siu = build_session(src), src.session_info_update
+    st = cars = None
+    for i in range(int(60 * 60 * minutes / (src_kw or {}).get("speed", 1.0))):
+        src.tick()
+        if sess_follow and src.session_info_update != siu:
+            sess, siu = build_session(src), src.session_info_update
+        if i % every == 0:
+            st = build_state(src, d)
+            cars = build_cars(src, sess, d)
+    return src, d, st, cars
+
+
+def test_reference_car_is_chosen_else_your_car_else_the_camera():
+    # driving: your own car
+    src = FakeSource(realtime=False)
+    src.connect()
+    sess, d = build_session(src), Deriver()
+    cars = build_cars(src, sess, d)
+    assert cars["derived"]["ref"] == {"idx": 0, "source": "your_car", "own": 0, "camera": 0}
+    # a car chosen by a viewer wins
+    d.focus_manual = 7
+    assert build_cars(src, sess, d)["derived"]["ref"]["idx"] == 7
+    # a choice that is not in the field falls back
+    d.focus_manual = 60
+    assert build_cars(src, sess, d)["derived"]["ref"]["source"] == "your_car"
+    # spectating: no car of ours (PlayerCarIdx 63), so the camera car
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    src.cam["car"] = 5
+    src.tick()
+    sess, d = build_session(src), Deriver()
+    r = build_cars(src, sess, d)["derived"]["ref"]
+    assert r == {"idx": 5, "source": "camera", "own": None, "camera": 5}
+
+
+def test_switching_the_followed_car_is_not_a_position_change():
+    src, d, st, cars = _spectate({"speed": 4.0}, minutes=6.0, cam=5)
+    before = [e for e in d.feed_events if e["kind"] == "position"]
+    sess = build_session(src)
+    for cam in (11, 2, 14):                                     # three camera cuts
+        src.cam["car"] = cam
+        for _ in range(40):
+            src.tick()
+            build_state(src, d)
+            build_cars(src, sess, d)
+    after = [e for e in d.feed_events if e["kind"] == "position"]
+    assert len(after) - len(before) <= 1, after[len(before):]   # one real change at most, not one per cut
+    assert d._uc == {} or all(r["kind"] in ("they_stopped", "you_stopped") for r in d._uc.values())
+
+
+def test_gap_to_the_followed_car_at_each_line():
+    d = Deriver()
+    d._laps = {1: [{"lap": 3, "t": 300.0, "tx": 300.0}, {"lap": 4, "t": 400.0, "tx": 400.2}],
+               2: [{"lap": 3, "t": 302.5}, {"lap": 4, "t": 401.0, "tx": 401.05}],
+               3: [{"lap": 2, "t": 280.0}]}
+    d.ref_idx = 1
+    assert d.ref_gaps() == {"2": [[3, 2.5], [4, 0.85]]}       # car 3 shares no lap with the reference
+    d.ref_idx = 2
+    assert d.ref_gaps() == {"1": [[3, -2.5], [4, -0.85]]}
+
+
+def test_bridge_follows_the_chosen_car_and_sends_gap_series():
+    from pitwall import bridge as bridge_mod
+    src = FakeSource(realtime=False, speed=4.0)
+    src.connect()
+    b = bridge_mod.Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None)
+    msgs, now = [], 0.0
+    for _ in range(15 * 60 * 3):
+        src.tick()
+        now += 1.0
+        msgs += b._build(now)
+    rg = [m for m in msgs if m["type"] == "refgaps"]
+    assert rg and rg[-1]["ref"] == 0 and rg[-1]["series"]
+    b.focus_manual = 9                                          # a viewer chose car 9
+    src.tick()
+    now += 1.0
+    out = b._build(now)
+    cars = [m for m in out if m["type"] == "cars"]
+    rg = [m for m in out if m["type"] == "refgaps"]
+    assert rg and rg[0]["ref"] == 9
+    assert b.deriver.ref_idx == 9 and b.deriver.ref_source == "chosen"
+
+
+def test_relay_passes_only_a_clean_focus_message():
+    import asyncio
+    import importlib.util
+    import websockets
+    from websockets.asyncio.server import serve
+    spec = importlib.util.spec_from_file_location(
+        "relay_server2", os.path.join(os.path.dirname(__file__), "..", "relay", "server.py"))
+    relay_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(relay_mod)
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None)
+        async with serve(relay.handler, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            async with websockets.connect(f"ws://127.0.0.1:{port}/bridge?token=B") as bridge:
+                async with websockets.connect(f"ws://127.0.0.1:{port}/view?token=V") as view:
+                    await asyncio.sleep(0.2)
+                    for m in ({"type": "focus", "idx": 5, "extra": "x" * 50},
+                              {"type": "focus", "idx": "5; drop"}, {"type": "focus", "idx": True},
+                              {"type": "focus", "idx": 99}, {"type": "focus", "idx": None}):
+                        await view.send(json.dumps(m))
+                    got = []
+                    try:
+                        while True:
+                            got.append(json.loads(await asyncio.wait_for(bridge.recv(), 1.0)))
+                    except asyncio.TimeoutError:
+                        pass
+            return [g for g in got if g.get("type") == "focus"]
+
+    got = asyncio.run(run())
+    assert got == [{"type": "focus", "idx": 5}, {"type": "focus", "idx": None}]
+
+
+def test_speed_from_position_matches_the_fake():
+    """Spectating, the player block's Speed follows the camera car: the fake's
+    true speed for that car, against the speed worked out from positions."""
+    import statistics
+    src = FakeSource(realtime=False, spectator=True, incidents=False)
+    src.connect()
+    src.cam["car"] = 5
+    sess, d = build_session(src), Deriver()
+    errs = []
+    for i in range(60 * 200):
+        src.tick()
+        if i % 2 == 0:
+            st = build_state(src, d)
+            cars = build_cars(src, sess, d)
+            c = next(x for x in cars["cars"] if x["idx"] == 5)
+            if c["derived"]["speedMs"] is not None and st["player"]["speedMs"]:
+                errs.append(abs(c["derived"]["speedMs"] - st["player"]["speedMs"]))
+    errs.sort()
+    assert len(errs) > 5000
+    assert errs[len(errs) // 2] < 0.3, errs[len(errs) // 2]
+    assert errs[int(len(errs) * 0.95)] < 2.5, errs[int(len(errs) * 0.95)]
+
+
+def test_speed_restarts_after_a_jump_and_ignores_no_track_length():
+    d = Deriver()
+    c = _car(1, pct=0.10)
+    assert d.car_speed(c, 0.0, 5000.0) is None                 # needs two samples
+    c["pct"] = 0.10 + 25 / 5000                                # 25 m in half a second
+    assert abs(d.car_speed(c, 0.5, 5000.0) - 50.0) < 1e-6
+    c["pct"] = 0.60                                            # teleported half a lap
+    assert d.car_speed(c, 1.0, 5000.0) is None
+    c["pct"] = 0.61
+    assert d.car_speed(c, 3.0, 5000.0) is None                 # two seconds without a sample: start again
+    assert d.car_speed(c, 3.5, None) is None
+
+
+def test_every_car_gets_its_stints_grid_and_consistency():
+    d = Deriver()
+    # car 5: seen from the start, stops after lap 12 and lap 25
+    d.pit(5, 0.0, False, False, 0, pct=0.0)
+    for lap, t in ((12, 1000.0), (25, 2100.0)):
+        d.pit(5, t, True, False, lap, pct=0.95)
+        d.pit(5, t + 5, True, True, lap, pct=0.99)
+        d.pit(5, t + 30, True, False, lap + 1, pct=0.99)
+        d.pit(5, t + 40, False, False, lap + 1, pct=0.05)
+    c = _car(5, lap=30, pos=4, classPos=2, fastRepairsUsed=1, compound=0, lapCompleted=29)
+    d._laps[5] = [{"lap": k, "lapS": s, "pit": False, "pos": 1 if k < 3 else 4, "classPos": 1 if k < 5 else 2}
+                  for k, s in ((1, 100.0), (2, 100.4), (3, 99.8), (4, 100.2), (5, 100.0), (6, 100.6))]
+    x = d.car_extras(c, 2200.0, {5: {"pos": 9, "classPos": 4}}, 2, True, False)
+    assert x["stintsSeen"] == [12, 12] and x["stintStartLap"] == 26
+    assert x["lapsThisStint"] == 4 and x["nextStopLapEst"] == 38
+    assert x["gridPos"] == 9 and x["posGained"] == 5 and x["classPosGained"] == 2
+    assert x["lapsLedSeen"] == 2 and x["classLapsLedSeen"] == 4
+    assert x["fastRepairsLeft"] == 1
+    laps = [100.4, 99.8, 100.2, 100.0, 100.6]
+    m = sum(laps) / 5
+    assert abs(x["consistencyS"] - (sum((v - m) ** 2 for v in laps) / 5) ** 0.5) < 1e-3
+    # a stint that began before we connected has no known length
+    d2 = Deriver()
+    d2.pit(6, 0.0, False, False, 14, pct=0.5)
+    d2.pit(6, 10.0, True, False, 20, pct=0.95)
+    d2.pit(6, 50.0, False, False, 21, pct=0.05)
+    x = d2.car_extras(_car(6, lap=23), 60.0, {}, None, True, False)
+    assert x["stintsSeen"] == [] and x["stintStartLap"] == 21 and x["fastRepairsLeft"] is None
+
+
+def test_compound_changes_and_pace_by_compound():
+    d = Deriver()
+    cars = [_car(i, classId=10, compound=0) for i in range(4)] + [_car(9, classId=10, compound=1)]
+    for c in cars:
+        d.car_extras(c, 0.0, {}, None, True, False)
+    for i, s in enumerate((100.0, 101.0, 102.0, 103.0)):
+        d._laps[i] = [{"lap": 5, "lapS": s, "pit": False}]
+    d._laps[9] = [{"lap": 5, "lapS": 98.0, "pit": False}]
+    cp = {o["compound"]: o for o in d.compound_pace(cars)}
+    assert cp[0]["medianLastLapS"] == 101.5 and cp[1]["medianLastLapS"] == 98.0
+    assert cp[1]["fastest"] and cp[0]["vsFastestS"] == 3.5
+    cars[0]["compound"] = 1                                    # a switch
+    x = d.car_extras(cars[0], 10.0, {}, None, True, False)
+    assert x["compoundChanges"] == 1
+    ev = [e for e in d.feed_events if e["kind"] == "compound_change"]
+    assert ev and ev[-1]["fromCompound"] == 0 and ev[-1]["toCompound"] == 1
+
+
+def test_team_race_driver_stints_from_the_session_info():
+    src, d, st, cars = _spectate({"speed": 4.0, "team": True}, minutes=16.0, cam=5)
+    swaps = [e for e in d.feed_events if e["kind"] == "driver_change"]
+    assert swaps, "no driver swap seen in a 16-minute team race"
+    e = swaps[0]
+    c = next(x for x in cars["cars"] if x["idx"] == e["idx"])
+    drv = c["derived"]["drivers"]
+    assert len(drv) >= 2 and sum(1 for x in drv if x["current"]) == 1
+    assert sum(x["timeS"] for x in drv) > 600
+    # outside a team race, a single driver is not listed
+    src2, d2, _, cars2 = _spectate({"speed": 4.0}, minutes=2.0)
+    assert all(x["derived"]["drivers"] is None for x in cars2["cars"])
+
+
+def test_refuel_rate_is_measured_at_your_stops():
+    d = Deriver()
+    d.refuel(0.0, 5.0, False)
+    t, f = 100.0, 5.0
+    for k in range(60):                                        # 2 s settling in the box
+        d.refuel(t, f, True)
+        t += 1 / 30
+    for k in range(int(12 * 30)):                              # 12 s at 2.6 L/s
+        f += 2.6 / 30
+        t += 1 / 30
+        d.refuel(t, f, True)
+    for k in range(60):
+        t += 1 / 30
+        d.refuel(t, f, True)
+    d.refuel(t, f, False)                                      # leaves the box
+    assert abs(d.refuel_rate() - 2.6) < 0.01
+    # and on the fake, whose stop refuels at 2.6 L/s
+    src, d, st, cars = _spectate({"speed": 4.0, "player_pit_lap": 3}, minutes=8.0, sess_follow=False)
+    assert abs(st["derived"]["refuelLps"] - 2.6) < 0.1, st["derived"]["refuelLps"]
+
+
+def test_in_car_adjustments_are_reported_once_settled():
+    d = Deriver()
+    dc = {"brakeBias": 54.0, "tractionControl": 5.0, "dashPage": 1}
+    d.adjustments(0.0, dc, 3, True)                            # seeds
+    for k, bb in enumerate((54.5, 55.0, 55.5)):                # three clicks in a second
+        d.adjustments(0.3 * (k + 1), dict(dc, brakeBias=bb), 3, True)
+    d.adjustments(1.5, dict(dc, brakeBias=55.5, dashPage=4), 3, True)   # page flips are not news
+    assert [e for e in d.feed_events if e["kind"] == "adjust"] == []
+    d.adjustments(5.0, dict(dc, brakeBias=55.5), 4, True)
+    adj = [e for e in d.feed_events if e["kind"] == "adjust"]
+    assert len(adj) == 1 and adj[0]["control"] == "brakeBias"
+    assert adj[0]["fromValue"] == 54.0 and adj[0]["toValue"] == 55.5 and adj[0]["onLap"] == 3
+    d.adjustments(6.0, dict(dc, brakeBias=None), 4, False)     # spectating: nothing
+    assert len([e for e in d.feed_events if e["kind"] == "adjust"]) == 1
+
+
+def test_any_car_lap_entries_carry_top_speed_and_crossing_time():
+    r = _fake_race()
+    entries = [e for e in r["d"].feed_laps if e["idx"] == 7 and e["lapS"] and not e["pit"]]
+    assert len(entries) >= 5
+    assert all(e["topSpeedMs"] and 40 < e["topSpeedMs"] < 120 for e in entries)
+    assert all("tx" in e and abs(e["tx"] - e["t"]) < 1.0 for e in entries if e["sectors"])
+
+
+def test_per_car_steering_and_tyre_names_pass_through():
+    src = FakeSource(realtime=False)
+    src.connect()
+    sess = build_session(src)
+    assert sess["driverTires"] == [{"index": 0, "type": "Hard"}, {"index": 1, "type": "Wet"}]
+    cars = build_cars(src, sess, Deriver())
+    assert all("steerRad" in c for c in cars["cars"])
 
 
 if __name__ == "__main__":

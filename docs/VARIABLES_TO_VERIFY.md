@@ -104,6 +104,39 @@ Two traps found while building it. Camera cuts splice the spectator kinematics f
 so the map builder now voids its lap on any `CamCarIdx` change (tested). And `lead_change`
 needed a player car, so a spectator never saw a lead change; `class_lead` covers that.
 
+### Engineer additions (fuel planner, lap log, head-to-head, spotter)
+
+| Derived value | Inputs | Validation |
+|---|---|---|
+| fuel per lap (changed) | as before, now leaving out laps that touched pit road and the partial lap after connecting | **From the real Indianapolis capture**: racing laps 2.44-2.51 L, in-lap 2.21 L. Counting the in-lap (or a partial first lap) understated the burn -- the dangerous direction. The lap counter also went back (33 -> 32 at the end, 0 -> -1 -> 0 on the grid); that restarts the count. Tested with the real per-lap numbers. |
+| fuel plan | burn, fuel aboard, `DriverCarFuelMaxLtr` x `DriverCarMaxFuelPct`, laps left, `LapDistPct`, `PitSvFuel` | Unit-tested arithmetic. **Assumes `SessionLapsRemainEx` counts the lap in progress** (25 on lap 1 of 25), as the fake does; not yet confirmed on a lap-limited race -- the panel shows "flag at the end of lap N" so it can be checked at a glance. Timed races estimate laps from the clock, flagged as such. |
+| sector times (fixed) | as before | First sight of a car mid-sector used to time that partial sector and bank it as the car's best (22.3 s against a real 38.9 s in the fake), corrupting its theoretical best. Timing now starts at the next sector line. Each lap's own sectors are kept separately, so a void sector is empty for that lap rather than showing the previous lap's. |
+| head-to-head (`vsYou`) | the two cars' last/best laps, pace, best sectors | Differences only; unit-tested. |
+| spotter distances (`nearby`) | `CarIdxLapDistPct` gap x `TrackLength` | `TrackLength` is rounded to 10 m in the session info, about 0.2 % -- under a metre at spotter range. Closing is a 1.5 s least-squares slope. Unit-tested. |
+| `CarLeftRight` | plain | **Never yet seen from the live sim** -- it is not saved in .ibt files and no live capture includes it. Decoded with irsdk's own table; the fake produces every value. |
+
+### Spectator-first additions
+
+| Value | Inputs | Validation |
+|---|---|---|
+| reference car | chosen > `PlayerCarIdx` (if a car) > `CamCarIdx` | Unit-tested in all three modes. Switching cars resets everything measured from the old one (no fake "P8 -> P3"). |
+| per-car speed | `CarIdxLapDistPct` change x `TrackLength` / time | **On the fake against its true speed** (camera car, spectating): median error < 0.3 m/s, 95th percentile < 2.5 m/s (smoothing lag under hard braking). **Not yet compared with the sim**: if the sim's network-updated positions for other cars are jerky, the smoothing (0.1 s) may need raising. |
+| gap to the followed car per lap | each car's line-crossing time minus the reference's, same lap number | Unit-tested. |
+| stints, next stop | stops watched entry to exit | A stint is only counted if we saw it start (race start or a watched stop). "Next stop" is stint start + longest stint: a pattern, not fuel. |
+| refuel rate | your `FuelLevel` rising while `PlayerCarInPitStall` | **Real Indianapolis stop: 2.60 L/s** (31 L in ~12 s). Unit-tested; the fake now refuels at that rate. |
+| tyre sets | `TireSetsUsed`, `TireSetsAvailable`, `*TiresUsed` etc. | Present in the real 296 .ibt (288 vars). Plain. |
+| compound names | `DriverInfo/DriverTires` | Real file: index 0 "Hard", 1 "Wet". This list is for YOUR car's class; other classes show the index only. |
+| driver changes | `DriverInfo/Drivers[].UserID` for a CarIdx changing in the session info | **Not yet seen in a real team race.** Assumes DriverInfo lists the CURRENT driver per car and is refreshed at a swap; the fake does exactly that. |
+| `CarIdxSteer` | plain, every car | Present in the variable list; not yet compared with what is seen on screen. |
+
+### Share online (suite)
+
+| Item | Validation |
+|---|---|
+| cloudflared output | **Real cloudflared 2026.10.0 (Linux) run** through `suite/share.py`: startup lines as expected; with Cloudflare unreachable it named `https://api.trycloudflare.com/tunnel` in its error, which was first mistaken for the link (fixed, tested). **A successful quick tunnel has not been run yet** (the dev sandbox cannot reach Cloudflare): the address-box and "Registered tunnel connection" lines are from Cloudflare's usual output, with an 8 s fallback if the second never shows. |
+| Windows job object (tunnel ends with the app) | **Not yet run on Windows.** Without it the tunnel is still stopped on a normal close. |
+| Relay through the tunnel | Guest token, read-only, 4003 on stop: tested on the local relay. WebSockets through Cloudflare's tunnel: not yet seen. |
+
 ## Group D — believed unavailable (do not fake)
 
 Other cars' fuel, tire state, damage, pedal inputs, setup. Player damage as a

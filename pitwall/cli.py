@@ -168,8 +168,10 @@ def main(argv=None):
     add_source(s)
     s.add_argument("--relay", required=True, help="ws://host:port of the relay")
     s.add_argument("--token", required=True, help="bridge token configured on the relay")
-    s.add_argument("--state-hz", type=float, default=15.0)
-    s.add_argument("--cars-hz", type=float, default=8.0)
+    # 30/15 by default: smooth on a dashboard, and still light enough for a
+    # relay on the internet (delta-encoded; measured ~75 KB/s for 24 cars).
+    s.add_argument("--state-hz", type=float, default=30.0)
+    s.add_argument("--cars-hz", type=float, default=15.0)
     s.add_argument("--allow-commands", action="store_true", help="accept pit commands from engineers (phase 2)")
     s.add_argument("--allow-camera", action="store_true",
                    help="accept camera and replay commands from a broadcast producer")
