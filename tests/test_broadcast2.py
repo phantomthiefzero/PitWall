@@ -366,6 +366,121 @@ def _serve_relay(relay_mod, relay):
                  max_size=relay_mod.WS_MAX_BYTES)
 
 
+async def _drain(ws, quiet_s=0.5):
+    got = []
+    try:
+        while True:
+            got.append(json.loads(await asyncio.wait_for(ws.recv(), quiet_s)))
+    except asyncio.TimeoutError:
+        pass
+    return got
+
+
+def _feed(full, seq, laps=(), events=()):
+    return {"type": "feed", "full": full, "seq": seq,
+            "laps": [{"seq": s, "idx": 1, "lap": s} for s in laps],
+            "events": [{"seq": s, "kind": "pit_in", "idx": 2} for s in events]}
+
+
+def test_a_late_joiner_gets_the_race_feed_so_far():
+    """The relay used to keep only the last FULL feed, which the bridge sends on a
+    resend -- so a viewer joining mid-race got the feed as it was the last time
+    anyone asked, and every page had to ask the bridge, which sent it to all."""
+    import websockets
+    relay_mod = _relay_mod()
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None, assets_dir=tempfile.mkdtemp())
+        async with _serve_relay(relay_mod, relay) as srv:
+            u = f"ws://127.0.0.1:{srv.sockets[0].getsockname()[1]}"
+            async with websockets.connect(u + "/bridge?token=B") as br:
+                await br.send(json.dumps(_feed(True, 3, laps=[1, 2], events=[3])))
+                await br.send(json.dumps(_feed(False, 5, laps=[4], events=[5])))
+                await br.send(json.dumps(_feed(False, 6, laps=[6])))
+                await asyncio.sleep(0.2)
+                async with websockets.connect(u + "/view?token=V") as v:
+                    feeds = [m for m in await _drain(v) if m["type"] == "feed"]
+        return feeds
+
+    feeds = asyncio.run(run())
+    assert len(feeds) == 1 and feeds[0]["full"]
+    assert [x["seq"] for x in feeds[0]["laps"]] == [1, 2, 4, 6]
+    assert [x["seq"] for x in feeds[0]["events"]] == [3, 5]
+    assert feeds[0]["seq"] == 6
+
+
+def test_a_resend_is_answered_by_the_relay_to_that_viewer_alone():
+    """One guest asking 10x a second used to multiply every viewer's traffic 5x."""
+    import websockets
+    relay_mod = _relay_mod()
+    relay_mod.RESEND_MIN_S = 1.5
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None, assets_dir=tempfile.mkdtemp())
+        relay.set_guest_token("G")
+        async with _serve_relay(relay_mod, relay) as srv:
+            u = f"ws://127.0.0.1:{srv.sockets[0].getsockname()[1]}"
+            async with websockets.connect(u + "/bridge?token=B") as br:
+                await br.send(json.dumps({"type": "session", "track": {"TrackID": 1}}))
+                await br.send(json.dumps(_feed(True, 1, laps=[1])))
+                await asyncio.sleep(0.2)
+                async with websockets.connect(u + "/view?token=G") as guest, \
+                        websockets.connect(u + "/view?token=V") as other:
+                    await _drain(guest, 0.1)
+                    await _drain(other, 0.1)
+                    await guest.send(json.dumps({"type": "resend"}))     # too soon after connecting
+                    first = await _drain(guest, 0.3)
+                    await asyncio.sleep(1.5)
+                    for _ in range(10):                                  # then a burst
+                        await guest.send(json.dumps({"type": "resend"}))
+                    burst = await _drain(guest)
+                    to_other = await _drain(other)
+                    to_bridge = await _drain(br)
+        return first, burst, to_other, to_bridge
+
+    first, burst, to_other, to_bridge = asyncio.run(run())
+    assert not [m for m in first if m["type"] == "session"], "the page was just sent everything"
+    assert [m["type"] for m in burst].count("session") == 1, "one answer per RESEND_MIN_S, however often it asks"
+    assert [m["type"] for m in burst].count("feed") == 1
+    assert not to_other, "nobody else is sent anything"
+    assert not [m for m in to_bridge if m.get("type") == "resend"], "the bridge is not involved"
+
+
+def test_only_the_producer_may_send_large_messages():
+    """A guest's 40 MB message used to be read and parsed, freezing the stream for
+    everyone. Watching never needs more than a few hundred bytes."""
+    import base64
+    import websockets
+    relay_mod = _relay_mod()
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None, producer_token="P", assets_dir=tempfile.mkdtemp())
+        relay.set_guest_token("G")
+        async with _serve_relay(relay_mod, relay) as srv:
+            u = f"ws://127.0.0.1:{srv.sockets[0].getsockname()[1]}"
+            big = json.dumps({"type": "focus", "idx": 1, "pad": "x" * (relay_mod.VIEWER_MAX_BYTES + 10)})
+            codes = {}
+            for token in ("G", "V"):
+                async with websockets.connect(u + f"/view?token={token}", max_size=None) as v:
+                    await _drain(v, 0.2)
+                    await v.send(big)
+                    try:
+                        await _drain(v, 1.0)
+                        codes[token] = "open"
+                    except websockets.exceptions.ConnectionClosed as e:
+                        codes[token] = e.rcvd.code if e.rcvd else None
+            async with websockets.connect(u + "/view?token=P", max_size=None) as prod:
+                await _drain(prod, 0.2)
+                data = base64.b64encode(b"\x89PNG" + b"\0" * 300_000).decode()
+                await prod.send(json.dumps({"type": "asset_put", "name": "logo.png", "data": data}))
+                res = next(m for m in await _drain(prod, 1.0) if m["type"] == "asset_result")
+        return codes, res
+
+    codes, res = asyncio.run(run())
+    assert codes == {"G": 1009, "V": 1009}, codes            # 1009: message too big
+    assert res["ok"], res                                      # the producer can still upload
+
+
 def test_relay_refuses_an_oversized_graphics_patch_without_wiping_the_show():
     """It used to replace the whole graphics state with {}: every graphic off air."""
     import websockets
