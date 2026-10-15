@@ -28,4 +28,5 @@ vm.createContext(ctx);
 // The page's script declares with const/let at top level; run it and the test in ONE
 // script so the test sees those bindings.
 const test = fs.readFileSync(process.argv[3], 'utf8');
-vm.runInContext(scripts.join('\n;\n') + '\n;\n' + test, ctx, { filename: 'analyzer' });
+// The test runs in its own block, so its names cannot clash with the page's.
+vm.runInContext(scripts.join('\n;\n') + '\n;\n{\n' + test + '\n}\n', ctx, { filename: 'analyzer' });
