@@ -371,7 +371,15 @@ class Bridge:
         if kind == "livery":
             if action == "setup":
                 cfg = self.livery_store.cfg
-                for k in ("url", "source", "group"):
+                url = msg.get("url").strip() if isinstance(msg.get("url"), str) else ""
+                if url:                                  # blank keeps the address already set
+                    from .obs import obs_url_problem
+                    why = obs_url_problem(url)
+                    if why:
+                        res["error"] = why
+                        return res
+                    cfg["url"] = url
+                for k in ("source", "group"):
                     if isinstance(msg.get(k), str):
                         cfg[k] = msg[k].strip()
                 if isinstance(msg.get("password"), str) and msg["password"] != "":

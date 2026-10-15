@@ -558,6 +558,31 @@ def test_uploaded_assets_cannot_run_script_on_the_relay_origin():
 
 # --------------------------------------------------------------------- OBS + liveries
 
+def test_obs_must_be_on_this_pc_or_the_local_network():
+    """The producer sets the OBS address, and connecting runs OBS's login exchange
+    with the stored password -- material to guess it offline, for whoever is at
+    the far end. Only this PC and private network addresses are accepted."""
+    from pitwall.bridge import Bridge
+    from pitwall.obs import obs_url_problem
+    for ok in ("ws://127.0.0.1:4455", "ws://localhost:4455", "ws://192.168.1.20:4455", "ws://10.0.0.5:4455",
+               "ws://[::1]:4455"):
+        assert obs_url_problem(ok) is None, ok
+    for bad in ("ws://8.8.8.8:4455", "ws://1.1.1.1:4455", "ws://0.0.0.0:4455", "http://127.0.0.1:4455", ""):
+        assert obs_url_problem(bad), bad
+    src = FakeSource(realtime=False)
+    src.connect()
+    d = tempfile.mkdtemp()
+    b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False, livery_dir=d)
+    before = dict(b.livery_store.cfg)
+    res = b._broadcast_cmd({"type": "cmd", "cmd": "livery", "action": "setup", "url": "ws://8.8.8.8:4455",
+                            "password": "secret"})
+    assert not res["ok"] and "local network" in res["error"]
+    assert b.livery_store.cfg == before, "nothing is saved when the address is refused"
+    # a blank address keeps the one already set
+    b._broadcast_cmd({"type": "cmd", "cmd": "livery", "action": "setup", "url": "", "source": "Game"})
+    assert b.livery_store.cfg["url"] == before["url"] and b.livery_store.cfg["source"] == "Game"
+
+
 def test_obs_auth_follows_the_protocol():
     import hashlib
     secret = base64.b64encode(hashlib.sha256(b"pw" + b"salt").digest()).decode()
