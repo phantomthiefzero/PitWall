@@ -56,6 +56,10 @@ VIEWER_QUEUE = 1000
 CLOSE_TOO_SLOW = 4002
 
 # Which viewer role may send which command kind on to the bridge.
+# Cars that viewers may follow individually at once (the bridge computes one
+# view per car). Matches pitwall.bridge.MAX_REFS.
+MAX_REFS = 12
+
 CMD_ROLE = {"pit": "engineer", "camera": "producer", "replay": "producer",
             "director": "producer", "livery": "producer"}
 
@@ -139,6 +143,10 @@ class Relay:
         # sharing online. Setting a new one (or None) disconnects its holders.
         self.guest_token: str | None = None
         self._guests: set = set()
+        # The car each viewer follows, for that viewer alone. Choosing one never
+        # changes what anyone else sees: the bridge computes a view per chosen car
+        # and only that car's viewers are sent it.
+        self.view_ref: dict = {}     # ws -> carIdx
         self.gfx: dict = {}
         self.gfx_rev = 0
         self.bridge = None
@@ -146,9 +154,11 @@ class Relay:
         self.snapshot: dict[str, str] = {}
         self.stats = {"in": 0, "out": 0, "dropped_slow": 0, "started": time.time()}
 
-    async def _fanout(self, raw: str):
+    async def _fanout(self, raw: str, only=None):
         # Never awaits a viewer: each one has its own queue and writer task.
         for ws, q in list(self.viewers.items()):
+            if only is not None and not only(ws):
+                continue
             try:
                 q.put_nowait(raw)
             except asyncio.QueueFull:
@@ -165,6 +175,13 @@ class Relay:
                 self.stats["out"] += 1
         except websockets.exceptions.ConnectionClosed:
             pass
+
+    async def _send_refs(self, fresh=None):
+        """Tell the bridge which cars viewers follow. `fresh`: just chosen, so
+        the bridge sends that car's next view whole, not as a delta."""
+        if self.bridge is not None:
+            await self._to_bridge(json.dumps({"type": "refs", "idxs": sorted(set(self.view_ref.values())),
+                                              "fresh": fresh}))
 
     async def _to_bridge(self, raw: str):
         # The bridge closing between the check and the send is the bridge's
@@ -183,12 +200,21 @@ class Relay:
         self.bridge = ws
         print(f"[relay] bridge connected from {ws.remote_address}")
         await self._fanout(json.dumps({"type": "relay", "bridge": "connected"}))
+        if self.view_ref:            # a new bridge starts with none; tell it who follows what
+            await self._send_refs()
         try:
             async for raw in ws:
                 self.stats["in"] += 1
                 try:
-                    t = json.loads(raw).get("type")
+                    obj = json.loads(raw)
+                    t = obj.get("type")
                 except Exception:
+                    continue
+                if t == "refview":
+                    # Measured from one viewer-chosen car: only its viewers get it.
+                    ref = obj.get("ref")
+                    await self._fanout(raw, only=lambda v, ref=ref: self.view_ref.get(v) == ref)
+                    await asyncio.sleep(0)
                     continue
                 if t in SNAPSHOT_TYPES and (t not in ("state", "cars", "feed") or msg_is_full(raw)):
                     self.snapshot[t] = raw
@@ -303,12 +329,23 @@ class Relay:
                         await self._to_bridge(raw)
                 elif msg.get("type") == "resend" and self.bridge is not None:
                     await self._to_bridge(raw)
-                elif msg.get("type") == "focus" and self.bridge is not None:
-                    # Which car PitWall follows. It does not touch the sim, so any
-                    # viewer may send it; only a clean car index goes through.
+                elif msg.get("type") == "focus":
+                    # Which car THIS viewer follows. Any role may choose, guests
+                    # included, because it changes nothing for anyone else.
                     idx = msg.get("idx")
-                    if idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64):
-                        await self._to_bridge(json.dumps({"type": "focus", "idx": idx}))
+                    if not (idx is None or (isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < 64)):
+                        continue
+                    if idx is not None and idx not in self.view_ref.values() and                             len(set(self.view_ref.values())) >= MAX_REFS:
+                        reply({"type": "focus_result", "ok": False, "idx": idx,
+                               "error": f"{MAX_REFS} cars are already being followed on this relay; "
+                                        "follow one of those, or automatic"})
+                        continue
+                    if idx is None:
+                        self.view_ref.pop(ws, None)
+                    else:
+                        self.view_ref[ws] = idx
+                    reply({"type": "focus_result", "ok": True, "idx": idx})
+                    await self._send_refs(fresh=idx)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
@@ -316,6 +353,8 @@ class Relay:
             lv_task.cancel()
             self.viewers.pop(ws, None)
             self._guests.discard(ws)
+            if self.view_ref.pop(ws, None) is not None:
+                await self._send_refs()
             print(f"[relay] viewer left, {len(self.viewers)} total")
 
     async def handler(self, ws):

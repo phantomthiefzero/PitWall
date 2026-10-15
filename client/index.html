@@ -378,7 +378,7 @@
   <div class="right">
     <span class="find"><input id="findDrv" type="search" placeholder="Find a driver…" autocomplete="off" spellcheck="false"
       title="Search this session's field by driver, team or car number, then follow that car"><div id="findList" class="find-list hidden"></div></span>
-    <label class="follow" title="The car every relative panel follows. Shared with everyone on this relay.">Following
+    <label class="follow" title="The car every relative panel follows, on this screen only. Nobody else's view changes.">Following
       <select id="followSel"><option value="">Auto</option></select> <span id="followSrc" class="note"></span></label>
     <button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button>
     <div class="clock"><span id="remain">–</span><small id="lapline">–</small></div>
@@ -688,7 +688,10 @@
       return;
     }
     ws = sock;
-    sock.onopen = () => { $("dotRelay").classList.add("on"); sock.send(JSON.stringify({ type: "resend" })); };
+    sock.onopen = () => {
+      $("dotRelay").classList.add("on"); sock.send(JSON.stringify({ type: "resend" }));
+      if (myRef != null) { S.refview = null; sock.send(JSON.stringify({ type: "focus", idx: myRef })); }
+    };
     sock.onclose = ev => {
       $("dotRelay").classList.remove("on"); $("dotBridge").classList.remove("on");
       if (ev.code === 4001) {
@@ -746,8 +749,16 @@
         // done by the frame loop, so a fast stream never queues up DOM work.
         recordAccel(); recordWeather(); recordEngine(); recordInputs(); dirty.state = true; break;
       case "cars":
-        if (!m.full && !S.cars) break;
-        S.cars = m.full ? m : merge(S.cars, m); recordTrace(); dirty.cars = true; chartDirty = true; break;
+        if (!m.full && !S.carsShared) break;
+        S.carsShared = m.full ? m : merge(S.carsShared, m); viewCars(); recordTrace(); dirty.cars = true; chartDirty = true; break;
+      // Everything measured from the car THIS viewer follows (bridge-computed,
+      // see normalize.relative_to). The relay sends it only to that car's viewers.
+      case "refview":
+        if (m.ref !== myRef || (!m.full && !S.refview)) break;
+        S.refview = m.full ? m : merge(S.refview, m); viewCars(); dirty.cars = true; chartDirty = true; break;
+      case "focus_result":
+        if (!m.ok && m.idx === myRef) { followNote = m.error || "could not follow that car"; setFollow(null, false); }
+        break;
       case "feed": handleFeed(m); break;
       case "refgaps": S.refgaps = m; chartDirty = true; break;
       case "cmd_result": console.log("command result", m); break;
@@ -1102,9 +1113,35 @@
   const shortCar = i => { const c = carByIdx(i); return c ? "#" + esc(c.num ?? c.idx) : "car " + esc(i); };
   // ---------------------------------------------------------------- following
   // Spectating is the normal case for this booth. Everything "relative" follows
-  // one car: the one chosen here (shared with everyone on this relay), else your
-  // own car when you are driving, else the car the camera is on.
-  function refInfo() { return (S.cars && S.cars.derived && S.cars.derived.ref) || { idx: null, source: null, own: null }; }
+  // one car: the one chosen on this screen, else your own car when you are
+  // driving, else the car the camera is on.
+  // The car this viewer follows (null: automatic). Kept HERE, per viewer: the
+  // relay sends this viewer the numbers measured from it, and nobody else's
+  // screen changes. The shared stream always follows your car, else the camera.
+  let myRef = null, followNote = "";
+  function viewCars() {
+    const sh = S.carsShared, rv = myRef != null ? S.refview : null;
+    if (!sh || !rv) { S.cars = sh; return; }
+    const cars = {};
+    for (const [k, c] of Object.entries(sh.cars || {})) {
+      const r = rv.cars && rv.cars[k];
+      cars[k] = r ? { ...c, derived: { ...(c.derived || {}), ...r } } : c;
+    }
+    S.cars = { ...sh, cars, derived: { ...(sh.derived || {}), ...(rv.derived || {}) } };
+  }
+  function setFollow(idx, send = true) {
+    myRef = idx;
+    S.refview = null;
+    viewCars();
+    dirty.cars = true; chartDirty = true;
+    if (send) sendFocus(idx);
+  }
+  function refInfo() {
+    const sh = (S.carsShared && S.carsShared.derived && S.carsShared.derived.ref) || { idx: null, source: null, own: null };
+    if (myRef == null) return sh;
+    // chosen but its first view not here yet: say so straight away
+    return (S.refview && S.refview.derived && S.refview.derived.ref) || { ...sh, idx: myRef, source: "chosen" };
+  }
   const isOwnRef = () => { const r = refInfo(); return r.idx != null && r.idx === r.own; };
   const meCar = () => carByIdx(refInfo().idx);                 // the followed car
   const ownCar = () => carByIdx(refInfo().own);                // your car, only when driving
@@ -1129,9 +1166,9 @@
       sel.innerHTML = `<option value="">${auto}</option>` + cars.map(c =>
         `<option value="${c.idx}">#${esc(c.num ?? c.idx)} ${esc(c.name ?? "")}${isMulticlass() ? " · " + esc(c.className ?? "") : ""}</option>`).join("");
     }
-    if (document.activeElement !== sel) sel.value = r.source === "chosen" && r.idx != null ? String(r.idx) : "";
+    if (document.activeElement !== sel) sel.value = myRef != null ? String(myRef) : "";
     const src = { chosen: "chosen", your_car: "your car", camera: "camera" }[r.source] || "nobody";
-    $("followSrc").textContent = r.idx == null ? "nobody yet" : "(" + src + ")";
+    $("followSrc").textContent = followNote || (r.idx == null ? "nobody yet" : "(" + src + ")");
   }
   // ---- find a driver in this session by name, team, team-mate or number.
   // Only the field iRacing reports for the session you are connected to: there
@@ -1173,7 +1210,7 @@
   }
   function pickFind(idx) {
     if (idx == null) return;
-    sendFocus(idx);
+    setFollow(idx);
     $("findDrv").value = ""; $("findList").classList.add("hidden"); $("findDrv").blur();
   }
   $("findDrv").addEventListener("input", () => { FIND.sel = 0; renderFind(); });
@@ -1198,7 +1235,8 @@
 
   $("followSel").addEventListener("change", e => {
     const v = e.target.value;
-    sendFocus(v === "" ? null : Number(v));
+    followNote = "";
+    setFollow(v === "" ? null : Number(v));
   });
 
   // ---------------------------------------------------------------- car data
@@ -1391,6 +1429,12 @@
 
   // ---- battle box: the class car directly ahead and directly behind
   function lapSeries(idx, key, n = 10) {
+    // The shared lap feed records gaps to the SHARED reference; a viewer's own
+    // car has its own per-lap series in the view.
+    if (key === "toPlayerS" && myRef != null) {
+      const g = (S.refview && S.refview.gaps && S.refview.gaps[String(idx)]) || [];
+      return g.slice(-n).map(p => p[1]);
+    }
     return S.feed.laps.filter(e => e.idx === idx && e[key] != null).slice(-n).map(e => e[key]);
   }
   function battleRow(side, c) {
@@ -1722,7 +1766,8 @@
     }
     const cars = chartCars();
     const key = chartTab === "gap" ? "classGapS" : chartTab === "you" ? "toPlayerS" : "classPos";
-    const refIdx = refInfo().idx, rg = (S.refgaps && S.refgaps.ref === refIdx && S.refgaps.series) || {};
+    const refIdx = refInfo().idx, rg = (myRef != null ? (S.refview && S.refview.gaps)
+      : (S.refgaps && S.refgaps.ref === refIdx && S.refgaps.series)) || {};
     const series = cars.map((c, i) => ({ c, col: c.idx === refIdx ? "#FFB23F" : PALETTE[i % PALETTE.length],
       pts: key === "toPlayerS" ? (rg[String(c.idx)] || [])
         : S.feed.laps.filter(e => e.idx === c.idx && e[key] != null).map(e => [e.lap, e[key]]) })).filter(s => s.pts.length);
@@ -2316,10 +2361,10 @@
     const tr = e.target.closest("tr[data-idx]");
     if (!tr) return;
     const idx = Number(tr.dataset.idx);
-    // Clicking a row follows that car (for everyone on this relay); clicking
-    // the car already chosen goes back to automatic.
-    const r = refInfo();
-    sendFocus(r.source === "chosen" && r.idx === idx ? null : idx);
+    // Clicking a row follows that car (on this screen only); clicking the car
+    // already chosen goes back to automatic.
+    followNote = "";
+    setFollow(myRef === idx ? null : idx);
   });
 
   $("unitToggle").addEventListener("click", () => {

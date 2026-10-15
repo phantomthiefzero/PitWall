@@ -1376,12 +1376,11 @@ def test_fuel_to_finish_and_the_plan_agree():
 # Spectator first: follow any car, and everything known about every car.
 # --------------------------------------------------------------------------- #
 
-def _spectate(src_kw=None, minutes=4.0, every=2, focus=None, cam=5, sess_follow=True):
+def _spectate(src_kw=None, minutes=4.0, every=2, cam=5, sess_follow=True):
     src = FakeSource(realtime=False, **(src_kw or {}))
     src.connect()
     src.cam["car"] = cam
     d = Deriver()
-    d.focus_manual = focus
     sess, siu = build_session(src), src.session_info_update
     st = cars = None
     for i in range(int(60 * 60 * minutes / (src_kw or {}).get("speed", 1.0))):
@@ -1394,19 +1393,16 @@ def _spectate(src_kw=None, minutes=4.0, every=2, focus=None, cam=5, sess_follow=
     return src, d, st, cars
 
 
-def test_reference_car_is_chosen_else_your_car_else_the_camera():
+def test_shared_reference_is_your_car_else_the_camera():
+    """The shared stream's reference is not choosable: a viewer who follows
+    another car gets a RefView of their own (see the tests below)."""
     # driving: your own car
     src = FakeSource(realtime=False)
     src.connect()
     sess, d = build_session(src), Deriver()
     cars = build_cars(src, sess, d)
     assert cars["derived"]["ref"] == {"idx": 0, "source": "your_car", "own": 0, "camera": 0}
-    # a car chosen by a viewer wins
-    d.focus_manual = 7
-    assert build_cars(src, sess, d)["derived"]["ref"]["idx"] == 7
-    # a choice that is not in the field falls back
-    d.focus_manual = 60
-    assert build_cars(src, sess, d)["derived"]["ref"]["source"] == "your_car"
+    assert not hasattr(d, "focus_manual")
     # spectating: no car of ours (PlayerCarIdx 63), so the camera car
     src = FakeSource(realtime=False, spectator=True)
     src.connect()
@@ -1443,11 +1439,13 @@ def test_gap_to_the_followed_car_at_each_line():
     assert d.ref_gaps() == {"1": [[3, -2.5], [4, -0.85]]}
 
 
-def test_bridge_follows_the_chosen_car_and_sends_gap_series():
+def test_a_followed_car_gets_its_own_view_and_the_shared_stream_stays_put():
+    """A viewer following car 9 is sent a refview measured from car 9. The shared
+    stream (cars, refgaps, the feed) keeps following your car for everyone."""
     from pitwall import bridge as bridge_mod
     src = FakeSource(realtime=False, speed=4.0)
     src.connect()
-    b = bridge_mod.Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None)
+    b = bridge_mod.Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None, render_cars=False)
     msgs, now = [], 0.0
     for _ in range(15 * 60 * 3):
         src.tick()
@@ -1455,17 +1453,79 @@ def test_bridge_follows_the_chosen_car_and_sends_gap_series():
         msgs += b._build(now)
     rg = [m for m in msgs if m["type"] == "refgaps"]
     assert rg and rg[-1]["ref"] == 0 and rg[-1]["series"]
-    b.focus_manual = 9                                          # a viewer chose car 9
+    assert not [m for m in msgs if m["type"] == "refview"], "nobody follows a car: no views"
+    b._set_refs([9], fresh=9)                                   # a viewer chose car 9
+    out = []
+    for _ in range(40):
+        src.tick()
+        now += 1.0
+        out += b._build(now)
+    views = [m for m in out if m["type"] == "refview"]
+    assert views and views[0]["full"] and all(v["ref"] == 9 for v in views)
+    assert views[0]["derived"]["ref"]["idx"] == 9 and views[0]["derived"]["ref"]["source"] == "chosen"
+    assert views[0]["gaps"], "the per-lap gaps to car 9 come with its view"
+    assert "9" in views[0]["cars"] and views[0]["cars"]["9"]["toPlayerS"] is None
+    # the shared stream did not move
+    assert b.deriver.ref_idx == 0
+    shared = [m for m in out if m["type"] == "cars" and m.get("full")]
+    assert shared and shared[-1]["derived"]["ref"]["idx"] == 0
+    assert all(m["ref"] == 0 for m in out if m["type"] == "refgaps")
+    # nobody follows it any more: the view stops
+    b._set_refs([])
     src.tick()
-    now += 1.0
-    out = b._build(now)
-    cars = [m for m in out if m["type"] == "cars"]
-    rg = [m for m in out if m["type"] == "refgaps"]
-    assert rg and rg[0]["ref"] == 9
-    assert b.deriver.ref_idx == 9 and b.deriver.ref_source == "chosen"
+    assert not [m for m in b._build(now + 100.0) if m["type"] == "refview"]
 
 
-def test_relay_passes_only_a_clean_focus_message():
+def test_a_chosen_car_matches_the_shared_stream_for_the_same_car():
+    """relative_to must compute exactly what build_cars computes when the shared
+    stream follows the same car: same methods, separate history. Checked at every
+    update of a race with stops, for every relative field."""
+    from pitwall.normalize import REF_CAR_FIELDS, RefView, relative_to
+    src = FakeSource(realtime=False, speed=4.0)
+    src.connect()
+    sess, siu = build_session(src), src.session_info_update
+    d = Deriver()
+    view = RefView(d, 0)                   # car 0 is also the shared reference here
+    seen = {k: 0 for k in REF_CAR_FIELDS + ("rejoin", "undercut", "traffic", "nearby", "gaps")}
+    for i in range(60 * 60 * 12 // 4):     # long enough for pit stops, so undercut is exercised
+        src.tick()
+        if src.session_info_update != siu:
+            sess, siu = build_session(src), src.session_info_update
+        if i % 4:
+            continue
+        build_state(src, d)
+        cars = build_cars(src, sess, d)
+        rv = relative_to(view, cars, sess, cars["t"])
+        for c in cars["cars"]:
+            for k in REF_CAR_FIELDS:
+                assert c["derived"].get(k) == rv["cars"][str(c["idx"])][k], (i, c["idx"], k)
+                seen[k] += rv["cars"][str(c["idx"])][k] is not None
+        for k in ("rejoin", "undercut", "traffic", "nearby"):
+            assert cars["derived"][k] == rv["derived"][k], (i, k)
+            seen[k] += bool(rv["derived"][k])
+        assert d.ref_gaps() == rv["gaps"]
+        seen["gaps"] += bool(rv["gaps"])
+    assert all(n > 0 for k, n in seen.items() if k not in ("youCatchLaps", "catchesYouLaps")), seen
+
+
+def test_a_refview_keeps_its_own_history_and_nothing_else():
+    from pitwall.normalize import RefView
+    d = Deriver()
+    v = RefView(d, 4)
+    v._near_hist[1] = [(0.0, 10.0)]
+    assert d._near_hist == {}, "a viewer's history never leaks into the shared stream"
+    assert v.GAP_SAMPLE_S == d.GAP_SAMPLE_S              # everything else is read from the shared Deriver
+    try:
+        v.tank_l = 50.0
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("writing shared state through a RefView must fail loudly")
+
+
+def test_relay_keeps_each_viewers_followed_car_to_that_viewer():
+    """Following a car changes nothing for anyone else: the bridge is told which
+    cars are wanted, and each car's view goes only to the viewers following it."""
     import asyncio
     import importlib.util
     import websockets
@@ -1475,27 +1535,76 @@ def test_relay_passes_only_a_clean_focus_message():
     relay_mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(relay_mod)
 
+    async def drain(ws, t=0.6):
+        got = []
+        try:
+            while True:
+                got.append(json.loads(await asyncio.wait_for(ws.recv(), t)))
+        except asyncio.TimeoutError:
+            pass
+        return got
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None)
+        relay.set_guest_token("G")                   # viewer a joins with a share link
+        async with serve(relay.handler, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            u = f"ws://127.0.0.1:{port}"
+            async with websockets.connect(u + "/bridge?token=B") as bridge, \
+                    websockets.connect(u + "/view?token=G") as a, websockets.connect(u + "/view?token=V") as b:
+                await asyncio.sleep(0.2)
+                for m in ({"type": "focus", "idx": "5; drop"}, {"type": "focus", "idx": True},
+                          {"type": "focus", "idx": 99}, {"type": "focus", "idx": 5, "extra": "x" * 50}):
+                    await a.send(json.dumps(m))
+                to_bridge = [m for m in await drain(bridge) if m.get("type") == "refs"]
+                for ref in (5, 7):
+                    await bridge.send(json.dumps({"type": "refview", "full": True, "ref": ref, "cars": {}}))
+                await bridge.send(json.dumps({"type": "cars", "full": True, "t": 1, "cars": {}}))
+                got_a, got_b = await drain(a), await drain(b)
+                await a.close()
+                after = [m for m in await drain(bridge) if m.get("type") == "refs"]
+            return to_bridge, got_a, got_b, after
+
+    to_bridge, got_a, got_b, after = asyncio.run(run())
+    assert to_bridge == [{"type": "refs", "idxs": [5], "fresh": 5}], to_bridge   # only the clean choice
+    assert [m["ref"] for m in got_a if m["type"] == "refview"] == [5]            # a guest, following 5
+    assert not [m for m in got_b if m["type"] == "refview"]                       # b follows nothing
+    assert any(m["type"] == "cars" for m in got_b), "the shared stream still reaches everyone"
+    assert after == [{"type": "refs", "idxs": [], "fresh": None}]                 # a left: view no longer wanted
+
+
+def test_relay_caps_how_many_cars_are_followed_at_once():
+    import asyncio
+    import importlib.util
+    import websockets
+    from websockets.asyncio.server import serve
+    spec = importlib.util.spec_from_file_location(
+        "relay_server3", os.path.join(os.path.dirname(__file__), "..", "relay", "server.py"))
+    relay_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(relay_mod)
+    n = relay_mod.MAX_REFS
+
     async def run():
         relay = relay_mod.Relay("B", "V", None)
         async with serve(relay.handler, "127.0.0.1", 0) as server:
             port = server.sockets[0].getsockname()[1]
-            async with websockets.connect(f"ws://127.0.0.1:{port}/bridge?token=B") as bridge:
-                async with websockets.connect(f"ws://127.0.0.1:{port}/view?token=V") as view:
-                    await asyncio.sleep(0.2)
-                    for m in ({"type": "focus", "idx": 5, "extra": "x" * 50},
-                              {"type": "focus", "idx": "5; drop"}, {"type": "focus", "idx": True},
-                              {"type": "focus", "idx": 99}, {"type": "focus", "idx": None}):
-                        await view.send(json.dumps(m))
-                    got = []
-                    try:
-                        while True:
-                            got.append(json.loads(await asyncio.wait_for(bridge.recv(), 1.0)))
-                    except asyncio.TimeoutError:
-                        pass
-            return [g for g in got if g.get("type") == "focus"]
+            viewers = [await websockets.connect(f"ws://127.0.0.1:{port}/view?token=V") for _ in range(n + 2)]
+            results = []
+            for i, v in enumerate(viewers):
+                await v.send(json.dumps({"type": "focus", "idx": i if i <= n else 0}))
+                while True:
+                    m = json.loads(await asyncio.wait_for(v.recv(), 2))
+                    if m.get("type") == "focus_result":
+                        results.append(m["ok"])
+                        break
+            for v in viewers:
+                await v.close()
+            return results
 
-    got = asyncio.run(run())
-    assert got == [{"type": "focus", "idx": 5}, {"type": "focus", "idx": None}]
+    results = asyncio.run(run())
+    assert results[:n] == [True] * n
+    assert results[n] is False, "one car more than the cap is refused"
+    assert results[n + 1] is True, "following a car someone already follows costs nothing"
 
 
 def test_speed_from_position_matches_the_fake():

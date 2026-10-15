@@ -290,9 +290,9 @@ class Deriver:
         self._uc_inpit: dict[int, bool] = {}
         self._player_lap = None
         self._player_idx = None
-        # The car everything relative is measured from: one a viewer chose,
-        # else your own car when driving, else the camera car when spectating.
-        self.focus_manual: int | None = None
+        # The car the SHARED stream measures everything relative from: your own
+        # car when driving, else the camera car when spectating. A viewer who
+        # wants another car gets it through a RefView, for them alone.
         self.ref_idx: int | None = None
         self.ref_source: str | None = None
         self._last_lap_seq = 0
@@ -1927,6 +1927,96 @@ def vs_you(c: dict, me: dict, their_pace, my_pace) -> dict:
             "bestSectorS": [diff(a, b) for a, b in zip(tb, mb)] if tb and mb and len(tb) == len(mb) else None}
 
 
+class RefView:
+    """A reference car chosen by one viewer, kept apart from the shared stream.
+
+    Everything measured FROM a reference car keeps a little history of its own:
+    gap trends, the undercut series, nearby closing rates. That is exactly the
+    state Deriver.set_ref clears, and it is all a RefView owns. Everything else
+    -- lap history, pace, pit stops, the session's derived knowledge -- is read
+    from the shared Deriver. So a viewer following #23 runs the same tested
+    Deriver methods as the shared stream (called with the RefView as self),
+    without moving the shared reference or anyone else's.
+    """
+    OWN = frozenset(("_tp_hist", "_tp_ref", "_tp_slope", "_uc", "_uc_inpit", "_near_hist", "ref_idx"))
+
+    def __init__(self, base: "Deriver", ref_idx: int):
+        object.__setattr__(self, "_base", base)
+        self._tp_hist, self._tp_ref, self._tp_slope = {}, {}, {}
+        self._uc, self._uc_inpit, self._near_hist = {}, {}, {}
+        self.ref_idx = ref_idx
+
+    def __getattr__(self, name):          # only reached for what is not owned here
+        return getattr(self._base, name)
+
+    def __setattr__(self, name, value):
+        # A Deriver method that starts writing other state would silently fork
+        # it per viewer; fail loudly instead, so it is added to OWN on purpose.
+        if name not in self.OWN:
+            raise AttributeError(f"RefView does not own {name!r}; add it to RefView.OWN if it is per-reference")
+        object.__setattr__(self, name, value)
+
+
+# The per-car fields that are measured from the reference car. A viewer's
+# RefView replaces exactly these on top of the shared cars message.
+REF_CAR_FIELDS = ("toPlayerS", "youGainSPerLap", "youCatchLaps", "catchesYouLaps", "vsYou")
+
+
+def relative_to(view: RefView, cars_msg: dict, session_msg: dict | None, now) -> dict:
+    """Everything in a cars message that is measured from the reference car,
+    measured from view.ref_idx instead. Mirrors build_cars step for step (the
+    test test_a_chosen_car_matches_the_shared_stream_for_the_same_car holds it
+    to that), from the shared message's ref-independent fields."""
+    cars = cars_msg.get("cars") or []
+    shared = cars_msg.get("derived") or {}
+    shared_ref = shared.get("ref") or {}
+    is_race = bool(shared.get("isRace"))
+    ref = view.ref_idx
+    by_idx = {c["idx"]: c for c in cars}
+    me = by_idx.get(ref)
+    out = {"type": "refview", "ref": ref, "cars": {},
+           "derived": {"ref": {"idx": ref if me is not None else None, "source": "chosen" if me is not None else None,
+                               "own": shared_ref.get("own"), "camera": shared_ref.get("camera")},
+                       "rejoin": None, "undercut": [], "traffic": [], "nearby": []},
+           "gaps": {}}
+    if me is None:
+        return out
+    # toPlayerS, as build_cars computes it, but from this car
+    per = {}
+    for c in cars:
+        tp = None
+        if is_race and c is not me and c.get("gapValid") and me.get("gapValid"):
+            tp = round(c["f2TimeS"] - me["f2TimeS"], 3)
+        per[c["idx"]] = {"toPlayerS": tp}
+    my_lap = Deriver.pace(view, ref)
+    if my_lap is None and me.get("lastLapS") and me["lastLapS"] > 0:
+        my_lap = me["lastLapS"]
+    # the reference car has nothing relative to itself, as in the shared stream
+    per[ref].update({"youGainSPerLap": None, "youCatchLaps": None, "catchesYouLaps": None, "vsYou": None})
+    for c in cars:
+        if c is me:
+            continue
+        per[c["idx"]].update(Deriver.to_player_trend(view, c["idx"], now, per[c["idx"]]["toPlayerS"],
+                                                     my_lap, ref))
+    # the cars as this viewer sees them: shared fields, relative ones replaced
+    vcars = [{**c, "derived": {**(c.get("derived") or {}), **per[c["idx"]]}} for c in cars]
+    vme = next(v for v in vcars if v["idx"] == ref)
+    my_pace = Deriver.pace(view, ref)
+    for v in vcars:
+        if v is not vme:
+            per[v["idx"]]["vsYou"] = v["derived"]["vsYou"] = vs_you(v, vme, Deriver.pace(view, v["idx"]), my_pace)
+    track_len = track_length_m(session_msg)
+    out["cars"] = {str(i): {k: e.get(k) for k in REF_CAR_FIELDS} for i, e in per.items()}
+    out["derived"].update({
+        "rejoin": Deriver.rejoin(view, vcars, ref) if is_race else None,
+        "undercut": Deriver.undercut(view, vcars, ref, now) if is_race else [],
+        "traffic": Deriver.traffic(view, vcars, ref),
+        "nearby": Deriver.nearby(view, vcars, ref, track_len, now),
+    })
+    out["gaps"] = Deriver.ref_gaps(view)
+    return out
+
+
 def track_length_m(session_msg) -> float | None:
     """TrackLength from the session info ("5.10 km", "3.16 mi")."""
     raw = str(((session_msg or {}).get("track") or {}).get("TrackLength") or "")
@@ -2289,12 +2379,11 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     own_idx = _num(g("PlayerCarIdx"))
     own = by_idx.get(own_idx)                  # your car, when you are driving
     cam_idx = _num(g("CamCarIdx"))
-    manual = deriver.focus_manual if deriver is not None else None
     # Spectating is the normal case for this booth: PlayerCarIdx is then a
     # spectator slot with no car, and the camera car is what is being watched.
-    if manual is not None and manual in by_idx:
-        player_idx, ref_source = manual, "chosen"
-    elif own is not None:
+    # No viewer can move this reference: it is shared by everyone on the relay.
+    # A viewer following another car gets a RefView (relative_to, below).
+    if own is not None:
         player_idx, ref_source = own_idx, "your_car"
     elif cam_idx in by_idx:
         player_idx, ref_source = cam_idx, "camera"
