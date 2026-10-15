@@ -11,3 +11,6 @@ venv/
 build/
 dist/
 *.spec
+
+# stamped by the release build
+suite/_build.py

@@ -36,6 +36,12 @@ jobs:
           }
           exit $code
 
+      - name: Stamp the build number into the app (the updater compares it)
+        shell: pwsh
+        run: |
+          "BUILD = $env:GITHUB_RUN_NUMBER`nCOMMIT = `"$env:GITHUB_SHA`"" | Out-File -Encoding utf8 suite/_build.py
+          Get-Content suite/_build.py
+
       - name: Build the app
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
@@ -48,6 +54,8 @@ jobs:
           --hidden-import relay.server
           --hidden-import suite.cameras
           --hidden-import suite.share
+          --hidden-import suite.updater
+          --hidden-import suite._build
           --hidden-import segno
           --hidden-import websockets.sync.client
           run_suite.py
@@ -58,6 +66,18 @@ jobs:
           $exe = "dist/iRacing Suite.exe"
           if (!(Test-Path $exe)) { throw "Build output missing" }
           "{0:N1} MB" -f ((Get-Item $exe).Length / 1MB)
+
+      - name: Check the running app can swap itself (how an update installs)
+        shell: pwsh
+        run: |
+          $out = Join-Path $PWD "rename.txt"
+          $p = Start-Process -FilePath "dist/iRacing Suite.exe" -ArgumentList "--selftest-rename", "`"$out`"" -PassThru
+          if (!$p.WaitForExit(120000)) { $p.Kill(); throw "The self-test did not finish" }
+          if (!(Test-Path $out)) { throw "The self-test wrote nothing" }
+          $r = Get-Content $out -Raw
+          "Rename while running: $r"
+          if ($r.Trim() -ne "ok") { throw "The app could not rename itself while running: $r" }
+          if (!(Test-Path "dist/iRacing Suite.exe")) { throw "The app is missing after the self-test" }
 
       - uses: actions/upload-artifact@v4
         with:
