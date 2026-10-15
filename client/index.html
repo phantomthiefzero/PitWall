@@ -269,6 +269,28 @@
   #standings[data-w="lg"] table { font-size: 12px; }
   #standings[data-w="md"] .c-sec, #standings[data-w="sm"] .c-sec, #standings[data-w="xs"] .c-sec { display: none; }
 
+  /* analysis tables (lap log, head-to-head) */
+  .tabview { height: 240px; overflow: auto; font-size: 12px; }
+  .tabview table { font-size: 12px; }
+  .tabview td, .tabview th { padding: 2px 6px; }
+  .tabview tr.best td { background: #2A2350; }
+  .tabview .faster { color: var(--green); font-weight: 600; }
+  .tabview .h2h-sum { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; margin-bottom: 6px; }
+  .tabview select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px;
+                    font: inherit; font-size: 12px; padding: 2px 6px; }
+  .tabview .muted { color: var(--muted); }
+  /* spotter */
+  .spot { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: start; }
+  #radar { width: 110px; height: 180px; display: block; background: #15203A; border-radius: 8px; }
+  .spot-call { font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: .04em; margin: 2px 0 6px; }
+  .spot-call.clear { color: var(--green); } .spot-call.busy { color: var(--red); } .spot-call.off { color: var(--muted); }
+  .spot-list { font-size: 12px; display: grid; gap: 2px; }
+  .spot-list .row3 { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
+  /* fuel */
+  .fp-big { font-family: var(--mono); font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .fp-line { font-size: 12.5px; margin-top: 4px; }
+  .fp-urgent { color: var(--red); font-weight: 700; }
+
   /* footer */
   footer { display: flex; gap: 18px; align-items: center; padding: 8px 18px; border-top: 1px solid var(--line);
     font-size: 12px; color: var(--muted); }
@@ -378,20 +400,38 @@
   </section>
   <section id="chartsPanel">
     <details class="panel" id="chartsDetails" open>
-      <summary>Charts
-        <span class="tabs" id="chartTabs"><button type="button" data-c="gap" class="on">gap to class leader</button><button type="button" data-c="you">gap to you</button><button type="button" data-c="pos">positions</button><button type="button" data-c="inputs">inputs</button></span>
+      <summary>Analysis
+        <span class="tabs" id="chartTabs"><button type="button" data-c="gap" class="on">gap to class leader</button><button type="button" data-c="you">gap to you</button><button type="button" data-c="pos">positions</button><button type="button" data-c="inputs">inputs</button><button type="button" data-c="log">lap log</button><button type="button" data-c="h2h">head-to-head</button></span>
       </summary>
       <canvas id="chart"></canvas>
+      <div id="tabView" class="tabview hidden"></div>
       <div class="mapnote" id="chartNote"></div>
     </details>
   </section>
   </div>
 
   <div class="col">
+    <section id="spotter">
+      <details class="panel" id="spotterDetails" open>
+        <summary>Spotter</summary>
+        <div class="spot">
+          <canvas id="radar"></canvas>
+          <div><div class="spot-call" id="spotCall">–</div><div id="spotList" class="spot-list"></div></div>
+        </div>
+      </details>
+    </section>
+
     <section id="battle">
       <details class="panel" id="battleDetails" open>
         <summary>Battle</summary>
         <div class="bb" id="bb"><div class="note">Waiting for race gaps.</div></div>
+      </details>
+    </section>
+
+    <section id="fuelPanel">
+      <details class="panel" id="fuelDetails" open>
+        <summary>Fuel &amp; stops</summary>
+        <div id="fuelBox"><div class="note">Needs a lap or two of fuel readings.</div></div>
       </details>
     </section>
 
@@ -658,11 +698,12 @@
       case "state":
         if (!m.full && !S.state) break;
         S.state = m.full ? m : merge(S.state, m); S.lastStateAt = performance.now();
-        recordAccel(); recordWeather(); recordEngine(); recordInputs(); renderHeader(); renderCar(); renderWeather(); break;
+        // Recording keeps every sample (60 a second in the suite); drawing is
+        // done by the frame loop, so a fast stream never queues up DOM work.
+        recordAccel(); recordWeather(); recordEngine(); recordInputs(); dirty.state = true; break;
       case "cars":
         if (!m.full && !S.cars) break;
-        S.cars = m.full ? m : merge(S.cars, m); renderStandings(); renderFocus();
-        renderBattle(); renderStrategy(); renderTraffic(); chartDirty = true; break;
+        S.cars = m.full ? m : merge(S.cars, m); dirty.cars = true; chartDirty = true; break;
       case "feed": handleFeed(m); break;
       case "cmd_result": console.log("command result", m); break;
     }
@@ -1336,6 +1377,11 @@
   }
   function drawCharts() {
     const det = $("chartsDetails"); if (!det.open) return;
+    // Table tabs first: the canvas is hidden for them, and a hidden canvas has
+    // no size, which would end this function before the table is drawn.
+    const table = chartTab === "log" || chartTab === "h2h";
+    $("chart").classList.toggle("hidden", table); $("tabView").classList.toggle("hidden", !table);
+    if (table) { $("chartNote").textContent = ""; renderTabView(); return; }
     const cvs = $("chart"), r = cvs.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
     if (!r.width || !r.height) return;
     if (cvs.width !== Math.round(r.width * dpr) || cvs.height !== Math.round(r.height * dpr)) { cvs.width = Math.round(r.width * dpr); cvs.height = Math.round(r.height * dpr); }
@@ -1436,6 +1482,218 @@
       const cls = sb[i] != null && Math.abs(v - sb[i]) < 0.0005 ? "s-purple" : own[i] != null && Math.abs(v - own[i]) < 0.0005 ? "s-green" : "s-yellow";
       return `<span class="${cls}">${v.toFixed(2)}</span>`;
     }).join("") + `</span>`;
+  }
+
+  // ---------------------------------------------------------------- engineer
+  // Fuel & stops, lap log, head-to-head and spotter. Display only: every number
+  // comes from iRacing or from a "derived" key computed in normalize.py.
+
+  // ---- fuel & stops
+  function renderFuelPlan() {
+    const el = $("fuelBox");
+    const st = S.state; if (!st) return;
+    const d = st.derived || {}, pl = d.plan;
+    if (!pl || d.fuelPerLap == null) {
+      el.innerHTML = `<div class="note">${playerBlockIsLive() ? "Needs a full green lap of fuel readings (laps that touch pit road are left out)." : "Fuel planning follows your own car; while spectating there is none."}</div>`;
+      return;
+    }
+    const L = v => v == null ? "–" : U.fuel(v, 1) + " " + U.fuelAbbr;
+    const dTip = "Computed here from your measured burn (green laps only), the fuel aboard, the usable tank and the laps left. Assumes the burn stays where it has been.";
+    let h = "";
+    if (pl.lapsLeft == null) {
+      h = `<div class="note">Race length unknown: no lap count and no clock to estimate one from.</div>`;
+    } else if (pl.stops === 0) {
+      h = `<div class="fp-big gain">${D("No stop needed", dTip)}</div>` +
+          `<div class="fp-line">${D(`${L(pl.spareAtFlagL)} spare at the flag (${pl.spareAtFlagLaps.toFixed(1)} laps)`, dTip)}</div>`;
+    } else if (pl.stops == null) {
+      h = `<div class="note">Short of fuel, but the tank size is unknown, so the stops cannot be worked out.</div>`;
+    } else {
+      const open = pl.windowOpenLap, close = pl.windowCloseLap, cur = st.player.lap;
+      const win = pl.boxNow
+        ? `<span class="fp-urgent">${close == null ? "Box now: not enough to finish this lap" : "Box this lap: last chance"}</span>`
+        : `Box between lap <b class="mono">${open}</b> and lap <b class="mono">${close}</b>` +
+          (open <= cur ? ` <span class="gain">(window open)</span>` : ` <span class="note">(opens in ${open - cur} lap${open - cur === 1 ? "" : "s"})</span>`);
+      h = `<div class="fp-big ${pl.boxNow ? "lose" : ""}">${D(pl.stops + " stop" + (pl.stops === 1 ? "" : "s"), dTip)}</div>` +
+          `<div class="fp-line">${D(win, dTip)}</div>` +
+          (pl.fillToFull
+            ? `<div class="fp-line">${D(`Fill to full at this stop (${L(pl.addThisLapL ?? pl.addAtOpenL)} when you box)`, dTip)}</div>`
+            : (pl.addThisLapL != null
+                ? `<div class="fp-line">${D(`Box this lap: add <b class="mono">${L(pl.addThisLapL)}</b> (${L(pl.addThisLapSpareL)} with a lap spare)`, dTip)}</div>`
+                : `<div class="fp-line">${D(`When the window opens (lap ${open}): add <b class="mono">${L(pl.addAtOpenL)}</b> (${L(pl.addAtOpenSpareL)} with a lap spare)`, dTip)}</div>`) +
+              (pl.addAtCloseL != null && close !== cur ? `<div class="fp-line">${D(`At the latest (lap ${close}): add ${L(pl.addAtCloseL)}`, dTip)}</div>` : ""));
+    }
+    // the pit menu, checked against the plan
+    const sv = st.player.pitService || {};
+    if ((sv.flags || []).includes("fuel") && pl.menuFuelL != null) {
+      const diff = pl.menuVsPlanL;
+      const msg = diff == null ? "" : Math.abs(diff) < 0.5 ? `<span class="gain">matches what you need</span>`
+        : diff < 0 ? `<span class="lose">${L(-diff)} short of what you need</span>` : `<span class="note">${L(diff)} more than you need</span>`;
+      h += `<div class="fp-line">Pit menu adds <b class="mono">${L(pl.menuFuelL)}</b>${msg ? " · " + D(msg, "Computed here: the amount in your pit menu minus the fuel to add at your next stop (this lap if the window is open, else when it opens).") : ""}</div>`;
+    } else if (pl.stops > 0) {
+      h += `<div class="fp-line lose">Fuel is not selected in your pit menu.</div>`;
+    }
+    h += `<div class="fp-line note">Burn ${U.fuel(d.fuelPerLap, 2)} ${U.fuelAbbr}/lap over ${d.fuelPerLapSamples} green lap${d.fuelPerLapSamples === 1 ? "" : "s"}` +
+         (pl.finishLap != null ? ` · flag at the end of lap ${pl.finishLap}${pl.lapsLeftIsEstimate ? " (estimated from the clock)" : ""}` : "") +
+         (pl.tankL != null ? ` · tank ${L(pl.tankL)}` : "") + `</div>`;
+    el.innerHTML = h;
+  }
+
+  // ---- lap log
+  function lapLogHtml() {
+    const me = meCar();
+    if (!me) return `<div class="note">The lap log follows your own car; while spectating there is none.</div>`;
+    const laps = S.feed.laps.filter(e => e.idx === me.idx);
+    if (!laps.length) return `<div class="note">Your laps appear here as you cross the line.</div>`;
+    const timed = laps.filter(e => e.lapS != null && !e.pit);
+    const best = timed.length ? Math.min(...timed.map(e => e.lapS)) : null;
+    const sb = (S.cars && S.cars.derived && S.cars.derived.sessionBestSectorS) || [];
+    const own = (me.derived && me.derived.bestSectorS) || [];
+    const nSec = Math.max(0, ...laps.map(e => (e.sectors || []).length));
+    const secHead = Array.from({ length: nSec }, (_, i) => `<th class="r">S${i + 1}</th>`).join("");
+    const rows = laps.slice().reverse().map(e => {
+      const sec = Array.from({ length: nSec }, (_, i) => {
+        const v = e.sectors ? e.sectors[i] : null;
+        if (v == null) return `<td class="r muted">–</td>`;
+        const cls = sb[i] != null && Math.abs(v - sb[i]) < 0.0005 ? "s-purple" : own[i] != null && Math.abs(v - own[i]) < 0.0005 ? "s-green" : "";
+        return `<td class="r mono ${cls}">${v.toFixed(2)}</td>`;
+      }).join("");
+      const isBest = best != null && e.lapS === best;
+      const fuel = e.refuel ? `<span class="muted">refuel</span>` : e.fuelL != null ? U.fuel(e.fuelL, 2) : "–";
+      const inc = e.incL ? `<span class="lose">+${e.incL}x</span>` : e.incL === 0 ? `<span class="muted">0</span>` : "–";
+      const note = [e.pit ? "pit lane" : "", e.lapS == null ? "no time" : ""].filter(Boolean).join(" · ");
+      return `<tr class="${isBest ? "best" : ""}"><td class="r mono">${e.lap}</td>` +
+        `<td class="r mono ${isBest ? "s-purple" : ""}">${fmt.lap(e.lapS)}</td>${sec}` +
+        `<td class="r mono">${fuel}</td><td class="r">${inc}</td><td class="muted">${note}</td></tr>`;
+    }).join("");
+    return `<table><thead><tr><th class="r">Lap</th><th class="r">Time</th>${secHead}` +
+      `<th class="r"><span class="derived" title="Computed here: fuel level at the start of the lap minus at the end.">Fuel ${U.fuelAbbr}</span></th>` +
+      `<th class="r"><span class="derived" title="Computed here: your incident count at the end of the lap minus at its start.">Inc</span></th><th></th></tr></thead>` +
+      `<tbody>${rows}</tbody></table>` +
+      `<div class="note" style="margin-top:4px">Best lap highlighted. Sectors: purple = session best, green = your best. <span class="derived" title="Computed here from lap-distance crossings">Sector times</span> are timed here; lap times are iRacing's.</div>`;
+  }
+
+  // ---- head-to-head
+  let h2hIdx = null;
+  try { const v = localStorage.getItem("pitwall.h2h"); if (v != null && v !== "") h2hIdx = Number(v); } catch (e) {}
+  function h2hRival(me) {
+    const pinned = pinnedIdx != null && pinnedIdx !== me.idx ? carByIdx(pinnedIdx) : null;
+    if (pinned) return pinned;
+    const chosen = carByIdx(h2hIdx);
+    if (chosen && chosen.idx !== me.idx) return chosen;
+    const cls = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
+    return cls.find(c => c.classPos === me.classPos - 1) || cls.find(c => c.classPos === me.classPos + 1) || null;
+  }
+  function h2hHtml() {
+    const me = meCar();
+    if (!me || !S.cars) return `<div class="note">Head-to-head compares a car with your own; while spectating there is none.</div>`;
+    const r = h2hRival(me);
+    const opts = Object.values(S.cars.cars || {}).filter(c => c.idx !== me.idx && c.pos > 0)
+      .sort((a, b) => (a.classId === me.classId ? 0 : 1) - (b.classId === me.classId ? 0 : 1) || a.pos - b.pos)
+      .map(c => `<option value="${c.idx}"${r && c.idx === r.idx ? " selected" : ""}>#${esc(c.num ?? c.idx)} ${esc(c.name ?? "")}${isMulticlass() ? " (" + esc(c.className ?? "") + ")" : ""}</option>`).join("");
+    let h = `<div class="h2h-sum"><label class="muted">Against <select id="h2hSel">${opts}</select></label>` +
+            (pinnedIdx != null ? `<span class="muted">(the car pinned in the standings)</span>` : "") + `</div>`;
+    if (!r) return h + `<div class="note">Pick a car.</div>`;
+    const v = (r.derived && r.derived.vsYou) || {};
+    const dd = x => x == null ? "–" : `<span class="${x < 0 ? "lose" : x > 0 ? "gain" : "flat"}">${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(3)}</span>`;
+    const tip = "Computed here: their time minus yours. Green = you are quicker, red = they are.";
+    h += `<div class="h2h-sum">` +
+      `<span>${D("Last lap", tip)} ${dd(v.lastLapS)}</span><span>${D("Best lap", tip)} ${dd(v.bestLapS)}</span>` +
+      `<span>${D("Pace", "Computed here: their median racing lap minus yours.")} ${dd(v.paceS)}</span>` +
+      (v.bestSectorS ? `<span>${D("Best sectors", tip)} ${v.bestSectorS.map(dd).join(" ")}</span>` : "") +
+      (r.derived && r.derived.toPlayerS != null ? `<span>${D("Gap", "Computed here from the two cars' time behind the leader.")} ${Math.abs(r.derived.toPlayerS).toFixed(2)} s ${r.derived.toPlayerS < 0 ? "ahead of you" : "behind you"}</span>` : "") +
+      `</div>`;
+    const mine = new Map(S.feed.laps.filter(e => e.idx === me.idx).map(e => [e.lap, e]));
+    const theirs = new Map(S.feed.laps.filter(e => e.idx === r.idx).map(e => [e.lap, e]));
+    const lapsN = [...new Set([...mine.keys(), ...theirs.keys()])].sort((a, b) => b - a).slice(0, 15);
+    if (!lapsN.length) return h + `<div class="note">Laps appear as both cars cross the line.</div>`;
+    const nSec = Math.max(0, ...[...mine.values(), ...theirs.values()].map(e => (e.sectors || []).length));
+    const cell = (a, b) => a == null ? `<td class="r muted">–</td>` : `<td class="r mono ${b != null && a < b ? "faster" : ""}">${a.toFixed(2)}</td>`;
+    const lapCell = (a, b) => a == null ? `<td class="r muted">–</td>` : `<td class="r mono ${b != null && a < b ? "faster" : ""}">${fmt.lap(a)}</td>`;
+    const rows = lapsN.map(n => {
+      const m = mine.get(n), t = theirs.get(n);
+      const ml = m && !m.pit ? m.lapS : (m ? m.lapS : null), tl = t ? t.lapS : null;
+      const ms = (m && m.sectors) || [], ts = (t && t.sectors) || [];
+      const secs = Array.from({ length: nSec }, (_, i) => cell(ms[i], ts[i]) + cell(ts[i], ms[i])).join("");
+      return `<tr><td class="r mono">${n}</td>${lapCell(ml, tl)}${lapCell(tl, ml)}${secs}` +
+        `<td class="muted">${[m && m.pit ? "you pitted" : "", t && t.pit ? "they pitted" : ""].filter(Boolean).join(", ")}</td></tr>`;
+    }).join("");
+    const secHead = Array.from({ length: nSec }, (_, i) => `<th class="r">S${i + 1} you</th><th class="r">them</th>`).join("");
+    return h + `<table><thead><tr><th class="r">Lap</th><th class="r">You</th><th class="r">#${esc(r.num ?? r.idx)}</th>${secHead}<th></th></tr></thead><tbody>${rows}</tbody></table>` +
+      `<div class="note" style="margin-top:4px">Same lap numbers side by side; the quicker of each pair is green. Lap times are iRacing's, sector times are timed here.</div>`;
+  }
+  function renderTabView() {
+    const v = $("tabView");
+    if (chartTab === "log") v.innerHTML = lapLogHtml();
+    else if (chartTab === "h2h") {
+      // keep the dropdown usable: do not rebuild it while it is open
+      if (document.activeElement && document.activeElement.id === "h2hSel") return;
+      v.innerHTML = h2hHtml();
+      const sel = $("h2hSel");
+      if (sel) sel.onchange = () => {
+        h2hIdx = Number(sel.value); pinnedIdx = null;
+        try { localStorage.setItem("pitwall.h2h", String(h2hIdx)); } catch (e) {}
+        renderTabView(); renderStandings(); renderFocus();
+      };
+    }
+  }
+
+  // ---- spotter
+  const CALL = { off: ["–", "off"], clear: ["CLEAR", "clear"], car_left: ["CAR LEFT", "busy"], car_right: ["CAR RIGHT", "busy"],
+                 car_left_right: ["THREE WIDE", "busy"], two_cars_left: ["2 CARS LEFT", "busy"], two_cars_right: ["2 CARS RIGHT", "busy"] };
+  function renderSpotterList() {
+    const p = S.state && S.state.player;
+    const call = $("spotCall"), list = $("spotList");
+    if (!p || !playerBlockIsLive()) {
+      call.textContent = "–"; call.className = "spot-call off";
+      list.innerHTML = `<div class="note">The spotter follows your own car. While spectating there is none.</div>`;
+      return;
+    }
+    const c = CALL[p.carLeftRight] || ["–", "off"];
+    call.textContent = c[0]; call.className = "spot-call " + c[1];
+    const near = (S.cars && S.cars.derived && S.cars.derived.nearby) || [];
+    list.innerHTML = near.length ? near.slice(0, 6).map(n => {
+      const car = carByIdx(n.idx);
+      const cl = n.closingMs == null ? "" : Math.abs(n.closingMs) < 0.5 ? `<span class="flat">holding</span>`
+        : n.closingMs > 0 ? `<span class="lose">closing ${U.speed(n.closingMs)}</span>` : `<span class="flat">dropping ${U.speed(-n.closingMs)}</span>`;
+      return `<div class="row3"><span>${shortCar(n.idx)}${car && isMulticlass() && car.className ? " " + esc(car.className) : ""}${n.inPit ? ` <span class="muted">pit lane</span>` : ""}</span>` +
+        `<span class="mono">${D(U.short(Math.abs(n.meters)) + (n.meters > 0 ? " ahead" : " behind"), "Computed here: the lap-distance gap times the track length from the session info.")}</span><span>${cl}</span></div>`;
+    }).join("") : `<div class="note">Nobody within ${U.short(150)}.</div>`;
+  }
+  const radarEl = $("radar"), radarCtx = radarEl.getContext("2d"), spotterDet = $("spotterDetails");
+  function drawRadar() {
+    if (!spotterDet.open) return;
+    const r = radarEl.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (!r.width || !r.height) return;
+    if (radarEl.width !== Math.round(r.width * dpr) || radarEl.height !== Math.round(r.height * dpr)) { radarEl.width = Math.round(r.width * dpr); radarEl.height = Math.round(r.height * dpr); }
+    const g = radarCtx; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
+    const W = r.width, H = r.height, cx = W / 2, cy = H / 2, RANGE = 60;      // metres shown each way
+    const Y = m => cy - m / RANGE * (H / 2 - 10);
+    g.strokeStyle = "#2F3F63"; g.lineWidth = 1;
+    for (const m of [-40, -20, 20, 40]) { g.beginPath(); g.moveTo(10, Y(m)); g.lineTo(W - 10, Y(m)); g.stroke(); }
+    const p = S.state && S.state.player;
+    const live = p && playerBlockIsLive();
+    const lr = live ? p.carLeftRight : null;
+    const left = lr === "car_left" || lr === "car_left_right" || lr === "two_cars_left";
+    const right = lr === "car_right" || lr === "car_left_right" || lr === "two_cars_right";
+    // alongside: iRacing says WHICH side, not how far across, so the side lights up
+    g.fillStyle = "rgba(255,90,90,.85)";
+    if (left) g.fillRect(6, cy - 22, 10, 44);
+    if (right) g.fillRect(W - 16, cy - 22, 10, 44);
+    if (lr === "two_cars_left") g.fillRect(6, cy - 40, 10, 14);
+    if (lr === "two_cars_right") g.fillRect(W - 16, cy - 40, 10, 14);
+    // cars ahead and behind along the track (lap-distance gap, derived)
+    const near = live ? ((S.cars && S.cars.derived && S.cars.derived.nearby) || []) : [];
+    g.font = "bold 9px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    for (const n of near) {
+      if (Math.abs(n.meters) > RANGE || n.inPit) continue;
+      const y = Y(n.meters), close = Math.abs(n.meters) < 10;
+      g.fillStyle = close ? "#FFD23F" : "#6FA8FF";
+      g.fillRect(cx - 9, y - 12, 18, 24);
+      g.fillStyle = "#08203F"; g.fillText(String((carByIdx(n.idx) || {}).num ?? n.idx), cx, y);
+    }
+    g.fillStyle = "#FFB23F"; g.fillRect(cx - 9, cy - 12, 18, 24);
+    g.fillStyle = "#5A6784"; g.font = "9px system-ui, sans-serif"; g.textAlign = "left";
+    g.fillText(U.short(RANGE), 2, 8);
   }
 
   // ---------------------------------------------------------------- map
@@ -1605,10 +1863,33 @@
   }
 
   // ---------------------------------------------------------------- loop
+  // What changed since the last frame, and when each group last redrew. The
+  // map, radar, pedal bars and delta follow every frame; panels built from text
+  // refresh up to 10 times a second, which is faster than anyone reads them.
+  const dirty = { state: false, cars: false }, drawnAt = { text: 0, cars: 0 };
+  function renderFast() {
+    const p = S.state && S.state.player; if (!p) return;
+    $("thr").style.width = ((p.throttle || 0) * 100) + "%";
+    $("brk").style.width = (Math.min(1, p.brake || 0) * 100) + "%";
+    $("speed").textContent = p.speedMs != null ? U.speed(p.speedMs) : "–";
+    $("gear").textContent = (p.gear === 0 ? "N" : p.gear === -1 ? "R" : p.gear ?? "–") + " · " + (p.rpm != null ? Math.round(p.rpm) : "–");
+  }
   function loop() {
     drawMap();
     drawGG();
+    drawRadar();
     const now = performance.now();
+    if (dirty.state) {
+      renderFast();
+      if (now - drawnAt.text >= 100) {
+        drawnAt.text = now; dirty.state = false;
+        renderHeader(); renderCar(); renderWeather(); renderFuelPlan(); renderSpotterList();
+      }
+    }
+    if (dirty.cars && now - drawnAt.cars >= 100) {
+      drawnAt.cars = now; dirty.cars = false;
+      renderStandings(); renderFocus(); renderBattle(); renderStrategy(); renderTraffic();
+    }
     if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {
       chartDirty = false; chartAt = now; drawCharts();
     }

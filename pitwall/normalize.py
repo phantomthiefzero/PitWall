@@ -13,6 +13,7 @@ in one place.
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 from .sources import TelemetrySource
@@ -53,6 +54,9 @@ SESSION_STATE = {0: "invalid", 1: "get_in_car", 2: "warmup", 3: "parade_laps", 4
 TRACK_WETNESS = {0: "unknown", 1: "dry", 2: "mostly_dry", 3: "very_lightly_wet", 4: "lightly_wet",
                  5: "moderately_wet", 6: "very_wet", 7: "extremely_wet"}
 SKIES = {0: "clear", 1: "partly_cloudy", 2: "mostly_cloudy", 3: "overcast"}
+# irsdk_CarLeftRight: iRacing's own spotter, the same signal its spotter calls from.
+CAR_LEFT_RIGHT = {0: "off", 1: "clear", 2: "car_left", 3: "car_right", 4: "car_left_right",
+                  5: "two_cars_left", 6: "two_cars_right"}
 
 # iRacing's incident points, Official Sporting Code 3.5.1 (Sep 2025). The table is
 # per surface: on dirt, heavy contact is 2x instead of 4x. Light contact is 0x, so
@@ -283,6 +287,14 @@ class Deriver:
         self._uc: dict[int, dict] = {}
         self._uc_inpit: dict[int, bool] = {}
         self._player_lap = None
+        self._player_idx = None
+        self.tank_l: float | None = None
+        self._fuel_by_lap: dict[int, dict] = {}
+        self._fuel_lap_pit = False
+        self._fuel_partial = False
+        self._inc_by_lap: dict[int, int] = {}
+        self._inc_lap = None                    # (lapCompleted, incidents at its start)
+        self._near_hist: dict[int, list[tuple[float, float]]] = {}
         self.incident_limit: int | None = None
         self.feed_seq = 0
         self.feed_laps: list[dict] = []
@@ -479,9 +491,10 @@ class Deriver:
         if len(self._sect_best) != n:
             self._sect_best = [None] * n
         st = self._sect.setdefault(idx, {"last_pct": None, "last_t": None, "cur": None,
-                                         "enter_t": None, "times": [None] * n, "best": [None] * n})
+                                         "enter_t": None, "times": [None] * n, "best": [None] * n,
+                                         "lap": [None] * n, "lapDone": None})
         if len(st["times"]) != n:
-            st["times"], st["best"] = [None] * n, [None] * n
+            st["times"], st["best"], st["lap"] = [None] * n, [None] * n, [None] * n
 
         def sector_of(p):
             k = 0
@@ -499,12 +512,18 @@ class Deriver:
         # that includes an off or a pit lane.
         jumped = prev_pct is not None and not (0 <= (pct - prev_pct) % 1.0 < 0.25)
         if not on_track or jumped:
+            if prev_cur is not None and cur == 0 and prev_cur == n - 1:
+                self._close_lap_sectors(st, t, n)      # crossed the line while void
             st["cur"], st["enter_t"] = cur, None
             st["last_t"] = t
             return out
 
         if prev_cur is None:
-            st["cur"], st["enter_t"] = cur, t
+            # First sight is almost never on a boundary: the car is somewhere
+            # inside a sector, so timing from here would bank a partial sector
+            # (22.3 s against a real 38.9 s in the fake) as that car's best --
+            # and its theoretical best lap with it. Start at the next line.
+            st["cur"], st["enter_t"] = cur, None
             return out
         if cur != prev_cur:
             # Interpolate the moment of crossing rather than using the sample time.
@@ -523,10 +542,13 @@ class Deriver:
                 elapsed = cross_t - st["enter_t"]
                 if 0.5 < elapsed < 600:
                     st["times"][prev_cur] = round(elapsed, 3)
+                    st["lap"][prev_cur] = round(elapsed, 3)
                     if st["best"][prev_cur] is None or elapsed < st["best"][prev_cur]:
                         st["best"][prev_cur] = round(elapsed, 3)
                     if self._sect_best[prev_cur] is None or elapsed < self._sect_best[prev_cur]:
                         self._sect_best[prev_cur] = round(elapsed, 3)
+            if cur == 0 and prev_cur == n - 1:
+                self._close_lap_sectors(st, cross_t, n)
             st["cur"], st["enter_t"] = cur, cross_t
         out["sectorS"] = list(st["times"])
         out["bestSectorS"] = list(st["best"])
@@ -591,24 +613,57 @@ class Deriver:
                           "gapS": c.get("f2TimeS") if c.get("gapValid") else None,
                           "classGapS": d.get("classGapS"), "toPlayerS": d.get("toPlayerS"),
                           "pit": st["pit"] or bool(c.get("onPitRoad")),
-                          "jump": lc - st["lc"] != 1, "t": round(t, 2)}
+                          "jump": lc - st["lc"] != 1, "t": round(t, 2), "sectors": None}
+            if idx == self._player_idx:
+                st["pend"]["fuelL"] = None
             st["pendT"], st["stale"], st["lc"] = t, st["final"], lc
             st["pit"] = bool(c.get("onPitRoad"))
         pend = st["pend"]
         if pend is not None:
-            if last is not None and last > 0 and last != st["stale"]:
-                if not pend["jump"]:
-                    pend["lapS"] = round(last, 3)
-                st["final"] = last
+            if not pend.get("_td"):
+                if last is not None and last > 0 and last != st["stale"]:
+                    if not pend["jump"]:
+                        pend["lapS"] = round(last, 3)
+                    st["final"] = last
+                    pend["_td"] = True
+                elif t - st["pendT"] >= self.LAP_TIME_WAIT_S:
+                    pend["_td"] = True             # no new time: leave lapS None
+            self._attach_lap_extras(idx, pend)
+            waited = t - st["pendT"]
+            # Only wait for what is actually being collected for this car: no
+            # sector timer (no SplitTimeInfo) or no fuel tracking means nothing
+            # is coming.
+            sect_ok = pend["sectors"] is not None or idx not in self._sect
+            fuel_ok = (idx != self._player_idx or self._last_lap_completed is None
+                       or "refuel" in pend)
+            extras = sect_ok and fuel_ok
+            if pend.get("_td") and (extras or waited >= self.LAP_EXTRAS_WAIT_S):
                 done = self._finish_lap(idx, st)
-            elif t - st["pendT"] >= self.LAP_TIME_WAIT_S:
-                done = self._finish_lap(idx, st)   # no new time: leave lapS None
         return done
+
+    # The line is crossed by the lap counter, the sector timer and the fuel
+    # sampler on slightly different ticks; a lap entry waits this long for the
+    # others to catch up before going out without them.
+    LAP_EXTRAS_WAIT_S = 3.0
+
+    def _attach_lap_extras(self, idx, pend):
+        if pend["sectors"] is None:
+            sd = (self._sect.get(idx) or {}).get("lapDone")
+            if sd and abs(sd[0] - pend["t"]) <= self.LAP_EXTRAS_WAIT_S:
+                pend["sectors"] = sd[1]
+        if idx == self._player_idx:
+            f = self._fuel_by_lap.get(pend["lap"])
+            if f is not None:
+                pend["fuelL"] = f["usedL"]
+                pend["refuel"] = f["refuel"]
+            if pend["lap"] in self._inc_by_lap:
+                pend["incL"] = self._inc_by_lap[pend["lap"]]
 
     def _finish_lap(self, idx, st) -> dict:
         e = st["pend"]
         st["pend"] = None
         e.pop("jump", None)
+        e.pop("_td", None)
         lst = self._laps.setdefault(idx, [])
         lst.append(e)
         del lst[:-200]
@@ -886,6 +941,45 @@ class Deriver:
             return None
         return tp - loss if rec["kind"] == "they_stopped" else tp + loss
 
+    # ---- spotter: who is around you on track --------------------------------
+    NEAR_M = 150.0
+    NEAR_HIST_S = 1.5
+
+    def nearby(self, cars: list, player_idx, track_len_m, t) -> list:
+        """Cars within NEAR_M metres of you along the track, ahead (+) or behind
+        (-), from the lap-distance gap and the session's track length. Closing is
+        how fast that distance is shrinking, from the last ~1.5 s; + = closing."""
+        me = next((c for c in cars if c.get("idx") == player_idx), None)
+        if me is None or not track_len_m or me.get("pct") is None or me["pct"] < 0 or t is None:
+            self._near_hist.clear()
+            return []
+        out, seen = [], set()
+        for c in cars:
+            if c is me or c.get("pct") is None or c["pct"] < 0 or c.get("surface") == "not_in_world":
+                continue
+            dp = ((c["pct"] - me["pct"] + 0.5) % 1.0) - 0.5
+            m = dp * track_len_m
+            if abs(m) > self.NEAR_M:
+                continue
+            seen.add(c["idx"])
+            h = self._near_hist.setdefault(c["idx"], [])
+            if h and abs(m - h[-1][1]) > 50:          # a reset or a tow: start again
+                h.clear()
+            h.append((t, m))
+            while h and t - h[0][0] > self.NEAR_HIST_S:
+                h.pop(0)
+            closing = None
+            if len(h) >= 3 and h[-1][0] - h[0][0] >= 0.4:
+                rate = self._slope(h)                  # metres per second, + = separation growing ahead
+                if rate is not None:
+                    closing = round(-rate if m > 0 else rate, 1)
+            out.append({"idx": c["idx"], "meters": round(m, 1), "closingMs": closing,
+                        "inPit": bool(c.get("onPitRoad"))})
+        for i in list(self._near_hist):
+            if i not in seen:
+                del self._near_hist[i]
+        return sorted(out, key=lambda x: abs(x["meters"]))[:8]
+
     # ---- traffic -----------------------------------------------------------
     TRAFFIC_HORIZON_S = 90.0
     TRAFFIC_MIN_DIFF_S = 0.5
@@ -1022,6 +1116,14 @@ class Deriver:
     def state_events(self, t, session: dict, player: dict, weather: dict):
         ev = self._ev
         self._player_lap = player.get("lap")
+        lc, inc_now = player.get("lapCompleted"), (player.get("incidents") or {}).get("my")
+        if lc is not None and inc_now is not None:
+            if self._inc_lap is None or lc < self._inc_lap[0]:
+                self._inc_lap = (lc, inc_now)
+            elif lc > self._inc_lap[0]:
+                if lc - self._inc_lap[0] == 1:
+                    self._inc_by_lap[lc] = inc_now - self._inc_lap[1]
+                self._inc_lap = (lc, inc_now)
         if t is None:
             return
         flags = set(session.get("flags") or [])
@@ -1394,6 +1496,14 @@ class Deriver:
                        anchor=anchor["kind"] if anchor else "reported", surface=surface,
                        **incident_causes(pts, surface))
 
+    @staticmethod
+    def _close_lap_sectors(st, t, n):
+        """A lap's own sector times, kept apart from the rolling latest-per-sector
+        list: a void sector stays None for that lap instead of showing the time
+        from the lap before."""
+        st["lapDone"] = (t, list(st["lap"]))
+        st["lap"] = [None] * n
+
     def session_best_sectors(self) -> list:
         return list(self._sect_best)
 
@@ -1413,7 +1523,7 @@ class Deriver:
         return None, False
 
     def fuel(self, lap_completed, fuel_level, laps_remain_ex=None,
-             time_remain_s=None, lap_time_s=None) -> dict:
+             time_remain_s=None, lap_time_s=None, on_pit_road=None, lap_pct=None) -> dict:
         out = {"fuelPerLap": None, "lapsOfFuel": None, "fuelPerLapSamples": len(self._fuel_per_lap_samples),
                "lapsRemaining": None, "lapsRemainingIsEstimate": False,
                "fuelToFinishL": None, "fuelMarginL": None, "fuelSavePerLapL": None}
@@ -1424,15 +1534,40 @@ class Deriver:
         if self._last_lap_completed is None:
             self._last_lap_completed = lap_completed
             self._fuel_at_lap_start = fuel_level
+            # Connected part-way round: the lap now finishing was not watched
+            # from its start, so what it used is only part of a lap.
+            self._fuel_partial = True
             return out
+        if on_pit_road:
+            self._fuel_lap_pit = True
         if lap_completed > self._last_lap_completed:
             used = (self._fuel_at_lap_start or 0) - fuel_level
-            # ignore laps where we refueled or the counter jumped
-            if 0 < used < 25 and lap_completed - self._last_lap_completed == 1:
+            one = lap_completed - self._last_lap_completed == 1
+            # Ignore laps where we refueled or the counter jumped -- and laps
+            # that touched pit road: an in-lap at the limiter burns less (2.21 L
+            # against 2.44-2.51 in the Indianapolis capture), and counting it
+            # would make the car look more economical than it is.
+            partial = getattr(self, "_fuel_partial", False)
+            self._fuel_partial = False
+            if 0 < used < 25 and one and not self._fuel_lap_pit and not partial:
                 self._fuel_per_lap_samples.append(used)
                 self._fuel_per_lap_samples = self._fuel_per_lap_samples[-5:]
+            if one:
+                self._fuel_by_lap[lap_completed] = {"usedL": round(used, 2) if used > 0 and not partial else None,
+                                                    "refuel": used < 0, "pit": self._fuel_lap_pit}
+                if len(self._fuel_by_lap) > 300:
+                    del self._fuel_by_lap[min(self._fuel_by_lap)]
             self._last_lap_completed = lap_completed
             self._fuel_at_lap_start = fuel_level
+            self._fuel_lap_pit = bool(on_pit_road)
+        elif lap_completed < self._last_lap_completed:
+            # The counter went BACK (observed at Indianapolis: 33 -> 32 as the
+            # session ended, and 0 -> -1 -> 0 on the grid). Start counting again
+            # from here rather than crediting a lap that was not driven.
+            self._last_lap_completed = lap_completed
+            self._fuel_at_lap_start = fuel_level
+            self._fuel_lap_pit = bool(on_pit_road)
+            self._fuel_partial = True
         if self._fuel_per_lap_samples:
             fpl = sum(self._fuel_per_lap_samples) / len(self._fuel_per_lap_samples)
             out["fuelPerLap"] = round(fpl, 3)
@@ -1441,7 +1576,11 @@ class Deriver:
             # measured burn rate and a known race length; if either is missing we
             # say nothing rather than guess at one of them.
             if fpl > 0 and laps_left is not None:
-                need = fpl * laps_left
+                # With the position known, the distance left is the rest of this
+                # lap plus the laps after it -- the same figure the fuel plan uses,
+                # so the two panels never disagree about what is needed.
+                left = laps_left - min(1.0, max(0.0, lap_pct)) if lap_pct is not None and lap_pct >= 0 else laps_left
+                need = fpl * max(0.0, left)
                 out["fuelToFinishL"] = round(need, 2)
                 out["fuelMarginL"] = round(fuel_level - need, 2)
                 # "You are short" is a problem; "save 0.12 a lap" is an
@@ -1450,6 +1589,106 @@ class Deriver:
                     out["fuelSavePerLapL"] = round((need - fuel_level) / laps_left, 3)
         out["fuelPerLapSamples"] = len(self._fuel_per_lap_samples)
         return out
+
+
+def fuel_plan(fuel_l, fpl, laps_left, laps_left_est, lap_pct, lap_no, tank_l,
+              menu_fuel_l=None, menu_fuel_on=False) -> dict:
+    """Stops, pit window and fuel to add, from the measured burn.
+
+    laps_left counts the lap in progress (SessionLapsRemainEx's sense: 25 on lap
+    1 of 25). The flag falls at the end of lap lap_no + laps_left - 1. Fuel still
+    needed is the burn times the distance left: the rest of this lap plus the
+    full laps after it. Assumes the burn stays where it has been.
+
+    Window: the LATEST lap you can box is the last line you can reach on the fuel
+    aboard; the EARLIEST is the first from which the remaining distance fits in
+    the fuel you can carry over the planned stops (a tank per stop). Fuel to
+    add is for boxing at the end of this lap, exact and with one lap spare,
+    and for boxing at the latest lap.
+    """
+    out = {"tankL": None if tank_l is None else round(tank_l, 1), "lapsLeft": laps_left,
+           "lapsLeftIsEstimate": bool(laps_left_est), "finishLap": None, "needL": None,
+           "stops": None, "windowOpenLap": None, "windowCloseLap": None, "boxNow": False,
+           "fillToFull": False, "addThisLapL": None, "addThisLapSpareL": None, "addAtCloseL": None,
+           "addAtOpenL": None, "addAtOpenSpareL": None,
+           "spareAtFlagL": None, "spareAtFlagLaps": None,
+           "menuFuelL": menu_fuel_l if menu_fuel_on else None, "menuVsPlanL": None}
+    if not (fpl and fpl > 0 and fuel_l is not None and laps_left is not None
+            and lap_no is not None and lap_pct is not None and lap_pct >= 0):
+        return out
+    p = min(1.0, max(0.0, lap_pct))
+    end_lap = lap_no + laps_left - 1
+    out["finishLap"] = end_lap
+    need = fpl * max(0.0, laps_left - p)
+    out["needL"] = round(need, 2)
+    short = need - fuel_l
+    add_this = 0.0
+    if short <= 0:
+        out["stops"] = 0
+        out["spareAtFlagL"] = round(-short, 2)
+        out["spareAtFlagLaps"] = round(-short / fpl, 2)
+    elif tank_l and tank_l > 0:
+        stops = math.ceil(short / tank_l)
+        j_max = math.floor(fuel_l / fpl - (1 - p) + 1e-9)       # full laps you can still finish
+        close = lap_no + j_max if j_max >= 0 else None
+        out["boxNow"] = close is None or close <= lap_no
+        while True:
+            open_ = end_lap - math.floor(stops * tank_l / fpl + 1e-9)
+            if close is None or open_ <= close or stops > 20:
+                break
+            stops += 1
+        fill = stops > 1
+        out.update(stops=stops, windowOpenLap=max(open_, lap_no), windowCloseLap=close, fillToFull=fill)
+
+        def fuel_at(x):                                          # aboard at the end of lap x
+            return fuel_l - fpl * ((1 - p) + (x - lap_no))
+
+        def add_at(x, spare):
+            fa = max(0.0, fuel_at(x))
+            room = tank_l - fa
+            if fill:
+                return max(0.0, room)
+            return min(room, max(0.0, fpl * (end_lap - x + spare) - fa))
+
+        first = max(open_, lap_no)
+        out["addAtOpenL"] = round(add_at(first, 0), 1)
+        out["addAtOpenSpareL"] = round(add_at(first, 1), 1)
+        # Boxing this lap only gets you to the flag once the window is open;
+        # before that the tank cannot hold what is left, so no amount is given.
+        if open_ <= lap_no:
+            add_this = add_at(lap_no, 0)
+            out["addThisLapL"] = round(add_this, 1)
+            out["addThisLapSpareL"] = round(add_at(lap_no, 1), 1)
+        else:
+            add_this = add_at(first, 0)
+        if close is not None:
+            out["addAtCloseL"] = round(add_at(close, 0), 1)
+    if out["menuFuelL"] is not None and out["stops"] is not None:
+        # Against the stop you would make next: this lap if the window is open,
+        # else the lap it opens.
+        out["menuVsPlanL"] = round(menu_fuel_l - add_this, 1)
+    return out
+
+
+def vs_you(c: dict, me: dict, their_pace, my_pace) -> dict:
+    """Head-to-head: this car minus you. Negative = they are quicker."""
+    def diff(a, b):
+        return round(a - b, 3) if a is not None and b is not None and a > 0 and b > 0 else None
+    tb, mb = (c.get("derived") or {}).get("bestSectorS") or [], (me.get("derived") or {}).get("bestSectorS") or []
+    return {"lastLapS": diff(c.get("lastLapS"), me.get("lastLapS")),
+            "bestLapS": diff(c.get("bestLapS"), me.get("bestLapS")),
+            "paceS": diff(their_pace, my_pace),
+            "bestSectorS": [diff(a, b) for a, b in zip(tb, mb)] if tb and mb and len(tb) == len(mb) else None}
+
+
+def track_length_m(session_msg) -> float | None:
+    """TrackLength from the session info ("5.10 km", "3.16 mi")."""
+    raw = str(((session_msg or {}).get("track") or {}).get("TrackLength") or "")
+    m = re.match(r"\s*([\d.]+)\s*(km|mi)", raw)
+    if not m:
+        return None
+    v = float(m.group(1))
+    return v * 1000.0 if m.group(2) == "km" else v * 1609.344
 
 
 def _delta(g, var: str, key: str) -> dict:
@@ -1540,6 +1779,9 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
             "clockSkewS": _num(g("ChanClockSkew")),
         }, "replayFrame": _num(g("ReplayFrameNum")),
         "p2p": {"status": _num(g("PushToPass")), "count": _num(g("P2P_Count"))},
+        # iRacing's spotter: whether a car is alongside, and on which side.
+        "carLeftRight": CAR_LEFT_RIGHT.get(g("CarLeftRight")) if g("CarLeftRight") is not None else None,
+        "carLeftRightRaw": _num(g("CarLeftRight")),
         # Accelerations at 360 Hz -- six samples per frame, not one. Sending the
         # whole burst rather than a single value is what makes a G-G trace show
         # the transitions between braking and cornering, instead of a scatter of
@@ -1596,7 +1838,12 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
     derived = deriver.fuel(player["lapCompleted"], player["fuelL"],
                            laps_remain_ex=_num(g("SessionLapsRemainEx")),
                            time_remain_s=_num(g("SessionTimeRemain")),
-                           lap_time_s=_num(g("LapLastLapTime")))
+                           lap_time_s=_num(g("LapLastLapTime")),
+                           on_pit_road=player["onPitRoad"], lap_pct=player["lapPct"])
+    sv = player["pitService"]
+    derived["plan"] = fuel_plan(player["fuelL"], derived["fuelPerLap"], derived["lapsRemaining"],
+                                derived["lapsRemainingIsEstimate"], player["lapPct"], player["lap"],
+                                deriver.tank_l, sv.get("fuel"), "fuel" in (sv.get("flags") or []))
     derived["liveEdge"] = live_edge(g)
     deriver.state_events(session["timeS"], session, player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
@@ -1800,6 +2047,15 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             deriver.incident_limit = int(str(limit).split()[0]) if limit is not None else None
         except ValueError:
             deriver.incident_limit = None        # the YAML says unlimited
+        dc = (session_msg or {}).get("driverCar") or {}
+        try:
+            cap = float(dc.get("DriverCarFuelMaxLtr")) if dc.get("DriverCarFuelMaxLtr") is not None else None
+            pct = float(dc.get("DriverCarMaxFuelPct")) if dc.get("DriverCarMaxFuelPct") is not None else 1.0
+            # A series can restrict the tank (MaxFuelPct < 1); the usable tank is the product.
+            deriver.tank_l = cap * pct if cap else None
+        except (TypeError, ValueError):
+            deriver.tank_l = None
+        deriver._player_idx = player_idx if me is not None else None
         sector_starts = [s.get("SectorStartPct") for s in ((session_msg or {}).get("sectors") or [])
                          if s.get("SectorStartPct") is not None]
         ahead_of = {}                      # carIdx -> idx of the car it is measured against
@@ -1848,6 +2104,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                 continue
             c["derived"].update(deriver.to_player_trend(
                 c["idx"], now, c["derived"].get("toPlayerS"), my_lap, player_idx))
+            if me is not None:
+                c["derived"]["vsYou"] = vs_you(c, me, p, deriver.pace(player_idx))
         out["derived"] = {
             "sessionBestSectorS": deriver.session_best_sectors(),
             "isRace": is_race,
@@ -1855,6 +2113,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "rejoin": deriver.rejoin(cars, player_idx) if is_race and me is not None else None,
             "undercut": deriver.undercut(cars, player_idx, now) if is_race and me is not None else [],
             "traffic": deriver.traffic(cars, player_idx),
+            "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
             "battles": deriver.battles(cars, ahead_of, is_race),
             "predictedIncidents": deriver.predicted_incidents(),
             "race": race_length(session_msg, session_num, ordered, _num(g("SessionTimeRemain")),

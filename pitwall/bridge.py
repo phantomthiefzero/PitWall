@@ -30,7 +30,7 @@ from .sources import TelemetrySource
 
 class Bridge:
     def __init__(self, src: TelemetrySource, relay_url: str, token: str,
-                 state_hz: float = 15.0, cars_hz: float = 8.0, allow_commands: bool = False,
+                 state_hz: float = 30.0, cars_hz: float = 15.0, allow_commands: bool = False,
                  allow_camera: bool = False, log=print, livery_dir: str | None = None,
                  render_cars: bool = True):
         self.src = src

@@ -242,6 +242,7 @@ _FAKE_HEADERS: list[tuple[str, int, int, str, str]] = [
     ("LapDeltaToSessionBestLap", 4, 1, "s", "Delta time for session best lap"),
     ("OnPitRoad", 1, 1, "", "Is the player car on pit road between the cones"),
     ("PlayerCarInPitStall", 1, 1, "", "Players car is properly in there pitstall"),
+    ("CarLeftRight", 2, 1, "irsdk_CarLeftRight", "Notify if car is to the left or right of driver"),
     ("PlayerCarPosition", 2, 1, "", "Players position in race"),
     ("PlayerCarClassPosition", 2, 1, "", "Players class position in race"),
     ("PlayerCarMyIncidentCount", 2, 1, "", "Players own incident count for this session"),
@@ -735,6 +736,28 @@ class FakeSource(TelemetrySource):
                  else (self.length / player.base_lap) * self.curvature_speed_factor(player.pct) / 0.83)
         heading = self.heading_at(player.pct)
         fuel_rate_kg_h = 95.0 * (0.4 + 0.6 * self.curvature_speed_factor(player.pct))
+        # At the limiter the engine barely works, and stationary it idles: the
+        # real Indianapolis in-lap burned 2.21 L against 2.44-2.51 on a racing
+        # lap. A fake that burned full rate in the lane would hide that.
+        if player.pit_phase == "box":
+            fuel_rate_kg_h = 2.0
+        elif player.on_pit:
+            fuel_rate_kg_h *= 0.35
+        # iRacing's spotter (irsdk_CarLeftRight). The fake has no lateral
+        # positions, so a car within 5 m along the track is put on the left or
+        # the right by its index; what matters is that every value can occur.
+        left = right = 0
+        for c in self.cars[1:]:
+            if c.on_pit or player.on_pit:
+                continue
+            dm = ((c.pct - player.pct + 0.5) % 1.0 - 0.5) * self.length
+            if abs(dm) < 5.0:
+                if c.idx % 2:
+                    right += 1
+                else:
+                    left += 1
+        car_lr = (1 if not (left or right) else 4 if left and right else
+                  5 if left >= 2 else 6 if right >= 2 else 2 if left else 3)
         self.fuel -= (fuel_rate_kg_h / 3600.0) * dt / 0.75  # kg/h -> l/s with ~0.75 kg/l
         x, y = self.pos_at(player.pct)
         v.update({
@@ -764,6 +787,7 @@ class FakeSource(TelemetrySource):
             "LapCurrentLapTime": self.t - player.lap_start_t,
             "LapDeltaToBestLap": math.sin(self.t / 7) * 0.3, "LapDeltaToSessionBestLap": 0.4,
             "OnPitRoad": player.on_pit, "PlayerCarInPitStall": player.pit_phase == "box",
+            "CarLeftRight": car_lr,
             "PlayerCarPosition": pos[0], "PlayerCarClassPosition": pos[0],
             "PlayerCarMyIncidentCount": 2, "PlayerCarTeamIncidentCount": 2, "PlayerCarDriverIncidentCount": 2,
             "PlayerCarTowTime": 0.0,

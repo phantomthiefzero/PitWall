@@ -20,8 +20,8 @@ pitwall/sources.py         live / dump / fake, one interface
 iRacing telemetry is a memory-mapped file on the driver's Windows PC. Remote
 people cannot read it. The bridge reads it locally and pushes; the relay lets
 viewers connect without opening the driver's home network and gives one place
-for tokens. Latency is one hop; at 15 Hz state / 8 Hz cars the stream is ~30 KB/s
-with 24 cars after delta encoding.
+for tokens. Latency is one hop; at 30 Hz state / 15 Hz cars (the default) the stream measured ~75 KB/s
+with 24 cars after delta encoding; the suite runs 60/30 on one PC, ~130 KB/s.
 
 ## Why "derived" is a wire-level concept
 The user requirement is that every displayed feature is accurate. The cleanest

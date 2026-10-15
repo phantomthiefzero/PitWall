@@ -104,6 +104,17 @@ Two traps found while building it. Camera cuts splice the spectator kinematics f
 so the map builder now voids its lap on any `CamCarIdx` change (tested). And `lead_change`
 needed a player car, so a spectator never saw a lead change; `class_lead` covers that.
 
+### Engineer additions (fuel planner, lap log, head-to-head, spotter)
+
+| Derived value | Inputs | Validation |
+|---|---|---|
+| fuel per lap (changed) | as before, now leaving out laps that touched pit road and the partial lap after connecting | **From the real Indianapolis capture**: racing laps 2.44-2.51 L, in-lap 2.21 L. Counting the in-lap (or a partial first lap) understated the burn -- the dangerous direction. The lap counter also went back (33 -> 32 at the end, 0 -> -1 -> 0 on the grid); that restarts the count. Tested with the real per-lap numbers. |
+| fuel plan | burn, fuel aboard, `DriverCarFuelMaxLtr` x `DriverCarMaxFuelPct`, laps left, `LapDistPct`, `PitSvFuel` | Unit-tested arithmetic. **Assumes `SessionLapsRemainEx` counts the lap in progress** (25 on lap 1 of 25), as the fake does; not yet confirmed on a lap-limited race -- the panel shows "flag at the end of lap N" so it can be checked at a glance. Timed races estimate laps from the clock, flagged as such. |
+| sector times (fixed) | as before | First sight of a car mid-sector used to time that partial sector and bank it as the car's best (22.3 s against a real 38.9 s in the fake), corrupting its theoretical best. Timing now starts at the next sector line. Each lap's own sectors are kept separately, so a void sector is empty for that lap rather than showing the previous lap's. |
+| head-to-head (`vsYou`) | the two cars' last/best laps, pace, best sectors | Differences only; unit-tested. |
+| spotter distances (`nearby`) | `CarIdxLapDistPct` gap x `TrackLength` | `TrackLength` is rounded to 10 m in the session info, about 0.2 % -- under a metre at spotter range. Closing is a 1.5 s least-squares slope. Unit-tested. |
+| `CarLeftRight` | plain | **Never yet seen from the live sim** -- it is not saved in .ibt files and no live capture includes it. Decoded with irsdk's own table; the fake produces every value. |
+
 ## Group D — believed unavailable (do not fake)
 
 Other cars' fuel, tire state, damage, pedal inputs, setup. Player damage as a

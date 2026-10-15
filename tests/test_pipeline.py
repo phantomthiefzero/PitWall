@@ -89,7 +89,9 @@ def test_derived_fuel_needs_completed_laps():
     d = Deriver()
     st = build_state(src, d)
     assert st["derived"]["fuelPerLap"] is None              # no evidence yet -> no number
-    for _ in range(60 * 200):                               # ~2 laps
+    # ~3 laps: the fake starts part-way round, and that first partial lap is
+    # (rightly) not counted as a lap of fuel, so two full crossings are needed.
+    for _ in range(60 * 360):
         src.tick()
         st = build_state(src, d)
     assert st["derived"]["fuelPerLap"] is not None and st["derived"]["fuelPerLap"] > 0
@@ -1166,6 +1168,204 @@ def test_bridge_sends_the_feed_whole_then_only_what_is_new():
     now += 1.0
     full = [m for m in b._build(now) if m["type"] == "feed"]
     assert full and full[0]["full"] and len(full[0]["laps"]) == len(b.deriver.feed_laps)
+
+
+# --------------------------------------------------------------------------- #
+# Engineer: fuel & stops, lap log, head-to-head, spotter.
+# --------------------------------------------------------------------------- #
+
+from pitwall.normalize import CAR_LEFT_RIGHT, fuel_plan, track_length_m, vs_you  # noqa: E402
+
+# Fuel used per lap in the real Indianapolis capture (ferrari296gt3, 2026-10-10),
+# in order from lap 1, with whether the lap touched pit road. Lap 20 is the in-lap
+# (2.21 L at the limiter), lap 21 the out-lap with ~31 L added.
+INDY_FUEL = [(2.41, False), (2.48, False), (2.48, False), (2.45, False), (2.49, False), (2.44, False),
+             (2.44, False), (2.47, False), (2.51, False), (2.51, False), (2.50, False), (2.47, False),
+             (2.45, False), (2.49, False), (2.48, False), (2.49, False), (2.49, False), (2.48, False),
+             (2.46, False), (2.21, True), (-28.55, True), (2.49, False), (2.49, False), (2.47, False)]
+
+
+def _drive_fuel(d, laps, start=50.0, first_lap=0):
+    """Feed fuel() the way the bridge does: mid-lap samples, then the line."""
+    fuel, out = start, None
+    d.fuel(first_lap, fuel)                                    # first sight, on the line
+    for k, (used, pit) in enumerate(laps, start=first_lap + 1):
+        out = d.fuel(k - 1, fuel - used / 2, on_pit_road=pit)  # half-way round
+        fuel -= used
+        out = d.fuel(k, fuel, on_pit_road=pit and k - first_lap == len(laps))
+    return out
+
+
+def test_fuel_burn_leaves_out_pit_laps_real_indianapolis():
+    """The in-lap burned 2.21 L against ~2.47 on a racing lap. Averaging it in
+    would make the car look more economical than it is."""
+    d = Deriver()
+    out = _drive_fuel(d, INDY_FUEL[:20])                       # up to and including the in-lap
+    green = [u for u, p in INDY_FUEL[:20] if not p][-5:]
+    assert abs(out["fuelPerLap"] - sum(green) / 5) < 0.002, out["fuelPerLap"]
+    assert d._fuel_by_lap[20]["pit"] is True
+    out = _drive_fuel(d, INDY_FUEL[20:24], start=20.0, first_lap=20)
+    assert d._fuel_by_lap[21]["refuel"] is True and d._fuel_by_lap[21]["usedL"] is None
+    assert 2.4 < out["fuelPerLap"] < 2.55
+
+
+def test_fuel_skips_a_partial_first_lap_and_a_counter_that_goes_back():
+    d = Deriver()
+    d.fuel(4, 50.0)                                            # connected part-way round lap 5
+    d.fuel(5, 49.1)                                            # 0.9 L: only part of a lap
+    assert d._fuel_per_lap_samples == [] and d._fuel_by_lap[5]["usedL"] is None
+    d.fuel(6, 46.6)
+    assert d._fuel_per_lap_samples == [2.5] or abs(d._fuel_per_lap_samples[0] - 2.5) < 1e-9
+    d.fuel(5, 46.5)                                            # the counter went back (seen at Indianapolis)
+    d.fuel(6, 45.9)                                            # ...and forward again: not a lap
+    assert len(d._fuel_per_lap_samples) == 1
+
+
+def test_fuel_plan_no_stop():
+    # 30 L, 2.5 L/lap, half-way round lap 16 of 25 (10 to go counting this one)
+    p = fuel_plan(30.0, 2.5, 10, False, 0.5, 16, 100.0)
+    assert p["stops"] == 0 and p["finishLap"] == 25
+    assert p["needL"] == 23.75 and p["spareAtFlagL"] == 6.25 and p["spareAtFlagLaps"] == 2.5
+
+
+def test_fuel_plan_one_stop_window_and_amounts():
+    # 20 L, 2.5 L/lap, on the line at lap 6 with 20 to go (flag after lap 25),
+    # 40 L tank. Need 50, short 30: one stop.
+    p = fuel_plan(20.0, 2.5, 20, False, 0.0, 6, 40.0, menu_fuel_l=35.0, menu_fuel_on=True)
+    assert p["stops"] == 1 and not p["fillToFull"]
+    # latest: 20 L reaches the end of lap 6 + 7 = 13 (8 lines at 2.5 L)
+    # earliest: after lap 9 the 16 laps left need 40 L, a full tank
+    assert p["windowOpenLap"] == 9 and p["windowCloseLap"] == 13 and not p["boxNow"]
+    assert p["addThisLapL"] is None, "boxing now cannot reach the flag on one stop"
+    assert p["addAtOpenL"] == 30.0 and p["addAtCloseL"] == 30.0
+    assert p["addAtOpenSpareL"] == 30.0                        # a spare lap does not fit in the tank
+    assert p["menuVsPlanL"] == 5.0                             # menu 35 against 30 needed
+
+
+def test_fuel_plan_two_stops_fill_and_box_now():
+    # 20 L, 2.5 L/lap, 40 to go from lap 6, 40 L tank: short 80 -> two stops, fill at the first
+    p = fuel_plan(20.0, 2.5, 40, False, 0.0, 6, 40.0)
+    assert p["stops"] == 2 and p["fillToFull"] and p["windowCloseLap"] == 13
+    assert p["addAtCloseL"] == 40.0
+    # 1.0 L at 80 % of a lap: just enough to reach the line -- this lap is the last chance
+    p = fuel_plan(1.0, 2.5, 10, False, 0.8, 6, 40.0)
+    assert p["boxNow"] and p["windowCloseLap"] == 6
+    # 0.3 L at half-way: cannot finish this lap
+    p = fuel_plan(0.3, 2.5, 10, False, 0.5, 6, 40.0)
+    assert p["boxNow"] and p["windowCloseLap"] is None
+    # no burn measured yet: no plan
+    assert fuel_plan(20.0, None, 10, False, 0.5, 6, 40.0)["stops"] is None
+
+
+def test_usable_tank_comes_from_the_session():
+    src = FakeSource(realtime=False)
+    src.connect()
+    sess = build_session(src)
+    d = Deriver()
+    build_cars(src, sess, d)
+    assert d.tank_l == 110.0
+    sess["driverCar"]["DriverCarMaxFuelPct"] = 0.5            # a series restricting the tank
+    build_cars(src, sess, d)
+    assert d.tank_l == 55.0
+
+
+def test_sector_timing_waits_for_a_line_and_keeps_each_lap():
+    """30 s laps at constant speed, sampled every 0.25 s; S1/S2/S3 start at
+    0, 0.33, 0.66, so on a full lap they are 9.9, 9.9 and 10.2 s."""
+    d = Deriver()
+    starts = [0.0, 0.33, 0.66]
+    t, pct, out = 0.0, 0.20, None
+
+    def run_to(stop_t, on_track=lambda p: True):
+        nonlocal t, pct, out
+        while t < stop_t - 1e-9:
+            t = round(t + 0.25, 4)
+            pct = (pct + 0.25 / 30.0) % 1.0
+            out = d.sectors(1, t, pct, starts, on_track(pct))
+
+    d.sectors(1, t, pct, starts, True)                        # first sight inside sector 1
+    run_to(15.0)                                              # through the S2 line and the S3 line
+    assert out["sectorS"][0] is None, "a partial sector was banked"
+    assert abs(out["sectorS"][1] - 9.9) < 1e-6
+    run_to(24.5)                                              # across the start/finish line
+    lap = d._sect[1]["lapDone"][1]
+    assert lap[0] is None and abs(lap[1] - 9.9) < 1e-6 and abs(lap[2] - 10.2) < 1e-6
+    # next lap: an off in S2 leaves S2 empty for THAT lap, not last lap's 9.9
+    run_to(54.5, on_track=lambda p: not (0.45 < p < 0.5))
+    lap = d._sect[1]["lapDone"][1]
+    assert abs(lap[0] - 9.9) < 1e-6 and lap[1] is None and abs(lap[2] - 10.2) < 1e-6
+
+
+def test_lap_log_entries_carry_sectors_fuel_and_incidents():
+    r = _fake_race()
+    d = r["d"]
+    mine = [e for e in d.feed_laps if e["idx"] == 0]
+    green = [e for e in mine if e["lapS"] and not e["pit"] and e["sectors"] and all(e["sectors"])]
+    assert len(green) >= 5
+    for e in green:
+        assert abs(sum(e["sectors"]) - e["lapS"]) < 0.35, e    # timed here vs iRacing's lap
+        assert e["fuelL"] and 2.0 < e["fuelL"] < 5.0, e
+        assert e["incL"] == 0
+    assert any(e.get("refuel") for e in mine), "the stop lap was not marked as a refuel"
+    others = [e for e in d.feed_laps if e["idx"] != 0]
+    assert all("fuelL" not in e for e in others), "fuel is only known for your own car"
+
+
+def test_head_to_head_is_their_time_minus_yours():
+    me = _car(0, lastLapS=100.0, bestLapS=99.0, derived={"bestSectorS": [33.0, 33.0, 33.0]})
+    c = _car(1, lastLapS=99.5, bestLapS=99.4, derived={"bestSectorS": [32.9, 33.2, None]})
+    v = vs_you(c, me, 99.6, 100.2)
+    assert v == {"lastLapS": -0.5, "bestLapS": 0.4, "paceS": -0.6, "bestSectorS": [-0.1, 0.2, None]}
+    assert vs_you(_car(2, lastLapS=-1.0), me, None, 100.0)["lastLapS"] is None
+
+
+def test_spotter_distances_and_closing():
+    d = Deriver()
+    for k in range(12):                                        # 1.1 s at ~10 Hz
+        t = k * 0.1
+        cars = [_car(0, pct=0.5),
+                _car(1, pct=0.5 + (50.0 - 5.0 * t) / 5000.0),   # 50 m ahead, you close at 5 m/s
+                _car(2, pct=0.5 - (100.0 - 3.0 * t) / 5000.0),  # 100 m behind, closing at 3 m/s
+                _car(3, pct=0.5 + 200.0 / 5000.0),             # out of range
+                _car(4, pct=0.49, onPitRoad=True)]             # in the pit lane alongside
+        near = {n["idx"]: n for n in d.nearby(cars, 0, 5000.0, t)}
+    assert set(near) == {1, 2, 4}
+    assert abs(near[1]["meters"] - (50.0 - 5.5)) < 0.2 and abs(near[1]["closingMs"] - 5.0) < 0.15
+    assert abs(near[2]["meters"] + (100.0 - 3.3)) < 0.2 and abs(near[2]["closingMs"] - 3.0) < 0.15
+    assert near[4]["inPit"] is True
+    assert d.nearby(cars, 0, None, 2.0) == []                  # no track length: nothing
+
+
+def test_track_length_and_spotter_decoding():
+    assert track_length_m({"track": {"TrackLength": "5.10 km"}}) == 5100.0
+    assert abs(track_length_m({"track": {"TrackLength": "2.50 mi"}}) - 4023.36) < 0.01
+    assert track_length_m({"track": {"TrackLength": None}}) is None
+    src = FakeSource(realtime=False)
+    src.connect()
+    d = Deriver()
+    for raw, name in CAR_LEFT_RIGHT.items():
+        src._vars["CarLeftRight"] = raw
+        st = build_state(src, d)
+        assert st["player"]["carLeftRight"] == name and st["player"]["carLeftRightRaw"] == raw
+
+
+def test_fuel_to_finish_and_the_plan_agree():
+    """Two panels showing two different 'fuel needed' numbers is worse than one."""
+    src = FakeSource(realtime=False, speed=4.0)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    checked = 0
+    for i in range(15 * 60 * 9):
+        src.tick()
+        if i % 4 == 0:
+            build_cars(src, sess, d)
+        st = build_state(src, d)
+        dv = st["derived"]
+        if dv["fuelToFinishL"] is not None and dv["plan"]["needL"] is not None:
+            assert abs(dv["fuelToFinishL"] - dv["plan"]["needL"]) < 0.011
+            checked += 1
+    assert checked > 100
 
 
 if __name__ == "__main__":
