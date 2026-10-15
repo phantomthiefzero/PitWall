@@ -256,3 +256,145 @@ console.log(JSON.stringify({ left: q.left, turnIn: q.turnIn, apex: q.apex, exit:
             q = self.corner(left, 52.0)
             self.assertAlmostEqual(q["apex"], -2.0, delta=0.05)        # 2 m outside
             self.assertIn("outside", q["words"])
+
+
+SETUP_296 = """CarSetup:
+ UpdateCount: 1
+ TiresAero:
+  AeroBalanceCalc:
+   RearWingAngle: 8 degrees
+ Chassis:
+  FrontBrakesLights:
+   ArbBlades: 75 degrees
+  LeftFront:
+   RideHeight: 53.1 mm
+   Camber: -4.0 deg
+  RightFront:
+   RideHeight: 53.1 mm
+   Camber: -4.0 deg
+  LeftRear:
+   RideHeight: 60.4 mm
+   Camber: -3.0 deg
+  RightRear:
+   RideHeight: 60.4 mm
+   Camber: -3.0 deg
+  Rear:
+   ArbBlades: 90 degrees
+   RearWingAngle: 8 degrees
+  InCarAdjustments:
+   BrakePressureBias: 50.5%
+   TcSetting: 5 (TC)
+  GearsDifferential:
+   DiffPreload: 115 Nm
+"""
+
+HANDLING_YAML = SESSION_YAML.replace("CarPath: testcar", "CarPath: ferrari296gt3").replace(
+    "CarSetup:\n UpdateCount: 1\n", SETUP_296)
+HCH = [("SessionTime", 5, "s"), ("Lap", 2, ""), ("LapDistPct", 4, "%"), ("Speed", 4, "m/s"),
+       ("Brake", 4, "%"), ("Throttle", 4, "%"), ("SteeringWheelAngle", 4, "rad"), ("Gear", 2, ""),
+       ("LapLastLapTime", 4, "s"), ("LapCurrentLapTime", 4, "s"), ("OnPitRoad", 1, ""), ("YawRate", 4, "rad/s"),
+       ("LatAccel", 4, "m/s^2"), ("VelocityX", 4, "m/s"), ("VelocityY", 4, "m/s"), ("CFSRrideHeight", 4, "m")]
+K_TRUE = 50.0      # steering ratio x wheelbase of the synthetic car
+
+
+def build_handling(path, factor=None, exit_countersteer=False, splitter=0.03, laps=5):
+    """Laps of steady segments. factor[(phase, speed)] is steering used / steering a
+    neutral car needs; 1 everywhere is a neutral car. A gentle curve gives the fit.
+    exit_countersteer: on fast exits the car yaws against the steering (oversteer)."""
+    factor = factor or {}
+    # (seconds, speed m/s, curvature 1/m, brake, throttle, phase, speed class)
+    segs = [(3.0, 60, 0.0, 0, 1, None, None), (2.0, 40, 0.0028, 0, 0.7, None, None),   # gentle: ~0.46 g
+            (1.5, 30, 0.012, 0.3, 0, "entry", "slow"), (2.0, 25, 0.017, 0, 0.3, "mid", "slow"),
+            (2.0, 28, 0.014, 0, 0.9, "exit", "slow"), (3.0, 62, 0.0, 0, 1, None, None),
+            (1.5, 50, 0.0055, 0.3, 0, "entry", "fast"), (2.0, 46, 0.006, 0, 0.3, "mid", "fast"),
+            (2.0, 48, 0.0055, 0, 0.9, "exit", "fast"), (1.0, 55, 0.0, 0, 1, None, None),
+            (1.0, 18, 0.0, 0, 0.2, None, None)]      # slow link back to the line
+    dist = sum(d * v for d, v, *_ in segs)
+    rows, t, last = [], 0.0, 0.0
+    for lapno in range(1, laps + 1):
+        lap_t = sum(s[0] for s in segs)
+        n = int(round(lap_t * HZ))
+        pos, tt = 0.0, 0.0
+        seg_i, seg_t = 0, 0.0
+        for i in range(n):
+            d, v, k, br, th, ph, sp = segs[seg_i]
+            f = factor.get((ph, sp), 1.0) if ph else 1.0
+            yaw, sw, vy = v * k, K_TRUE * k * f, -0.3 * v * k * 10
+            if exit_countersteer and ph == "exit" and sp == "fast":
+                sw = -0.5 * K_TRUE * k                  # opposite lock
+                vy = 3.0                                 # sliding
+            rows.append({"SessionTime": t, "Lap": lapno, "LapDistPct": min(pos / dist, 0.99999), "Speed": v,
+                         "Brake": br, "Throttle": th, "SteeringWheelAngle": sw, "Gear": 4, "YawRate": yaw,
+                         "LatAccel": v * v * k, "VelocityX": v, "VelocityY": vy, "LapCurrentLapTime": tt,
+                         "LapLastLapTime": last, "CFSRrideHeight": splitter})
+            pos += v / HZ
+            t += 1 / HZ
+            tt += 1 / HZ
+            seg_t += 1 / HZ
+            if seg_t >= d - 1e-9 and seg_i < len(segs) - 1:
+                seg_i, seg_t = seg_i + 1, 0.0
+        last = n / HZ
+    # a short in-pit tail so the last lap's time is reported
+    for i in range(300):
+        rows.append({"SessionTime": t, "Lap": laps + 1, "LapDistPct": 0.0005, "Speed": 2, "OnPitRoad": 1,
+                     "LapLastLapTime": last})
+        t += 1 / HZ
+    write_ibt(path, HANDLING_YAML, HCH, rows)
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class SetupAdviceTest(unittest.TestCase):
+    JS = """
+const ib = ibt(readBytes(ARGS[0])), h = handlingStats(ib), F = handlingFindings(h), rows = setupRows(ib.setup);
+const out = F.map(f => ({ kind: f.kind, p: f.p || null, where: f.where, changes: adviceChanges(f).map(c => adviceRow(rows, c, ib.carPath)).filter(Boolean).map(c => ({ label: c.label, word: c.word, at: c.at })) }));
+console.log(JSON.stringify({ K: h.K, laps: h.laps, B: h.B, F: out, html: adviceHtml().length }));
+"""
+
+    def run_case(self, **kw):
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "h.ibt")
+        build_handling(p, **kw)
+        return run_js(self.JS, p)
+
+    def test_neutral_car_gets_no_suggestions(self):
+        r = self.run_case()
+        self.assertAlmostEqual(r["K"], K_TRUE, delta=1.0)        # recovers steering ratio x wheelbase
+        self.assertEqual(r["F"], [])
+        for k, b in r["B"].items():
+            self.assertAlmostEqual(b["ui"], 1.0, delta=0.03, msg=k)
+
+    def test_fast_corner_mid_understeer_points_at_aero_first(self):
+        r = self.run_case(factor={("mid", "fast"): 1.35})
+        us = [f for f in r["F"] if f["kind"] == "us"]
+        self.assertEqual(len(us), 1)
+        self.assertEqual((us[0]["p"], us[0]["where"]), ("mid", "fast"))
+        labels = [c["label"] for c in us[0]["changes"]]
+        self.assertEqual(labels[0], "Front ride height (both sides)")
+        self.assertIn("Rear wing angle", labels)
+        rear = [c for c in us[0]["changes"] if c["label"] == "Rear ARB blades"][0]
+        self.assertIn("maximum", rear["at"])                     # 90 degrees on the 296: shown as blocked, not offered
+
+    def test_slow_corner_understeer_points_at_the_bars(self):
+        r = self.run_case(factor={("mid", "slow"): 1.4})
+        us = [f for f in r["F"] if f["kind"] == "us"][0]
+        self.assertEqual((us["p"], us["where"]), ("mid", "slow"))
+        self.assertEqual(us["changes"][0]["label"], "Front ARB blades")
+        self.assertEqual(us["changes"][0]["word"], "Softer")
+
+    def test_entry_understeer_moves_brake_bias_rearward(self):
+        r = self.run_case(factor={("entry", "slow"): 1.4, ("entry", "fast"): 1.4})
+        us = [f for f in r["F"] if f["kind"] == "us" and f["p"] == "entry"][0]
+        self.assertEqual(us["changes"][0]["label"], "Brake bias")
+        self.assertEqual(us["changes"][0]["word"], "More to the rear")
+
+    def test_power_oversteer_needs_opposite_lock_to_be_called(self):
+        r = self.run_case(exit_countersteer=True)
+        os_ = [f for f in r["F"] if f["kind"] == "os"]
+        self.assertEqual([(f["p"], f["where"]) for f in os_], [("exit", "fast")])
+        self.assertIn("Rear ARB blades", [c["label"] for c in os_[0]["changes"]])
+
+    def test_splitter_on_the_ground_raises_the_front(self):
+        r = self.run_case(splitter=0.001)
+        b = [f for f in r["F"] if f["kind"] == "bottom"][0]
+        self.assertEqual(b["changes"][0]["label"], "Front ride height (both sides)")
+        self.assertEqual(b["changes"][0]["word"], "Higher")
