@@ -55,11 +55,12 @@ def write_ibt(path, yaml, channels, rows):
 
 
 def run_js(test_js, *files):
-    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
         f.write(test_js)
         script = f.name
     try:
-        out = subprocess.run([NODE, HARNESS, PAGE, script, *files], capture_output=True, text=True, timeout=120)
+        out = subprocess.run([NODE, HARNESS, PAGE, script, *files], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=120)   # Windows defaults to cp1252
     finally:
         os.remove(script)
     if out.returncode != 0:
