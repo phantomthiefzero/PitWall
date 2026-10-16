@@ -767,7 +767,7 @@ const info=SETUP_INFO[r.ik]||SETUP_INFO[r.k]||{},num=parseFloat(String(r.v).repl
 if(lim&&isFinite(num)&&dir){if(dir>0&&num>=lim[1])at='already at its maximum ('+lim[1]+')';if(dir<0&&num<=lim[0])at='already at its minimum ('+lim[0]+')'}
 const word=k==='camber'?(dir<0?'More negative':'Less negative'):k==='brakepressurebias'?(dir>0?'More to the front':'More to the rear'):k==='tcsetting'?'More traction control help':(dir>0?(k==='arbblades'?'Stiffer':'Higher'):(k==='arbblades'?'Softer':'Lower'));
 const why=k==='camber'?(dir<0?info.down:info.up):dir>0?info.up:dir<0?info.down:'';
-return{r,label:k==='rideheight'&&ax.length>2?ax.charAt(0).toUpperCase()+ax.slice(1)+' ride height (both sides)':(r.cn&&k==='camber'?r.cn+' ':'')+r.lab,cur:r.v,word,why:why||'',at,test:info.test||''}}
+return{r,label:r.cn&&ax.length>2&&k!=='camber'?ax.charAt(0).toUpperCase()+ax.slice(1)+' '+r.lab.toLowerCase()+' (both sides)':(r.cn&&k==='camber'?r.cn+' ':'')+r.lab,cur:r.v,word,why:why||'',at,test:info.test||''}}
 function adviceHtml(){const ib=IB.a,h=handlingStats(ib);if(!h)return '<p class="m">Setup suggestions need an .ibt file of your own laps with steering, yaw rate and lateral acceleration in it.</p>';
 if(h.few)return `<p class="m">Setup suggestions need at least two clean laps (no incident or pit, within 103% of your fastest) with enough cornering in them. This file has ${h.laps}.</p>`;
 const rows=setupRows(ib.setup||{}),B=h.B,cell=x=>{if(!x||x.n<150)return '<td class="m">too few samples</td>';const d=(x.ui-1)*100,os=x.cs>=1.5||(x.slip||0)>=3.5;
@@ -804,6 +804,7 @@ const pre=order.filter(s=>SETUP_FULL.has(s)&&order.indexOf(s)<first),post=order.
 body=pre.map(s=>full(s,secs)).join('')+'<div class="sgrid">'+L.map((s,k)=>setupSection(s,secs[s],both,mapB)+(R[k]?setupSection(R[k],secs[R[k]],both,mapB):'<div></div>')).join('')+'</div>'+post.map(s=>full(s,secs)).join('')}
 return{id:g,name:SETUP_TABN[g]||g,body,nd:byG[g].filter(isDiff).length}});
 if(!S.stored&&!S.live&&S===IB.a)tabs.unshift({id:'advice',name:'Suggestions',body:adviceHtml(),nd:0});
+tabs.splice(tabs[0]&&tabs[0].id==='advice'?1:0,0,{id:'symptom',name:'Fix by symptom',body:symptomHtml(),nd:0});
 tabs.push({id:'notes',name:'Notes',body:trimHtml()+notesHtml()+libHtml(),nd:0});
 if(!tabs.some(t=>t.id===SETUP_TAB))SETUP_TAB=tabs[0].id;
 h+='<div class="stabs">'+tabs.map(t=>'<button type="button" data-tab="'+t.id+'"'+(t.id===SETUP_TAB?' class="on"':'')+'>'+t.name+(t.nd?' <span class="m">('+t.nd+')</span>':'')+'</button>').join('')+'</div>';
@@ -811,7 +812,7 @@ h+=tabs.map(t=>'<div data-tabp="'+t.id+'"'+(t.id===SETUP_TAB?'':' hidden')+'>'+t
 return h}
 function wireTabs(el){el.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{SETUP_TAB=b.dataset.tab;try{localStorage.setItem('setupTab',SETUP_TAB)}catch(e){}el.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on',x===b));el.querySelectorAll('[data-tabp]').forEach(p=>p.hidden=p.dataset.tabp!==SETUP_TAB)})}
 function wireInfo(el){el.querySelectorAll('[data-inf]').forEach(a=>a.onclick=e=>{e.preventDefault();const id=a.dataset.inf,tr=el.querySelector('[data-infr="'+id+'"]');if(!tr)return;tr.hidden=!tr.hidden;if(tr.hidden)SETUP_OPEN.delete(id);else SETUP_OPEN.add(id)});SETUP_OPEN.forEach(id=>{const tr=el.querySelector('[data-infr="'+id+'"]');if(tr)tr.hidden=false})}
-function renderSetup(){const el=$('setup');if(!el)return;const prev=el.querySelector('details.setupWrap'),wasOpen=prev?prev.open:(()=>{try{return localStorage.getItem('setupOpen')!=='0'}catch(e){return true}})(),op=[...el.querySelectorAll('details')].map(d=>d.open),h=setupHtml();el.innerHTML=h?'<details class="setupWrap"'+(wasOpen?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Car setup</b> <span class="m">click to open or close this section</span></summary><div style="margin-top:8px">'+h.replace('<b>Car setup</b>','')+'</div></details>':'';el.hidden=!h;const sw=el.querySelector('details.setupWrap');if(sw)sw.addEventListener('toggle',()=>{try{localStorage.setItem('setupOpen',sw.open?'1':'0')}catch(e){}});el.querySelectorAll('details').forEach((d,i)=>{if(op[i])d.open=true});el.querySelectorAll('input[data-si]').forEach(x=>x.oninput=()=>setupInput(x));const su=$('setupUnits');if(su)su.onchange=()=>{SETUP_UNITS=su.value;try{localStorage.setItem('setupUnits',SETUP_UNITS)}catch(e){}renderSetup();renderSession()};wireRanges(el);wireInfo(el);wireTabs(el);const sc=$('setupCar');if(sc)sc.onchange=()=>{SETUP_PICK=sc.value;try{localStorage.setItem('setupCar',SETUP_PICK)}catch(e){}renderSetup()}}
+function renderSetup(){const el=$('setup');if(!el)return;const prev=el.querySelector('details.setupWrap'),wasOpen=prev?prev.open:(()=>{try{return localStorage.getItem('setupOpen')!=='0'}catch(e){return true}})(),op=[...el.querySelectorAll('details')].map(d=>d.open),h=setupHtml();el.innerHTML=h?'<details class="setupWrap"'+(wasOpen?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Car setup</b> <span class="m">click to open or close this section</span></summary><div style="margin-top:8px">'+h.replace('<b>Car setup</b>','')+'</div></details>':'';el.hidden=!h;const sw=el.querySelector('details.setupWrap');if(sw)sw.addEventListener('toggle',()=>{try{localStorage.setItem('setupOpen',sw.open?'1':'0')}catch(e){}});el.querySelectorAll('details').forEach((d,i)=>{if(op[i])d.open=true});el.querySelectorAll('input[data-si]').forEach(x=>x.oninput=()=>setupInput(x));const su=$('setupUnits');if(su)su.onchange=()=>{SETUP_UNITS=su.value;try{localStorage.setItem('setupUnits',SETUP_UNITS)}catch(e){}renderSetup();renderSession()};wireRanges(el);wireInfo(el);wireTabs(el);wireSymptoms(el);const sc=$('setupCar');if(sc)sc.onchange=()=>{SETUP_PICK=sc.value;try{localStorage.setItem('setupCar',SETUP_PICK)}catch(e){}renderSetup()}}
 // ---- Session review: every lap of the .ibt on the left, not just the clean ones ----
 // Sector splits are iRacing's own (SplitTimeInfo in the session info). Fuel, tyres and
 // track temperature come straight from the file; averages are over each lap's samples.
@@ -1129,6 +1130,78 @@ return h}
 function paceRender(){const el=$('pace');if(!el)return;let h='';try{h=paceHtml()}catch(e){console.error('pace',e)}el.innerHTML=h;el.hidden=!h;const w=$('paceWrap');if(w)w.ontoggle=()=>{GH.paceOpen=w.open};
 const lo=$('paceLo'),hi=$('paceHi'),md=$('paceMode'),save=()=>{const v=x=>x.value.trim()===''?null:+x.value;try{localStorage.setItem('irrange',JSON.stringify([v(lo),v(hi)]))}catch(e){}GH.paceOpen=true;paceRender();if(F.a&&F.b&&!F.b.limited)run()};
 if(lo)lo.onchange=save;if(hi)hi.onchange=save;if(md)md.onchange=()=>{try{localStorage.setItem('paceRef',md.value)}catch(e){}GH.paceOpen=true;paceRender()}}
+
+// ---- Fix by symptom: pick what the car does, get this car's settings to try, in order ----
+// Directions follow SETUP_INFO (e.g. more diff preload = more off-throttle understeer and
+// more on-throttle oversteer). These are common starting points for GT-style cars, not a
+// model of this car; each one says what it trades away. The driving note is the other
+// half: the same symptom is often a technique issue the setup would only hide.
+const SYMPTOMS=[
+{g:'Understeer',id:'u_turnin',lab:'Won’t turn in',help:'The front washes wide as you start to turn, often still on the brakes.',
+ ch:[['brakepressurebias','',-1],['arbblades','front',-1],['totaltoein','front',-1],['diffpreload','',-1]],
+ drive:'Often from turning in with the brake still hard on, or too much speed: release the brake gradually as you add steering (trail braking) so the fronts keep their load.'},
+{g:'Understeer',id:'u_mid_slow',lab:'Understeer mid-corner, slow corners',help:'Pushes wide at the apex of tight corners.',
+ ch:[['arbblades','front',-1],['arbblades','rear',1],['diffpreload','',-1]],
+ drive:'Coasting or adding steering while waiting for the apex makes the front scrub: carry a little throttle or brake through the turn and unwind the wheel as early as you can.'},
+{g:'Understeer',id:'u_mid_fast',lab:'Understeer mid-corner, fast corners',help:'Pushes wide in high-speed corners, where aero matters most.',
+ ch:[['rideheight','front',-1],['rearwingangle','',-1],['arbblades','front',-1]],
+ drive:'Lifting mid-corner in a fast turn moves the aero balance: keep the throttle steady through the turn.'},
+{g:'Understeer',id:'u_exit',lab:'Understeer on the throttle out',help:'Runs wide as you put the power down.',
+ ch:[['arbblades','front',-1],['diffpreload','',1],['arbblades','rear',1]],
+ drive:'Full throttle with lots of steering on pushes the front: open the steering first, then the throttle.'},
+{g:'Oversteer',id:'o_entry',lab:'Rear steps out braking and turning in',help:'Loose on entry, the rear wants to come round under braking or as you lift.',
+ ch:[['brakepressurebias','',1],['diffpreload','',1],['arbblades','rear',-1],['toein','rear',1]],
+ drive:'Turning in hard while still braking very hard, or a sudden lift, unloads the rear: brake in a straight line first and blend off the brake as you turn.'},
+{g:'Oversteer',id:'o_mid',lab:'Oversteer mid-corner',help:'Loose at the apex, needs catching.',
+ ch:[['arbblades','rear',-1],['arbblades','front',1],['rearwingangle','',1]],
+ drive:'A lift or a jab of throttle at the apex shifts weight: keep inputs smooth and steady through the middle.'},
+{g:'Oversteer',id:'o_exit',lab:'Rear slides on the power',help:'Wheelspin or the rear stepping out as you accelerate.',
+ ch:[['tcsetting','',0],['diffpreload','',-1],['arbblades','rear',-1],['rearwingangle','',1]],
+ drive:'Too much throttle while the wheel is still turned: squeeze the throttle in as you unwind the steering.'},
+{g:'Braking',id:'b_front',lab:'Fronts lock or ABS works hard',help:'Front tyres lock, or ABS is chattering through braking zones.',
+ ch:[['brakepressurebias','',-1]],
+ drive:'Hitting peak pressure late in the zone, or braking while turning, overloads the fronts: brake hardest at the start and ease off as you slow.'},
+{g:'Braking',id:'b_unstable',lab:'Unstable under heavy braking',help:'The car squirms or the rear feels light in braking zones.',
+ ch:[['brakepressurebias','',1],['diffpreload','',1],['toein','rear',1]],
+ drive:'Steering while braking at the limit unsettles the rear: brake in a straight line where you can.'},
+{g:'Ride',id:'r_bottom',lab:'Bottoming or splitter scraping',help:'Hits the ground at speed or over crests; sudden snaps of understeer.',
+ ch:[['rideheight','front',1],['springrate','front',1],['bumprubbergap','front',-1]],
+ drive:''},
+{g:'Ride',id:'r_kerbs',lab:'Bounces or jumps over kerbs and bumps',help:'Thrown off line by kerbs, or skips over bumps.',
+ ch:[['highspeedcompressiondamping','front',-1],['highspeedcompressiondamping','rear',-1],['bumprubbergap','front',1]],
+ drive:'Some kerbs are faster to avoid: take one wheel less over the tall ones.'},
+{g:'Ride',id:'r_lazy',lab:'Lazy in quick direction changes',help:'Slow to respond in chicanes and esses.',
+ ch:[['lowspeedcompressiondamping','front',1],['lowspeedcompressiondamping','rear',1],['lowspeedrebounddamping','front',1]],
+ drive:''},
+{g:'Tyres and speed',id:'t_rear',lab:'Rear tyres fade over a run',help:'Good for a few laps, then the rear goes off and slides.',
+ ch:[['tcsetting','',0],['arbblades','rear',-1],['diffpreload','',-1]],
+ drive:'Wheelspin out of slow corners cooks the rears: be gentler with the first part of the throttle.'},
+{g:'Tyres and speed',id:'t_front',lab:'Front tyres fade over a run',help:'The front goes away after a few laps.',
+ ch:[['arbblades','front',-1],['brakepressurebias','',-1]],
+ drive:'Sliding the front into corners overheats it: a slower entry is often a faster lap after a few laps.'},
+{g:'Tyres and speed',id:'s_drag',lab:'Slow on the straights',help:'Others pull away on the straights with the same car.',
+ ch:[['rearwingangle','',-1]],
+ drive:'Exit speed counts more than wing: a better exit from the corner before the straight gains all the way down it.'}];
+// what the laps in your file show, as symptom ids
+function symMeasured(){const ib=IB.a;if(!ib||!SETUP_SRC||SETUP_SRC!==IB.a)return{};let h=null;try{h=handlingStats(ib)}catch(e){}if(!h||h.few)return{};const out={};
+handlingFindings(h).forEach(f=>{const put=(id,t)=>{if(!out[id])out[id]=t};
+if(f.kind==='us'){if(f.p==='entry')put('u_turnin','understeer braking into corners');else if(f.p==='exit')put('u_exit','understeer on the throttle');else{if(f.where!=='fast')put('u_mid_slow','mid-corner understeer in slow corners');if(f.where!=='slow')put('u_mid_fast','mid-corner understeer in fast corners')}}
+if(f.kind==='os')put(f.p==='entry'?'o_entry':f.p==='exit'?'o_exit':'o_mid','oversteer '+f.lab.toLowerCase());
+if(f.kind==='bottom')put('r_bottom','touching the ground at speed');if(f.kind==='abs')put('b_front','ABS working '+f.v.toFixed(0)+'% of the time into corners')});return out}
+let SYM=null;
+function symptomHtml(){const S=SETUP_SRC;if(!S||!S.setup)return '';const rows=SETUP_ROWS||[],seen=symMeasured(),groups=[...new Set(SYMPTOMS.map(s=>s.g))];
+let h=`<p class="m" style="margin:0 0 8px">Pick what the car does. You get this car's settings to try, most likely first, with what each one trades away.${Object.keys(seen).length?' <b>●</b> marks what your laps in this file show.':''}</p>`;
+h+=groups.map(g=>`<div style="margin:6px 0"><b style="display:inline-block;min-width:120px">${g}</b> `+SYMPTOMS.filter(s=>s.g===g).map(s=>`<button type="button" data-sym="${s.id}" class="${SYM===s.id?'on':''}" style="font:inherit;font-size:13px;padding:3px 9px;margin:2px;border-radius:6px;border:1px solid ${SYM===s.id?'var(--fg)':'var(--ln)'};background:${SYM===s.id?'var(--ln)':'transparent'};color:inherit;cursor:pointer">${seen[s.id]?'● ':''}${plain(s.lab)}</button>`).join('')+`</div>`).join('');
+const s=SYMPTOMS.find(x=>x.id===SYM);if(!s)return h;
+const ch=s.ch.map(c=>adviceRow(rows,c,S.carPath)).filter(Boolean),use=ch.filter(c=>!c.at),blocked=ch.filter(c=>c.at);
+h+=`<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px"><b>${plain(s.lab)}</b> <span class="m">${plain(s.help)}</span>`+(seen[s.id]?`<div style="margin-top:4px"><b>●</b> Your laps show it: ${plain(seen[s.id])} <span class="m">(Suggestions tab for the numbers)</span></div>`:'');
+h+=use.length?`<ol style="margin:8px 0 0 18px;padding:0">${use.map(c=>{const i=rows.indexOf(c.r);return `<li style="margin-bottom:6px"><b>${plain(c.label)}</b>: ${plain(c.word.toLowerCase())}, one click at a time <span class="m">(now ${plain(c.cur)})</span> ${i>=0?`<a href="#" data-symgo="${i}" class="m" style="font-size:13px">show in setup</a>`:''}${c.why?`<br><small class="m">${plain(c.why)}</small>`:''}</li>`}).join('')}</ol>`:`<p class="m" style="margin:8px 0 0">This car's setup has none of the settings for this symptom.</p>`;
+if(blocked.length)h+=`<div class="m" style="font-size:13px">${blocked.map(c=>plain(c.label)+' is '+c.at).join('; ')}.</div>`;
+if(s.drive)h+=`<div style="margin-top:8px"><b>Check the driving too:</b> ${plain(s.drive)}</div>`;
+return h+`<p class="m" style="font-size:13px;margin:8px 0 0">Change one thing, run at least 3 clean laps, and check the Suggestions tab (from a new .ibt) or the runs table (live) before the next change. Starting points for GT-style cars, not guarantees.</p></div>`}
+function wireSymptoms(el){el.querySelectorAll('[data-sym]').forEach(b=>b.onclick=()=>{SYM=SYM===b.dataset.sym?null:b.dataset.sym;const p=el.querySelector('[data-tabp="symptom"]');if(p)p.innerHTML=symptomHtml();wireSymptoms(el)});
+el.querySelectorAll('[data-symgo]').forEach(a=>a.onclick=e=>{e.preventDefault();const i=+a.dataset.symgo,r=(SETUP_ROWS||[])[i];if(!r)return;SETUP_TAB=r.g;renderSetup();
+const inp=$('setup').querySelector('input[data-si="'+i+'"]');const tr=inp?inp.closest('tr')||inp:null;if(tr){tr.scrollIntoView({block:'center'});tr.style.outline='2px solid var(--acc,#e6b422)';setTimeout(()=>{tr.style.outline=''},2500);if(inp)inp.focus()}})}
 
 // ---------- click a graph to enlarge it ----------
 let ZOOM=null;

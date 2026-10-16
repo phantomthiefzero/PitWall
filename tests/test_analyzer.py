@@ -614,3 +614,162 @@ class PaceRatingTest(unittest.TestCase):
         self.assertTrue(r["noLabels"])
         self.assertEqual(r["def"], [2000, 3000])                      # your stated range until you choose
         self.assertEqual(r["anyRange"], [None, None])                 # blank boxes mean any rating
+
+
+# The real Ferrari 296 GT3 setup from the Indianapolis file (2026-10-10), as iRacing writes it.
+SETUP_296_YAML = """WeekendInfo:
+ TrackDisplayName: Indianapolis Motor Speedway
+DriverInfo:
+ DriverCarIdx: 0
+ Drivers:
+ - CarIdx: 0
+   UserName: Test Driver
+   CarPath: ferrari296gt3
+   CarScreenName: Ferrari 296 GT3
+CarSetup:
+ UpdateCount: 4
+ TiresAero:
+  TireType:
+   TireType: Dry
+  LeftFront:
+   StartingPressure: 159 kPa
+   LastHotPressure: 159 kPa
+   LastTempsOMI: 35C, 35C, 35C
+   TreadRemaining: 100%, 100%, 100%
+  LeftRear:
+   StartingPressure: 159 kPa
+   LastHotPressure: 159 kPa
+   LastTempsOMI: 35C, 35C, 35C
+   TreadRemaining: 100%, 100%, 100%
+  RightFront:
+   StartingPressure: 159 kPa
+   LastHotPressure: 159 kPa
+   LastTempsIMO: 35C, 35C, 35C
+   TreadRemaining: 100%, 100%, 100%
+  RightRear:
+   StartingPressure: 159 kPa
+   LastHotPressure: 159 kPa
+   LastTempsIMO: 35C, 35C, 35C
+   TreadRemaining: 100%, 100%, 100%
+  AeroBalanceCalc:
+   FrontRhAtSpeed: 52 mm
+   RearRhAtSpeed: 59 mm
+   RearWingAngle: 8 degrees
+   FrontDownforce: 42.9%
+ Chassis:
+  FrontBrakesLights:
+   ArbBlades: 75 degrees
+   ArbOptions: Large
+   TotalToeIn: -4.1 mm
+   FrontMasterCyl: 16.8 mm
+   RearMasterCyl: 17.8 mm
+   BrakePads: Low friction
+   EnduranceLights: Not Fitted
+   NightLedStripColor: OFF
+   CenterFrontSplitterHeight: 50.7 mm
+  LeftFront:
+   CornerWeight: 3363 N
+   RideHeight: 53.1 mm
+   BumpRubberGap: 20 mm
+   SpringRate: 190 N/mm
+   Camber: -4.0 deg
+  LeftRear:
+   CornerWeight: 3806 N
+   RideHeight: 60.4 mm
+   BumpRubberGap: 32 mm
+   SpringRate: 220 N/mm
+   Camber: -3.0 deg
+   ToeIn: +1.5 mm
+  Rear:
+   FuelLevel: 52.0 L
+   ArbBlades: 90 degrees
+   ArbOptions: Large
+   RearWingAngle: 8 degrees
+  InCarAdjustments:
+   BrakePressureBias: 50.5%
+   AbsSetting: 2 (ABS)
+   TcSetting: 5 (TC)
+   ThrottleShapeSetting: 1 (PED)
+   DashDisplayPage: Race 
+   FWtdist: 46.9%
+   CrossWeight: 50.0%
+  RightFront:
+   CornerWeight: 3363 N
+   RideHeight: 53.1 mm
+   BumpRubberGap: 20 mm
+   SpringRate: 190 N/mm
+   Camber: -4.0 deg
+  RightRear:
+   CornerWeight: 3806 N
+   RideHeight: 60.4 mm
+   BumpRubberGap: 32 mm
+   SpringRate: 220 N/mm
+   Camber: -3.0 deg
+   ToeIn: +1.5 mm
+  GearsDifferential:
+   GearStack: FIA
+   FrictionFaces: 8
+   DiffPreload: 115 Nm
+ Dampers:
+  FrontDampers:
+   LowSpeedCompressionDamping: 3 clicks
+   HighSpeedCompressionDamping: 7 clicks
+   LowSpeedReboundDamping: 6 clicks
+   HighSpeedReboundDamping: 11 clicks
+  RearDampers:
+   LowSpeedCompressionDamping: 4 clicks
+   HighSpeedCompressionDamping: 6 clicks
+   LowSpeedReboundDamping: 6 clicks
+   HighSpeedReboundDamping: 11 clicks
+
+"""
+
+SYMPTOM_JS = r"""
+const y = ARGS_YAML;
+LIVE.ws = {}; LIVE.setup = setupTree(y); LIVE.meta = { carPath: 'ferrari296gt3', carName: 'Ferrari 296 GT3', track: 'Indy' };
+const page = setupHtml();
+const out = {}, errs = [];
+for (const s of SYMPTOMS) {
+  SYM = s.id;
+  let h = ''; try { h = symptomHtml() } catch (x) { errs.push(s.id + ': ' + x) }
+  const items = [...h.matchAll(/<li[^>]*><b>([^<]+)<\/b>: ([^<]+?), one click/g)].map(m => [m[1], m[2]]);
+  const why = s.ch.map(c => { const r = adviceRow(SETUP_ROWS, c, 'ferrari296gt3'); return r ? { k: c[0], why: r.why, at: r.at, label: r.label } : null }).filter(Boolean);
+  out[s.id] = { g: s.g, items, why, blocked: (h.match(/is already at its (maximum|minimum)[^;.<]*/g) || []), drive: h.includes('Check the driving too') };
+}
+console.log(JSON.stringify({ tab: page.includes('Fix by symptom'), out, errs, measured: symMeasured() }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class FixBySymptomTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        js = "const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + SYMPTOM_JS
+        cls.r = run_js(js)
+
+    def test_every_symptom_renders_with_settings_from_this_car(self):
+        r = self.r
+        self.assertTrue(r["tab"])
+        self.assertEqual(r["errs"], [])
+        for sid, x in r["out"].items():
+            self.assertTrue(x["items"] or x["blocked"], sid)
+
+    def test_directions_agree_with_what_each_setting_does(self):
+        for sid, x in self.r["out"].items():
+            for c in x["why"]:
+                if c["k"] in ("arbblades", "rearwingangle"):
+                    if x["g"] == "Understeer":
+                        self.assertNotIn("more understeer", c["why"].lower(), (sid, c))
+                    if x["g"] == "Oversteer":
+                        self.assertNotIn("more oversteer", c["why"].lower(), (sid, c))
+
+    def test_this_cars_limits_and_names(self):
+        o = self.r["out"]
+        # the real setup has the rear bar at 90 degrees, the 296's maximum
+        self.assertTrue(any("maximum (90)" in b for b in o["u_mid_slow"]["blocked"]), o["u_mid_slow"])
+        self.assertEqual(o["u_mid_slow"]["items"][0], ["Front ARB blades", "softer"])
+        self.assertIn(["Brake bias", "more to the front"], o["o_entry"]["items"])
+        self.assertIn("Rear toe (both sides)", [i[0] for i in o["o_entry"]["items"]])
+        self.assertEqual(o["r_bottom"]["items"][0], ["Front ride height (both sides)", "higher"])
+        self.assertTrue(o["u_turnin"]["drive"])
+        self.assertEqual(self.r["measured"], {})                      # live setup: no file laps to measure
