@@ -146,6 +146,15 @@ needed a player car, so a spectator never saw a lead change; `class_lead` covers
 | pace rating (% of recorded drivers) | 100% = middle (or fastest) best lap of recorded drivers in an iRating range, same layout and car (`DriverInfo/Drivers[].IRating` at the time of the session) | Unit-tested. Research (2026-10-16): the 100-107% scale is a community convention from F1's 107% rule; sites that attach skill words to its bands say they are subjective and cite no data, and the one site that published pace by iRating (simracingstats.com) stops in 2023. So no band labels are shown; the iRating comparison uses only drivers recorded here. |
 | speed, gear, steering of another car | speed from lap-distance movement x `TrackLength`; `CarIdxGear`, `CarIdxSteer` plain | Speed unit-tested (corner minimum within 1 m/s). Gear and steering not yet compared with the sim. |
 
+### Lap Analyzer: setup help (Fix by symptom, Your driving, live verdicts)
+
+| Value | Inputs | Validation |
+|---|---|---|
+| driving habits per corner | `Brake`, `Throttle`, `SteeringWheelAngle`, lap time, on the clean laps of a file | Thresholds set on Andrew's Indianapolis laps (2026-10-10); unit-tested with each habit placed in its own corner. |
+| live balance per run | `SteeringWheelAngle`, `YawRate`, `LatAccel`, `Speed`, `Brake`, `Throttle`, `VelocityX/Y` live, every other update, clean laps only | Same measure as the file-based Suggestions (tested on files and on a simulated live session). **Not yet seen on a real live session**: check that the steering fit finds enough gentle cornering at each track. |
+| "did the change help" | median clean lap of each run; called only beyond twice the standard error and 0.05 s | Unit-tested. A lap in progress when the setup changes is dropped (setups only change in the garage). |
+| .sto setup files | -- | **Not readable**: iRacing encrypts them (Braking Lab's setup FAQ; the sample is high-entropy). Garage .htm exports are the readable route; waiting on a sample. |
+
 ## Group D — believed unavailable (do not fake)
 
 Other cars' fuel, tire state, damage, pedal inputs, setup. Player damage as a
