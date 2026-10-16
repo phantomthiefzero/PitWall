@@ -137,6 +137,14 @@ needed a player car, so a spectator never saw a lead change; `class_lead` covers
 | Windows job object (tunnel ends with the app) | **Not yet run on Windows.** Without it the tunnel is still stopped on a normal close. |
 | Relay through the tunnel | **WebSockets through Cloudflare's tunnel work** (the 2026-10-15 share: live dashboard through the link). Guest token, read-only, 4003 on stop: tested on the local relay. **Stop sharing verified for real (2026-10-15)**: the open link stopped working. |
 
+### Lap Analyzer: driver laps (any car as a reference)
+
+| Value | Inputs | Validation |
+|---|---|---|
+| another car's lap time | `CarIdxLapDistPct` crossing 1 -> 0 between two updates, interpolated; replaced by `CarIdxLastLapTime` when within 0.1 s | Unit-tested at 30 updates/s with crossings between updates: within 0.002 s. On Andrew's Indy lap replayed through the recorder: 83.363 s against 83.361 s. **Not yet seen against the sim's own network-updated positions.** |
+| clean lap | no pit road, `CarIdxTrackSurface` OnTrack (3) throughout, no gap over 1 s, no backwards step over 0.2 % or forward jump over 5 % | Unit-tested (joined mid-lap, pit lap, position jump each lose exactly that lap). **If the sim's positions for other cars step backwards slightly, every lap would be thrown out: check the count in a real session.** |
+| speed, gear, steering of another car | speed from lap-distance movement x `TrackLength`; `CarIdxGear`, `CarIdxSteer` plain | Speed unit-tested (corner minimum within 1 m/s). Gear and steering not yet compared with the sim. |
+
 ## Group D — believed unavailable (do not fake)
 
 Other cars' fuel, tire state, damage, pedal inputs, setup. Player damage as a

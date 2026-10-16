@@ -60,6 +60,26 @@ def clean(x):
     return x
 
 
+# Every car's position, lap and drivetrain, sent on every other update (30 a second
+# at the suite's rate) so the Lap Analyzer can record any driver's laps as a
+# reference. iRacing gives other cars' position, lap, gear, rpm and steering, but
+# not their pedals, speed, g-forces or GPS.
+CARIDX_SEND = {"CarIdxLapDistPct": 6, "CarIdxLap": None, "CarIdxGear": None, "CarIdxRPM": 0,
+               "CarIdxSteer": 3, "CarIdxOnPitRoad": None, "CarIdxTrackSurface": None, "CarIdxLastLapTime": 3}
+CARIDX_EVERY = 2
+
+
+def car_array(values, places):
+    """One CarIdx array, safe for JSON and rounded to keep each update small."""
+    out = []
+    for x in values:
+        x = clean(x)
+        if places is not None and isinstance(x, float):
+            x = round(x, places) if places else int(round(x))
+        out.append(x)
+    return out
+
+
 class LiveSource:
     """Live data from iRacing's shared memory (Windows only)."""
     mode = "live"
@@ -67,11 +87,14 @@ class LiveSource:
     def __init__(self):
         self.ir = irsdk.IRSDK() if irsdk else None
         self.names = None
+        self.arrays = None
+        self.ticks = 0
         self.last_update = None
         self.next_try = 0.0
 
     def _reset(self):
         self.names = None
+        self.arrays = None
         self.last_update = None
 
     def poll(self):
@@ -96,12 +119,20 @@ class LiveSource:
             ir.freeze_var_buffer_latest()
             if self.names is None:
                 self.names = [h.name for h in ir._var_headers if h.count == 1]
+                self.arrays = [h.name for h in ir._var_headers if h.name in CARIDX_SEND and h.count > 1]
             values = {}
             for name in self.names:
                 try:
                     values[name] = clean(ir[name])
                 except Exception:
                     pass
+            self.ticks += 1
+            if self.ticks % CARIDX_EVERY == 0:
+                for name in self.arrays:
+                    try:
+                        values[name] = car_array(ir[name], CARIDX_SEND[name])
+                    except Exception:
+                        pass
             yaml = None
             hdr = ir._header
             if hdr.session_info_update != self.last_update:
