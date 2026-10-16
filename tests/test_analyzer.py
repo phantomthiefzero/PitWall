@@ -844,3 +844,65 @@ console.log(JSON.stringify({ note: /Note:<\/b> ([^<]*?) (is|are) suggested in op
         self.assertTrue(r["hasCoast"])
         self.assertIsNotNone(r["note"])
         self.assertIn("Diff preload", r["note"][1])                   # lower to rotate on entry, higher for stability
+
+
+LIVE_VERDICT_JS = r"""
+// runVerdict on its own
+const A = [90.0, 90.1, 89.9, 90.05], Bf = A.map(t => t - 0.4), Bc = A.map(t => t - 0.02);
+const v1 = runVerdict(A, Bf, null, null), v2 = runVerdict(A, Bc, null, null), v3 = runVerdict(A, A.map(t => t + 0.5), null, null), v4 = runVerdict(A.slice(0, 2), Bf, null, null);
+// a live session: run 1 understeers at the limit, the rear bar comes down, run 2 is neutral and quicker
+const y1 = ARGS_YAML, y2 = ARGS_YAML.replace('ArbBlades: 90 degrees', 'ArbBlades: 80 degrees');
+LIVE.ws = {}; LIVE.state = 'bridge';
+let T = 100, lap = 1;
+function drive(yaml, laps, F, lapTime) {
+  liveSession(yaml);
+  for (let L = 0; L < laps; L++, lap++) {
+    const n = Math.round(lapTime * 60);
+    for (let i = 0; i < n; i++) {
+      const d = i / n, ph = (d * 8) % 1, g = 1.25 * Math.abs(Math.sin(d * 8 * Math.PI)), v = 34 + 12 * (Math.floor(d * 8) % 2);
+      const yaw = g * 9.80665 / v * (Math.floor(d * 16) % 2 ? 1 : -1), k = yaw / v;
+      const steer = 40 * k * (g > 0.8 ? F : 1);                 // K = 40; at the limit the car needs F times more
+      const brake = ph < 0.18 ? 0.4 : 0, thr = ph > 0.30 ? 0.8 : 0.2;   // entry on the brake, exit on the throttle
+      liveTick({ Lap: lap, LapDistPct: d, LapCurrentLapTime: i / 60, LapLastLapTime: lap > 1 ? lapTime : -1, Speed: v, Brake: brake, Throttle: thr,
+                 SteeringWheelAngle: steer, YawRate: yaw, LatAccel: g * 9.80665 * Math.sign(yaw), OnPitRoad: false, SessionTime: T });
+      T += 1 / 60;
+    }
+  }
+  // cross the line into the next lap so the last one finishes
+  liveTick({ Lap: lap, LapDistPct: 0.001, LapCurrentLapTime: 0.01, LapLastLapTime: lapTime, Speed: 40, Brake: 0, Throttle: 1, SteeringWheelAngle: 0, YawRate: 0, LatAccel: 0, OnPitRoad: false, SessionTime: T });
+}
+drive(y1, 4, 1.30, 60.0);
+drive(y2, 4, 1.00, 59.6);
+const html = liveVerdictHtml();
+const V = runVerdict(LIVE.laps.filter(l => l.ver === 1 && l.valid).map(l => l.time), LIVE.laps.filter(l => l.ver === 2 && l.valid).map(l => l.time), liveRunCore(1), liveRunCore(2));
+console.log(JSON.stringify({ v1: v1.call, v2: v2.call, v3: v3.call, v4: v4.call, vers: LIVE.vers.length,
+  valid: LIVE.laps.map(l => [l.ver, l.valid, +l.time.toFixed(2)]), call: V.call, dt: V.dt, phases: V.phases,
+  html: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 1200) }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class LiveVerdictTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + LIVE_VERDICT_JS)
+
+    def test_lap_time_calls(self):
+        r = self.r
+        self.assertEqual((r["v1"], r["v2"], r["v3"], r["v4"]), ("faster", "close", "slower", "few"))
+
+    def test_a_live_garage_change_gets_a_verdict(self):
+        r = self.r
+        self.assertEqual(r["vers"], 2)
+        self.assertEqual(r["call"], "faster")
+        self.assertAlmostEqual(r["dt"], -0.4, delta=0.05)
+        # the lap that was running when the new setup arrived belongs to neither run
+        self.assertEqual([v[:2] for v in r["valid"]], [[1, True]] * 4 + [[1, False]] + [[2, True]] * 3)
+        # less steering at the limit after the change, in the phases that have enough samples
+        steer = [p for p in r["phases"] if p["kind"] == "steer"]
+        self.assertTrue(steer, r["phases"])
+        for p in steer:
+            self.assertAlmostEqual(p["ch"], 1.0 / 1.3 - 1, delta=0.03)
+        self.assertIn("Did the change help?", r["html"])
+        self.assertIn("Rear ARB blades", r["html"])
+        self.assertIn("Faster", r["html"])
