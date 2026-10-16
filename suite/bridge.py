@@ -73,9 +73,15 @@ def car_array(values, places):
     """One CarIdx array, safe for JSON and rounded to keep each update small."""
     out = []
     for x in values:
-        x = clean(x)
-        if places is not None and isinstance(x, float):
-            x = round(x, places) if places else int(round(x))
+        if isinstance(x, float) and not isinstance(x, bool):
+            if math.isnan(x) or math.isinf(x):
+                x = None
+            elif places is not None:
+                x = round(x, places) if places else int(round(x))   # not clean(): it keeps only 5 places
+            else:
+                x = round(x, 5)
+        else:
+            x = clean(x)
         out.append(x)
     return out
 
