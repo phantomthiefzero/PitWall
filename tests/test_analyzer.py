@@ -55,11 +55,12 @@ def write_ibt(path, yaml, channels, rows):
 
 
 def run_js(test_js, *files):
-    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
         f.write(test_js)
         script = f.name
     try:
-        out = subprocess.run([NODE, HARNESS, PAGE, script, *files], capture_output=True, text=True, timeout=120)
+        out = subprocess.run([NODE, HARNESS, PAGE, script, *files], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=120)   # Windows defaults to cp1252
     finally:
         os.remove(script)
     if out.returncode != 0:
@@ -398,3 +399,159 @@ console.log(JSON.stringify({ K: h.K, laps: h.laps, B: h.B, F: out, html: adviceH
         b = [f for f in r["F"] if f["kind"] == "bottom"][0]
         self.assertEqual(b["changes"][0]["label"], "Front ride height (both sides)")
         self.assertEqual(b["changes"][0]["word"], "Higher")
+
+
+# --------------------------------------------------------------------------- #
+# Driver laps: any car's laps recorded from the live feed (CarIdx arrays)
+# --------------------------------------------------------------------------- #
+DRIVER_LAPS_JS = r"""
+const yaml = `WeekendInfo:
+ TrackDisplayName: Test Raceway
+ TrackConfigName: Grand Prix
+ TrackLength: 2.00 km
+DriverInfo:
+ DriverCarIdx: 63
+ Drivers:
+ - CarIdx: 1
+   UserName: Fast Fred
+   CarNumber: "7"
+   IRating: 3100
+   CarScreenName: Test Car GT3
+   CarPath: testcar
+   CarClassShortName: GT3
+ - CarIdx: 2
+   UserName: Pit Pete
+   CarNumber: "8"
+   IRating: 1500
+   CarScreenName: Test Car GT3
+   CarPath: testcar
+ - CarIdx: 3
+   UserName: Laggy Larry
+   CarNumber: "9"
+   IRating: 2000
+   CarScreenName: Test Car GT3
+   CarPath: testcar
+ - CarIdx: 63
+   UserName: Spectator Sam
+   IsSpectator: 1
+`;
+const LEN = 2000;
+// speed by lap position: a corner at half distance; fred's corner is quicker than "yours"
+const prof = (d, cmin) => 60 - (60 - cmin) * Math.exp(-(((d - 0.5) / 0.05) ** 2));
+function lapTime(cmin) { let t = 0; const n = 20000; for (let i = 0; i < n; i++) t += (LEN / n) / prof((i + 0.5) / n, cmin); return t }
+liveSession(yaml);
+const cars = {
+  1: { d: 0.80, lap: 0, cmin: 33, pit: false, jump: false },  // joins mid-lap: that partial lap must not count
+  2: { d: 0.70, lap: 0, cmin: 33, pit: false },               // pits on lap 2
+  3: { d: 0.60, lap: 0, cmin: 33, jump: false },              // a position jump on lap 2
+};
+let t = 1000.37;                       // not on any crossing
+const dt = 1 / 30, CROSS = {}, LAST = {};
+const official = [];                   // [time at which iRacing reports it, idx, lap time]
+for (let step = 0; step < 30 * 200; step++) {
+  const P = [], L = [], G = [], RPM = [], ST = [], PIT = [], SURF = [], LL = [];
+  for (let i = 0; i < 64; i++) { P.push(-1); L.push(-1); G.push(0); RPM.push(0); ST.push(0); PIT.push(false); SURF.push(-1); LL.push(-1) }
+  for (const k in cars) {
+    const c = cars[k], i = +k;
+    let nd = c.d + prof(c.d, c.cmin) * dt / LEN;
+    if (nd >= 1) {                                         // exact crossing time, for checking
+      const tc = t + (1 - c.d) / (nd - c.d) * dt;
+      if (CROSS[i] != null) official.push([tc + 0.4, i, tc - CROSS[i]]);
+      CROSS[i] = tc; nd -= 1; c.lap++;
+    }
+    c.d = nd;
+    let shown = c.d;
+    if (i === 3 && c.lap === 2 && c.d > 0.40 && c.d < 0.45) shown = Math.min(0.999, c.d + 0.08);   // network jump
+    const inPit = i === 2 && c.lap === 2 && c.d > 0.3 && c.d < 0.4;
+    P[i] = +shown.toFixed(6); L[i] = c.lap; G[i] = 4; RPM[i] = 7000; ST[i] = 0.1; PIT[i] = inPit; SURF[i] = inPit ? 2 : 3;
+    const done = official.filter(o => o[1] === i && o[0] <= t);
+    if (done.length) LL[i] = +done[done.length - 1][2].toFixed(3);
+  }
+  // spectating: the player's own Lap is missing, but every car's arrays are there
+  liveTick({ SessionTime: t, Lap: null, CarIdxLapDistPct: P, CarIdxLap: L, CarIdxGear: G, CarIdxRPM: RPM,
+             CarIdxSteer: ST, CarIdxOnPitRoad: PIT, CarIdxTrackSurface: SURF, CarIdxLastLapTime: LL });
+  t += dt;
+}
+const lib = ghLibLoad(), byIdx = {};
+lib.forEach(e => byIdx[e.idx] = e);
+const truth = lapTime(33);
+const e1 = byIdx[1];
+// counts of finished clean laps per car
+const counts = Object.fromEntries(Object.entries(GH.cars).map(([k, s]) => [k, s.n]));
+// the recorded lap against one of "yours" (corner 30 m/s, so slower), built the way rs() expects
+const n = 4000, you = { n, who: 'You', lapNum: 3, D: new Float64Array(n), t: new Float64Array(n) };
+['Speed','Brake','Throttle','Steer','Gear','Lat','Lon','RPM','ABS','LatG','LonG','VertG','YawRate'].forEach(k => you[k] = new Float64Array(n));
+let tt = 0;
+for (let i = 0; i < n; i++) { const d = i / (n - 1); you.D[i] = d; you.Speed[i] = prof(d, 30); you.Gear[i] = 4; you.t[i] = tt; tt += (LEN / (n - 1)) / prof(d, 30) }
+you.lap = you.t[n - 1];
+const ref = ghRef(e1), Q = limAnalyze(you, ref);
+let html = '', err = null;
+try { F.a = you; F.b = ref; html = limHtml() } catch (x) { err = String(x) }
+GH.sel = e1.key; LIVE_CMP = 'ghost';
+const lr = liveRef();
+console.log(JSON.stringify({
+  keys: lib.map(e => e.key), track: e1.track, trackFile: ghTrackOf(yaml),
+  t1: e1.time, official1: e1.official, truth, counts,
+  vmin1: Math.min(...e1.g.v), vmax1: Math.max(...e1.g.v), n1: e1.g.t.length,
+  has2: !!byIdx[2], t2: byIdx[2] && byIdx[2].time, has3: !!byIdx[3], t3: byIdx[3] && byIdx[3].time,
+  spectator: lib.some(e => e.name === 'Spectator Sam'),
+  total: Q.total, youLap: you.lap, corners: Q.cs.map(c => ({ n: c.n, ap: c.ap, dt: c.dt, bms: c.b.ms, ams: c.a.ms })),
+  htmlOk: !err && html.includes('Fast Fred') && html.includes('no pedals') === false, err,
+  liveName: lr && lr.name, liveN: lr && lr.d.length, liveHalf: lr && liveRefTime(lr, 0.5),
+  halfTruth: (() => { let s = 0; const m = 10000; for (let i = 0; i < m; i++) s += (LEN / 2 / m) / prof((i + 0.5) / m * 0.5, 33); return s })(),
+}));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class DriverLapsTest(unittest.TestCase):
+    """Record any car's laps from the live feed and compare one with your lap."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(DRIVER_LAPS_JS)
+
+    def test_clean_laps_are_kept_with_the_right_time(self):
+        r = self.r
+        self.assertAlmostEqual(r["t1"], r["truth"], delta=0.002)       # iRacing's time, once it agreed
+        self.assertTrue(r["official1"])
+        self.assertEqual(r["track"], "Test Raceway · Grand Prix")
+        self.assertEqual(r["track"], r["trackFile"])                    # live and files name the layout alike
+        self.assertGreater(r["counts"]["1"], 3)
+        self.assertEqual(r["n1"], 500)
+
+    def test_speed_is_worked_out_from_movement(self):
+        r = self.r
+        self.assertAlmostEqual(r["vmax1"], 60.0, delta=0.6)
+        self.assertAlmostEqual(r["vmin1"], 33.0, delta=1.0)
+
+    def test_partial_pit_and_jumped_laps_do_not_count(self):
+        r = self.r
+        # car 1 joined mid-lap: its first lap is never recorded, so it has one fewer than full laps
+        # car 2: the pit lap is skipped but its clean laps are kept
+        self.assertTrue(r["has2"])
+        self.assertAlmostEqual(r["t2"], r["truth"], delta=0.002)
+        # car 3: only the lap with the jump is skipped
+        self.assertTrue(r["has3"])
+        self.assertAlmostEqual(r["t3"], r["truth"], delta=0.002)
+        self.assertFalse(r["spectator"])
+        self.assertEqual(r["counts"]["2"], r["counts"]["3"])            # each lost exactly one lap
+        self.assertEqual(r["counts"]["2"], r["counts"]["1"] - 1)
+
+    def test_comparison_finds_the_corner_and_the_time(self):
+        r = self.r
+        self.assertAlmostEqual(r["total"], r["youLap"] - r["truth"], delta=0.01)
+        self.assertGreater(r["total"], 0.2)                             # your corner is slower
+        cs = r["corners"]
+        self.assertEqual(len(cs), 1)
+        self.assertAlmostEqual(cs[0]["ap"] / 999, 0.5, delta=0.01)
+        self.assertAlmostEqual(cs[0]["dt"], r["total"], delta=0.05)    # all the time is lost in that corner
+        self.assertAlmostEqual(cs[0]["ams"], 30 * 3.6, delta=1.5)
+        self.assertAlmostEqual(cs[0]["bms"], 33 * 3.6, delta=3.0)
+        self.assertTrue(r["htmlOk"], r["err"])
+
+    def test_live_graphs_can_use_a_recorded_driver(self):
+        r = self.r
+        self.assertEqual(r["liveName"], "#7 Fast Fred")
+        self.assertEqual(r["liveN"], 500)
+        self.assertAlmostEqual(r["liveHalf"], r["halfTruth"], delta=0.02)

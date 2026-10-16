@@ -812,3 +812,18 @@ class UpdaterTest(unittest.TestCase):
         t = time.time()
         wait_for_exit([999999999], timeout=10)               # already gone: no wait
         self.assertLess(time.time() - t, 0.5)
+
+
+class CarArraysTest(unittest.TestCase):
+    """Every car's arrays go to the Lap Analyzer so it can record any driver's laps."""
+
+    def test_rounded_and_safe_for_json(self):
+        from suite.bridge import CARIDX_SEND, car_array
+        self.assertEqual(car_array([0.1234567891, -1.0, float("nan")], 6), [0.123457, -1.0, None])
+        self.assertEqual(car_array([7123.6, 0.0], 0), [7124, 0])
+        self.assertEqual(car_array([3, -1, True], None), [3, -1, True])
+        json.dumps(car_array([float("inf"), 1.5], 3))
+        # position needs to be fine enough for lap times: 1e-6 of a 6 km lap is 6 mm
+        self.assertEqual(CARIDX_SEND["CarIdxLapDistPct"], 6)
+        for name in ("CarIdxLap", "CarIdxOnPitRoad", "CarIdxTrackSurface", "CarIdxLastLapTime"):
+            self.assertIn(name, CARIDX_SEND)
