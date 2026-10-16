@@ -773,3 +773,74 @@ class FixBySymptomTest(unittest.TestCase):
         self.assertEqual(o["r_bottom"]["items"][0], ["Front ride height (both sides)", "higher"])
         self.assertTrue(o["u_turnin"]["drive"])
         self.assertEqual(self.r["measured"], {})                      # live setup: no file laps to measure
+
+
+STYLE_JS = r"""
+// four laps on a 1000-point grid, 0.1 s apart; each corner carries one habit
+function lap(k) {
+  const X = {}; ['Speed','Brake','Throttle','Steer','t'].forEach(c => X[c] = new Float64Array(N));
+  for (let g = 0; g < N; g++) { X.t[g] = g * 0.1 + k * 0.001; X.Throttle[g] = 1; X.Speed[g] = 50 }
+  const ramp = (a, b, f) => { for (let g = a; g <= b; g++) f(g, (g - a) / Math.max(1, b - a)) };
+  const turn = (s, ap, e, amp) => { ramp(s, ap, (g, f) => X.Steer[g] = amp * f); ramp(ap, e, (g, f) => X.Steer[g] = amp * (1 - f)) };
+  // A (100-150-200): brake fully off before turning in, and snapped off
+  ramp(60, 110, g => { X.Brake[g] = .9; X.Throttle[g] = 0 }); ramp(111, 200, (g, f) => X.Throttle[g] = .1 + .9 * f);
+  turn(118, 150, 200, 1.2);
+  // B (400-450-500): trail braking, smooth release, coasting 0.8 s, a throttle stab every lap
+  ramp(360, 410, g => { X.Brake[g] = .9; X.Throttle[g] = 0 }); ramp(410, 445, (g, f) => { X.Brake[g] = .9 * (1 - f); X.Throttle[g] = 0 });
+  ramp(446, 453, g => { X.Brake[g] = 0; X.Throttle[g] = 0 });
+  ramp(454, 460, (g, f) => X.Throttle[g] = .6 * f); ramp(461, 465, (g, f) => X.Throttle[g] = .6 - .4 * f); ramp(466, 500, (g, f) => X.Throttle[g] = .2 + .8 * f);
+  turn(405, 450, 500, 1.0);
+  // C (700-750-800): no braking, a wobbling wheel
+  ramp(700, 800, g => X.Throttle[g] = .5); turn(705, 750, 795, 1.0); ramp(720, 780, (g, f) => X.Steer[g] += .15 * Math.sin(f * 8 * Math.PI));   // reverses the wheel 8 times
+  // D (880-920-960): pressure building to the end of the zone, then a gentle trail
+  ramp(840, 900, (g, f) => { X.Brake[g] = .2 + .75 * f; X.Throttle[g] = 0 }); ramp(900, 925, (g, f) => { X.Brake[g] = .95 * (1 - f); X.Throttle[g] = 0 });
+  ramp(926, 960, (g, f) => X.Throttle[g] = .3 + .7 * f); turn(905, 920, 960, 1.0);
+  return X;
+}
+const cs = [{ n: 1, s: 100, ap: 150, e: 200 }, { n: 2, s: 400, ap: 450, e: 500 }, { n: 3, s: 700, ap: 750, e: 800 }, { n: 4, s: 880, ap: 920, e: 960 }];
+const S = drivingStyle([0, 1, 2, 3].map(lap), cs);
+console.log(JSON.stringify({ flags: S.per.map(p => p.flags), traits: S.traits, per: S.per }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class DrivingStyleTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(STYLE_JS)
+
+    def test_each_habit_is_found_where_it_was_put_and_nowhere_else(self):
+        f = self.r["flags"]
+        self.assertEqual(sorted(f[0]), ["fast_release", "no_trail"])
+        self.assertEqual(sorted(f[1]), ["coast", "stab"])
+        self.assertEqual(f[2], ["saw"])
+        self.assertEqual(f[3], ["late_peak"])
+
+    def test_measured_values(self):
+        p = self.r["per"]
+        self.assertEqual(p[0]["trail"], 0)
+        self.assertLess(p[0]["rel"], 0.3)
+        self.assertEqual(p[1]["trail"], 1)
+        self.assertGreater(p[1]["rel"], 1.0)
+        self.assertAlmostEqual(p[1]["coast"], 1.1, delta=0.11)        # 0.8 s with no pedal plus the tail of the release
+        self.assertEqual(p[1]["stab"], 1)
+        self.assertEqual(p[2]["braked"], 0)                            # no braking: no trail-braking verdict
+        self.assertIsNone(p[2]["trail"])
+        self.assertGreaterEqual(p[2]["cor"], 2)
+        self.assertGreater(p[3]["peak"], 0.7)
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class DrivingTabTest(unittest.TestCase):
+    def test_conflicting_suggestions_are_called_out(self):
+        js = "const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + r"""
+LIVE.ws = {}; LIVE.setup = setupTree(ARGS_YAML); LIVE.meta = { carPath: 'ferrari296gt3', carName: 'Ferrari 296 GT3' };
+setupHtml();
+IB.a = { laps: [{ ok: true, time: 90 }], best: 0, _style: { nLaps: 5, traits: { no_trail: [2], saw: [2] }, per: [] } };
+const h = drivingHtml();
+console.log(JSON.stringify({ note: /Note:<\/b> ([^<]*?) (is|are) suggested in opposite/.exec(h), hasCoast: h.includes('Brake fully off before turning in') }));
+"""
+        r = run_js(js)
+        self.assertTrue(r["hasCoast"])
+        self.assertIsNotNone(r["note"])
+        self.assertIn("Diff preload", r["note"][1])                   # lower to rotate on entry, higher for stability

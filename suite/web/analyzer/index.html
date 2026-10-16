@@ -803,8 +803,8 @@ else{const rest=order.filter(s=>!SETUP_FULL.has(s)),half=Math.ceil(rest.length/2
 const pre=order.filter(s=>SETUP_FULL.has(s)&&order.indexOf(s)<first),post=order.filter(s=>SETUP_FULL.has(s)&&order.indexOf(s)>first);
 body=pre.map(s=>full(s,secs)).join('')+'<div class="sgrid">'+L.map((s,k)=>setupSection(s,secs[s],both,mapB)+(R[k]?setupSection(R[k],secs[R[k]],both,mapB):'<div></div>')).join('')+'</div>'+post.map(s=>full(s,secs)).join('')}
 return{id:g,name:SETUP_TABN[g]||g,body,nd:byG[g].filter(isDiff).length}});
-if(!S.stored&&!S.live&&S===IB.a)tabs.unshift({id:'advice',name:'Suggestions',body:adviceHtml(),nd:0});
-tabs.splice(tabs[0]&&tabs[0].id==='advice'?1:0,0,{id:'symptom',name:'Fix by symptom',body:symptomHtml(),nd:0});
+if(!S.stored&&!S.live&&S===IB.a){tabs.unshift({id:'driving',name:'Your driving',body:drivingHtml(),nd:0});tabs.unshift({id:'advice',name:'Suggestions',body:adviceHtml(),nd:0})}
+tabs.splice(tabs.filter(t=>t.id==='advice'||t.id==='driving').length,0,{id:'symptom',name:'Fix by symptom',body:symptomHtml(),nd:0});
 tabs.push({id:'notes',name:'Notes',body:trimHtml()+notesHtml()+libHtml(),nd:0});
 if(!tabs.some(t=>t.id===SETUP_TAB))SETUP_TAB=tabs[0].id;
 h+='<div class="stabs">'+tabs.map(t=>'<button type="button" data-tab="'+t.id+'"'+(t.id===SETUP_TAB?' class="on"':'')+'>'+t.name+(t.nd?' <span class="m">('+t.nd+')</span>':'')+'</button>').join('')+'</div>';
@@ -1202,6 +1202,73 @@ return h+`<p class="m" style="font-size:13px;margin:8px 0 0">Change one thing, r
 function wireSymptoms(el){el.querySelectorAll('[data-sym]').forEach(b=>b.onclick=()=>{SYM=SYM===b.dataset.sym?null:b.dataset.sym;const p=el.querySelector('[data-tabp="symptom"]');if(p)p.innerHTML=symptomHtml();wireSymptoms(el)});
 el.querySelectorAll('[data-symgo]').forEach(a=>a.onclick=e=>{e.preventDefault();const i=+a.dataset.symgo,r=(SETUP_ROWS||[])[i];if(!r)return;SETUP_TAB=r.g;renderSetup();
 const inp=$('setup').querySelector('input[data-si="'+i+'"]');const tr=inp?inp.closest('tr')||inp:null;if(tr){tr.scrollIntoView({block:'center'});tr.style.outline='2px solid var(--acc,#e6b422)';setTimeout(()=>{tr.style.outline=''},2500);if(inp)inp.focus()}})}
+
+// ---- Your driving: habits measured on your own laps, and setups that help with them ----
+// No reference needed: every number is from the clean laps in the loaded file, corner by
+// corner (the analyzer's own corner zones). Thresholds were set on Andrew's real
+// Indianapolis laps (2026-10-10), where they separate corners from each other.
+const STYLE_TRAITS={
+no_trail:{t:'Brake fully off before turning in',m:'braking corners where the brake is off as you turn in',
+ drive:'Keep a little brake on as you start to turn and release it gradually towards the apex (trail braking). The weight stays on the front tyres, so the car turns in.',
+ car:'If you prefer to finish braking before turning, a car that rotates more on entry helps:',ch:[['arbblades','front',-1],['totaltoein','front',-1],['diffpreload','',-1]]},
+fast_release:{t:'Brake released abruptly',m:'from 80% of peak to off in under 0.3 s',
+ drive:'Roll off the brake over about half a second as you turn in instead of letting it snap off. A sudden release lifts the front and the car pushes wide.',
+ car:'A front that rises more slowly when the brake comes off keeps the grip a little longer:',ch:[['lowspeedrebounddamping','front',1],['arbblades','front',-1]]},
+coast:{t:'Coasting mid-corner',m:'0.5 s or more with neither pedal in a corner',
+ drive:'Coasting usually means waiting for the car to rotate. Carry a touch of brake to the apex, then pick up a light, steady throttle as early as you can.',
+ car:'If you coast because the car will not rotate in the middle of the corner, more mid-corner rotation helps:',ch:[['arbblades','rear',1],['arbblades','front',-1]]},
+stab:{t:'Throttle stabs on exit',m:'getting on the throttle, lifting, then back on',
+ drive:'Squeeze the throttle in as you unwind the steering. Pick a point you are sure of and go once, rather than going early and lifting.',
+ car:'If you lift because the rear steps out, a calmer car on the power helps:',ch:[['tcsetting','',0],['arbblades','rear',-1],['diffpreload','',-1],['rearwingangle','',1]]},
+saw:{t:'Steering corrections mid-corner',m:'two or more corrections within one turn',
+ drive:'Aim for one smooth steering input in and one out. Corrections usually come from an entry that is too fast or a car that is moving around.',
+ car:'If the car feels nervous and you are catching it, more stability helps:',ch:[['toein','rear',1],['diffpreload','',1],['arbblades','rear',-1]]},
+late_peak:{t:'Peak braking comes late',m:'pressure still building at the end of the braking zone',
+ drive:'Hit the brake hard at the start of the zone, when the car has the most speed and downforce, and ease off as it slows. Building pressure late locks the fronts as you turn in.',
+ car:'This one is technique: no setup change fixes it, so none is suggested.',ch:[]}};
+const STYLE_MIN=0.5;   // share of laps a habit must show in a corner to be flagged
+// one lap through one corner zone (lap object resampled with rs)
+function styleCorner(X,c,prevE){const s=c.s,e=c.e,ap=c.ap;let mx=0;for(let g=s;g<=e;g++)mx=Math.max(mx,Math.abs(X.Steer[g]));
+let tin=s;for(let g=s;g<=ap;g++)if(Math.abs(X.Steer[g])>=.3*mx){tin=g;break}
+const from=Math.max(0,prevE!=null?prevE:s-150,s-150);let bz0=-1,bz1=-1,pk=0,pkg=-1;for(let g=from;g<=ap;g++)if(X.Brake[g]>.1){if(bz0<0)bz0=g;bz1=g;if(X.Brake[g]>pk){pk=X.Brake[g];pkg=g}}
+const braked=pk>=.3,r={braked,pk};
+if(braked){r.trail=X.Brake[tin]>=.05;let r80=-1,r05=-1;for(let g=pkg;g<=ap;g++){if(r80<0&&X.Brake[g]<.8*pk)r80=g;if(X.Brake[g]<.05){r05=g;break}}r.rel=r80>=0&&r05>=0?X.t[r05]-X.t[r80]:null;
+const zl=X.t[bz1]-X.t[bz0];r.peakPos=zl>.8?(X.t[pkg]-X.t[bz0])/zl:null}
+let coast=0;for(let g=Math.max(s,tin);g<e;g++)if(X.Brake[g]<.05&&X.Throttle[g]<.05)coast+=X.t[g+1]-X.t[g];r.coast=coast;
+let stab=0,hi=0,armed=false;for(let g=ap;g<=e;g++){const th=X.Throttle[g];if(th>hi)hi=th;if(hi>.3&&th<hi-.25)armed=true;if(armed&&th>hi-.05){stab++;armed=false;hi=th}}r.stab=stab;
+// corrections: wiggles in the steering while it stays on one side, between turn-in and unwinding below 30%
+const sg=Math.sign(X.Steer[c.ap]||X.Steer[tin]||1);let out=e;for(let g=ap;g<=e;g++)if(Math.abs(X.Steer[g])<.3*mx){out=g;break}
+let cor=0,dir=0,ext=X.Steer[tin];const P=.035;for(let g=tin+1;g<=out;g++){const v=X.Steer[g];if(Math.sign(v)!==sg)break;if(dir>=0){if(v>ext)ext=v;else if(ext-v>P){if(dir!==0)cor++;dir=-1;ext=v}}else{if(v<ext)ext=v;else if(v-ext>P){cor++;dir=1;ext=v}}if(dir===0&&Math.abs(v-X.Steer[tin])>P)dir=v>X.Steer[tin]?1:-1}
+r.cor=Math.max(0,cor-1);   // in and out of one turn is one up and one down
+return r}
+function drivingStyle(laps,cs){const per=cs.map((c,k)=>{const L=laps.map(X=>styleCorner(X,c,k?cs[k-1].e:null)),n=L.length,b=L.filter(x=>x.braked),share=f=>n?L.filter(f).length/n:0,shareB=f=>b.length?b.filter(f).length/b.length:0,
+med=a=>{const v=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q);return v.length?v[Math.floor((v.length-1)/2)]:null};
+const flags=[];if(b.length>=n*.6&&shareB(x=>!x.trail)>=STYLE_MIN)flags.push('no_trail');if(b.length>=n*.6&&shareB(x=>x.rel!=null&&x.rel<.3)>=STYLE_MIN)flags.push('fast_release');
+if(share(x=>x.coast>=.5)>=STYLE_MIN)flags.push('coast');if(L.reduce((s,x)=>s+x.stab,0)/Math.max(1,n)>=.5)flags.push('stab');if(share(x=>x.cor>=2)>=STYLE_MIN)flags.push('saw');
+if(b.length>=n*.6&&shareB(x=>x.peakPos!=null&&x.peakPos>=.7)>=STYLE_MIN)flags.push('late_peak');
+return{n:c.n,laps:n,braked:b.length,trail:b.length?shareB(x=>x.trail):null,rel:med(b.map(x=>x.rel)),coast:med(L.map(x=>x.coast)),stab:L.reduce((s,x)=>s+x.stab,0)/Math.max(1,n),cor:med(L.map(x=>x.cor)),peak:med(b.map(x=>x.peakPos)),flags}});
+const traits={};per.forEach(p=>p.flags.forEach(f=>(traits[f]=traits[f]||[]).push(p.n)));return{per,traits}}
+function styleOf(ib){if(!ib||!ib.laps)return null;if(ib._style!==undefined)return ib._style;const bt=ib.laps[ib.best].time,ok=ib.laps.map((l,i)=>i).filter(i=>ib.laps[i].ok&&ib.laps[i].time<=bt*1.03);
+if(ok.length<3)return ib._style={few:true,n:ok.length};const best=ib.lapObj(ib.best);turnsLoad(best);const cs=analyze(best,best).cs;if(!cs.length)return ib._style=null;
+const laps=ok.map(i=>rs(ib.lapObj(i),[]));return ib._style=Object.assign(drivingStyle(laps,cs),{nLaps:laps.length})}
+function drivingHtml(){const ib=IB.a,S=styleOf(ib);if(!S)return '<p class="m">Load an .ibt file of your own laps to measure your driving.</p>';
+if(S.few)return `<p class="m">Needs at least 3 clean laps within 3% of your fastest; this file has ${S.n}.</p>`;
+const rows=SETUP_ROWS||[],car=SETUP_SRC&&SETUP_SRC.carPath,keys=Object.keys(STYLE_TRAITS).filter(k=>S.traits[k]);
+let h=`<p class="m" style="margin:0 0 8px">Measured on your ${S.nLaps} clean laps in this file (within 3% of your fastest), corner by corner. A habit is listed when it shows in at least half your laps through a corner. For each one: how to fix it in the driving, or, if you would rather the car help, the settings that compensate.</p>`;
+{const dirs={},lab={};keys.forEach(k=>STYLE_TRAITS[k].ch.forEach(c=>{const r=adviceRow(rows,c,car);if(!r||r.at||!c[2])return;const id=c[0]+'|'+c[1];(dirs[id]=dirs[id]||new Set()).add(c[2]);lab[id]=r.label}));
+const clash=Object.keys(dirs).filter(id=>dirs[id].size>1).map(id=>lab[id]);
+if(clash.length)h+=`<p style="margin:0 0 8px"><b>Note:</b> ${clash.map(plain).join(', ')} ${clash.length>1?'are':'is'} suggested in opposite directions by different habits below. Work on the driving first, and if you change the setup, pick the habit that costs you most and try one change at a time.</p>`}
+if(!keys.length)h+=`<p><b>No clear habits stand out.</b> You trail brake, release the brake smoothly, keep coasting short and pick up the throttle once. Work on the reference comparison for the remaining time.</p>`;
+h+=keys.map(k=>{const T=STYLE_TRAITS[k],cn=S.traits[k].map(n=>CN(n)).join(', ');const ch=T.ch.map(c=>adviceRow(rows,c,car)).filter(Boolean),use=ch.filter(c=>!c.at),blocked=ch.filter(c=>c.at);
+return `<div style="margin:0 0 10px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px"><b>${T.t}</b> <span class="m">(${T.m})</span> in <b>${cn}</b>`+
+`<div style="margin-top:6px"><b>Fix it in the driving:</b> ${T.drive}</div><div style="margin-top:6px"><b>Or let the car help:</b> ${T.car}</div>`+
+(use.length?`<ul style="margin:4px 0 0 18px">${use.map(c=>{const i=rows.indexOf(c.r);return `<li><b>${plain(c.label)}</b>: ${plain(c.word.toLowerCase())}, one click <span class="m">(now ${plain(c.cur)})</span> ${i>=0?`<a href="#" data-symgo="${i}" class="m" style="font-size:13px">show in setup</a>`:''}${c.why?`<br><small class="m">${plain(c.why)}</small>`:''}</li>`}).join('')}</ul>`:'')+
+(blocked.length?`<div class="m" style="font-size:13px">${blocked.map(c=>plain(c.label)+' is '+c.at).join('; ')}.</div>`:'')+`</div>`}).join('');
+const pct=v=>v==null?'–':Math.round(v*100)+'%',sec=v=>v==null?'–':v.toFixed(2)+' s',fl=(p,k)=>p.flags.includes(k)?' class="bad"':'';
+h+=`<details style="margin-top:6px"><summary class="m">Every corner, measured</summary><div style="overflow-x:auto"><table><tr><th>Corner</th><th>Laps braking</th><th>Trail braking</th><th>Brake release</th><th>Peak braking (0 start, 1 end)</th><th>Coasting</th><th>Throttle stabs per lap</th><th>Steering corrections</th></tr>`+
+S.per.map(p=>`<tr><td><b>${CN(p.n)}</b></td><td>${p.braked} of ${p.laps}</td><td${fl(p,'no_trail')}>${pct(p.trail)}</td><td${fl(p,'fast_release')}>${sec(p.rel)}</td><td${fl(p,'late_peak')}>${p.peak==null?'–':p.peak.toFixed(2)}</td><td${fl(p,'coast')}>${sec(p.coast)}</td><td${fl(p,'stab')}>${p.stab.toFixed(1)}</td><td${fl(p,'saw')}>${p.cor==null?'–':p.cor}</td></tr>`).join('')+
+`</table></div><p class="m" style="font-size:13px">Middle values across your laps. Trail braking is the share of braking laps where the brake is still on as you turn in. Corner zones can hold more than one turn, which raises coasting and corrections there.</p></details>`;
+return h}
 
 // ---------- click a graph to enlarge it ----------
 let ZOOM=null;
