@@ -555,3 +555,62 @@ class DriverLapsTest(unittest.TestCase):
         self.assertEqual(r["liveName"], "#7 Fast Fred")
         self.assertEqual(r["liveN"], 500)
         self.assertAlmostEqual(r["liveHalf"], r["halfTruth"], delta=0.02)
+
+
+PACE_JS = r"""
+// recorded drivers at one layout and car: faster with iRating, plus noise
+const L = [], ir = [1200, 1500, 1800, 2000, 2100, 2300, 2500, 2700, 2900, 3000, 3400, 4200];
+ir.forEach((r, i) => L.push({ name: 'D' + i, num: String(i), ir: r, time: 90 - (r - 1200) * 0.0008 + (i % 3) * 0.05 }));
+L.push({ name: 'NoRating', num: '99', ir: null, time: 80 });          // no iRating: never counted
+const inRange = L.filter(e => e.ir >= 2000 && e.ir <= 3000).map(e => e.time).sort((a, b) => a - b);
+const med = inRange.length % 2 ? inRange[(inRange.length - 1) / 2] : (inRange[inRange.length / 2 - 1] + inRange[inRange.length / 2]) / 2;
+const mine = [89.2, 88.85, 89.0, 88.9];
+const S = paceStats(L, mine, 2000, 3000, 'median'), Sf = paceStats(L, mine, 2000, 3000, 'fastest');
+const few = paceStats(L, mine, 3500, 5000, 'median');
+const any = paceStats(L, mine, null, null, 'median');
+// the whole card, on recorded laps in the library
+localStorage.setItem('ghostLaps', JSON.stringify(L.filter(e => e.ir).map((e, i) => ({ ...e, key: 'k' + i, track: 'T · GP', carPath: 'car1', at: i, g: { t: [0], v: [50], gear: [3], rpm: [1], st: [0] } }))));
+GH.lib = null; GH.track = 'T · GP'; LIVE.meta = { carPath: 'car1' }; F.a = { lap: 88.85 };
+const def = paceRange();
+let html = '', err = null; try { html = paceHtml() } catch (x) { err = String(x) }
+localStorage.setItem('irrange', JSON.stringify([null, null]));
+const anyRange = paceRange();
+console.log(JSON.stringify({ ref: S.ref, med, inR: S.inR.length, bestPct: S.bestPct, typ: S.typ, faster: S.faster,
+  near: S.near.map(x => x.e.ir), nearMed: S.nearMed, refFast: Sf.ref, minIn: Math.min(...inRange), fewRef: few.ref,
+  anyRated: any.rated.length, def, anyRange, err, hasBest: html.includes('Your best'), hasSvg: html.includes('<svg'),
+  noLabels: !/\b(PRO|AM|BEGINNER|alien)\b/i.test(html) }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class PaceRatingTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(PACE_JS)
+
+    def test_reference_is_the_middle_or_fastest_of_the_range(self):
+        r = self.r
+        self.assertAlmostEqual(r["ref"], r["med"], places=9)
+        self.assertEqual(r["inR"], 7)                                 # 2000-3000 inclusive
+        self.assertAlmostEqual(r["refFast"], r["minIn"], places=9)
+        self.assertIsNone(r["fewRef"])                                # fewer than 3 drivers: no scale
+        self.assertEqual(r["anyRated"], 12)                           # a driver without iRating is left out
+
+    def test_your_laps_on_the_scale(self):
+        r = self.r
+        self.assertAlmostEqual(r["bestPct"], 88.85 / r["med"] * 100, places=9)
+        self.assertAlmostEqual(r["typ"], (88.9 + 89.0) / 2, places=9)
+        # drivers within 0.3 % of your best, and their iRatings
+        for ir in r["near"]:
+            self.assertGreaterEqual(ir, 1500)
+        self.assertGreaterEqual(len(r["near"]), 3)
+        self.assertLessEqual(r["faster"], r["inR"])
+
+    def test_card_renders_without_skill_labels(self):
+        r = self.r
+        self.assertIsNone(r["err"])
+        self.assertTrue(r["hasBest"])
+        self.assertTrue(r["hasSvg"])
+        self.assertTrue(r["noLabels"])
+        self.assertEqual(r["def"], [2000, 3000])                      # your stated range until you choose
+        self.assertEqual(r["anyRange"], [None, None])                 # blank boxes mean any rating
