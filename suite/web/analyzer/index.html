@@ -33,6 +33,7 @@ details.fold{margin-bottom:14px}.pbar{height:8px;background:var(--ln);border-rad
 <div id="err"></div>
 <div class="card" id="live" hidden></div>
 <div class="card" id="ghost" hidden></div>
+<div class="card" id="pace" hidden></div>
 <div class="card" id="setup" hidden></div>
 <div class="card" id="sess" hidden></div>
 <div class="card" id="own" hidden></div>
@@ -1047,7 +1048,7 @@ return `<details ${GH.open?'open':''} id="ghWrap" style="margin:0"><summary styl
 `<p class="m" style="margin:6px 0">While the live connection runs, the analyzer records every car's laps, driving or spectating, and keeps each driver's best clean lap (no pit, no off-track, no tow). iRacing shares other cars' lap position, gear, rpm and steering but not their pedals or GPS, so these compare lap time, speed (worked out from their movement), gear and steering. "est." means iRacing has not confirmed that lap time; it was measured from the line crossings.</p>`+
 (same.length?tb(same):'')+(other.length?`<details style="margin-top:6px"><summary class="m">Other cars at this track (${other.length})</summary>${tb(other)}</details>`:'')+
 (F.a?'':'<p class="m" style="margin:6px 0 0">Load one of your own laps on the left to compare with a driver.</p>')+`</details>`}
-function ghRender(){const el=$('ghost');if(!el)return;const h=ghHtml();el.innerHTML=h;el.hidden=!h;const w=$('ghWrap');if(w)w.ontoggle=()=>{GH.open=w.open};
+function ghRender(){try{paceRender()}catch(e){}const el=$('ghost');if(!el)return;const h=ghHtml();el.innerHTML=h;el.hidden=!h;const w=$('ghWrap');if(w)w.ontoggle=()=>{GH.open=w.open};
 el.querySelectorAll('[data-gh]').forEach(b=>b.onclick=()=>ghUse(b.dataset.gh));
 el.querySelectorAll('[data-ghl]').forEach(b=>b.onclick=()=>{GH.sel=b.dataset.ghl;LIVE_CMP='ghost';const s=$('liveCmp');if(s)s.value='ghost';liveRender();liveDrawCharts()})}
 // ---- comparing your lap with a recorded driver lap: only what both have ----
@@ -1080,6 +1081,54 @@ const cell=(x,y,d,good)=>{const dv=x-y;return `<td>${x.toFixed(d)} · ${y.toFixe
 h+=`<div style="overflow-x:auto;margin-top:8px"><table><caption>Each corner: your value · ${plain(n)}'s (difference). Corners are found on ${plain(n)}'s speed.</caption><tr><th>Corner</th><th>Time in zone (s)</th><th>Entry speed (${S})</th><th>Slowest point (${S})</th><th>Exit speed (${S})</th><th>Gear at slowest</th><th>Steering at slowest (°)</th></tr>`+
 Q.cs.map(c=>`<tr><td><b>${CN(c.n)}</b></td><td class="${c.dt>.03?'bad':c.dt<-.03?'good':''}">${sg(c.dt)}</td>${cell(c.a.es*k,c.b.es*k,0,1)}${cell(c.a.ms*k,c.b.ms*k,0,1)}${cell(c.a.xs*k,c.b.xs*k,0,1)}<td>${c.a.gr} · ${c.b.gr}</td>${cell(c.a.sa,c.b.sa,0,0)}</tr>`).join('')+`</table></div>`;
 return h}
+
+// ---- Pace rating: your laps as a percentage of drivers you recorded, by iRating ----
+// The 100-107% scale is a community convention (from F1's 107% rule); the skill words
+// people attach to its bands have no published data behind them, so none are shown here.
+// 100% is built from real laps instead: the drivers this analyzer recorded live at the same
+// layout in the same car, filtered by iRating. Their laps are each driver's best clean lap
+// in a session you watched, so weather, rubber and fuel differ between them.
+const PACE_NEAR=0.3,PACE_MIN=3;
+function paceMode(){try{return localStorage.getItem('paceRef')==='fastest'?'fastest':'median'}catch(e){return 'median'}}
+function paceRange(){let raw=null;try{raw=localStorage.getItem('irrange')}catch(e){}return raw==null?[2000,3000]:irRange()}   // 2000-3000 until you choose; blank boxes mean any
+const paceMed=a=>{const s=a.slice().sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null};
+// pure: recorded laps [{time,ir,...}], your lap times, iRating range, 'median'|'fastest'
+function paceStats(L,mine,lo,hi,mode){const rated=L.filter(e=>e.ir>0&&e.time>0),inR=rated.filter(e=>(lo==null||e.ir>=lo)&&(hi==null||e.ir<=hi));
+if(inR.length<PACE_MIN)return{rated,inR,ref:null};const times=inR.map(e=>e.time),ref=mode==='fastest'?Math.min(...times):paceMed(times),pc=t=>t/ref*100;
+const ok=(mine||[]).filter(t=>t>0),best=ok.length?Math.min(...ok):null,typ=ok.length?paceMed(ok):null;
+const all=rated.map(e=>({e,pct:pc(e.time)})).sort((a,b)=>a.pct-b.pct);
+const near=best==null?[]:all.filter(x=>Math.abs(x.pct-pc(best))<=PACE_NEAR),nearIr=near.map(x=>x.e.ir);
+const faster=best==null?null:inR.filter(e=>e.time<best).length;
+return{rated,inR,ref,mode,lo,hi,all,best,typ,bestPct:best&&pc(best),typPct:typ&&pc(typ),near,nearMed:paceMed(nearIr),nearLo:nearIr.length?Math.min(...nearIr):null,nearHi:nearIr.length?Math.max(...nearIr):null,faster}}
+function paceMine(){const ib=IB.a;if(ib&&ib.laps)return ib.laps.filter(l=>l.ok).map(l=>l.time);if(F.a&&F.a.lap)return[F.a.lap];return LIVE.laps.filter(l=>l.valid).map(l=>l.time)}
+function paceSvg(S){const W=640,H=230,pl=46,pr=10,pt=12,pb=30,pts=S.all;if(!pts.length)return '';const irs=pts.map(x=>x.e.ir),ps=pts.map(x=>x.pct).concat(S.bestPct?[S.bestPct]:[]);
+let x0=Math.min(...irs),x1=Math.max(...irs);if(S.lo!=null)x0=Math.min(x0,S.lo);if(S.hi!=null)x1=Math.max(x1,S.hi);const xp=(x1-x0)*.05||100;x0-=xp;x1+=xp;let y0=Math.min(...ps,100),y1=Math.max(...ps,100);const yp=(y1-y0)*.08||.5;y0-=yp;y1+=yp;
+const X=v=>pl+(v-x0)/(x1-x0)*(W-pl-pr),Y=v=>pt+(v-y0)/(y1-y0)*(H-pt-pb);   // faster (lower %) at the top
+let h=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto;display:block">`;
+if(S.lo!=null||S.hi!=null){const a=X(S.lo!=null?S.lo:x0),b=X(S.hi!=null?S.hi:x1);h+=`<rect x="${a.toFixed(1)}" y="${pt}" width="${(b-a).toFixed(1)}" height="${H-pt-pb}" fill="currentColor" opacity=".07"/>`}
+h+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(100).toFixed(1)}" y2="${Y(100).toFixed(1)}" stroke="currentColor" stroke-dasharray="4 4" opacity=".4"/><text x="${pl-4}" y="${(Y(100)+4).toFixed(1)}" font-size="10" text-anchor="end" fill="currentColor">100%</text>`;
+[y0+yp,y1-yp].forEach(v=>{h+=`<text x="${pl-4}" y="${(Y(v)+4).toFixed(1)}" font-size="10" text-anchor="end" fill="currentColor" opacity=".7">${v.toFixed(1)}%</text>`});
+const ticks=[];for(let v=Math.ceil(x0/500)*500;v<=x1;v+=500)ticks.push(v);if(ticks.length>9)ticks.splice(0,ticks.length,...ticks.filter((v,i)=>i%2===0));
+ticks.forEach(v=>{h+=`<text x="${X(v).toFixed(1)}" y="${H-12}" font-size="10" text-anchor="middle" fill="currentColor" opacity=".7">${v}</text>`});
+h+=`<text x="${W-pr}" y="${H-1}" font-size="10" text-anchor="end" fill="currentColor" opacity=".7">iRating →  (faster is higher)</text>`;
+if(S.bestPct){h+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(S.bestPct).toFixed(1)}" y2="${Y(S.bestPct).toFixed(1)}" stroke="var(--you)" stroke-width="2"/><text x="${W-pr}" y="${(Y(S.bestPct)-4).toFixed(1)}" font-size="11" text-anchor="end" fill="var(--you)" font-weight="600">your best ${S.bestPct.toFixed(2)}%</text>`}
+pts.forEach(x=>{const inR=(S.lo==null||x.e.ir>=S.lo)&&(S.hi==null||x.e.ir<=S.hi);h+=`<circle cx="${X(x.e.ir).toFixed(1)}" cy="${Y(x.pct).toFixed(1)}" r="4" fill="${inR?'var(--ref)':'currentColor'}" opacity="${inR?.9:.35}"><title>#${plain(x.e.num||'')} ${plain(x.e.name)} · ${x.e.ir} iR · ${ft(x.e.time)} · ${x.pct.toFixed(2)}%</title></circle>`});
+return h+'</svg>'}
+function paceHtml(){const track=(IB.a&&IB.a.yaml?ghTrackOf(IB.a.yaml):'')||GH.track,car=(IB.a&&IB.a.carPath)||(LIVE.meta&&LIVE.meta.carPath)||'';if(!track||!car)return '';
+const L=ghFor(track,car);if(!L.length)return '';const[lo,hi]=paceRange(),mode=paceMode(),S=paceStats(L,paceMine(),lo,hi,mode);
+const rng=`<label class="m">iRating <input id="paceLo" type="number" step="100" value="${lo??''}" placeholder="any" style="width:80px"> to <input id="paceHi" type="number" step="100" value="${hi??''}" placeholder="any" style="width:80px"></label> <label class="m">100% = <select id="paceMode"><option value="median"${mode==='median'?' selected':''}>the middle of their laps</option><option value="fastest"${mode==='fastest'?' selected':''}>the fastest of them</option></select></label>`;
+let h=`<details ${GH.paceOpen?'open':''} id="paceWrap" style="margin:0"><summary style="cursor:pointer"><b>Pace rating</b> <span class="m">your laps as a percentage of drivers you recorded here, by iRating</span></summary><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:8px 0">${rng}</div>`;
+if(!S.ref){h+=`<p class="m">Needs at least ${PACE_MIN} recorded drivers in that iRating range in this car at ${plain(track)} (${S.inR.length} so far, ${S.rated.length} at any rating). Driver laps are recorded while the live connection runs, driving or spectating.</p></details>`;return h}
+const pc=v=>v.toFixed(2)+'%';
+h+=`<div style="font-size:15px">100% = <b>${ft(S.ref)}</b> <span class="m">(${mode==='fastest'?'fastest':'middle'} of ${S.inR.length} drivers, ${lo??'any'}–${hi??'any'} iRating)</span></div>`;
+if(S.best){h+=`<div style="font-size:15px;margin-top:4px">Your best <b>${ft(S.best)}</b> = <b class="you">${pc(S.bestPct)}</b>`+(S.typ&&S.typ!==S.best?` · your typical lap ${ft(S.typ)} = ${pc(S.typPct)}`:'')+` · ${S.faster} of ${S.inR.length} in range were faster.</div>`;
+h+=S.near.length>=PACE_MIN?`<p style="margin:4px 0">Drivers within ${PACE_NEAR}% of your best: <b>${S.near.length}</b>, iRating ${S.nearLo}–${S.nearHi} (middle <b>${Math.round(S.nearMed)}</b>).</p>`:`<p class="m" style="margin:4px 0">Fewer than ${PACE_MIN} recorded drivers are within ${PACE_NEAR}% of your best, so there is no iRating to compare yet.</p>`}
+else h+=`<p class="m">Load one of your own laps (or drive with the live connection on) to place yourself on this scale.</p>`;
+h+=paceSvg(S)+`<p class="m" style="margin:6px 0 0">Every dot is one driver's best clean lap from a session you watched (blue: inside your iRating range). Track temperature, rubber, fuel and traffic differ between sessions, so treat a few tenths as noise. The 100%–107% scale is a community convention; this page does not label bands as good or bad because no published data backs those labels.</p></details>`;
+return h}
+function paceRender(){const el=$('pace');if(!el)return;let h='';try{h=paceHtml()}catch(e){console.error('pace',e)}el.innerHTML=h;el.hidden=!h;const w=$('paceWrap');if(w)w.ontoggle=()=>{GH.paceOpen=w.open};
+const lo=$('paceLo'),hi=$('paceHi'),md=$('paceMode'),save=()=>{const v=x=>x.value.trim()===''?null:+x.value;try{localStorage.setItem('irrange',JSON.stringify([v(lo),v(hi)]))}catch(e){}GH.paceOpen=true;paceRender();if(F.a&&F.b&&!F.b.limited)run()};
+if(lo)lo.onchange=save;if(hi)hi.onchange=save;if(md)md.onchange=()=>{try{localStorage.setItem('paceRef',md.value)}catch(e){}GH.paceOpen=true;paceRender()}}
 
 // ---------- click a graph to enlarge it ----------
 let ZOOM=null;
