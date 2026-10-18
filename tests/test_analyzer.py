@@ -1305,3 +1305,67 @@ class EngineerWaitsForCorneringTest(unittest.TestCase):
         self.assertEqual(r["waiting"], 0)
         self.assertIn("not enough cornering yet", r["hw"])
         self.assertEqual(r["items"], [["Front ARB blades", 75, 66]])
+
+
+COACH_JS = r"""
+// a 2 km track with two corners; laps differ only in where the driver brakes for corner 1
+function lap(brake1, who) {
+  const n = 2000, len = 2000, D = new Float64Array(n), S = new Float64Array(n), Br = new Float64Array(n), Th = new Float64Array(n), t = new Float64Array(n);
+  const corners = [[0.35, brake1], [0.75, 0.70]];        // [apex, braking point]
+  for (let i = 0; i < n; i++) {
+    const d = i / (n - 1); D[i] = d; let v = 60, br = 0, th = 1;
+    for (const [ap, bp] of corners) {
+      if (d >= bp && d < ap) { const f = (d - bp) / (ap - bp); v = 60 - 35 * f; br = 0.9; th = 0 }
+      else if (d >= ap && d < ap + 0.05) { const f = (d - ap) / 0.05; v = 25 + 35 * f; br = 0; th = f > 0.2 ? 1 : 0.3 }
+    }
+    S[i] = v; Br[i] = br; Th[i] = th;
+    t[i] = i ? t[i - 1] + (len / (n - 1)) / ((S[i] + S[i - 1]) / 2) : 0;
+  }
+  const z = () => new Float64Array(n);
+  return { n, D, Speed: S, Brake: Br, Throttle: Th, t, lap: t[n - 1], Steer: z(), Gear: z(), Lat: z(), Lon: z(), RPM: z(), ABS: z(), LatG: z(), LonG: z(), VertG: z(), YawRate: z(), who, ext: {}, meta: {} };
+}
+const best = lap(0.31, 'best');
+const laps = [lap(0.28, 'a'), lap(0.285, 'b'), lap(0.29, 'c'), lap(0.31, 'd'), lap(0.28, 'e')];
+const avg = avgLap(laps);
+const C = coachCompare(avg, best, laps);
+const c1 = C.corners.find(c => Math.abs(c.ap - 350) < 40), c2 = C.corners.find(c => Math.abs(c.ap - 750) < 40);
+// live laps are kept compactly and come back as laps
+LIVE.meta = { carPath: 'ferrari296gt3', who: 'Me' }; LIVE.yaml = 'TrackDisplayName: Test Raceway';
+const b = { d: [], t: [], Speed: [], Brake: [], thr: [], str: [], gear: [], rpm: [], LatG: [], lon: [], yaw: [], abs: [] };
+for (let i = 0; i < best.n; i += 3) { b.d.push(best.D[i]); b.t.push(best.t[i]); b.Speed.push(best.Speed[i]); b.Brake.push(best.Brake[i]); b.thr.push(best.Throttle[i]);
+  ['str', 'gear', 'rpm', 'LatG', 'lon', 'yaw', 'abs'].forEach(k => b[k].push(0)) }
+coachSaveLive({ b, lastT: best.lap, lap: 7, ver: 1 });
+const saved = coachLiveLoad()[coachLiveKey()], back = coachFromSaved(saved[0]);
+const C2 = coachCompare(avgLap([back]), best, [back]);
+console.log(JSON.stringify({ avgLap: avg.lap, meanLap: laps.reduce((s, l) => s + l.lap, 0) / laps.length, spread: avg.spread, bestLap: best.lap, total: C.total,
+  c1: c1 && { dt: c1.dt, d: c1.d, tips: c1.tips.map(t => t.k) }, c2: c2 && { dt: c2.dt, tips: c2.tips.map(t => t.k) },
+  savedN: saved.length, savedPts: saved[0].D.length, size: JSON.stringify(saved[0]).length, roundTrip: C2.total }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CoachTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(COACH_JS)
+
+    def test_average_lap_is_the_mean_time_and_typical_inputs(self):
+        r = self.r
+        self.assertAlmostEqual(r["avgLap"], r["meanLap"], places=6)
+        self.assertGreater(r["spread"], 0)
+        self.assertAlmostEqual(r["total"], r["meanLap"] - r["bestLap"], places=6)
+
+    def test_finds_the_corner_and_says_brake_later(self):
+        c1, c2 = self.r["c1"], self.r["c2"]
+        self.assertGreater(c1["dt"], 0.05)
+        self.assertLess(c1["d"], -30)                         # the median lap brakes ~50 m earlier
+        self.assertEqual(c1["tips"][0], "brake_later")
+        self.assertIn("consistency", c1["tips"])              # braking point moves lap to lap
+        self.assertLess(abs(c2["dt"]), 0.02)                  # corner 2 is the same in every lap
+        self.assertEqual(c2["tips"], [])
+
+    def test_live_laps_are_saved_small_and_come_back(self):
+        r = self.r
+        self.assertEqual((r["savedN"], r["savedPts"]), (1, 250))
+        self.assertLess(r["size"], 20000)
+        self.assertLess(abs(r["roundTrip"]), 0.05)           # the same lap against itself
