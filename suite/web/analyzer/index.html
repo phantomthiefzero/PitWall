@@ -810,7 +810,7 @@ const pre=order.filter(s=>SETUP_FULL.has(s)&&order.indexOf(s)<first),post=order.
 body=pre.map(s=>full(s,secs)).join('')+'<div class="sgrid">'+L.map((s,k)=>setupSection(s,secs[s],both,mapB)+(R[k]?setupSection(R[k],secs[R[k]],both,mapB):'<div></div>')).join('')+'</div>'+post.map(s=>full(s,secs)).join('')}
 return{id:g,name:SETUP_TABN[g]||g,body,nd:byG[g].filter(isDiff).length}});
 if(!S.stored&&!S.live&&S===IB.a){tabs.unshift({id:'driving',name:'Your driving',body:drivingHtml(),nd:0});tabs.unshift({id:'advice',name:'Suggestions',body:adviceHtml(),nd:0})}
-tabs.splice(tabs.filter(t=>t.id==='advice'||t.id==='driving').length,0,{id:'predict',name:'Predicted changes',body:predictHtml(),nd:0},{id:'symptom',name:'Fix by symptom',body:symptomHtml(),nd:0});
+tabs.splice(tabs.filter(t=>t.id==='advice'||t.id==='driving').length,0,{id:'predict',name:'Predicted changes',body:predictHtml(),nd:0},{id:'build',name:'Build a setup',body:buildHtml(),nd:0},{id:'symptom',name:'Fix by symptom',body:symptomHtml(),nd:0});
 tabs.push({id:'notes',name:'Notes',body:trimHtml()+notesHtml()+libHtml(),nd:0});
 if(!tabs.some(t=>t.id===SETUP_TAB))SETUP_TAB=tabs[0].id;
 h+='<div class="stabs">'+tabs.map(t=>'<button type="button" data-tab="'+t.id+'"'+(t.id===SETUP_TAB?' class="on"':'')+'>'+t.name+(t.nd?' <span class="m">('+t.nd+')</span>':'')+'</button>').join('')+'</div>';
@@ -818,7 +818,7 @@ h+=tabs.map(t=>'<div data-tabp="'+t.id+'"'+(t.id===SETUP_TAB?'':' hidden')+'>'+t
 return h}
 function wireTabs(el){el.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{SETUP_TAB=b.dataset.tab;try{localStorage.setItem('setupTab',SETUP_TAB)}catch(e){}el.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on',x===b));el.querySelectorAll('[data-tabp]').forEach(p=>p.hidden=p.dataset.tabp!==SETUP_TAB)})}
 function wireInfo(el){el.querySelectorAll('[data-inf]').forEach(a=>a.onclick=e=>{e.preventDefault();const id=a.dataset.inf,tr=el.querySelector('[data-infr="'+id+'"]');if(!tr)return;tr.hidden=!tr.hidden;if(tr.hidden)SETUP_OPEN.delete(id);else SETUP_OPEN.add(id)});SETUP_OPEN.forEach(id=>{const tr=el.querySelector('[data-infr="'+id+'"]');if(tr)tr.hidden=false})}
-function renderSetup(){const el=$('setup');if(!el)return;const prev=el.querySelector('details.setupWrap'),wasOpen=prev?prev.open:(()=>{try{return localStorage.getItem('setupOpen')!=='0'}catch(e){return true}})(),op=[...el.querySelectorAll('details')].map(d=>d.open),h=setupHtml();el.innerHTML=h?'<details class="setupWrap"'+(wasOpen?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Car setup</b> <span class="m">click to open or close this section</span></summary><div style="margin-top:8px">'+h.replace('<b>Car setup</b>','')+'</div></details>':'';el.hidden=!h;const sw=el.querySelector('details.setupWrap');if(sw)sw.addEventListener('toggle',()=>{try{localStorage.setItem('setupOpen',sw.open?'1':'0')}catch(e){}});el.querySelectorAll('details').forEach((d,i)=>{if(op[i])d.open=true});el.querySelectorAll('input[data-si]').forEach(x=>x.oninput=()=>setupInput(x));const su=$('setupUnits');if(su)su.onchange=()=>{SETUP_UNITS=su.value;try{localStorage.setItem('setupUnits',SETUP_UNITS)}catch(e){}renderSetup();renderSession()};wireRanges(el);wireInfo(el);wireTabs(el);wireSymptoms(el);const sc=$('setupCar');if(sc)sc.onchange=()=>{SETUP_PICK=sc.value;try{localStorage.setItem('setupCar',SETUP_PICK)}catch(e){}renderSetup()}}
+function renderSetup(){const el=$('setup');if(!el)return;const prev=el.querySelector('details.setupWrap'),wasOpen=prev?prev.open:(()=>{try{return localStorage.getItem('setupOpen')!=='0'}catch(e){return true}})(),op=[...el.querySelectorAll('details')].map(d=>d.open),h=setupHtml();el.innerHTML=h?'<details class="setupWrap"'+(wasOpen?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Car setup</b> <span class="m">click to open or close this section</span></summary><div style="margin-top:8px">'+h.replace('<b>Car setup</b>','')+'</div></details>':'';el.hidden=!h;const sw=el.querySelector('details.setupWrap');if(sw)sw.addEventListener('toggle',()=>{try{localStorage.setItem('setupOpen',sw.open?'1':'0')}catch(e){}});el.querySelectorAll('details').forEach((d,i)=>{if(op[i])d.open=true});el.querySelectorAll('input[data-si]').forEach(x=>x.oninput=()=>setupInput(x));const su=$('setupUnits');if(su)su.onchange=()=>{SETUP_UNITS=su.value;try{localStorage.setItem('setupUnits',SETUP_UNITS)}catch(e){}renderSetup();renderSession()};wireRanges(el);wireInfo(el);wireTabs(el);wireSymptoms(el);wireBuild(el);const sc=$('setupCar');if(sc)sc.onchange=()=>{SETUP_PICK=sc.value;try{localStorage.setItem('setupCar',SETUP_PICK)}catch(e){}renderSetup()}}
 // ---- Session review: every lap of the .ibt on the left, not just the clean ones ----
 // Sector splits are iRacing's own (SplitTimeInfo in the session info). Fuel, tyres and
 // track temperature come straight from the file; averages are over each lap's samples.
@@ -1334,9 +1334,9 @@ function rbBal(B){const o={};if(!B)return o;PHASES.forEach(p=>{const x=B[p];if(x
 function rbRecord(car,run){if(!car||!run||!run.id)return;const C=RB.cars[car]||(RB.cars[car]={runs:[]}),i=C.runs.findIndex(r=>r.id===run.id);if(i>=0)C.runs[i]=run;else C.runs.push(run);
 while(C.runs.length>RB_MAX)C.runs.shift();rbSave()}
 function rbFromFile(ib,fid){try{if(!ib||!ib.carPath||!ib.setup)return;const S=sessionStats(ib),h=handlingStats(ib);if(!S)return;const laps=S.clean.map(r=>r.time);if(laps.length<2)return;
-rbRecord(ib.carPath,{id:'file|'+fid,src:'file',at:Date.now(),track:ghTrackOf(ib.yaml),set:rbSettings(ib.setup),laps,bal:h&&!h.few?rbBal(h.B):{}})}catch(e){console.error('runbook',e)}}
+rbRecord(ib.carPath,{id:'file|'+fid,src:'file',at:Date.now(),track:ghTrackOf(ib.yaml),set:rbSettings(ib.setup),txt:rbText(ib.setup),laps,bal:h&&!h.few?rbBal(h.B):{}})}catch(e){console.error('runbook',e)}}
 function rbFromLive(){try{const n=LIVE.vers.length,s=LIVE.vers[n-1];if(!s||!LIVE.meta||!LIVE.meta.carPath)return;const laps=LIVE.laps.filter(l=>l.ver===n&&l.valid).map(l=>l.time);if(laps.length<RUN_MIN)return;
-const h=liveRunCore(n);rbRecord(LIVE.meta.carPath,{id:'live|'+(LIVE.meta.sid||'s')+'|'+(LIVE.startedAt||0)+'|'+n,src:'live',at:Date.now(),track:ghTrackOf(LIVE.yaml||''),set:rbSettings(s.tree),laps,bal:h&&!h.few?rbBal(h.B):{}})}catch(e){console.error('runbook',e)}}
+const h=liveRunCore(n);rbRecord(LIVE.meta.carPath,{id:'live|'+(LIVE.meta.sid||'s')+'|'+(LIVE.startedAt||0)+'|'+n,src:'live',at:Date.now(),track:ghTrackOf(LIVE.yaml||''),set:rbSettings(s.tree),txt:rbText(s.tree),laps,bal:h&&!h.few?rbBal(h.B):{}})}catch(e){console.error('runbook',e)}}
 // pure: pairs of runs that differ in exactly one setting -> one measurement each
 function rbSamples(runs){const med=a=>{const s=a.slice().sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null};const out=[];
 for(let i=0;i<runs.length;i++)for(let j=i+1;j<runs.length;j++){const a=runs[i],b=runs[j],diff=rbDiff(a.set,b.set);
@@ -1404,6 +1404,59 @@ let h=`<details style="margin-top:8px"${L.length?'':' open'}><summary><b>Garage 
 h+=`<p class="m" style="margin:6px 0">iRacing's garage works out front downforce, ride heights at speed and weights for every setup. To teach the analyzer how each setting moves them, connect live, open the garage and change <b>one setting by one click</b> at a time (wing, front ride height, rear ride height, springs), then put it back. Each click is one measurement. Loaded .ibt files count too.</p>`;
 if(L.length)h+=`<div style="overflow-x:auto"><table><tr><th>Per unit of</th><th>Tests</th>${Object.keys(GARAGE_CALC).map(k=>`<th>${GARAGE_CALC[k]}</th>`).join('')}</tr>`+L.map(s=>`<tr><td><b>${plain(s.lab)}</b> <span class="m">${plain(s.ax)} (per ${plain(s.u||'unit')})</span></td><td>${s.n}</td>${Object.keys(GARAGE_CALC).map(k=>`<td>${s.per[k]&&Math.abs(s.per[k].per)>1e-6?(s.per[k].per>0?'+':'−')+Math.abs(s.per[k].per).toFixed(3):'–'}</td>`).join('')}</tr>`).join('')+`</table></div>`;
 return h+'</details>'}
+
+// ---- Build a whole setup for a track ----
+// 1. Baseline: your fastest run at the track (median clean lap), else your latest run at a
+//    track with the same downforce level, else the setup you have now.
+// 2. Track: a different downforce level moves the wing, by what your own best setups use at
+//    each level when known, else a labelled estimate of 1 degree per half level.
+// 3. Fixes: the predicted change for each handling problem measured on that baseline run.
+// Every value says where it came from. iRacing setup files cannot be written outside the sim,
+// so the sheet is for typing into the garage.
+const TRIM_LV={'High':3,'High/Medium':2.5,'Medium':2,'Low/Medium':1.5,'Low':1};
+function trimOf(car,track){if(car!=='ferrari296gt3'||!track)return null;const t=track.toLowerCase(),k=Object.keys(TRIM_296).find(n=>{const l=n.toLowerCase();return t.indexOf(l)>=0||l.indexOf(t)>=0});return k?{name:TRIM_296[k],lv:TRIM_LV[TRIM_296[k]]}:null}
+function rbText(tree){const o={};setupRows(tree||{}).forEach(r=>{if(r.calc||LIVE_VOL.has(r.k))return;if(!setupNum(r.v))o[r.lk+(r.cn?'|'+r.cn:'')]=String(r.v)});return o}
+const rbMed=a=>{const s=a.slice().sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null};
+// pure: the plan for one track
+function buildPlan(car,track,runs,cur,rows,sens){const usable=runs.filter(r=>r.laps&&r.laps.length>=2),here=usable.filter(r=>r.track===track).sort((a,b)=>rbMed(a.laps)-rbMed(b.laps)),tt=trimOf(car,track);
+let base=null,why;if(here.length){base=here[0];why=`your fastest run here (middle clean lap ${ft(rbMed(base.laps))}, ${base.laps.length} laps)`}
+else if(tt){const same=usable.filter(r=>{const x=trimOf(car,r.track);return x&&x.lv===tt.lv}).sort((a,b)=>b.at-a.at);if(same.length){base=same[0];why=`your latest run at ${base.track}, also ${tt.name} downforce`}}
+if(!base){const any=usable.slice().sort((a,b)=>b.at-a.at)[0];if(any){base=any;why=`your latest run (at ${any.track})`}}
+const set=base?JSON.parse(JSON.stringify(base.set)):JSON.parse(JSON.stringify(cur.set)),txt=Object.assign({},cur.txt,base&&base.txt||{});if(!base)why='the setup you have now';
+const changes=[];
+// track: downforce level
+const bt=base&&trimOf(car,base.track),wid=Object.keys(set).find(id=>set[id].k==='rearwingangle');
+if(tt&&bt&&wid&&tt.lv!==bt.lv){const byLv={};usable.forEach(r=>{const x=trimOf(car,r.track);if(x&&r.set[wid])(byLv[x.lv]=byLv[x.lv]||[]).push({w:r.set[wid].n,t:rbMed(r.laps),track:r.track})});
+const bestW=lv=>{const L=byLv[lv];if(!L)return null;const byT={};L.forEach(x=>{if(!byT[x.track]||x.t<byT[x.track].t)byT[x.track]=x});return rbMed(Object.values(byT).map(x=>x.w))};
+const wt=bestW(tt.lv),wb=bestW(bt.lv),from=set[wid].n;let to,basis;if(wt!=null){to=wt;basis={kind:'learned',why:`what your best setups use at ${tt.name} downforce tracks`}}else if(wb!=null&&Object.keys(byLv).length>=2){const fitW=Object.keys(byLv).map(Number).sort((a,b)=>a-b).map(l=>({l,w:bestW(l)}));const sl=(fitW[fitW.length-1].w-fitW[0].w)/((fitW[fitW.length-1].l-fitW[0].l)||1);to=from+sl*(tt.lv-bt.lv);basis={kind:'learned',why:'the trend of your best setups across downforce levels'}}
+else{to=from+(tt.lv-bt.lv)*2;basis={kind:'estimate',why:`${tt.name} downforce here against ${bt.name} at ${base.track}: about 1 degree per half level`}}
+to=Math.round(to);if(Math.abs(to-from)>1e-9){set[wid].n=to;changes.push({lk:set[wid].lk||wid,ids:[wid],d:to-from,why:'track: '+basis.why,basis:basis.kind})}}
+// fixes for the handling measured on the baseline run
+if(base&&base.bal&&Object.keys(base.bal).length){const raws=Object.values(base.bal).map(x=>x.raw),mid=rbMed(raws),B={};
+PHASES.forEach(p=>{const x=base.bal[p];B[p]=x?{n:x.n,raw:x.raw,ui:x.raw/mid,cs:x.cs||0,abs:0}:{n:0}});
+const prow=rows.map(r=>{const id=r.lk+(r.cn?'|'+r.cn:''),s=set[id];return s?Object.assign({},r,{v:String(s.n)+(s.u?' '+s.u:'')}):r});
+const P=predictChanges({B},prow,car,track,sens),used=new Set();
+P.problems.forEach(f=>{const p=P.picks.find(q=>q.f===f&&!used.has(q.r.lk));if(!p)return;used.add(p.r.lk);const ids=Object.keys(set).filter(id=>(set[id].lk||id)===p.r.lk);
+ids.forEach(id=>{set[id].n=+(set[id].n+p.d).toFixed(6)});changes.push({lk:p.r.lk,ids,d:p.d,why:`${f.kind==='us'?'understeer':'oversteer'} ${f.lab.toLowerCase()} on the baseline run: `+(p.basis.kind==='learned'?`learned from ${p.basis.n} test${p.basis.n===1?'':'s'}`:'starting estimate, not tested yet'),basis:p.basis.kind,pick:p})})}
+return{base,why,set,txt,changes,trim:tt}}
+let BS_TRACK=null;
+function buildHtml(){const S=SETUP_SRC;if(!S||!S.setup||!S.carPath)return '';const car=S.carPath,C=RB.cars[car]||{runs:[]},rows=SETUP_ROWS||[],sens=rbSens(rbSamples(C.runs)),G=gbSens(C.garage||[]);
+const curTrack=S.live?ghTrackOf(LIVE.yaml||''):S===IB.a?ghTrackOf(IB.a.yaml):'',tracks=[...new Set([curTrack].concat(C.runs.map(r=>r.track)).concat(car==='ferrari296gt3'?Object.keys(TRIM_296):[]).filter(Boolean))];
+if(!BS_TRACK||tracks.indexOf(BS_TRACK)<0)BS_TRACK=tracks[0]||'';if(!BS_TRACK)return '<p class="m">Load an .ibt file or connect live to pick a track.</p>';
+const plan=buildPlan(car,BS_TRACK,C.runs,{set:rbSettings(S.setup),txt:rbText(S.setup)},rows,sens);
+let h=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><label><b>Track</b> <select id="bsTrack">${tracks.map(t=>`<option${t===BS_TRACK?' selected':''}>${plain(t)}</option>`).join('')}</select></label>${plan.trim?`<span class="m">${plain(plan.trim.name)} downforce (iRacing's notes)</span>`:''}<button type="button" id="bsCopy" style="margin-left:auto">Copy the sheet</button></div>`;
+h+=`<p style="margin:0 0 6px">Starts from <b>${plain(plan.why)}</b>${plan.changes.length?`, with ${plan.changes.length} change${plan.changes.length>1?'s':''}`:', unchanged: nothing measured needs fixing'}.</p>`;
+if(plan.changes.length)h+=`<ul style="margin:0 0 8px 18px;padding:0">${plan.changes.map(c=>{const id=c.ids[0],s=plan.set[id];return `<li><b>${plain(s.lab)}</b>${c.ids.length>1?' (both sides)':''} ${suFmtVal(String(+(s.n-c.d).toFixed(4))+(s.u?' '+s.u:''))} → <b>${suFmtVal(String(s.n)+(s.u?' '+s.u:''))}</b> <span class="${c.basis==='learned'?'':'m'}">— ${plain(c.why)}</span></li>`}).join('')}</ul>`;
+// what the garage should show, from the garage book
+const calc=gbCalc(S.setup),gsum={};plan.changes.forEach(c=>{const g=G[c.lk];if(!g)return;for(const k in g.per)gsum[k]=(gsum[k]||0)+g.per[k].per*c.d});
+const gl=Object.keys(gsum).filter(k=>calc[k]&&Math.abs(gsum[k])>=.05);if(gl.length)h+=`<p style="margin:0 0 8px">Garage should show about: ${gl.map(k=>`${GARAGE_CALC[k].toLowerCase()} ${(calc[k].n+gsum[k]).toFixed(1)}${calc[k].u==='%'?'%':' '+calc[k].u}`).join(', ')} <small class="m">(from your garage book; the setup you have now as the starting point)</small></p>`;
+const ch=new Set(plan.changes.flatMap(c=>c.ids)),groups=[];rows.forEach(r=>{if(r.calc||LIVE_VOL.has(r.k))return;const id=r.lk+(r.cn?'|'+r.cn:''),s=plan.set[id],nu=setupNum(r.v),v=s?suFmtVal((nu?(+s.n).toFixed(nu.d):String(s.n))+(s.u?' '+s.u:'')):plan.txt[id]!=null?plan.txt[id]:r.v;   /* the garage's own decimals */let g=groups.find(x=>x.g===r.g);if(!g)groups.push(g={g:r.g,rows:[]});g.rows.push({p:r.p,lab:(r.cn?r.cn+' · ':'')+r.lab,v,chg:ch.has(id)})});
+BS_SHEET=groups.map(g=>`${SETUP_TABN[g.g]||g.g}\n`+g.rows.map(x=>`  ${x.lab}: ${x.v}`).join('\n')).join('\n\n');
+h+=`<div style="overflow-x:auto"><table><tr><th>Setting</th><th>Value</th></tr>${groups.map(g=>`<tr><td colspan="2"><b>${plain(SETUP_TABN[g.g]||g.g)}</b></td></tr>`+g.rows.map(x=>`<tr${x.chg?' style="font-weight:600"':''}><td>${plain(x.lab)}</td><td>${plain(x.v)}${x.chg?' <span class="m">changed</span>':''}</td></tr>`).join('')).join('')}</table></div>`;
+return h+`<p class="m" style="font-size:13px;margin:8px 0 0">iRacing setup files cannot be written by any tool outside the sim, so enter the changed lines in the garage and save. Values come from your own runs; anything marked as a starting estimate has not been tested yet: drive ${RUN_MIN} clean laps and the next build uses what it did.</p>`}
+let BS_SHEET='';
+function wireBuild(el){const s=el.querySelector('#bsTrack');if(s)s.onchange=()=>{BS_TRACK=s.value;const p=el.querySelector('[data-tabp="build"]');if(p){p.innerHTML=buildHtml();wireBuild(el)}};
+const b=el.querySelector('#bsCopy');if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(BS_SHEET);b.textContent='Copied'}catch(e){b.textContent='Copy failed'}setTimeout(()=>{b.textContent='Copy the sheet'},2000)}}
 
 // ---------- click a graph to enlarge it ----------
 let ZOOM=null;

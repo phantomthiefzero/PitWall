@@ -1007,3 +1007,49 @@ class GarageCalcTest(unittest.TestCase):
         line = self.r["line"]
         self.assertIn("front downforce 42.9% → 43.7%", line)
         self.assertIn("front ride height at speed 52 mm → 50.0 mm", line)
+
+
+BUILD_JS = r"""
+const car = 'ferrari296gt3';
+LIVE.ws = {}; LIVE.setup = setupTree(ARGS_YAML); LIVE.meta = { carPath: car, carName: 'Ferrari 296 GT3' }; setupHtml();
+const rows = SETUP_ROWS, base = rbSettings(LIVE.setup), txt = rbText(LIVE.setup), lkArb = rows.find(r => r.k === 'arbblades' && r.ax === 'front').lk;
+const withV = (o, lk, v) => { const c = JSON.parse(JSON.stringify(o)); c[lk].n = v; return c };
+const bal = m => ({ mid_slow: { raw: m, cs: 0, n: 400 }, mid_fast: { raw: 1.0, cs: 0, n: 400 }, exit_slow: { raw: 1.0, cs: 0, n: 400 } });
+const L = t => [t, t + 0.05, t - 0.05, t + 0.02];
+const T = 'Indianapolis Motor Speedway · Road Course';
+const runs = [
+  { id: 'r1', at: 1, track: T, set: base, txt, laps: L(84.0), bal: bal(1.4) },
+  { id: 'r2', at: 2, track: T, set: withV(base, lkArb, 65), txt, laps: L(83.8), bal: bal(1.3) },
+];
+RB.cars[car] = { runs, garage: [] };
+const sens = rbSens(rbSamples(runs)), cur = { set: base, txt };
+const A = buildPlan(car, T, runs, cur, rows, sens);
+const B = buildPlan(car, 'Barber Motorsports Park', runs, cur, rows, sens);
+const val = (P, k, ax) => { const id = Object.keys(P.set).find(i => P.set[i].k === k && (!ax || P.set[i].ax === ax)); return P.set[id].n };
+console.log(JSON.stringify({
+  A: { base: A.base && A.base.id, why: A.why, arb: val(A, 'arbblades', 'front'), wing: val(A, 'rearwingangle'), changes: A.changes.map(c => [c.basis, c.d, c.why]) },
+  B: { base: B.base && B.base.id, why: B.why, wing: val(B, 'rearwingangle'), changes: B.changes.map(c => [c.basis, c.d, c.why]), tyre: Object.values(B.txt).includes('Dry'), trim: B.trim } }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class BuildSetupTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + BUILD_JS)
+
+    def test_same_track_starts_from_the_fastest_run_and_applies_the_learned_fix(self):
+        a = self.r["A"]
+        self.assertEqual(a["base"], "r2")
+        per = (1.3 / 1.4 - 1) / -10
+        d = round((1 / 1.3 - 1) / per / 10) * 10                       # steps of 10, the values run
+        self.assertEqual(a["arb"], 65 + d)
+        self.assertEqual(a["wing"], 8)                                 # same track: wing untouched
+        self.assertEqual([c[0] for c in a["changes"]], ["learned"])
+
+    def test_new_track_moves_the_wing_for_its_downforce_level(self):
+        b = self.r["B"]
+        self.assertEqual(b["trim"]["name"], "High")
+        self.assertEqual(b["wing"], 10)                                # Medium (Indy) -> High: +2 degrees, estimate
+        self.assertIn(["estimate", 2], [c[:2] for c in b["changes"]])
+        self.assertTrue(b["tyre"])                                     # text settings carried into the sheet
