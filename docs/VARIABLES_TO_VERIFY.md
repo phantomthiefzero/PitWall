@@ -137,6 +137,12 @@ needed a player car, so a spectator never saw a lead change; `class_lead` covers
 | Windows job object (tunnel ends with the app) | **Not yet run on Windows.** Without it the tunnel is still stopped on a normal close. |
 | Relay through the tunnel | **WebSockets through Cloudflare's tunnel work** (the 2026-10-15 share: live dashboard through the link). Guest token, read-only, 4003 on stop: tested on the local relay. **Stop sharing verified for real (2026-10-15)**: the open link stopped working. |
 
+Lap Analyzer over the share link (`/analyzer/?token=GUEST`): tested through the suite's own relay
+(session, half-rate telemetry, cut off with 4003 when sharing stops). **Not yet tried through a real
+Cloudflare tunnel**: check the page connects over wss:// and that the engineer's view keeps up.
+Measured on Andrew's Indianapolis .ibt: a telemetry message is ~6.4 KB, ~0.3 KB after the
+connection's compression, so ~10 KB/s per engineer at 30 a second.
+
 ### Lap Analyzer: driver laps (any car as a reference)
 
 | Value | Inputs | Validation |

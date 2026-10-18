@@ -58,6 +58,9 @@ iRacing Suite app (suite/)
 - Share online (`suite/share.py`): a Cloudflare quick tunnel to the suite's relay. Links carry
   only the relay's revocable guest token, never the kept view or producer tokens (the co-host
   producer link is shown separately, folded away). The relay serves the dashboard at /pitwall/.
+  It also serves the Lap Analyzer at /analyzer/ with a read-only feed at /analyzer/ws (any viewer
+  token): `suite.bridge.relay_feed` puts the suite Hub's messages through a RemoteClient that never
+  blocks the pump (half-rate ticks, oldest ticks dropped when slow). The local /ws stays loopback-only.
 
 - Updates (`suite/updater.py`): the release build stamps `suite/_build.py` (BUILD = run number,
   COMMIT); the app compares it with the newest `build-N` release, downloads next to itself,

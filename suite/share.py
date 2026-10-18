@@ -104,7 +104,9 @@ def share_links(base, guest_token, producer_token=None, view_token=None):
     base = base.rstrip("/")
     wss = "wss://" + base.split("://", 1)[1]
     out = {"base": base,
-           "pitwall": "%s/pitwall/?relay=%s&token=%s" % (base, wss, guest_token)}
+           "pitwall": "%s/pitwall/?relay=%s&token=%s" % (base, wss, guest_token),
+           # The Lap Analyzer: live telemetry, the car setup and the engineer, read-only.
+           "analyzer": "%s/analyzer/?token=%s" % (base, guest_token)}
     if producer_token and view_token:
         # For a broadcast co-host. It cuts your camera: share it with them only.
         out["producer"] = "%s/broadcast/producer.html?token=%s&view=%s" % (base, producer_token, view_token)

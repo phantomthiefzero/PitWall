@@ -58,6 +58,7 @@ class PitWallHost:
         self.relay = None
         self._loop = None
         self.share = None
+        self.analyzer_hub = None      # suite.bridge.Hub, set by the app
 
     async def start(self, port=8765):
         try:
@@ -80,6 +81,12 @@ class PitWallHost:
                 break
             except OSError:
                 continue
+        if self.analyzer_hub is not None:
+            # The Lap Analyzer through the same address, so a share link can show it.
+            from suite.bridge import relay_feed, analyzer_page
+            hub = self.analyzer_hub
+            relay.analyzer_feed = lambda ws: relay_feed(hub, ws)
+            relay.analyzer_page = analyzer_page()
         self.relay = relay
         if self.port is None:
             self.error = "No free port for PitWall's relay between %d and %d" % (port, port + 9)

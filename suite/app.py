@@ -43,6 +43,7 @@ class Engine:
         self.hub = Hub(LiveSource(), rate)
         self.pitwall = PitWallHost(pitwall_source)
         self.hub.extra = lambda: {"pitwall": self.pitwall.info()}
+        self.pitwall.analyzer_hub = self.hub
         self.updater = None          # set by main(); suite.updater.Updater
         self.port = None
         self.error = None
