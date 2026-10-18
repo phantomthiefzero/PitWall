@@ -171,6 +171,11 @@ class Relay:
         # A second, revocable watch-only token for links handed out while
         # sharing online. Setting a new one (or None) disconnects its holders.
         self.guest_token: str | None = None
+        # Optional Lap Analyzer feed (set by the iRacing Suite): an async callable
+        # taking the WebSocket of a viewer at /analyzer/ws, and the page to serve at
+        # /analyzer/. Any viewer token works; it is read-only.
+        self.analyzer_feed = None
+        self.analyzer_page: str | None = None
         self._guests: set = set()
         # The car each viewer follows, for that viewer alone. Choosing one never
         # changes what anyone else sees: the bridge computes a view per chosen car
@@ -491,8 +496,31 @@ class Relay:
             await self.handle_viewer(ws, role="engineer")
         elif parsed.path == "/view" and token_ok(token, self.producer_token):
             await self.handle_viewer(ws, role="producer")
+        elif parsed.path == "/analyzer/ws" and self.analyzer_feed and self._role(token):
+            await self.handle_analyzer(ws, self._role(token))
         else:
             await ws.close(code=4001, reason="bad path or token")
+
+    def _role(self, token: str) -> str | None:
+        for role, expected in (("view", self.view_token), ("guest", self.guest_token),
+                               ("engineer", self.engineer_token), ("producer", self.producer_token)):
+            if expected and token_ok(token, expected):
+                return role
+        return None
+
+    async def handle_analyzer(self, ws, role: str):
+        """The Lap Analyzer's live feed (telemetry and the session with the car
+        setup), read-only. Guests are counted and dropped with the share like any
+        other share-link viewer."""
+        if role == "guest":
+            self._guests.add(ws)
+            self._count_wire(ws)
+        ws.protocol.max_message_size = VIEWER_MAX_BYTES
+        print(f"[relay] analyzer viewer joined ({role})")
+        try:
+            await self.analyzer_feed(ws)
+        finally:
+            self._guests.discard(ws)
 
     def set_guest_token(self, token: str | None):
         """Replace the guest token; everyone who joined with the old one is
@@ -578,6 +606,13 @@ class Relay:
                     body = f.read()
             except OSError:
                 return connection.respond(http.HTTPStatus.NOT_FOUND, "the PitWall page is not installed\n")
+            return page_response(request, body)
+        if path in ("/analyzer/", "/analyzer", "/analyzer/index.html") and self.analyzer_page and request.headers.get("Upgrade") is None:
+            try:
+                with open(self.analyzer_page, "rb") as f:
+                    body = f.read()
+            except OSError:
+                return connection.respond(http.HTTPStatus.NOT_FOUND, "the Lap Analyzer page is not installed\n")
             return page_response(request, body)
         page = BROADCAST_PAGES.get(path)
         if page and request.headers.get("Upgrade") is None:

@@ -387,6 +387,7 @@ class ShareTest(unittest.TestCase):
         l = share_links("https://a-b.trycloudflare.com/", "G", "P", "V")
         self.assertEqual(l["pitwall"], "https://a-b.trycloudflare.com/pitwall/?relay=wss://a-b.trycloudflare.com&token=G")
         self.assertEqual(l["producer"], "https://a-b.trycloudflare.com/broadcast/producer.html?token=P&view=V")
+        self.assertEqual(l["analyzer"], "https://a-b.trycloudflare.com/analyzer/?token=G")
         self.assertNotIn("producer", share_links("https://x.trycloudflare.com", "G"))
         svg = qr_svg(l["pitwall"])
         self.assertTrue(svg and svg.lstrip().startswith("<svg"), svg and svg[:60])
@@ -601,6 +602,46 @@ class GuestTokenTest(unittest.TestCase):
         with self.assertRaises(Exception):
             with wsc.connect("%s/view?token=guest-abc-123" % self.relay_url, open_timeout=5) as ws:
                 ws.recv(timeout=3)
+
+    def test_relay_serves_the_lap_analyzer(self):
+        http = self.relay_url.replace("ws://", "http://")
+        html = fetch(http + "/analyzer/?token=x")[2]
+        self.assertIn(b"LIVE_SHARE", html)
+
+    def test_analyzer_link_streams_the_live_session_read_only(self):
+        """An engineer on the share link gets what the local analyzer gets: the
+        session (with the car setup) and telemetry, at half rate, and nothing they
+        send reaches iRacing. Stopping the share cuts them off."""
+        import websockets.sync.client as wsc
+        from websockets.exceptions import ConnectionClosed
+        host = self.engine.pitwall
+        with self.assertRaises(Exception):
+            with wsc.connect("%s/analyzer/ws?token=nope" % self.relay_url, open_timeout=5) as ws:
+                ws.recv(timeout=3)
+        host._set_guest_token("guest-ana-1")
+        self.assertTrue(_wait(lambda: host.relay.guest_token == "guest-ana-1"))
+        with wsc.connect("%s/analyzer/ws?token=guest-ana-1" % self.relay_url, open_timeout=5, max_size=None) as ws:
+            seen, ticks = [], 0
+            end = time.time() + 4
+            ws.send(json.dumps({"type": "cmd", "cmd": "camera", "car": 1}))   # ignored
+            while time.time() < end:
+                try:
+                    m = json.loads(ws.recv(timeout=1))
+                except TimeoutError:
+                    continue
+                seen.append(m["type"])
+                ticks += m["type"] == "tick"
+            self.assertEqual(seen[:2], ["hello", "status"])
+            self.assertIn("session", seen)
+            self.assertGreater(ticks, 5)
+            self.assertLess(ticks, 4 * 20 * 0.75)            # the replay runs at 20 a second: about half
+            self.assertEqual(host.relay.guest_usage()["guests"], 1)
+            host._set_guest_token(None)
+            with self.assertRaises(ConnectionClosed) as cm:
+                while True:
+                    ws.recv(timeout=5)
+            self.assertEqual(cm.exception.rcvd.code, 4003)
+        self.assertTrue(_wait(lambda: not any(type(c).__name__ == "RemoteClient" for c in self.engine.hub.clients)))
 
 
 if __name__ == "__main__":

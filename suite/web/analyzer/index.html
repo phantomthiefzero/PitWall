@@ -643,7 +643,7 @@ function libGet(c,lk){return (c&&LIB.cars[c]&&LIB.cars[c].settings[lk])||null}
 function libRecord(ib,fid){if(!ib||!ib.carPath||!ib.setup)return;const car=libCar(ib.carPath,ib.carName);car.setup=ib.setup;car.setupFrom=fid;if(car.files.indexOf(fid)>=0){libSave(LIB);return}car.files.push(fid);
 setupRows(ib.setup).forEach(r=>{if(r.calc||SETUP_RO.has(r.k))return;const nu=setupNum(r.v);if(!nu)return;const s=car.settings[r.lk]||(car.settings[r.lk]={});s.label=r.lab+(r.ax?' ('+r.ax+')':'');s.unit=nu.u;s.seen=libPair(s.seen)?[Math.min(s.seen[0],nu.n),Math.max(s.seen[1],nu.n)]:[nu.n,nu.n];if(s.lf!==fid){s.n=(s.n||0)+1;s.lf=fid}});libSave(LIB)}
 function libSetLim(c,lk,lim,label,unit){const s=libCar(c).settings[lk]||(libCar(c).settings[lk]={});if(lim)s.lim=lim;else delete s.lim;if(label)s.label=label;if(unit!=null)s.unit=unit;libSave(LIB)}
-function setupLimInfo(r){const c=SETUP_SRC&&SETUP_SRC.carPath,u=libGet(c,r.lk);if(u&&libPair(u.lim))return{lim:u.lim,src:'you entered'};const L=c&&SETUP_CAR_LIMITS[c];if(L&&L[r.k])return{lim:L[r.k],src:'iRacing notes'};return null}
+function setupLimInfo(r){const c=SETUP_SRC&&SETUP_SRC.carPath,u=libGet(c,r.lk);if(u&&libPair(u.lim))return{lim:u.lim,src:'you entered'};const L=c&&SETUP_CAR_LIMITS[c];{const kl=kbLim(carKb(c,SETUP_SRC&&SETUP_SRC.carName),r);if(kl&&!(L&&L[r.k]))return{lim:kl,src:'iRacing manual'}}if(L&&L[r.k])return{lim:L[r.k],src:'iRacing notes'};return null}
 function setupLim(r){const x=setupLimInfo(r);return x?x.lim:null}
 function rangeHtml(r,i,cv,un){if(!SETUP_SRC||!SETUP_SRC.carPath)return '';const li=setupLimInfo(r),sn=libGet(SETUP_SRC.carPath,r.lk),seen=sn&&libPair(sn.seen)?sn.seen:null;
 let s='<br><small class="m">'+(li?'range '+cv(li.lim[0])+' to '+cv(li.lim[1])+' ('+li.src+') <a href="#" data-rng="'+i+'">edit</a>':'<a href="#" data-rng="'+i+'">set range</a>');
@@ -770,10 +770,15 @@ if(u==='camber_more')return[['camber',f.t,-1]];if(u==='camber_less')return[['cam
 const CORNER_OF={LF:'Left front',RF:'Right front',LR:'Left rear',RR:'Right rear'};
 function adviceRow(rows,[k,ax,dir],carPath){const r=rows.find(x=>x.k===k&&!x.calc&&(!ax||(ax.length===2?x.cn===CORNER_OF[ax]:x.ax===ax)));if(!r)return null;
 const info=SETUP_INFO[r.ik]||SETUP_INFO[r.k]||{},num=parseFloat(String(r.v).replace(/[^\d.+-]/g,'')),lim=setupLim(r)||((carPath&&SETUP_CAR_LIMITS[carPath])||{})[r.k]||null;let at=null;
-if(lim&&isFinite(num)&&dir){if(dir>0&&num>=lim[1])at='already at its maximum ('+lim[1]+')';if(dir<0&&num<=lim[0])at='already at its minimum ('+lim[0]+')'}
-const word=k==='camber'?(dir<0?'More negative':'Less negative'):k==='brakepressurebias'?(dir>0?'More to the front':'More to the rear'):k==='tcsetting'?'More traction control help':(dir>0?(k==='arbblades'?'Stiffer':'Higher'):(k==='arbblades'?'Softer':'Lower'));
+const kb=carKb(carPath,SETUP_SRC&&SETUP_SRC.carName),cat=kbCat(k);if(dir===0&&cat==='tc'&&kb&&kb.tc&&kb.tc.more)dir=1;   // 'more help' once the car says which way that is
+const sg=kbSign(kb,r),nd=dir*sg,ord=kbOrder(kb,r);
+if(ord&&isFinite(num)&&dir&&kbNext(ord,num,dir)==null&&ord.indexOf(num)>=0)at=dir>0?'already at its stiffest':'already at its softest';
+else if(lim&&isFinite(num)&&nd){if(nd>0&&num>=lim[1])at='already at its maximum ('+lim[1]+')';if(nd<0&&num<=lim[0])at='already at its minimum ('+lim[0]+')'}
+const stiff=k==='arbblades'||cat==='arb'||cat==='arm'||cat==='damp',note=kbDirNote(kb,r,nd);
+let word=k==='camber'?(dir<0?'More negative':'Less negative'):k==='brakepressurebias'?(dir>0?'More to the front':'More to the rear'):cat==='tc'?'More traction control help':(dir>0?(stiff?'Stiffer':'Higher'):(stiff?'Softer':'Lower'));
+if(note&&!(cat==='tc'&&dir===0))word+=' ('+note+')';
 const why=k==='camber'?(dir<0?info.down:info.up):dir>0?info.up:dir<0?info.down:'';
-return{r,label:r.cn&&ax.length>2&&k!=='camber'?ax.charAt(0).toUpperCase()+ax.slice(1)+' '+r.lab.toLowerCase()+' (both sides)':(r.cn&&k==='camber'?r.cn+' ':'')+r.lab,cur:r.v,word,why:why||'',at,test:info.test||''}}
+return{r,nd,label:r.cn&&ax.length>2&&k!=='camber'?ax.charAt(0).toUpperCase()+ax.slice(1)+' '+r.lab.toLowerCase()+' (both sides)':(r.cn&&k==='camber'?r.cn+' ':'')+r.lab,cur:r.v,word,why:why||'',at,test:info.test||''}}
 function adviceHtml(){const ib=IB.a,h=handlingStats(ib);if(!h)return '<p class="m">Setup suggestions need an .ibt file of your own laps with steering, yaw rate and lateral acceleration in it.</p>';
 if(h.few)return `<p class="m">Setup suggestions need at least two clean laps (no incident or pit, within 103% of your fastest) with enough cornering in them. This file has ${h.laps}.</p>`;
 const rows=setupRows(ib.setup||{}),B=h.B,cell=x=>{if(!x||x.n<150)return '<td class="m">too few samples</td>';const d=(x.ui-1)*100,os=x.cs>=1.5||(x.slip||0)>=3.5;
@@ -794,7 +799,7 @@ return `<li style="margin-bottom:10px"><b>${title(f)}</b>. <span class="m">${why
 (blocked.length?`<div class="m" style="font-size:13px">${blocked.map(c=>c.label+' is '+c.at).join('; ')}.</div>`:'')+`</li>`}).join('')+`</ol>`+
 `<p class="m" style="font-size:13px;margin:6px 0 0">Change one thing at a time, by one step, run at least 3 clean laps and load the new file: this table shows whether that phase moved. These are starting points worked out from your laps, not guarantees; tyre wear, fuel load and track temperature move the balance too.</p>`;
 return o}
-function setupHtml(){SETUP_SRC=setupSrc();const S=SETUP_SRC;if(!S)return '<b>Car setup</b> <span class="m">Load an iRacing .ibt file once and its car setup is saved here, so the setup tools are available any time, even without a file loaded.</span>';if(S.noSetup)return '<b>Car setup</b> <span class="m">No car setup section was found in this file.</span>';const a=S.setup,owner=S.stored?'lib:'+S.carPath:(S.live?'live:'+S.ver:S);
+function setupHtml(){SETUP_SRC=setupSrc();const S=SETUP_SRC;if(S&&S.carPath)kbRemember(S.carPath,S.carName);if(!S)return '<b>Car setup</b> <span class="m">Load an iRacing .ibt file once and its car setup is saved here, so the setup tools are available any time, even without a file loaded.</span>';if(S.noSetup)return '<b>Car setup</b> <span class="m">No car setup section was found in this file.</span>';const a=S.setup,owner=S.stored?'lib:'+S.carPath:(S.live?'live:'+S.ver:S);
 if(SETUP_OWNER!==owner){SETUP_CHG={};SETUP_OWNER=owner;SETUP_OPEN=new Set()}
 const rowsA=setupRows(a);SETUP_ROWS=rowsA;const b=!S.stored&&IB.b&&IB.b.setup,both=!!b,mapB=new Map(both?setupRows(b).map(r=>[r.g+'|'+r.p,r.v]):[]);
 const isDiff=i=>{const r=rowsA[i];return both&&mapB.has(r.g+'|'+r.p)&&mapB.get(r.g+'|'+r.p)!==r.v},changed=rowsA.map((r,i)=>i).filter(isDiff).length;
@@ -811,7 +816,7 @@ body=pre.map(s=>full(s,secs)).join('')+'<div class="sgrid">'+L.map((s,k)=>setupS
 return{id:g,name:SETUP_TABN[g]||g,body,nd:byG[g].filter(isDiff).length}});
 if(!S.stored&&!S.live&&S===IB.a){tabs.unshift({id:'driving',name:'Your driving',body:drivingHtml(),nd:0});tabs.unshift({id:'advice',name:'Suggestions',body:adviceHtml(),nd:0})}
 tabs.splice(tabs.filter(t=>t.id==='advice'||t.id==='driving').length,0,{id:'predict',name:'Predicted changes',body:predictHtml(),nd:0},{id:'build',name:'Build a setup',body:buildHtml(),nd:0},{id:'symptom',name:'Fix by symptom',body:symptomHtml(),nd:0});
-tabs.push({id:'notes',name:'Notes',body:trimHtml()+notesHtml()+libHtml(),nd:0});
+tabs.push({id:'notes',name:'Notes',body:trimHtml()+(S.carPath==='ferrari296gt3'?'':kbNotesHtml(carKb(S.carPath,S.carName),S.track||(S===IB.a?ghTrackOf(IB.a.yaml):'')))+notesHtml()+libHtml(),nd:0});
 if(!tabs.some(t=>t.id===SETUP_TAB))SETUP_TAB=tabs[0].id;
 h+='<div class="stabs">'+tabs.map(t=>'<button type="button" data-tab="'+t.id+'"'+(t.id===SETUP_TAB?' class="on"':'')+'>'+t.name+(t.nd?' <span class="m">('+t.nd+')</span>':'')+'</button>').join('')+'</div>';
 h+=tabs.map(t=>'<div data-tabp="'+t.id+'"'+(t.id===SETUP_TAB?'':' hidden')+'>'+t.body+'</div>').join('');
@@ -906,18 +911,22 @@ let LIVE={ws:null,state:'off',sim:false,mode:'',port:(()=>{try{return +localStor
 const LIVE_VOL=new Set(['lasthotpressure','lasttempsomi','lasttempsimo','treadremaining','cornerweight','fwtdist','crossweight','frontrhatspeed','rearrhatspeed','frontdownforce','centerfrontsplitterheight','dashdisplaypage']);
 const LIVE_TIRES=['LF','RF','LR','RR'];
 const liveOnBridge=()=>location.protocol==='http:'&&/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-function liveUrl(){return liveOnBridge()?'ws://'+location.host+'/ws':'ws://localhost:'+LIVE.port+'/ws'}
+// Opened from a share link (the suite's relay, through a tunnel): read-only feed at /analyzer/ws with the link's token.
+const LIVE_SHARE=(()=>{try{const t=new URLSearchParams(location.search).get('token');return !liveOnBridge()&&t?t:null}catch(e){return null}})();
+function liveUrl(){if(LIVE_SHARE)return(location.protocol==='https:'?'wss://':'ws://')+location.host+'/analyzer/ws?token='+encodeURIComponent(LIVE_SHARE);return liveOnBridge()?'ws://'+location.host+'/ws':'ws://localhost:'+LIVE.port+'/ws'}
 function liveMeta(y){const g=(re,s)=>{const q=re.exec(s);return q?q[1].trim():''},di=+(g(/DriverCarIdx:\s*(\d+)/,y)||0),mm=new RegExp('CarIdx:\\s*'+di+'\\s*\\n\\s*UserName:\\s*(.+)').exec(y),blk=mm?y.slice(mm.index,mm.index+3000):'';
 return{carPath:g(/CarPath:\s*(\S+)/,blk),carName:g(/CarScreenName:\s*([^\n]+)/,blk),who:mm?mm[1].trim():'',track:g(/TrackDisplayName:\s*([^\n]+)/,y),fuelKg:+g(/DriverCarFuelKgPerLtr:\s*([\d.]+)/,y)||0,sid:g(/SessionID:\s*(\d+)/,y)||g(/SubSessionID:\s*(\d+)/,y)}}
 function liveSig(t){return setupRows(t).filter(r=>!LIVE_VOL.has(r.k)&&!r.calc).map(r=>r.g+'|'+r.p+'='+r.v).join('\n')}
 function liveDiff(a,b){const ma=new Map(setupRows(a).map(r=>[r.g+'|'+r.p,r]));return setupRows(b).filter(r=>!LIVE_VOL.has(r.k)&&!r.calc).map(r=>{const o=ma.get(r.g+'|'+r.p);return o&&o.v!==r.v?{lab:r.lab,ctx:r.ctx,from:o.v,to:r.v}:null}).filter(Boolean)}
-function liveConnect(){if(LIVE.ws)return;LIVE.err='';let ws;try{ws=new WebSocket(liveUrl())}catch(e){LIVE.err='This page could not open a connection to the bridge. Open http://localhost:'+LIVE.port+' in your browser instead.';liveRender();return}
+function liveConnect(){if(LIVE.ws)return;LIVE.err='';LIVE.userOff=false;let ws;try{ws=new WebSocket(liveUrl())}catch(e){LIVE.err='This page could not open a connection to the bridge. Open http://localhost:'+LIVE.port+' in your browser instead.';liveRender();return}
 LIVE.ws=ws;LIVE.state='connecting';liveRender();
 ws.onopen=()=>{LIVE.state='bridge';liveRender()};
 ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}liveMsg(m)};
-ws.onclose=()=>{const was=LIVE.state;LIVE.ws=null;LIVE.state='off';LIVE.sim=false;if(was==='connecting')LIVE.err='No bridge answered at '+liveUrl()+'. Make sure the bridge is running. If it is, open http://localhost:'+LIVE.port+' in your browser, which always works.';liveRender();renderSetup()};
+ws.onclose=ev=>{const was=LIVE.state;LIVE.ws=null;LIVE.state='off';LIVE.sim=false;
+if(LIVE_SHARE){const code=ev&&ev.code;LIVE.err=code===4003?'The driver stopped sharing. Ask for a new link.':code===4001?'This link is no longer valid. Ask the driver for a new one.':'Lost the connection to the driver\'s PC; trying again...';if(code!==4003&&code!==4001&&!LIVE.userOff)setTimeout(()=>{if(!LIVE.ws)liveConnect()},3000)}
+else if(was==='connecting')LIVE.err='No bridge answered at '+liveUrl()+'. Make sure the bridge is running. If it is, open http://localhost:'+LIVE.port+' in your browser, which always works.';liveRender();renderSetup()};
 ws.onerror=()=>{}}
-function liveDisconnect(){if(LIVE.ws)LIVE.ws.close()}
+function liveDisconnect(){LIVE.userOff=true;if(LIVE.ws)LIVE.ws.close()}
 function liveMsg(m){if(m.type==='hello'){LIVE.mode=m.mode;liveRender()}else if(m.type==='status'){LIVE.sim=!!m.connected;liveRender()}else if(m.type==='session'&&typeof m.yaml==='string')liveSession(m.yaml);else if(m.type==='tick'&&m.v)liveTick(m.v)}
 function liveSession(y){if(!LIVE.startedAt)LIVE.startedAt=Date.now();try{ghSession(y)}catch(e){console.error('driver laps',e)}y=plain(y);LIVE.yaml=y;LIVE.meta=liveMeta(y);const t=setupTree(y);if(!t)return;const s=liveSig(t),first=!LIVE.setup;
 if(s!==LIVE.sig){if(LIVE.setup&&LIVE.cur)LIVE.cur.pit=true;   /* a setup only changes in the garage: the lap in progress is not a clean lap of either run */
@@ -940,7 +949,7 @@ if(LIVE_TIRES.every(k=>b.rh[k].every(x=>x!=null))){const ext={};LIVE_TIRES.forEa
 const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
-LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();LIVE.pend=rec;liveRender()}
+LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();LIVE.pend=rec;liveRender()}
 const liveMm=v=>v==null?'—':suNum(Math.round(v*10)/10,'mm'),liveTemp=v=>v==null?'—':(SETUP_UNITS==='imperial'?(v*1.8+32).toFixed(0)+'°F':v.toFixed(0)+'°C'),liveSpd=ms=>(ms*3.6*U().s[0]).toFixed(0)+' '+U().s[1];
 const liveMed=a=>{const s=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q);return s.length?s[Math.floor((s.length-1)/2)]:null};
 function liveGauges(barsOnly){const el=$('liveNow');if(!el)return;const v=LIVE.v;if(!v){el.innerHTML='<span class="m">Waiting for data...</span>';el.dataset.g='';return}
@@ -988,17 +997,17 @@ LC('dlt',{title:R?'Delta to '+liveCmpLbl()+' (s), up is slower':'Delta (s): appe
 const de=$('liveDelta');if(de){const dl=c.dlt.length?c.dlt[c.dlt.length-1]:null;de.textContent=dl==null?'':(dl>0?'+':dl<0?'−':'')+Math.abs(dl).toFixed(2)+' s';de.style.color=dl==null?'':dl>0?'#d6333a':'#1a8f4c'}}
 function liveRender(){const el=$('live');if(!el)return;const on=!!LIVE.ws&&LIVE.state==='bridge',prev=el.querySelector('details.liveWrap'),open=prev?prev.open:(()=>{try{return localStorage.getItem('liveOpen')!=='0'}catch(e){return true}})();
 const pill=(t,c)=>'<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff;background:'+c+'">'+t+'</span>';
-const status=!LIVE.ws?pill('off','#777'):LIVE.state==='connecting'?pill('connecting','#b87800'):!LIVE.sim?pill('bridge connected, waiting for iRacing','#b87800'):pill(LIVE.mode==='replay'?'replaying a file':'live','#1a8f4c');
-const ctl=LIVE.ws?'<button type="button" class="clr" id="liveOff" style="display:inline-block;margin:0">Disconnect</button>':'<button type="button" class="clr" id="liveOn" style="display:inline-block;margin:0">Connect to bridge</button>'+(liveOnBridge()?'':' <label class="m">port <input id="livePort" type="number" value="'+LIVE.port+'" style="width:70px"></label>');
+const status=!LIVE.ws?pill('off','#777'):LIVE.state==='connecting'?pill('connecting','#b87800'):!LIVE.sim?pill(LIVE_SHARE?'connected, the driver is not in iRacing yet':'bridge connected, waiting for iRacing','#b87800'):pill(LIVE.mode==='replay'?'replaying a file':'live','#1a8f4c');
+const ctl=LIVE.ws?'<button type="button" class="clr" id="liveOff" style="display:inline-block;margin:0">Disconnect</button>':'<button type="button" class="clr" id="liveOn" style="display:inline-block;margin:0">'+(LIVE_SHARE?'Connect':'Connect to bridge')+'</button>'+(liveOnBridge()||LIVE_SHARE?'':' <label class="m">port <input id="livePort" type="number" value="'+LIVE.port+'" style="width:70px"></label>');
 let body='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+status+' '+ctl+'</div>';
 if(LIVE.err)body+='<div class="m" style="margin-top:6px">'+LIVE.err+'</div>';
 if(!LIVE.ws&&!LIVE.err)body+='<div class="m" style="margin-top:6px">Run the iRacing bridge on your PC (Start Bridge.bat), then connect. The bridge also serves this analyzer at http://localhost:'+LIVE.port+', where the connection is automatic.</div>';
-if(on&&LIVE.meta&&LIVE.meta.carName)body+='<div style="margin-top:6px"><b>'+LIVE.meta.carName.replace(/[<>&]/g,'')+'</b> <span class="m">at '+(LIVE.meta.track||'').replace(/[<>&]/g,'')+'. The setup panel below shows the live setup and updates when you change it in the garage.</span></div>';
-if(on)body+='<div id="liveNow" style="margin-top:8px"></div>'+liveChartsHtml()+liveRunsHtml()+(()=>{try{return liveVerdictHtml()}catch(e){console.error('verdict',e);return ''}})()+liveLapsHtml();
+if(on&&LIVE.meta&&LIVE.meta.carName)body+='<div style="margin-top:6px">'+(LIVE_SHARE&&LIVE.meta.who?'<b>'+plain(LIVE.meta.who)+'</b> in the ':'')+'<b>'+LIVE.meta.carName.replace(/[<>&]/g,'')+'</b> <span class="m">at '+(LIVE.meta.track||'').replace(/[<>&]/g,'')+'.'+(LIVE_SHARE?' Watching through a share link: read-only. The setup panel below shows the driver\'s live setup and updates when they change it in the garage.':' The setup panel below shows the live setup and updates when you change it in the garage.')+'</span></div>';
+if(on)body+='<div id="liveNow" style="margin-top:8px"></div>'+(()=>{try{return engHtml()}catch(e){console.error('engineer',e);return ''}})()+liveChartsHtml()+liveRunsHtml()+(()=>{try{return liveVerdictHtml()}catch(e){console.error('verdict',e);return ''}})()+liveLapsHtml();
 el.innerHTML='<details class="liveWrap"'+(open?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Live from iRacing</b> <span class="m">click to open or close this section</span></summary><div style="margin-top:8px">'+body+'</div></details>';el.hidden=false;
 const w=el.querySelector('details.liveWrap');w.addEventListener('toggle',()=>{try{localStorage.setItem('liveOpen',w.open?'1':'0')}catch(e){}});
 const bOn=$('liveOn'),bOff=$('liveOff'),pi=$('livePort');if(bOn)bOn.onclick=()=>{if(pi){const p=+pi.value;if(p>0&&p<65536){LIVE.port=p;try{localStorage.setItem('livePort',String(p))}catch(e){}}}liveConnect()};if(bOff)bOff.onclick=liveDisconnect;
-ghRender();if(on){liveGauges();liveDrawCharts()}const cmp=$('liveCmp');if(cmp)cmp.onchange=()=>{LIVE_CMP=cmp.value;try{localStorage.setItem('liveCmp',LIVE_CMP)}catch(e){}liveDrawCharts()}}
+ghRender();if(on){wireEng();liveGauges();liveDrawCharts()}const cmp=$('liveCmp');if(cmp)cmp.onchange=()=>{LIVE_CMP=cmp.value;try{localStorage.setItem('liveCmp',LIVE_CMP)}catch(e){}liveDrawCharts()}}
 
 // ---- Driver laps: record any car's laps live and use one as a reference ----
 // iRacing shares every car's lap position, lap number, gear, rpm and steering, but not
@@ -1357,12 +1366,14 @@ let m=Infinity;for(let i=1;i<v.length;i++){const d=v[i]-v[i-1];if(d>1e-9)m=Math.
 function predictChanges(h,rows,car,track,sens){if(!h||h.few||!h.B)return{problems:[],picks:[]};const F=handlingFindings({B:h.B,T:{},BT:{}}).filter(f=>f.kind==='us'||f.kind==='os').slice(0,3),picks=[];
 F.forEach(f=>{const ph=(f.where==='both'?['slow','fast']:[f.where]).map(w=>f.p+'_'+w),cur=ph.map(p=>h.B[p]).filter(Boolean),
 need=f.kind==='us'?Math.min(...cur.map(x=>1/x.ui-1)):null;   // understeer: steering to remove to reach this run's middle
-adviceChanges(f).forEach(([k,ax,dir])=>{const r=rows.find(x=>x.k===k&&!x.calc&&(!ax||(ax.length===2?x.cn===CORNER_OF[ax]:x.ax===ax)));if(!r||!dir)return;const nu=setupNum(r.v);if(!nu)return;
-const lim=setupLim(r)||((car&&SETUP_CAR_LIMITS[car])||{})[k]||null,st=rbStep(car,r),s=sens&&sens[r.lk],learned=s?ph.map(p=>s.ph[p]).filter(x=>x&&x.per*dir<0&&f.kind==='us'):[];
+adviceChanges(f).forEach(([k,ax,dir])=>{const r=rows.find(x=>x.k===k&&!x.calc&&(!ax||(ax.length===2?x.cn===CORNER_OF[ax]:x.ax===ax)));const kb=carKb(car,SETUP_SRC&&SETUP_SRC.carName);if(r&&dir===0&&kbCat(k)==='tc'&&kb&&kb.tc&&kb.tc.more)dir=1;if(!r||!dir)return;const nu=setupNum(r.v);if(!nu)return;
+const sg=kbSign(kb,r);if(!sg)return;const nd=dir*sg,ord=kbOrder(kb,r);
+if(ord){const to=kbNext(ord,nu.n,dir);if(to==null)return;picks.push({f,r,k,ax,from:nu.n,to,u:nu.u,d:to-nu.n,dir,basis:{kind:'estimate'},eff:null,lap:null,need,label:r.lab});return}
+const lim=setupLim(r)||((car&&SETUP_CAR_LIMITS[car])||{})[k]||null,st=rbStep(car,r),s=sens&&sens[r.lk],learned=s?ph.map(p=>s.ph[p]).filter(x=>x&&x.per*nd<0&&f.kind==='us'):[];
 let d,basis,eff=null,lap=null;
 if(learned.length&&need!=null){const per=learned.reduce((a,x)=>a+x.per,0)/learned.length;d=need/per;basis={kind:'learned',n:Math.max(...learned.map(x=>x.n))};eff={}}
-else{d=dir*(PRIOR_STEP[k]!=null?PRIOR_STEP[k]:lim?(lim[1]-lim[0])/10:st*2);basis={kind:'estimate'}}
-d=Math.round(d/st)*st;if(Math.abs(d)<st)d=dir*st;let to=nu.n+d;if(lim){to=Math.max(lim[0],Math.min(lim[1],to))}d=to-nu.n;if(Math.abs(d)<1e-9)return;
+else{d=nd*(PRIOR_STEP[k]!=null?PRIOR_STEP[k]:lim?Math.abs(lim[1]-lim[0])/10:st*2);basis={kind:'estimate'}}
+d=Math.round(d/st)*st;if(Math.abs(d)<st)d=nd*st;let to=nu.n+d;if(lim){to=Math.max(lim[0],Math.min(lim[1],to))}d=to-nu.n;if(Math.abs(d)<1e-9)return;
 if(s){eff={};PHASES.forEach(p=>{if(s.ph[p])eff[p]=s.ph[p].per*d});if(s.dt[track])lap={dt:s.dt[track].per*d,n:s.dt[track].n}}
 picks.push({f,r,k,ax,from:nu.n,to:+to.toFixed(Math.max(0,nu.d)),u:nu.u,d,dir,basis,eff,lap,need,label:(r.cn&&ax.length>2&&k!=='camber'?ax.charAt(0).toUpperCase()+ax.slice(1)+' '+r.lab.toLowerCase()+' (both sides)':r.lab)})})});
 // learned picks first, then by the order of the knowledge table
@@ -1405,6 +1416,105 @@ h+=`<p class="m" style="margin:6px 0">iRacing's garage works out front downforce
 if(L.length)h+=`<div style="overflow-x:auto"><table><tr><th>Per unit of</th><th>Tests</th>${Object.keys(GARAGE_CALC).map(k=>`<th>${GARAGE_CALC[k]}</th>`).join('')}</tr>`+L.map(s=>`<tr><td><b>${plain(s.lab)}</b> <span class="m">${plain(s.ax)} (per ${plain(s.u||'unit')})</span></td><td>${s.n}</td>${Object.keys(GARAGE_CALC).map(k=>`<td>${s.per[k]&&Math.abs(s.per[k].per)>1e-6?(s.per[k].per>0?'+':'−')+Math.abs(s.per[k].per).toFixed(3):'–'}</td>`).join('')}</tr>`).join('')+`</table></div>`;
 return h+'</details>'}
 
+// ---- What iRacing's car manuals say, per car ----
+// From the official user manuals (iracing.com/resources/user-manuals), read in October 2026.
+// Used so every suggested change goes the right way on the car you drive: on several cars a
+// HIGHER number is SOFTER (Corvette ARB blades, Aston and GR86 front blades) or 0 is MAXIMUM
+// damping (Corvette, Aston, McLaren 720S, Audi EVO II, Supercars), and on some a higher traction
+// control or ABS number means LESS help (Mercedes, Ford GT, McLaren MP4-12C).
+//  inv  settings whose number runs the other way: a setting key, or a group ('arb', 'damp', 'tc',
+//       'abs', 'ramp', 'arm', 'eb'), optionally '@front' / '@rear'
+//  unk  direction unclear in the manual (the app says so instead of guessing)
+//  nm   positions in order softest to stiffest, where that is not number order
+//  lim  ranges printed in the manual; tc/abs {off, more: +1 higher = more help or -1, rec}
+//  df/dr [wing, dynamic front ride height, rear] for maximum downforce / minimum drag (mm)
+//  eq   [front mm, rear mm] that keep the aero balance for one more degree of wing
+//  trim 'gt3' = iRacing's GT3 downforce-by-track list (tro: this car's differences), or a table
+//  spd  [km/h] top-speed guide: High below the first, Medium up to the second, Low above
+const KB_GT4={'Daytona International Speedway':'Low','Circuit des 24 Heures Du Mans':'Low'};
+const CAR_KB=[
+{m:/296.*challenge|296chal/,n:'Ferrari 296 Challenge',tc:{off:0,more:1,rec:'1-2'},abs:{more:1,rec:'1-2 dry, 3-4 wet'},rh:{front:105,rear:107},eq:[null,4]},
+{m:/296/,n:'Ferrari 296 GT3',tc:{off:1,more:1},abs:{off:1,more:1,dry:'2-7',wet:'8-12'},lim:{arbblades:[0,90],damp:[0,11]},rh:{rear:50,rearMax:92.5},df:[10,37.5,58.5],dr:[-2,17.5,17.5],eq:[-1,3],trim:'gt3',spd:[250,270]},
+{m:/corvette|z06/,n:'Chevrolet Corvette Z06 GT3.R',inv:['arbblades','damp'],lim:{arbblades:[0,6]},tc:{off:0,more:1,dry:'1-6',wet:'7-11'},abs:{off:0,more:1,dry:'1-6',wet:'7-11'},df:[9.5,37.5,57.5],dr:[.5,17.5,17.5],eq:[-1.5,4],trim:'gt3'},
+{m:/aston.*gt4|vantage.*gt4|vantagegt4/,n:'Aston Martin Vantage GT4',tc:{off:0,more:1,rec:1},abs:{off:0,more:1,rec:7},trim:KB_GT4,gt4:1},
+{m:/vantage.*gt3|aston.*gt3|vantageevo/,n:'Aston Martin Vantage GT3 EVO',inv:['arbblades@front','damp'],lim:{arbblades:[1,8],damp:[0,18]},tc:{off:0,more:1,dry:'1-6',wet:'7-11'},abs:{off:0,more:1,rec:3,dry:'1-6',wet:'7-11'},df:[10.5,35,70],dr:[.5,17.5,17.5],eq:[-1.5,4],spd:[250,270],tips:['The front splitter must stay above 50 mm for tech.']},
+{m:/mustang/,n:'Ford Mustang GT3',lim:{arbblades:[1,5],damp:[0,11]},tc:{off:1,more:1,dry:'2-7',wet:'8-12'},abs:{off:1,more:1,dry:'2-7',wet:'8-12'},df:[9,37.5,57.5],dr:[.5,17.5,17.5],eq:[-1.5,4],trim:'gt3',tips:['Works best with relatively low rake.']},
+{m:/720s/,n:'McLaren 720S GT3 EVO',inv:['damp'],unk:['arbblades@front'],tc:{off:1,more:1,dry:'2-7',wet:'8-12'},abs:{off:1,more:1,dry:'2-7',wet:'8-12'},df:[10.5,35,70],dr:[.5,17.5,17.5],eq:[-1.5,4.5],trim:'gt3'},
+{m:/huracan|huracán|lamborghini/,n:'Lamborghini Huracán GT3 EVO',tc:{off:12,more:1,rec:'3-4'},abs:{off:12,more:1,dry:'1-6',wet:'7-11'}},
+{m:/nsx/,n:'Acura NSX GT3 EVO 22',lim:{'arbblades@front':[1,8],'arbblades@rear':[1,5],damp:[1,16]},tc:{off:1,more:1,dry:'2-7',wet:'8-12'},abs:{off:1,more:1,dry:'2-7',wet:'8-12'},df:[11,40,55],dr:[1,17.5,17.5],eq:[-1,2],trim:'gt3',tro:{'Daytona International Speedway':'Low','Road Atlanta':'High/Medium'}},
+{m:/porsche992rgt3|gt3 r \(992\)|992.*gt3 ?r\b|gt3 ?r.*992/,n:'Porsche 911 GT3 R (992)',tc:{off:0,more:1}},
+{m:/gt3 r\b|911rgt3|porsche911r/,n:'Porsche 911 GT3 R',lim:{damp:[-24,0]},tc:{off:0,more:1,rec:5},abs:{off:0,more:1,rec:4},rh:{rear:50,rearMax:87.5}},
+{m:/m4.*gt3/,n:'BMW M4 GT3',lim:{damp:[0,11]},tc:{off:10,more:1,rec:6},abs:{off:12,more:1,rec:4},rh:{rear:50,rearMax:95}},
+{m:/mercedes.*gt3.*2020|amgevogt3/,n:'Mercedes-AMG GT3 2020',lim:{damp:[0,11]},tc:{off:12,more:-1,rec:8},abs:{off:12,more:-1,note:'the manual is not clear on ABS: check the in-car label'},df:[9,40,67.5],dr:[-1,17.5,17.5],eq:[-1.2,3.6],trim:'gt3'},
+{m:/mercedes.*gt4|amggt4/,n:'Mercedes-AMG GT4',tc:{off:12,more:-1,rec:10},abs:{off:12,more:-1,rec:4},trim:KB_GT4,gt4:1},
+{m:/mercedes.*gt3|mercedesamggt3/,n:'Mercedes-AMG GT3',lim:{damp:[1,8]},tc:{more:-1,rec:6},abs:{off:12,more:1,rec:4},rh:{rear:50,rearMax:92.5}},
+{m:/r8.*evo|r8lmsevo2/,n:'Audi R8 LMS EVO II GT3',inv:['damp'],tc:{off:12,more:1,dry:'1-6',wet:'7-11'},abs:{off:12,more:1,dry:'1-6',wet:'7-11'},df:[7,40,62],dr:[2,17.5,17.5],eq:[-2.4,7.2],trim:'gt3'},
+{m:/\br8\b|audir8/,n:'Audi R8 LMS GT3',lim:{damp:[-24,0]},tc:{off:12,more:1,rec:'3-4'},abs:{off:12,more:1,rec:4},rh:{rear:50,rearMax:90}},
+{m:/ford ?gt\b|fordgt/,n:'Ford GT GT3',lim:{damp:[0,10]},tc:{more:-1,rec:2},abs:{off:12,more:1,dry:'1-6',wet:'7-11'},rh:{rear:50,rearMax:95}},
+{m:/12c/,n:'McLaren MP4-12C GT3',lim:{damp:[0,10]},tc:{more:-1,rec:2},abs:{off:12,more:1,dry:'1-6',wet:'7-11'},rh:{rear:50,rearMax:95},trim:'gt3'},
+{m:/488.*evo/,n:'Ferrari 488 GT3 EVO 2020',lim:{damp:[0,11]},tc:{off:1,more:1,rec:4},rh:{rear:50,rearMax:90}},
+{m:/488.*gt3/,n:'Ferrari 488 GT3',lim:{damp:[0,11],arbblades:[1,10],tc:[1,5]},tc:{off:6,more:1,rec:3},abs:{off:12,more:1,rec:2},rh:{rear:50,rearMax:90},trim:'gt3'},
+{m:/g82/,n:'BMW M4 G82 GT4',lim:{damp:[-18,0]},tc:{off:1,more:1},trim:KB_GT4,gt4:1},
+{m:/m4.*gt4|bmwm4gt4/,n:'BMW M4 GT4',trim:KB_GT4,gt4:1},
+{m:/m8/,n:'BMW M8 GTE',inv:['ramp'],tc:{off:10,more:1}},
+{m:/718|cayman/,n:'Porsche 718 Cayman GT4',tc:{off:0,more:1},abs:{off:0,more:1},trim:KB_GT4,gt4:1},
+{m:/570s/,n:'McLaren 570S GT4',trim:KB_GT4,gt4:1},
+{m:/992\.2|9922/,n:'Porsche 911 Cup (992.2)',nm:{'arb@front':[1,2,3,4,7,5,6],'arb@rear':[1,2,3,4,5,7,6]},tc:{off:0,more:1},abs:{off:0,more:1},rh:{front:72,rear:106},lim:{rearwingangle:[0,12]},tips:['Expected brake bias 48-52%.','Wing 0 suits Daytona, 12 the Hungaroring; raise the rear ride height with the wing to keep the balance.','Keep the front ride height at the minimum except at extreme tracks like the Nordschleife.']},
+{m:/gt3 cup|911 cup|992cup|cup.*992/,n:'Porsche 911 GT3 Cup (992)',nm:{arb:[1,2,3,4,5,7,6]}},
+{m:/mission ?r/,n:'Porsche Mission R',inv:['arbblades@front'],tc:{off:0,more:1},abs:{off:0,more:1}},
+{m:/mx-?5/,n:'Global Mazda MX-5 Cup'},
+{m:/gr86/,n:'Toyota GR86',inv:['arbblades@front'],tc:{off:0,more:1},abs:{off:0,more:1}},
+{m:/bmw ?m2|m2 ?cs/,n:'BMW M2 CS Racing',rh:{front:125,rear:125}},
+{m:/elantra/,n:'Hyundai Elantra N TCR',fwd:1},
+{m:/rs ?3/,n:'Audi RS 3 LMS TCR',fwd:1},
+{m:/civic/,n:'Honda Civic Type R TCR',abs:{off:0,more:1},lim:{rearwingangle:[-4,4]},fwd:1,tips:['Start from a rear wing of -2 if unsure.','Some rear toe-out is expected for rotation.']},
+{m:/veloster/,n:'Hyundai Veloster N TC',inv:['arm'],fwd:1,lim:{rearwingangle:[-4,4]},tips:['Start from a rear wing of -2 if unsure.']},
+{m:/arx/,n:'Acura ARX-06 GTP',tc:{more:1},df:[null,25,45]},
+{m:/963/,n:'Porsche 963 GTP',inv:['ramp'],tc:{more:1},df:[null,25,45]},
+{m:/v-series|vseries/,n:'Cadillac V-Series.R GTP',tc:{more:1}},
+{m:/hybrid v8|m hybrid|bmwlmdh/,n:'BMW M Hybrid V8',inv:['ramp'],tc:{more:1},trim:{default:'High','Circuit de Spa-Francorchamps':'Medium','Circuit des 24 Heures Du Mans':'Low','Daytona International Speedway':'Low'},tips:['Maximum downforce: average rear ride height 50 mm, the front as low as it goes without bottoming.']},
+{m:/p217|lmp2/,n:'Dallara P217 LMP2',inv:['ramp'],df:[17,5,50],dr:[12,5,5],eq:[-3,3.5],spd:[270,290]},
+{m:/ligier|p320/,n:'Ligier JS P320',tc:{off:0,more:1},tips:['Cross weight is limited to 49.5-50.5% by tech.','Set the aero balance first, then the mechanical balance.']},
+{m:/supercar/,n:'Gen 3 Supercars',inv:['damp'],lim:{damp:[0,40]},tips:['Springs as soft as you can run without bottoming.','The rear droop limiter is often the biggest rear adjustment: less travel adds rotation.']},
+{m:/sf23|super formula sf/,n:'Super Formula SF23',inv:['ramp']},
+{m:/ir18|indycar/,n:'Dallara IR18',inv:['ramp']},
+{m:/\bf4\b|fiaf4/,n:'FIA F4',lim:{damp:[1,10],arbblades:[1,5]},rh:{front:20,rear:30,rearMax:40}},
+{m:/w12/,n:'Mercedes-AMG W12 E Performance',inv:['eb']},
+{m:/cross ?car/,n:'FIA Cross Car',inv:['damp','arm']}];
+let KB_NAMES=(()=>{try{return JSON.parse(localStorage.getItem('carNames')||'{}')||{}}catch(e){return {}}})();
+function kbRemember(path,name){if(!path||!name||KB_NAMES[path]===name)return;KB_NAMES[path]=name;try{localStorage.setItem('carNames',JSON.stringify(KB_NAMES))}catch(e){}}
+function carKb(path,name){const s=((path||'')+' '+(name||KB_NAMES[path]||'')).toLowerCase();if(!s.trim())return null;return CAR_KB.find(e=>e.m.test(s))||null}
+// which group a setting belongs to, from its garage key
+function kbCat(k){k=k||'';if(/armlength/.test(k))return 'arm';if(/^arb|antiroll|^rarb|^farb/.test(k))return 'arb';if(/damp|bumpstiff|reboundstiff|^(ls|hs)(comp|rbd|reb)/.test(k))return 'damp';
+if(/^tc|tractioncontrol/.test(k))return 'tc';if(/^abs/.test(k))return 'abs';if(/ramp/.test(k))return 'ramp';if(/enginebrak/.test(k))return 'eb';return ''}
+const kbHas=(list,r)=>(list||[]).some(t=>{const[a,ax]=t.split('@');return(a===r.k||a===kbCat(r.k))&&(!ax||ax===r.ax)});
+// +1: a higher number is stiffer / more; -1: it is softer / less on this car; 0: not known
+function kbSign(kb,r){if(!kb||!r)return 1;if(kbHas(kb.unk,r))return 0;const c=kbCat(r.k);if(c==='tc'&&kb.tc&&kb.tc.more)return kb.tc.more;if(c==='abs'&&kb.abs&&kb.abs.more)return kb.abs.more;return kbHas(kb.inv,r)?-1:1}
+function kbOrder(kb,r){if(!kb||!kb.nm)return null;for(const t in kb.nm)if(kbHas([t],r))return kb.nm[t];return null}
+function kbLim(kb,r){if(!kb||!kb.lim)return null;const c=kbCat(r.k),ax=r.ax?'@'+r.ax:'';return kb.lim[r.k+ax]||kb.lim[r.k]||(c&&(kb.lim[c+ax]||kb.lim[c]))||null}
+// the next position along a non-numeric order, dir +1 stiffer / -1 softer (null at the end)
+function kbNext(order,cur,dir){const i=order.indexOf(cur);if(i<0)return null;const j=i+dir;return j>=0&&j<order.length?order[j]:null}
+const kbFind=(T,track)=>{if(!T||!track)return null;const t=track.toLowerCase(),k=Object.keys(T).find(n=>{const l=n.toLowerCase();return n!=='default'&&(t.indexOf(l)>=0||l.indexOf(t)>=0)});return k?T[k]:null};
+function kbTrimTable(kb){if(!kb||!kb.trim)return null;return kb.trim==='gt3'?Object.assign({},TRIM_296,kb.tro||{}):kb.trim}
+function kbTrim(kb,track){const T=kbTrimTable(kb);if(!T)return null;let name=kbFind(T,track);if(!name&&kb.gt4)name='Standard (wing 3-5)';if(!name&&T.default)name=T.default;return name?{name,lv:TRIM_LV[name]||(kb.gt4?2:null)}:null}
+// a sentence on what a setting's number means on this car, when it is not the plain "higher = more"
+function kbDirNote(kb,r,nd){const sg=kbSign(kb,r),c=kbCat(r.k);if(!kb)return '';if(sg===0)return 'the manual is unclear which way is stiffer on this car: check the garage';
+if(c==='tc'||c==='abs'){const x=kb[c];return x&&x.more?(nd>0?'a higher':'a lower')+' number'+(x.more<0?' (on this car a lower number is more help)':'')+(x.note?'; '+x.note:''):''}
+if(kbOrder(kb,r))return 'positions on this car do not run in number order';return sg<0?(nd>0?'a higher':'a lower')+' number on this car':''}
+function kbNotesHtml(kb,track,rhAtSpeed){if(!kb)return '';const li=[],sgList=[];
+const inv=(kb.inv||[]).map(t=>{const[a,ax]=t.split('@'),nm={arb:'anti-roll bars',arbblades:'ARB blades',damp:'dampers: 0 or the lowest number is maximum damping',tc:'traction control',abs:'ABS',ramp:'diff ramp angles: a lower angle locks more',arm:'ARB arms: a longer arm is softer',eb:'engine braking: a lower number brakes more'}[a]||a;return(ax?ax+' ':'')+nm});
+if(inv.length)li.push('<b>Runs the other way on this car:</b> '+inv.join('; ')+'. The suggestions already account for it.');
+if(kb.unk)li.push('<b>Unclear in the manual:</b> '+kb.unk.map(t=>t.replace('arbblades','ARB blades').replace('@',' (')+(t.indexOf('@')>=0?')':'')).join(', ')+'. Check in the garage which way is stiffer.');
+if(kb.nm)li.push('<b>Not in number order:</b> '+Object.entries(kb.nm).map(([t,o])=>t.replace('arb','ARB').replace('@',' ')+' softest to stiffest '+o.join(', ')).join('; ')+'.');
+const aid=(x,lab)=>{if(!x)return;const p=[];if(x.more)p.push(x.more>0?'higher number = more help':'higher number = LESS help');if(x.off!=null)p.push(x.off+' is off');if(x.rec!=null)p.push('recommended '+x.rec);if(x.dry)p.push('dry '+x.dry);if(x.wet)p.push('wet '+x.wet);if(x.note)p.push(x.note);if(p.length)li.push('<b>'+lab+':</b> '+p.join(', ')+'.')};aid(kb.tc,'Traction control');aid(kb.abs,'ABS');
+if(kb.df){const f=v=>v==null?'':suNum(v,'mm');li.push('<b>Maximum downforce:</b> '+(kb.df[0]!=null?'wing '+kb.df[0]+', ':'')+'ride height at speed front '+f(kb.df[1])+', rear '+f(kb.df[2])+(kb.dr?'. <b>Minimum drag:</b> wing '+kb.dr[0]+', front '+f(kb.dr[1])+', rear '+f(kb.dr[2]):'')+'.'+(rhAtSpeed&&rhAtSpeed.f!=null?' <span>Your last run on the straights: front '+liveMm(rhAtSpeed.f)+', rear '+liveMm(rhAtSpeed.r)+'.</span>':''))}
+if(kb.eq&&(kb.eq[0]!=null||kb.eq[1]!=null))li.push('<b>One more degree of wing</b> keeps the same aero balance with '+[kb.eq[0]!=null?'the front '+suNum(Math.abs(kb.eq[0]),'mm')+' lower':'',kb.eq[1]!=null?'the rear '+suNum(kb.eq[1],'mm')+' higher':''].filter(Boolean).join(' or ')+'.');
+const tt=kbTrim(kb,track);if(tt)li.push('<b>Downforce for '+(track?plain(track):'this track')+':</b> '+tt.name+(kb.gt4?' (the manual: wing 3-5 is optimal on most tracks, low wing for Daytona and Le Mans)':'')+'.');
+if(kb.spd)li.push('<b>By top speed:</b> High downforce under '+kb.spd[0]+' km/h, Medium to '+kb.spd[1]+' km/h, Low above.');
+if(kb.rh){const r=kb.rh,p=[];if(r.front!=null)p.push('front at least '+suNum(r.front,'mm'));if(r.rear!=null)p.push('rear at least '+suNum(r.rear,'mm'));if(r.rearMax!=null)p.push('rear at most '+suNum(r.rearMax,'mm'));li.push('<b>Ride height limits:</b> '+p.join(', ')+'.')}
+if(kb.fwd)li.push('Front-wheel drive: rotation comes from the rear (rake, rear bar, rear toe), not the throttle.');(kb.tips||[]).forEach(t=>li.push(plain(t)));
+return '<details style="margin-top:8px"><summary><b>'+plain(kb.n)+': from iRacing\'s manual</b> <span class="m">'+li.length+' notes</span></summary><ul style="margin:4px 0 0 18px;padding:0">'+li.map(x=>'<li>'+x+'</li>').join('')+'</ul></details>'}
+
 // ---- Build a whole setup for a track ----
 // 1. Baseline: your fastest run at the track (median clean lap), else your latest run at a
 //    track with the same downforce level, else the setup you have now.
@@ -1414,7 +1524,7 @@ return h+'</details>'}
 // Every value says where it came from. iRacing setup files cannot be written outside the sim,
 // so the sheet is for typing into the garage.
 const TRIM_LV={'High':3,'High/Medium':2.5,'Medium':2,'Low/Medium':1.5,'Low':1};
-function trimOf(car,track){if(car!=='ferrari296gt3'||!track)return null;const t=track.toLowerCase(),k=Object.keys(TRIM_296).find(n=>{const l=n.toLowerCase();return t.indexOf(l)>=0||l.indexOf(t)>=0});return k?{name:TRIM_296[k],lv:TRIM_LV[TRIM_296[k]]}:null}
+function trimOf(car,track){if(!track)return null;const kb=carKb(car);if(!kb)return null;const t=kbTrim(kb,track);return t&&t.lv?t:null}
 function rbText(tree){const o={};setupRows(tree||{}).forEach(r=>{if(r.calc||LIVE_VOL.has(r.k))return;if(!setupNum(r.v))o[r.lk+(r.cn?'|'+r.cn:'')]=String(r.v)});return o}
 const rbMed=a=>{const s=a.slice().sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null};
 // pure: the plan for one track
@@ -1441,7 +1551,7 @@ ids.forEach(id=>{set[id].n=+(set[id].n+p.d).toFixed(6)});changes.push({lk:p.r.lk
 return{base,why,set,txt,changes,trim:tt}}
 let BS_TRACK=null;
 function buildHtml(){const S=SETUP_SRC;if(!S||!S.setup||!S.carPath)return '';const car=S.carPath,C=RB.cars[car]||{runs:[]},rows=SETUP_ROWS||[],sens=rbSens(rbSamples(C.runs)),G=gbSens(C.garage||[]);
-const curTrack=S.live?ghTrackOf(LIVE.yaml||''):S===IB.a?ghTrackOf(IB.a.yaml):'',tracks=[...new Set([curTrack].concat(C.runs.map(r=>r.track)).concat(car==='ferrari296gt3'?Object.keys(TRIM_296):[]).filter(Boolean))];
+const curTrack=S.live?ghTrackOf(LIVE.yaml||''):S===IB.a?ghTrackOf(IB.a.yaml):'',tracks=[...new Set([curTrack].concat(C.runs.map(r=>r.track)).concat(Object.keys(kbTrimTable(carKb(car,S.carName))||{}).filter(n=>n!=='default')).filter(Boolean))];
 if(!BS_TRACK||tracks.indexOf(BS_TRACK)<0)BS_TRACK=tracks[0]||'';if(!BS_TRACK)return '<p class="m">Load an .ibt file or connect live to pick a track.</p>';
 const plan=buildPlan(car,BS_TRACK,C.runs,{set:rbSettings(S.setup),txt:rbText(S.setup)},rows,sens);
 let h=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><label><b>Track</b> <select id="bsTrack">${tracks.map(t=>`<option${t===BS_TRACK?' selected':''}>${plain(t)}</option>`).join('')}</select></label>${plan.trim?`<span class="m">${plain(plan.trim.name)} downforce (iRacing's notes)</span>`:''}<button type="button" id="bsCopy" style="margin-left:auto">Copy the sheet</button></div>`;
@@ -1457,6 +1567,61 @@ return h+`<p class="m" style="font-size:13px;margin:8px 0 0">iRacing setup files
 let BS_SHEET='';
 function wireBuild(el){const s=el.querySelector('#bsTrack');if(s)s.onchange=()=>{BS_TRACK=s.value;const p=el.querySelector('[data-tabp="build"]');if(p){p.innerHTML=buildHtml();wireBuild(el)}};
 const b=el.querySelector('#bsCopy');if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(BS_SHEET);b.textContent='Copied'}catch(e){b.textContent='Copy failed'}setTimeout(()=>{b.textContent='Copy the sheet'},2000)}}
+// ---- Engineer: drive N clean laps, get every change to make, reset to the garage, repeat ----
+// After N clean laps on a setup the engineer measures the balance on them and lists every
+// change to make, with exact values for this car (directions from iRacing's manual, sizes from
+// your own tests when there are any). Reset to the garage, make them, drive N more: the next
+// round compares the two runs, keeps what helped, puts back what made you slower (and does not
+// suggest that change again at this track) and lists the next changes. The plan for a run is
+// made once and kept, so it does not move while you are in the garage.
+const ENG_KEY='engineer';
+let ENG=(()=>{const d={on:false,laps:6,one:false,bad:{}};try{const o=JSON.parse(localStorage.getItem(ENG_KEY)||'null');if(o&&typeof o==='object')return Object.assign(d,o)}catch(e){}return d})();
+let ENG_PL={s:null,p:{}};
+function engSave(){try{localStorage.setItem(ENG_KEY,JSON.stringify({on:ENG.on,laps:ENG.laps,one:ENG.one,bad:ENG.bad}))}catch(e){}}
+function engPlans(){if(ENG_PL.s!==(LIVE.startedAt||0))ENG_PL={s:LIVE.startedAt||0,p:{}};return ENG_PL.p}
+const engTimes=n=>LIVE.laps.filter(l=>l.ver===n&&l.valid).map(l=>l.time);
+// the plan whose changes led to run n: the latest plan made on an earlier run
+function engPrev(n){const P=engPlans();let best=null;for(const k in P){const p=P[k];if(p.base<n&&(!best||p.base>best.base))best=p}return best}
+// did this setup take the plan's values?
+function engApplied(plan,tree){const set=rbSettings(tree);return plan.items.map(it=>{const vals=Object.keys(set).filter(id=>(set[id].lk||id)===it.lk).map(id=>set[id].n);return{it,ok:vals.length>0&&vals.every(v=>Math.abs(v-it.to)<1e-6),now:vals.length?vals[0]:null}})}
+const engVal=(v,u)=>suFmtVal(String(v)+(u?' '+u:''));
+// pure-ish: the plan for run n (its laps, balance and the run before it)
+function engMake(n){const car=LIVE.meta&&LIVE.meta.carPath,ver=LIVE.vers[n-1];if(!car||!ver)return null;const track=ghTrackOf(LIVE.yaml||''),N=ENG.laps,bk=car+'|'+track,bad=ENG.bad[bk]||(ENG.bad[bk]={});
+const prev=engPrev(n),items=[];let verdict=null,baseTree=ver.tree,baseH=liveRunCore(n),baseN=n;
+if(prev&&LIVE.vers[prev.base-1]){verdict=runVerdict(engTimes(prev.base).slice(-N),engTimes(n).slice(-N),liveRunCore(prev.base),liveRunCore(n));
+if(verdict.call==='slower'){const was=rbSettings(LIVE.vers[prev.base-1].tree),now=rbSettings(ver.tree);
+rbDiff(was,now).forEach(d=>{const x=was[d.id];if(!x||!now[d.id])return;items.push({kind:'back',lk:d.lk,lab:x.lab+(d.n>1?' (both sides)':x.cn?' ('+x.cn.toLowerCase()+')':''),from:now[d.id].n,to:x.n,u:x.u,why:'put back: the run with it was slower'});bad[d.lk+(d.d>0?'+':'-')]=x.n});   // going past this value that way was slower
+baseTree=LIVE.vers[prev.base-1].tree;baseH=liveRunCore(prev.base);baseN=prev.base}}
+const rows=setupRows(baseTree),C=RB.cars[car]||{runs:[]},sens=rbSens(rbSamples(C.runs)),P=baseH&&!baseH.few?predictChanges(baseH,rows,car,track,sens):{problems:[],picks:[]},used=new Set(items.map(i=>i.lk));
+P.problems.forEach(f=>{if(ENG.one&&items.some(i=>i.kind==='fix'))return;const past=q=>{const b=bad[q.r.lk+(q.d>0?'+':'-')];return b!=null&&(q.d>0?q.to>b:q.to<b)},p=P.picks.find(q=>q.f===f&&!used.has(q.r.lk)&&!past(q));if(!p)return;used.add(p.r.lk);
+items.push({kind:'fix',lk:p.r.lk,lab:p.label,from:p.from,to:p.to,u:p.u,basis:p.basis.kind,why:(f.kind==='us'?'understeer ':'oversteer ')+f.lab.toLowerCase()+' in '+(f.where==='both'?'slow and fast':f.where)+' corners'+(p.basis.kind==='learned'?', size learned from '+p.basis.n+' test'+(p.basis.n===1?'':'s'):', starting step')})});
+engSave();return{base:n,from:baseN,at:Date.now(),track,items,verdict,prev:prev?prev.base:null,laps:engTimes(n).length,problems:P.problems.length,measured:!!(baseH&&!baseH.few)}}
+function engAfterLap(){if(!ENG.on||!LIVE.vers.length)return;const n=LIVE.vers.length,P=engPlans();if(P[n]||engTimes(n).length<ENG.laps)return;try{const p=engMake(n);if(p)P[n]=p}catch(e){console.error('engineer',e)}}
+let ENG_TXT='';
+function engHtml(){const N=ENG.laps,car=LIVE.meta&&LIVE.meta.carPath,kb=carKb(car,LIVE.meta&&LIVE.meta.carName),track=ghTrackOf(LIVE.yaml||'');
+const opts='<label class="m">laps per round <select id="engLaps">'+[3,4,5,6,8,10].map(x=>'<option'+(x===N?' selected':'')+'>'+x+'</option>').join('')+'</select></label> <label class="m"><input type="checkbox" id="engOne"'+(ENG.one?' checked':'')+'> one change per round (learns faster)</label>';
+const rhs=(()=>{const n=LIVE.vers.length,ok=LIVE.laps.filter(l=>l.ver===n&&l.valid),pick=k=>liveMed(ok.map(l=>{const q=l.st&&l.st.find(z=>z.id==='straight');return q&&q.n?q[k]:null}));return ok.length?{f:pick('f'),r:pick('r')}:null})();
+const notes=kbNotesHtml(kb,track,rhs);
+let h='<div style="margin-top:10px;padding:8px 10px;border:1px solid var(--ln);border-radius:8px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Engineer</b>';
+if(!ENG.on)return h+' <button type="button" id="engOn" style="margin:0">Start</button> '+opts+'</div><div class="m" style="margin-top:6px">Drive '+N+' clean laps and the engineer lists every setup change to make, with exact values. Reset to the garage, make them, and drive '+N+' more: it checks whether you got faster, keeps what helped, puts back what did not, and gives the next changes. Start from iRacing\'s baseline setup for this track (in the garage, iRacing setups) or your own.</div>'+notes+'</div>';
+const n=LIVE.vers.length,P=engPlans(),plan=P[n],prev=engPrev(n),k=engTimes(n).length,round=Object.keys(P).filter(x=>+x<=n).length+(plan?0:1);
+h+=' <span class="m">round '+round+'</span> <button type="button" id="engOff" class="clr" style="display:inline-block;margin:0">Stop</button> '+opts+'</div>';
+const sg=x=>(x>0?'+':x<0?'−':'±')+Math.abs(x).toFixed(2)+' s',vline=V=>!V||V.call==='few'?'':(V.call==='faster'?'<b class="good">Faster</b>':V.call==='slower'?'<b class="bad">Slower</b>':'<b>About the same</b>')+': typical lap '+ft(V.tb)+' against '+ft(V.ta)+' ('+sg(V.dt)+')'+(V.call==='close'?' <span class="m">within the lap-to-lap spread, so the changes stay</span>':V.call==='faster'?' <span class="m">the changes stay</span>':' <span class="m">the changes go back</span>')+'.';
+const li=(it,extra)=>'<li><b>'+plain(it.lab)+'</b> '+engVal(it.from,it.u)+' → <b>'+engVal(it.to,it.u)+'</b> <span class="m">'+plain(it.why)+'</span>'+(extra||'')+'</li>';
+if(plan){if(plan.verdict)h+='<div style="margin-top:6px">Round before: '+vline(plan.verdict)+'</div>';
+if(plan.items.length){ENG_TXT=plan.items.map(it=>it.lab+': '+engVal(it.from,it.u)+' -> '+engVal(it.to,it.u)).join('\n');
+h+='<div style="margin-top:6px"><b>Box now.</b> Reset to the garage, make '+(plan.items.length===1?'this change':'these '+plan.items.length+' changes')+', then drive '+N+' clean laps. <button type="button" id="engCopy" style="margin:0">Copy</button><ol style="margin:4px 0 0 18px;padding:0">'+plan.items.map(it=>li(it)).join('')+'</ol></div>';
+if(plan.items.some(it=>it.basis==='estimate'))h+='<div class="m" style="font-size:13px;margin-top:4px">A starting step is a first change of a typical size in the direction the manual and the balance call for; once you have driven it, its real effect is measured and later sizes use it.</div>'}
+else h+='<div style="margin-top:6px"><b>No changes.</b> '+(plan.measured?'The balance on these '+plan.laps+' laps shows no clear understeer or oversteer in any phase. Keep this setup; work on the driving, or drive another round to confirm.':'Not enough cornering was measured on these laps to judge the balance.')+'</div>'}
+else{const pct=Math.min(100,k/N*100);h+='<div style="margin-top:6px">Lap <b>'+Math.min(k,N)+' of '+N+'</b> on this setup <span style="display:inline-block;width:120px;height:8px;background:var(--ln);border-radius:4px;vertical-align:middle;overflow:hidden"><span style="display:block;height:100%;width:'+pct.toFixed(0)+'%;background:var(--good)"></span></span> <span class="m">clean laps only: out laps, pit laps and laps with a setup change in them do not count</span></div>';
+if(prev&&prev.items.length){const A=engApplied(prev,LIVE.vers[n-1].tree),miss=A.filter(a=>!a.ok);
+h+='<div style="margin-top:6px">'+(miss.length?'<b>Not set yet:</b>':A.length===1?'<b>The change is in.</b>':'<b>All '+A.length+' changes are in.</b>')+'<ul style="margin:4px 0 0 18px;padding:0">'+A.map(a=>'<li>'+(a.ok?'✔ ':'✘ ')+'<b>'+plain(a.it.lab)+'</b> '+(a.ok?engVal(a.it.to,a.it.u):'should be <b>'+engVal(a.it.to,a.it.u)+'</b>, now '+(a.now==null?'—':engVal(a.now,a.it.u)))+'</li>').join('')+'</ul></div>'}
+else if(!prev)h+='<div class="m" style="margin-top:6px">First round: the engineer measures how this setup handles in your hands. Load iRacing\'s baseline setup for this track first if you want a known starting point.</div>'}
+return h+notes+'</div>'}
+function wireEng(){const on=$('engOn'),off=$('engOff'),L=$('engLaps'),one=$('engOne'),cp=$('engCopy');
+if(on)on.onclick=()=>{ENG.on=true;engSave();engAfterLap();liveRender()};if(off)off.onclick=()=>{ENG.on=false;engSave();liveRender()};
+if(L)L.onchange=()=>{const v=+L.value;if(v>=2&&v<=20){ENG.laps=v;engSave();engAfterLap();liveRender()}};if(one)one.onchange=()=>{ENG.one=!!one.checked;engSave()};
+if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(ENG_TXT);cp.textContent='Copied'}catch(e){cp.textContent='Copy failed'}setTimeout(()=>{cp.textContent='Copy'},2000)}}
 
 // ---------- click a graph to enlarge it ----------
 let ZOOM=null;
@@ -1509,6 +1674,6 @@ h+='<small class="m">Measured on '+m.src+' (middle value of each condition). How
 return h}
 
 try{renderSetup()}catch(e){}
-try{liveRender();if(liveOnBridge())liveConnect()}catch(e){}
+try{liveRender();if(liveOnBridge()||LIVE_SHARE)liveConnect()}catch(e){}
 try{if(liveOnBridge()&&/^\/analyzer/.test(location.pathname)){const s=document.createElement('a');s.href='/';s.textContent='\u2190 Suite';s.style.cssText='display:inline-block;margin-bottom:6px;color:var(--fg);opacity:.75;text-decoration:none;font-size:14px';const b=document.createElement('button');b.type='button';b.style.cssText='margin:0 0 6px 14px;font:inherit;font-size:13px;padding:2px 10px;border-radius:6px;border:1px solid var(--ln);background:var(--card);color:var(--fg);cursor:pointer';const lab=()=>{b.textContent=document.documentElement.getAttribute('data-theme')==='light'?'\u263E Dark mode':'\u2600 Light mode'};lab();b.onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}lab();try{window.dispatchEvent(new Event('resize'))}catch(e){}try{if(typeof R!=='undefined'&&R)run()}catch(e){}try{renderSetup()}catch(e){}try{liveRender()}catch(e){}};document.body.insertBefore(b,document.body.firstChild);document.body.insertBefore(s,document.body.firstChild)}}catch(e){}
 </script></body></html>

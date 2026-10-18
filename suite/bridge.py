@@ -6,6 +6,7 @@ suite's pages over a local connection on 127.0.0.1 only. Read-only: it never
 changes anything in iRacing.
 """
 import asyncio
+import collections
 import base64
 import gzip
 import hashlib
@@ -378,6 +379,79 @@ async def ws_session(hub, reader, writer, key):
         pass
     finally:
         hub.clients.discard(client)
+
+
+class RemoteClient:
+    """A Lap Analyzer viewer reaching this app through PitWall's relay (a share link).
+
+    Sending never waits on the network: the data pump hands every message over and
+    one task writes them out. Over the internet telemetry goes at half rate, and when
+    the link cannot keep up the oldest telemetry is dropped; session and status
+    messages (the setup, the driver list) never are. So a slow viewer cannot slow
+    the driver's own screens down.
+    """
+    TICK_EVERY = 2
+    MAX_TICKS = 8
+
+    def __init__(self, ws):
+        self.ws = ws
+        self.q = collections.deque()
+        self.ev = asyncio.Event()
+        self.n = 0
+        self.ticks = 0
+        self.dead = False
+
+    async def send_text(self, text):
+        if self.dead:
+            raise ConnectionError("viewer gone")
+        tick = text.startswith('{"type":"tick"')
+        if tick:
+            self.n += 1
+            if self.n % self.TICK_EVERY:
+                return
+            if self.ticks >= self.MAX_TICKS:
+                for i, (is_tick, _) in enumerate(self.q):
+                    if is_tick:
+                        del self.q[i]
+                        self.ticks -= 1
+                        break
+            self.ticks += 1
+        self.q.append((tick, text))
+        self.ev.set()
+
+    async def run(self):
+        while True:
+            await self.ev.wait()
+            self.ev.clear()
+            while self.q:
+                tick, text = self.q.popleft()
+                if tick:
+                    self.ticks -= 1
+                await self.ws.send(text)
+
+
+async def relay_feed(hub, ws):
+    """Serve one analyzer viewer on the relay's WebSocket `ws`, the same messages as /ws."""
+    c = RemoteClient(ws)
+    await c.send_text(json.dumps({"type": "hello", "bridge": VERSION, "mode": hub.source.mode, "rate": hub.rate // RemoteClient.TICK_EVERY, "remote": True}))
+    await c.send_text(json.dumps({"type": "status", "connected": bool(hub.connected), "source": hub.source.mode}))
+    if hub.yaml:
+        await c.send_text(json.dumps({"type": "session", "yaml": hub.yaml, "update": hub.update}))
+    hub.clients.add(c)
+    writer = asyncio.ensure_future(c.run())
+    try:
+        async for _ in ws:          # read-only: whatever a viewer sends is ignored
+            pass
+    except Exception:
+        pass
+    finally:
+        c.dead = True
+        hub.clients.discard(c)
+        writer.cancel()
+
+
+def analyzer_page():
+    return os.path.join(web_root(), "analyzer", "index.html")
 
 
 def resolve(path):

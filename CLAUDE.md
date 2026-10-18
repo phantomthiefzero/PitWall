@@ -49,12 +49,18 @@ iRacing Suite app (suite/)
   Its logic is tested in Node: `tests/analyzer_harness.js` runs the page's own script with a
   stand-in page, and `tests/test_analyzer.py` feeds it synthetic .ibt files shaped like real ones
   (lap counter going back, mid-lap joins, pit laps, refuels). Skipped when Node is missing.
+- Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
+  A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
+  car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
 - `suite/bridge.py` uses only the standard library (plus pyirsdk). Its replay reads
   .ibt files; PitWall's replay reads its own .jsonl.gz captures. They are different.
 - `tests/test_suite.py` must pass along with `tests/test_pipeline.py`.
 - Share online (`suite/share.py`): a Cloudflare quick tunnel to the suite's relay. Links carry
   only the relay's revocable guest token, never the kept view or producer tokens (the co-host
   producer link is shown separately, folded away). The relay serves the dashboard at /pitwall/.
+  It also serves the Lap Analyzer at /analyzer/ with a read-only feed at /analyzer/ws (any viewer
+  token): `suite.bridge.relay_feed` puts the suite Hub's messages through a RemoteClient that never
+  blocks the pump (half-rate ticks, oldest ticks dropped when slow). The local /ws stays loopback-only.
 
 - Updates (`suite/updater.py`): the release build stamps `suite/_build.py` (BUILD = run number,
   COMMIT); the app compares it with the newest `build-N` release, downloads next to itself,
