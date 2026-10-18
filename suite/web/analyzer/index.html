@@ -257,7 +257,7 @@ $('tb').querySelectorAll('tr.cr').forEach(r=>r.onclick=()=>{const d=r.nextElemen
 const CH=[['Speed (km/h)','Speed',3.6],['Brake (%)','Brake',100],['Throttle (%)','Throttle',100],['Steering (°)','Steer',57.2958],['Gear','Gear',1],['RPM','RPM',1],['ABS active (1 = on)','ABS',1],['Steering rate (°/s)','SteerRate',57.2958],['Lateral G','LatG',0.10197],['Longitudinal G (braking is negative)','LonG',0.10197],['Combined G','TotalG',0.10197],['Vertical G (includes gravity)','VertG',0.10197],['Yaw rate (°/s)','YawRate',57.2958],['Coasting (1 = no throttle and no brake)','Coast',1]];
 const IB={};
 function dropSelf(){if(SELF!==null){delete F.b;SELF=null}}
-async function load(f,k,z){dropSelf();if(/\.ibt$/i.test(f.name)){IB[k]=ibt(await f.arrayBuffer());libRecord(IB[k],f.name+'|'+f.size);pick(k,z,IB[k].best)}else{delete IB[k];F[k]=parse(await f.text(),f.name);z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap);const s=z.querySelector('select');if(s)s.hidden=true}}
+async function load(f,k,z){dropSelf();if(/\.ibt$/i.test(f.name)){IB[k]=ibt(await f.arrayBuffer());libRecord(IB[k],f.name+'|'+f.size);rbFromFile(IB[k],f.name+'|'+f.size);pick(k,z,IB[k].best)}else{delete IB[k];F[k]=parse(await f.text(),f.name);z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap);const s=z.querySelector('select');if(s)s.hidden=true}}
 function pick(k,z,i){const ib=IB[k];F[k]=ib.lapObj(i);F[k].idx=i;z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap)+' (own telemetry)';let s=z.querySelector('select');if(!s){s=document.createElement('select');s.onclick=e=>e.stopPropagation();z.appendChild(s)}s.hidden=false;s.innerHTML=ib.laps.map((l,j)=>l.ok?`<option value="${j}">Lap ${l.lap} · ${ft(l.time)}</option>`:'').join('');s.value=i;s.onchange=()=>{pick(k,z,+s.value);run()}}
 function setup(z,k){z.dataset.def=z.querySelector('span').textContent;z.querySelector('.clr').onclick=e=>{e.preventDefault();e.stopPropagation();clearFile(k)};const inp=z.querySelector('input');inp.accept='.csv,.ibt';const go=async f=>{if(!f)return;try{$('err').textContent='';await load(f,k,z);run();renderOwn()}catch(e){$('err').textContent=e.message}};
 inp.multiple=k==='b';inp.onchange=()=>k==='b'?goMany(Array.from(inp.files)):go(inp.files[0]);z.ondragover=e=>{e.preventDefault()};z.ondrop=e=>{e.preventDefault();k==='b'?goMany(Array.from(e.dataTransfer.files)):go(e.dataTransfer.files[0])}}
@@ -810,7 +810,7 @@ const pre=order.filter(s=>SETUP_FULL.has(s)&&order.indexOf(s)<first),post=order.
 body=pre.map(s=>full(s,secs)).join('')+'<div class="sgrid">'+L.map((s,k)=>setupSection(s,secs[s],both,mapB)+(R[k]?setupSection(R[k],secs[R[k]],both,mapB):'<div></div>')).join('')+'</div>'+post.map(s=>full(s,secs)).join('')}
 return{id:g,name:SETUP_TABN[g]||g,body,nd:byG[g].filter(isDiff).length}});
 if(!S.stored&&!S.live&&S===IB.a){tabs.unshift({id:'driving',name:'Your driving',body:drivingHtml(),nd:0});tabs.unshift({id:'advice',name:'Suggestions',body:adviceHtml(),nd:0})}
-tabs.splice(tabs.filter(t=>t.id==='advice'||t.id==='driving').length,0,{id:'symptom',name:'Fix by symptom',body:symptomHtml(),nd:0});
+tabs.splice(tabs.filter(t=>t.id==='advice'||t.id==='driving').length,0,{id:'predict',name:'Predicted changes',body:predictHtml(),nd:0},{id:'symptom',name:'Fix by symptom',body:symptomHtml(),nd:0});
 tabs.push({id:'notes',name:'Notes',body:trimHtml()+notesHtml()+libHtml(),nd:0});
 if(!tabs.some(t=>t.id===SETUP_TAB))SETUP_TAB=tabs[0].id;
 h+='<div class="stabs">'+tabs.map(t=>'<button type="button" data-tab="'+t.id+'"'+(t.id===SETUP_TAB?' class="on"':'')+'>'+t.name+(t.nd?' <span class="m">('+t.nd+')</span>':'')+'</button>').join('')+'</div>';
@@ -919,7 +919,7 @@ ws.onclose=()=>{const was=LIVE.state;LIVE.ws=null;LIVE.state='off';LIVE.sim=fals
 ws.onerror=()=>{}}
 function liveDisconnect(){if(LIVE.ws)LIVE.ws.close()}
 function liveMsg(m){if(m.type==='hello'){LIVE.mode=m.mode;liveRender()}else if(m.type==='status'){LIVE.sim=!!m.connected;liveRender()}else if(m.type==='session'&&typeof m.yaml==='string')liveSession(m.yaml);else if(m.type==='tick'&&m.v)liveTick(m.v)}
-function liveSession(y){try{ghSession(y)}catch(e){console.error('driver laps',e)}y=plain(y);LIVE.yaml=y;LIVE.meta=liveMeta(y);const t=setupTree(y);if(!t)return;const s=liveSig(t),first=!LIVE.setup;
+function liveSession(y){if(!LIVE.startedAt)LIVE.startedAt=Date.now();try{ghSession(y)}catch(e){console.error('driver laps',e)}y=plain(y);LIVE.yaml=y;LIVE.meta=liveMeta(y);const t=setupTree(y);if(!t)return;const s=liveSig(t),first=!LIVE.setup;
 if(s!==LIVE.sig){if(LIVE.setup&&LIVE.cur)LIVE.cur.pit=true;   /* a setup only changes in the garage: the lap in progress is not a clean lap of either run */
 const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tree:t,diff:prev?liveDiff(prev.tree,t):[],at:Date.now()});LIVE.sig=s;
 if(LIVE.meta.carPath)try{libRecord({carPath:LIVE.meta.carPath,carName:LIVE.meta.carName,setup:t},'live|'+(LIVE.meta.sid||'session')+'|'+LIVE.vers.length)}catch(e){}
@@ -940,7 +940,7 @@ if(LIVE_TIRES.every(k=>b.rh[k].every(x=>x!=null))){const ext={};LIVE_TIRES.forEa
 const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
-LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();LIVE.pend=rec;liveRender()}
+LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();LIVE.pend=rec;liveRender()}
 const liveMm=v=>v==null?'—':suNum(Math.round(v*10)/10,'mm'),liveTemp=v=>v==null?'—':(SETUP_UNITS==='imperial'?(v*1.8+32).toFixed(0)+'°F':v.toFixed(0)+'°C'),liveSpd=ms=>(ms*3.6*U().s[0]).toFixed(0)+' '+U().s[1];
 const liveMed=a=>{const s=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q);return s.length?s[Math.floor((s.length-1)/2)]:null};
 function liveGauges(barsOnly){const el=$('liveNow');if(!el)return;const v=LIVE.v;if(!v){el.innerHTML='<span class="m">Waiting for data...</span>';el.dataset.g='';return}
@@ -1310,6 +1310,78 @@ const title=f=>f.kind==='abs'?`ABS working ${f.v.toFixed(0)}% of the time into c
 h+=`<div style="margin-top:8px"><b>Try next on this setup</b> <small class="m">from your ${nCur} clean laps on it; change one thing, then run ${RUN_MIN} laps for the verdict</small><ol style="margin:4px 0 0 18px;padding:0">`+F.slice(0,3).map(f=>{const ch=adviceChanges(f).map(c=>adviceRow(rows,c,car)).filter(Boolean),use=ch.filter(c=>!c.at).slice(0,2);
 return `<li style="margin-bottom:6px"><b>${title(f)}</b>`+(use.length?': '+use.map(c=>`<b>${plain(c.label)}</b> ${plain(c.word.toLowerCase())} <span class="m">(now ${plain(c.cur)})</span>`).join(', or '):' <span class="m">(no matching setting on this car)</span>')+`</li>`}).join('')+`</ol></div>`;
 return h}
+
+// ---- Predicted changes: learned from your own runs ----
+// Every run (a loaded .ibt, or a live run on one setup) is kept as a short summary per car:
+// track, numeric settings, clean lap times and the balance by phase (raw steering at the
+// limit against a neutral car). Two runs at any track that differ in exactly ONE setting
+// measure that setting: its effect per unit on each phase (balance carries across tracks)
+// and on lap time (same track only). Predictions use those measured effects; with none
+// yet, a change is a starting estimate (direction from the knowledge table, size a tenth
+// of the setting's range) and says so.
+// a typical first step for a setting nobody has measured yet (in the garage's own units)
+const PRIOR_STEP={rideheight:2,springrate:10,rearwingangle:1,brakepressurebias:.5,diffpreload:10,camber:.2,toein:.5,totaltoein:.5,bumprubbergap:3,lowspeedcompressiondamping:1,highspeedcompressiondamping:1,lowspeedrebounddamping:1,highspeedrebounddamping:1,tcsetting:1,abssetting:1,startingpressure:7};
+const RB_KEY='runBook',RB_MAX=200,PHASES=['entry_slow','entry_fast','mid_slow','mid_fast','exit_slow','exit_fast'];
+function rbLoad(){try{const o=JSON.parse(localStorage.getItem(RB_KEY)||'null');if(o&&o.cars)return o}catch(e){}return{cars:{}}}
+let RB=rbLoad();
+function rbSave(){try{localStorage.setItem(RB_KEY,JSON.stringify(RB))}catch(e){}}
+function rbSettings(tree){const o={};setupRows(tree||{}).forEach(r=>{if(r.calc||SETUP_RO.has(r.k)||LIVE_VOL.has(r.k))return;const nu=setupNum(r.v);if(!nu)return;o[r.lk]={n:nu.n,u:nu.u,k:r.k,ax:r.ax||'',lab:r.lab,cn:r.cn||''}});return o}
+function rbBal(B){const o={};if(!B)return o;PHASES.forEach(p=>{const x=B[p];if(x&&x.n>=150&&x.raw)o[p]={raw:x.raw,cs:x.cs,n:x.n}});return o}
+// keep (or update) one run's summary
+function rbRecord(car,run){if(!car||!run||!run.id)return;const C=RB.cars[car]||(RB.cars[car]={runs:[]}),i=C.runs.findIndex(r=>r.id===run.id);if(i>=0)C.runs[i]=run;else C.runs.push(run);
+while(C.runs.length>RB_MAX)C.runs.shift();rbSave()}
+function rbFromFile(ib,fid){try{if(!ib||!ib.carPath||!ib.setup)return;const S=sessionStats(ib),h=handlingStats(ib);if(!S)return;const laps=S.clean.map(r=>r.time);if(laps.length<2)return;
+rbRecord(ib.carPath,{id:'file|'+fid,src:'file',at:Date.now(),track:ghTrackOf(ib.yaml),set:rbSettings(ib.setup),laps,bal:h&&!h.few?rbBal(h.B):{}})}catch(e){console.error('runbook',e)}}
+function rbFromLive(){try{const n=LIVE.vers.length,s=LIVE.vers[n-1];if(!s||!LIVE.meta||!LIVE.meta.carPath)return;const laps=LIVE.laps.filter(l=>l.ver===n&&l.valid).map(l=>l.time);if(laps.length<RUN_MIN)return;
+const h=liveRunCore(n);rbRecord(LIVE.meta.carPath,{id:'live|'+(LIVE.meta.sid||'s')+'|'+(LIVE.startedAt||0)+'|'+n,src:'live',at:Date.now(),track:ghTrackOf(LIVE.yaml||''),set:rbSettings(s.tree),laps,bal:h&&!h.few?rbBal(h.B):{}})}catch(e){console.error('runbook',e)}}
+// pure: pairs of runs that differ in exactly one setting -> one measurement each
+function rbSamples(runs){const med=a=>{const s=a.slice().sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null};const out=[];
+for(let i=0;i<runs.length;i++)for(let j=i+1;j<runs.length;j++){const a=runs[i],b=runs[j],diff=[];
+for(const lk in a.set){const x=a.set[lk],y=b.set[lk];if(!y)continue;if(Math.abs(x.n-y.n)>1e-9)diff.push(lk)}
+if(diff.length!==1)continue;const lk=diff[0],d=b.set[lk].n-a.set[lk].n,ph={};
+PHASES.forEach(p=>{const x=a.bal[p],y=b.bal[p];if(x&&y)ph[p]=y.raw/x.raw-1});
+const same=a.track===b.track&&a.laps.length>=RUN_MIN&&b.laps.length>=RUN_MIN;
+out.push({lk,k:a.set[lk].k,ax:a.set[lk].ax,lab:a.set[lk].lab,d,ph,dt:same?med(b.laps)-med(a.laps):null,track:a.track,from:a.set[lk].n,to:b.set[lk].n})}
+return out}
+// pure: per setting, effect per unit (middle of its measurements)
+function rbSens(samples){const med=a=>{const s=a.slice().sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null},S={};
+samples.forEach(x=>{const s=S[x.lk]||(S[x.lk]={lk:x.lk,k:x.k,ax:x.ax,lab:x.lab,n:0,ph:{},dt:{},samples:[]});s.n++;s.samples.push(x);PHASES.forEach(p=>{if(x.ph[p]!=null)(s.ph[p]=s.ph[p]||[]).push(x.ph[p]/x.d)});
+if(x.dt!=null)(s.dt[x.track]=s.dt[x.track]||[]).push(x.dt/x.d)});
+Object.values(S).forEach(s=>{PHASES.forEach(p=>{if(s.ph[p])s.ph[p]={per:med(s.ph[p]),n:s.ph[p].length}});Object.keys(s.dt).forEach(t=>{s.dt[t]={per:med(s.dt[t]),n:s.dt[t].length}})});return S}
+// the step a setting moves in: from the values you have run, else its shown decimals
+function rbStep(car,r){const nu=setupNum(r.v);let st=nu?Math.pow(10,-nu.d):1;const C=RB.cars[car];if(C){const v=[...new Set(C.runs.map(x=>x.set[r.lk]&&x.set[r.lk].n).filter(x=>x!=null))].sort((a,b)=>a-b);
+let m=Infinity;for(let i=1;i<v.length;i++){const d=v[i]-v[i-1];if(d>1e-9)m=Math.min(m,d)}if(isFinite(m)&&m>st)st=m}return st}
+// pure-ish: the best single change for the problems in balance h ({B} with ui and raw)
+function predictChanges(h,rows,car,track,sens){if(!h||h.few||!h.B)return{problems:[],picks:[]};const F=handlingFindings({B:h.B,T:{},BT:{}}).filter(f=>f.kind==='us'||f.kind==='os').slice(0,3),picks=[];
+F.forEach(f=>{const ph=(f.where==='both'?['slow','fast']:[f.where]).map(w=>f.p+'_'+w),cur=ph.map(p=>h.B[p]).filter(Boolean),
+need=f.kind==='us'?Math.min(...cur.map(x=>1/x.ui-1)):null;   // understeer: steering to remove to reach this run's middle
+adviceChanges(f).forEach(([k,ax,dir])=>{const r=rows.find(x=>x.k===k&&!x.calc&&(!ax||(ax.length===2?x.cn===CORNER_OF[ax]:x.ax===ax)));if(!r||!dir)return;const nu=setupNum(r.v);if(!nu)return;
+const lim=setupLim(r)||((car&&SETUP_CAR_LIMITS[car])||{})[k]||null,st=rbStep(car,r),s=sens&&sens[r.lk],learned=s?ph.map(p=>s.ph[p]).filter(x=>x&&x.per*dir<0&&f.kind==='us'):[];
+let d,basis,eff=null,lap=null;
+if(learned.length&&need!=null){const per=learned.reduce((a,x)=>a+x.per,0)/learned.length;d=need/per;basis={kind:'learned',n:Math.max(...learned.map(x=>x.n))};eff={}}
+else{d=dir*(PRIOR_STEP[k]!=null?PRIOR_STEP[k]:lim?(lim[1]-lim[0])/10:st*2);basis={kind:'estimate'}}
+d=Math.round(d/st)*st;if(Math.abs(d)<st)d=dir*st;let to=nu.n+d;if(lim){to=Math.max(lim[0],Math.min(lim[1],to))}d=to-nu.n;if(Math.abs(d)<1e-9)return;
+if(s){eff={};PHASES.forEach(p=>{if(s.ph[p])eff[p]=s.ph[p].per*d});if(s.dt[track])lap={dt:s.dt[track].per*d,n:s.dt[track].n}}
+picks.push({f,r,k,ax,from:nu.n,to:+to.toFixed(Math.max(0,nu.d)),u:nu.u,d,dir,basis,eff,lap,need,label:(r.cn&&ax.length>2&&k!=='camber'?ax.charAt(0).toUpperCase()+ax.slice(1)+' '+r.lab.toLowerCase()+' (both sides)':r.lab)})})});
+// learned picks first, then by the order of the knowledge table
+picks.sort((a,b)=>(b.basis.kind==='learned')-(a.basis.kind==='learned'));const seen=new Set(),uniq=picks.filter(p=>{const id=p.r.lk;if(seen.has(id))return false;seen.add(id);return true});
+return{problems:F,picks:uniq}}
+const PH_LAB={entry_slow:'braking into slow corners',entry_fast:'braking into fast corners',mid_slow:'mid-corner, slow',mid_fast:'mid-corner, fast',exit_slow:'on the throttle, slow',exit_fast:'on the throttle, fast'};
+function predictHtml(){const S=SETUP_SRC;if(!S||!S.setup)return '';const car=S.carPath,rows=SETUP_ROWS||[],C=RB.cars[car]||{runs:[]},sens=rbSens(rbSamples(C.runs));
+let h=null,track='',from='';if(S.live){h=liveRunCore(LIVE.vers.length);track=ghTrackOf(LIVE.yaml||'');from='your clean laps on this setup'}else if(S===IB.a){try{h=handlingStats(IB.a)}catch(e){}track=ghTrackOf(IB.a.yaml);from='the clean laps in this file'}
+const P=predictChanges(h,rows,car,track,sens),pct=v=>(v>0?'+':'−')+Math.abs(v*100).toFixed(0)+'%',fmtv=(v,p)=>suFmtVal(String(v)+(p.u?' '+p.u:''));
+let o=`<p class="m" style="margin:0 0 8px">Exact changes to try, predicted from what your own tests have shown for this car. ${C.runs.length} run${C.runs.length===1?'':'s'} recorded for this car; ${Object.keys(sens).length} setting${Object.keys(sens).length===1?'':'s'} measured so far (two runs that differ in only that setting).</p>`;
+if(!h||h.few)o+=`<p class="m">Predictions need a measured balance: load an .ibt with at least 2 clean laps, or drive ${RUN_MIN} clean laps live.</p>`;
+else if(!P.problems.length)o+=`<p><b>No clear understeer or oversteer</b> in ${from}. Nothing to correct; the setting table below still learns from every change you test.</p>`;
+else{const best=P.picks.slice(0,3);o+=`<p style="margin:0 0 6px">From ${from}: ${P.problems.map(f=>`<b>${f.kind==='us'?'understeer':'oversteer'} ${f.lab.toLowerCase()} in ${f.where==='both'?'slow and fast':f.where} corners</b>`).join(', ')}.</p>`;
+o+=best.length?`<ol style="margin:0 0 0 18px;padding:0">${best.map((p,i)=>{const ri=rows.indexOf(p.r),eff=p.eff?Object.entries(p.eff).filter(([,v])=>Math.abs(v)>=.02).map(([ph,v])=>`${PH_LAB[ph]} ${pct(v)} steering`).join(', '):'';
+return `<li style="margin-bottom:8px">${i===0?'<b>Try first:</b> ':''}<b>${plain(p.label)} ${fmtv(p.from,p)} → ${fmtv(p.to,p)}</b> ${ri>=0?`<a href="#" data-symgo="${ri}" class="m" style="font-size:13px">show in setup</a>`:''}<br>`+
+(p.basis.kind==='learned'?`<span>Predicted: ${eff||'little change in balance'}${p.lap?`; lap time ${p.lap.dt>0?'+':'−'}${Math.abs(p.lap.dt).toFixed(2)} s`:''}. <small class="m">From ${p.basis.n} test${p.basis.n===1?'':'s'} of this setting${p.lap?`, lap time from ${p.lap.n} at this track`:''}.</small></span>`
+:`<span class="m">Starting estimate: this setting has not been measured yet, so the size is a typical first step${PRIOR_STEP[p.k]==null&&setupLim(p.r)?' (a tenth of its range)':''} in the direction that should help ${p.f.kind==='us'?'the understeer':'the oversteer'}. Drive ${RUN_MIN} clean laps after the change and the next prediction will use what it did.</span>`)+`</li>`}).join('')}</ol>`:'<p class="m">This car has no matching setting to change.</p>'}
+const ss=Object.values(sens);if(ss.length)o+=`<details style="margin-top:8px"><summary><b>What your tests have measured</b> <span class="m">per unit of each setting</span></summary><div style="overflow-x:auto"><table><tr><th>Setting</th><th>Tests</th>${PHASES.map(p=>`<th>${PH_LAB[p]}</th>`).join('')}<th>Lap time here</th></tr>`+
+ss.map(s=>`<tr><td><b>${plain(s.lab)}</b> <span class="m">${plain(s.ax)}</span></td><td>${s.n}</td>${PHASES.map(p=>`<td>${s.ph[p]&&s.ph[p].per?pct(s.ph[p].per)+'<small class="m"> /unit</small>':'–'}</td>`).join('')}<td>${s.dt[track]?(s.dt[track].per>0?'+':'−')+Math.abs(s.dt[track].per).toFixed(3)+' s /unit':'–'}</td></tr>`).join('')+
+`</table></div><p class="m" style="font-size:13px">Steering is what you need at the limit against a neutral car: less means less understeer in that phase. Lap time per unit is only from tests at this track. Changes of more than one setting at once are kept but not used, because their effects cannot be separated.</p></details>`;
+return o}
 
 // ---------- click a graph to enlarge it ----------
 let ZOOM=null;
