@@ -54,6 +54,9 @@ def write_ibt(path, yaml, channels, rows):
         f.write(hdr + vh + session + data)
 
 
+# A real .ibt for checks against iRacing's own numbers (not in the repo; skipped when absent).
+REAL_IBT = os.environ.get("PITWALL_REAL_IBT", "/mnt/user-data/uploads/ferrari296gt3_indianapolis_2022_road_2026-10-10_20-47-23.ibt")
+
 def run_js(test_js, *files):
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
         f.write(test_js)
@@ -1227,3 +1230,78 @@ class EngineerTest(unittest.TestCase):
         self.assertNotEqual(p3["items"][1][1], "Front ARB blades")              # not the same change again
         self.assertIn("the changes go back", self.r["h3"])
         self.assertEqual(self.r["saved"]["bad"]["ferrari296gt3|Indianapolis Motor Speedway"], {"arbblades@front-": 66})
+
+
+LIVE_RH_JS = r"""
+LIVE.ws = {}; LIVE.state = 'bridge';
+liveSession(ARGS_YAML);
+const base = { Lap: 1, LapDistPct: 0.5, LapCurrentLapTime: 1, LapLastLapTime: -1, Brake: 0, Throttle: 0, SteeringWheelAngle: 0, YawRate: 0, LatAccel: 0, OnPitRoad: true };
+const defl = (lf, rr) => ({ LFshockDefl: lf, RFshockDefl: lf, LRshockDefl: rr, RRshockDefl: rr });
+// no rest seen yet on this setup: nothing shown rather than a guess
+liveTick(Object.assign({}, base, { Speed: 30 }, defl(0.050, 0.050)));
+const before = [liveRh(LIVE.v, 'LF'), LIVE.rhSrc];
+liveTick(Object.assign({}, base, { Speed: 0 }, defl(0.045, 0.048)));     // standing in the pits
+liveTick(Object.assign({}, base, { Speed: 60, OnPitRoad: false }, defl(0.050, 0.046)));
+const lf = liveRh(LIVE.v, 'LF'), rr = liveRh(LIVE.v, 'RR'), src = LIVE.rhSrc;
+// a measured channel (replays of .ibt files) is used as it is
+const meas = liveRh(Object.assign({ LFrideHeight: 0.0412 }, LIVE.v), 'LF');
+// a new setup needs a new rest reading
+liveSession(ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 70 degrees'));
+liveTick(Object.assign({}, base, { Speed: 60, OnPitRoad: false }, defl(0.050, 0.046)));
+const after = [liveRh(LIVE.v, 'LF'), LIVE.rhSrc];
+// another car without a calibration
+LIVE.meta.carPath = 'somethingelse';
+const nocal = [liveRh(LIVE.v, 'LF'), LIVE.rhSrc];
+console.log(JSON.stringify({ before, lf, rr, src, meas, after, nocal }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class LiveRideHeightTest(unittest.TestCase):
+    """iRacing's live telemetry has no ride height channel; it is worked out from shock travel."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + LIVE_RH_JS)
+
+    def test_from_shock_travel_anchored_at_rest(self):
+        r = self.r
+        self.assertEqual(r["before"], [None, "norest"])
+        self.assertEqual(r["src"], "shock")
+        self.assertAlmostEqual(r["lf"], 0.0531 - 1.571 * 0.005, places=9)     # garage 53.1 mm, 5 mm more travel
+        self.assertAlmostEqual(r["rr"], 0.0604 - 1.446 * -0.002, places=9)
+        self.assertAlmostEqual(r["meas"], 0.0412, places=9)
+
+    def test_new_setup_or_unknown_car_shows_nothing(self):
+        self.assertEqual(self.r["after"], [None, "norest"])
+        self.assertEqual(self.r["nocal"], [None, "nocal"])
+
+    @unittest.skipUnless(os.path.exists(REAL_IBT), "the real Indianapolis file is not here")
+    def test_slope_fitted_from_a_real_file(self):
+        r = run_js("const ib = ibt(readBytes(ARGS[0])); console.log(JSON.stringify(rhFit(ib)));", REAL_IBT)
+        for c, k in {"LF": -1.571, "RF": -1.601, "LR": -1.461, "RR": -1.446}.items():
+            self.assertAlmostEqual(r[c], k, delta=0.01)
+
+
+ENGINEER_WAIT_JS = ENGINEER_JS.split("const txt = ")[0] + r"""
+const txt = () => engHtml().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+ENG.on = true; ENG.laps = 3;
+// straight-line laps: nothing to judge the balance on
+function cruise(laps) { for (let L = 0; L < laps; L++, lap++) { const n = 3600; for (let i = 0; i < n; i++) liveTick({ Lap: lap, LapDistPct: i / n, LapCurrentLapTime: i / 60, LapLastLapTime: 60, Speed: 40, Brake: 0, Throttle: 1, SteeringWheelAngle: 0, YawRate: 0, LatAccel: 0, OnPitRoad: false, SessionTime: Tm += 1 / 60 }) }
+  liveTick({ Lap: lap, LapDistPct: 0.001, LapCurrentLapTime: 0.01, LapLastLapTime: 60, Speed: 40, Brake: 0, Throttle: 1, SteeringWheelAngle: 0, YawRate: 0, LatAccel: 0, OnPitRoad: false, SessionTime: Tm }) }
+liveSession(ARGS_YAML);
+cruise(4);
+const waiting = Object.keys(engPlans()).length, hw = txt();
+drive(null, 6, 1.4, 60.0);
+const p = engPlans()[1];
+console.log(JSON.stringify({ waiting, hw, items: p && p.items.map(i => [i.lab, i.from, i.to]) }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class EngineerWaitsForCorneringTest(unittest.TestCase):
+    def test_no_frozen_plan_without_a_measured_balance(self):
+        r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + ENGINEER_WAIT_JS)
+        self.assertEqual(r["waiting"], 0)
+        self.assertIn("not enough cornering yet", r["hw"])
+        self.assertEqual(r["items"], [["Front ARB blades", 75, 66]])
