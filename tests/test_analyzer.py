@@ -1053,3 +1053,177 @@ class BuildSetupTest(unittest.TestCase):
         self.assertEqual(b["wing"], 10)                                # Medium (Indy) -> High: +2 degrees, estimate
         self.assertIn(["estimate", 2], [c[:2] for c in b["changes"]])
         self.assertTrue(b["tyre"])                                     # text settings carried into the sheet
+
+
+CAR_MANUAL_JS = r"""
+// every car in the table is found by its own name, and not by an earlier, wider entry
+const own = CAR_KB.map(e => [e.n, carKb('', e.n) && carKb('', e.n).n]);
+const names = ['Ferrari 296 GT3', 'Ferrari 296 Challenge', 'Chevrolet Corvette Z06 GT3.R', 'Aston Martin Vantage GT3 EVO', 'Aston Martin Vantage GT4',
+  'Mercedes-AMG GT3 2020', 'Mercedes-AMG GT3', 'Mercedes-AMG GT4', 'Audi R8 LMS EVO II GT3', 'Audi R8 LMS GT3', 'Ford GT GT3', 'Ford Mustang GT3',
+  'Porsche 911 GT3 R (992)', 'Porsche 911 GT3 R', 'Porsche 911 Cup (992.2)', 'Porsche 911 GT3 Cup (992)', 'Ferrari 488 GT3 Evo 2020', 'Ferrari 488 GT3',
+  'BMW M4 G82 GT4', 'BMW M4 GT4', 'BMW M4 GT3', 'McLaren 720S GT3 EVO', 'McLaren MP4-12C GT3', 'Dallara P217', 'BMW M Hybrid V8', 'Mazda MX-5 Cup'];
+const found = names.map(n => { const k = carKb('', n); return [n, k ? k.n : null] });
+// suggestions in the right direction on each car, on the same garage page (only the car changes)
+function sugg(path, name, yaml) {
+  LIVE.ws = {}; LIVE.setup = setupTree(yaml); LIVE.meta = { carPath: path, carName: name }; setupHtml();
+  const rows = SETUP_ROWS, ar = c => { const x = adviceRow(rows, c, path); return x && { word: x.word, nd: x.nd, at: x.at } };
+  const h = { B: { entry_slow: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 }, entry_fast: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 },
+    mid_slow: { n: 400, raw: 1.3, ui: 1.3, cs: 0, abs: 0 }, mid_fast: { n: 400, raw: 1.3, ui: 1.3, cs: 0, abs: 0 },
+    exit_slow: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 }, exit_fast: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 } } };
+  RB.cars[path] = { runs: [] };
+  const P = predictChanges(h, rows, path, 'Indy', {}), arb = P.picks.find(p => p.k === 'arbblades' && p.ax === 'front');
+  return { softFront: ar(['arbblades', 'front', -1]), stiffRear: ar(['arbblades', 'rear', 1]), tc: ar(['tcsetting', '', 0]), pick: arb && { from: arb.from, to: arb.to } };
+}
+const y3 = ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 3 degrees').replace('ArbBlades: 90 degrees', 'ArbBlades: 3 degrees');
+const out = {
+  ferrari: sugg('ferrari296gt3', 'Ferrari 296 GT3', ARGS_YAML),
+  vette: sugg('chevyvettez06rgt3', 'Chevrolet Corvette Z06 GT3.R', y3),
+  aston: sugg('amvantageevogt3', 'Aston Martin Vantage GT3 EVO', y3),
+  merc: sugg('mercedesamgevogt3', 'Mercedes-AMG GT3 2020', y3),
+  cup: sugg('porsche9922cup', 'Porsche 911 Cup (992.2)', ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 5 degrees')),
+  mcl: sugg('mclaren720sgt3', 'McLaren 720S GT3 EVO', y3),
+};
+const notes = kbNotesHtml(carKb('', 'Chevrolet Corvette Z06 GT3.R'), 'Daytona International Speedway').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+const nsx = kbTrim(carKb('', 'Acura NSX GT3 EVO 22'), 'Daytona International Speedway'), gt4 = kbTrim(carKb('', 'BMW M4 G82 GT4'), 'Road America');
+console.log(JSON.stringify({ own, found, out, notes, nsx, gt4 }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CarManualTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + CAR_MANUAL_JS)
+
+    def test_every_car_matches_its_own_entry(self):
+        for n, got in self.r["own"]:
+            self.assertEqual(got, n)
+        for n, got in self.r["found"]:
+            self.assertIsNotNone(got, n)
+        found = dict(self.r["found"])
+        self.assertEqual(found["Mercedes-AMG GT3"], "Mercedes-AMG GT3")          # not the 2020 car
+        self.assertEqual(found["Porsche 911 GT3 R"], "Porsche 911 GT3 R")        # not the 992
+        self.assertEqual(found["Ferrari 488 GT3"], "Ferrari 488 GT3")            # not the EVO
+        self.assertEqual(found["Ford Mustang GT3"], "Ford Mustang GT3")          # not the Ford GT
+
+    def test_plain_car_higher_is_stiffer(self):
+        f = self.r["out"]["ferrari"]
+        self.assertEqual((f["softFront"]["nd"], f["stiffRear"]["nd"]), (-1, 1))
+        self.assertEqual(f["pick"], {"from": 75, "to": 66})
+        self.assertEqual(f["tc"]["nd"], 1)                                     # the 296: higher = more help
+
+    def test_corvette_blades_run_the_other_way(self):
+        v = self.r["out"]["vette"]
+        self.assertEqual((v["softFront"]["nd"], v["stiffRear"]["nd"]), (1, -1))
+        self.assertIn("a higher number on this car", v["softFront"]["word"])
+        self.assertGreater(v["pick"]["to"], v["pick"]["from"])                 # softer front = a higher number
+
+    def test_aston_only_the_front_bar_is_reversed(self):
+        a = self.r["out"]["aston"]
+        self.assertEqual((a["softFront"]["nd"], a["stiffRear"]["nd"]), (1, 1))
+
+    def test_mercedes_traction_control_more_help_is_a_lower_number(self):
+        m = self.r["out"]["merc"]
+        self.assertEqual(m["tc"]["nd"], -1)
+        self.assertIn("lower number is more help", m["tc"]["word"])
+
+    def test_porsche_cup_bar_positions_follow_the_manual_order(self):
+        c = self.r["out"]["cup"]
+        self.assertEqual(c["pick"], {"from": 5, "to": 7})                      # front: 1-2-3-4-7-5-6, softer than 5 is 7
+        self.assertEqual(c["softFront"]["nd"], -1)
+
+    def test_unclear_direction_is_said_not_guessed(self):
+        m = self.r["out"]["mcl"]
+        self.assertEqual(m["softFront"]["nd"], 0)
+        self.assertIn("unclear", m["softFront"]["word"])
+        self.assertIsNone(m.get("pick"))
+
+    def test_notes_and_trims(self):
+        n = self.r["notes"]
+        self.assertIn("Runs the other way on this car", n)
+        self.assertIn("wing 9.5", n)
+        self.assertIn("Downforce for Daytona International Speedway: Low/Medium", n)
+        self.assertEqual(self.r["nsx"]["name"], "Low")                         # the Acura's own difference from the GT3 list
+        self.assertEqual(self.r["gt4"]["name"], "Standard (wing 3-5)")
+
+
+ENGINEER_JS = r"""
+LIVE.ws = {}; LIVE.state = 'bridge';
+let Tm = 100, lap = 1;
+// mid-corner understeer of Fmid at the limit; entry and exit neutral
+function drive(yaml, laps, Fmid, lapTime) {
+  if (yaml) liveSession(yaml);
+  for (let L = 0; L < laps; L++, lap++) {
+    const n = Math.round(lapTime * 60);
+    for (let i = 0; i < n; i++) {
+      const d = i / n, ph = (d * 8) % 1, g = 1.25 * Math.abs(Math.sin(d * 8 * Math.PI)), v = 34 + 12 * (Math.floor(d * 8) % 2);
+      const yaw = g * 9.80665 / v * (Math.floor(d * 16) % 2 ? 1 : -1), k = yaw / v;
+      const brake = ph < 0.18 ? 0.4 : 0, thr = ph > 0.30 ? 0.8 : 0.2, mid = !brake && thr < 0.5;
+      const steer = 40 * k * (g > 0.8 && mid ? Fmid : 1);
+      liveTick({ Lap: lap, LapDistPct: d, LapCurrentLapTime: i / 60, LapLastLapTime: lap > 1 ? lapTime : -1, Speed: v, Brake: brake, Throttle: thr,
+                 SteeringWheelAngle: steer, YawRate: yaw, LatAccel: g * 9.80665 * Math.sign(yaw), OnPitRoad: false, SessionTime: Tm });
+      Tm += 1 / 60;
+    }
+  }
+  liveTick({ Lap: lap, LapDistPct: 0.001, LapCurrentLapTime: 0.01, LapLastLapTime: lapTime, Speed: 40, Brake: 0, Throttle: 1, SteeringWheelAngle: 0, YawRate: 0, LatAccel: 0, OnPitRoad: false, SessionTime: Tm });
+}
+const txt = () => engHtml().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+const off = txt();
+ENG.on = true; ENG.laps = 6;
+drive(ARGS_YAML, 5, 1.4, 60.0);
+const at5 = Object.keys(engPlans()).length, h5 = txt();
+drive(null, 1, 1.4, 60.0);
+const p1 = engPlans()[1], h1 = txt();
+// a wrong value first, then the right one; the lap running when the setup changes does not count
+liveSession(ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 70 degrees'));
+const hWrong = txt();
+const y2 = ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 66 degrees');
+drive(y2, 7, 1.15, 59.6);
+const p2 = engPlans()[3], h2 = txt();
+// the next step makes it slower: it goes back, and the next fix is something else
+const y3 = y2.replace('ArbBlades: 66 degrees', 'ArbBlades: ' + p2.items[0].to + ' degrees');
+drive(y3, 7, 1.0, 60.4);
+const p3 = engPlans()[4], h3 = txt();
+const strip = p => p && { items: p.items.map(i => [i.kind, i.lab, i.from, i.to, i.basis || '']), call: p.verdict && p.verdict.call };
+console.log(JSON.stringify({ off, at5, h5, p1: strip(p1), h1, hWrong, p2: strip(p2), h2, p3: strip(p3), h3, bad: ENG.bad, saved: JSON.parse(localStorage.getItem('engineer')) }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class EngineerTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + ENGINEER_JS)
+
+    def test_off_until_started(self):
+        self.assertIn("Start", self.r["off"])
+        self.assertIn("Drive 6 clean laps", self.r["off"])
+
+    def test_a_plan_after_six_clean_laps(self):
+        r = self.r
+        self.assertEqual(r["at5"], 0)
+        self.assertIn("Lap 5 of 6", r["h5"])
+        self.assertEqual(r["p1"]["items"], [["fix", "Front ARB blades", 75, 66, "estimate"]])
+        self.assertIn("Box now", r["h1"])
+        self.assertIn("75 degrees → 66 degrees", r["h1"])
+
+    def test_checks_what_was_entered_in_the_garage(self):
+        self.assertIn("Not set yet", self.r["hWrong"])
+        self.assertIn("should be 66 degrees , now 70 degrees", self.r["hWrong"])
+
+    def test_faster_keeps_the_change_and_learns_the_size(self):
+        p2 = self.r["p2"]
+        self.assertEqual(p2["call"], "faster")
+        kind, lab, frm, to, basis = p2["items"][0]
+        self.assertEqual((kind, lab, frm, basis), ("fix", "Front ARB blades", 66, "learned"))
+        self.assertLess(to, 66)
+        self.assertIn("Faster", self.r["h2"])
+
+    def test_slower_puts_it_back_and_tries_something_else(self):
+        p3, p2 = self.r["p3"], self.r["p2"]
+        self.assertEqual(p3["call"], "slower")
+        self.assertEqual(p3["items"][0], ["back", "Front ARB blades", p2["items"][0][3], 66, ""])
+        self.assertEqual(len(p3["items"]), 2)
+        self.assertNotEqual(p3["items"][1][1], "Front ARB blades")              # not the same change again
+        self.assertIn("the changes go back", self.r["h3"])
+        self.assertEqual(self.r["saved"]["bad"]["ferrari296gt3|Indianapolis Motor Speedway"], {"arbblades@front-": 66})

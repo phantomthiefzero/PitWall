@@ -49,6 +49,9 @@ iRacing Suite app (suite/)
   Its logic is tested in Node: `tests/analyzer_harness.js` runs the page's own script with a
   stand-in page, and `tests/test_analyzer.py` feeds it synthetic .ibt files shaped like real ones
   (lap counter going back, mid-lap joins, pit laps, refuels). Skipped when Node is missing.
+- Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
+  A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
+  car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
 - `suite/bridge.py` uses only the standard library (plus pyirsdk). Its replay reads
   .ibt files; PitWall's replay reads its own .jsonl.gz captures. They are different.
 - `tests/test_suite.py` must pass along with `tests/test_pipeline.py`.
