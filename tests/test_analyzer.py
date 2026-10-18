@@ -968,3 +968,42 @@ class PredictTest(unittest.TestCase):
         self.assertEqual(p["basis"], "estimate")
         self.assertEqual((p["lab"], p["from"], p["to"]), ("Front ARB blades", 75, 66))   # a tenth of 0-90, in 1-degree steps
         self.assertIsNone(p["eff"])
+
+
+GARAGE_JS = r"""
+const car = 'ferrari296gt3';
+RB.cars[car] = { runs: [] };
+const tree = y => setupTree(y);
+const wing9 = ARGS_YAML.split('RearWingAngle: 8 degrees').join('RearWingAngle: 9 degrees').replace('FrontDownforce: 42.9%', 'FrontDownforce: 42.5%');
+const rh = ARGS_YAML.split('RideHeight: 53.1 mm').join('RideHeight: 55.1 mm').replace('FrontRhAtSpeed: 52 mm', 'FrontRhAtSpeed: 54 mm').replace('FrontDownforce: 42.9%', 'FrontDownforce: 42.1%');
+const both = wing9.split('RideHeight: 53.1 mm').join('RideHeight: 55.1 mm').replace('FrontDownforce: 42.5%', 'FrontDownforce: 41.7%').replace('FrontRhAtSpeed: 52 mm', 'FrontRhAtSpeed: 54 mm');
+[ARGS_YAML, wing9, rh, both, ARGS_YAML].forEach(y => gbRecord(car, tree(y)));      // the repeat is not stored twice
+const G = gbSens(RB.cars[car].garage);
+const lkW = Object.keys(G).find(k => G[k].lab === 'Rear wing angle'), lkR = Object.keys(G).find(k => G[k].lab === 'Ride height');
+LIVE.ws = {}; LIVE.setup = tree(ARGS_YAML); LIVE.meta = { carPath: car, carName: 'Ferrari 296 GT3' }; setupHtml();
+const rows = SETUP_ROWS, rRH = rows.find(r => r.k === 'rideheight' && r.ax === 'front');
+const line = gbPredictHtml({ r: rRH, d: -2 }, G, gbCalc(LIVE.setup));
+console.log(JSON.stringify({ stored: RB.cars[car].garage.length, keys: Object.keys(G).length,
+  wing: G[lkW] && { n: G[lkW].n, df: G[lkW].per.frontdownforce.per }, rh: G[lkR] && { n: G[lkR].n, df: G[lkR].per.frontdownforce.per, frh: G[lkR].per.frontrhatspeed.per },
+  line: line.replace(/<[^>]+>/g, '') }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class GarageCalcTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + GARAGE_JS)
+
+    def test_one_click_changes_measure_the_garage_numbers(self):
+        r = self.r
+        self.assertEqual(r["stored"], 4)
+        self.assertEqual(r["keys"], 2)                                # the two-click setup measures nothing on its own...
+        self.assertAlmostEqual(r["wing"]["df"], -0.4, places=6)       # ...except against the setups one click away
+        self.assertAlmostEqual(r["rh"]["df"], -0.4, places=6)         # both front corners moved together: one change
+        self.assertAlmostEqual(r["rh"]["frh"], 1.0, places=6)
+
+    def test_a_prediction_shows_the_garage_numbers_it_leads_to(self):
+        line = self.r["line"]
+        self.assertIn("front downforce 42.9% → 43.7%", line)
+        self.assertIn("front ride height at speed 52 mm → 50.0 mm", line)
