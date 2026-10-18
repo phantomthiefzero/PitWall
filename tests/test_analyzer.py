@@ -906,3 +906,150 @@ class LiveVerdictTest(unittest.TestCase):
         self.assertIn("Did the change help?", r["html"])
         self.assertIn("Rear ARB blades", r["html"])
         self.assertIn("Faster", r["html"])
+
+
+PREDICT_JS = r"""
+LIVE.ws = {}; LIVE.setup = setupTree(ARGS_YAML); LIVE.meta = { carPath: 'ferrari296gt3', carName: 'Ferrari 296 GT3' };
+setupHtml();
+const rows = SETUP_ROWS, base = rbSettings(LIVE.setup), lkArb = rows.find(r => r.k === 'arbblades' && r.ax === 'front').lk,
+      lkWing = rows.find(r => r.k === 'rearwingangle').lk;
+const withV = (o, lk, v) => { const c = JSON.parse(JSON.stringify(o)); c[lk].n = v; return c };
+const bal = raw => ({ mid_slow: { raw, cs: 0, n: 400 }, mid_fast: { raw: 1.10, cs: 0, n: 400 }, exit_slow: { raw: 1.0, cs: 0, n: 400 } });
+const L = t => [t, t + 0.05, t - 0.05, t + 0.02];
+const runs = [
+  { id: 'a', track: 'Indy', set: base, laps: L(84.0), bal: bal(1.30) },
+  { id: 'b', track: 'Indy', set: withV(base, lkArb, 65), laps: L(83.9), bal: bal(1.20) },                  // front bar 75 -> 65
+  { id: 'c', track: 'Indy', set: withV(withV(base, lkArb, 55), lkWing, 6), laps: L(83.5), bal: bal(1.0) }, // two at once: ignored against a and b
+];
+const samples = rbSamples(runs), sens = rbSens(samples);
+RB.cars['ferrari296gt3'] = { runs };
+const ui = 1.15, h = { B: { entry_slow: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 }, entry_fast: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 },
+  mid_slow: { n: 400, raw: 1.3, ui, cs: 0, abs: 0 }, mid_fast: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 },
+  exit_slow: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 }, exit_fast: { n: 400, raw: 1, ui: 1, cs: 0, abs: 0 } } };
+const P = predictChanges(h, rows, 'ferrari296gt3', 'Indy', sens);
+const P0 = predictChanges(h, rows, 'ferrari296gt3', 'Indy', {});
+RB.cars['ferrari296gt3'] = { runs: [] };
+const P1 = predictChanges(h, rows, 'ferrari296gt3', 'Indy', {});
+const pk = p => ({ lab: p.label, from: p.from, to: p.to, d: p.d, basis: p.basis.kind, eff: p.eff, lap: p.lap });
+console.log(JSON.stringify({ samples: samples.map(s => [s.lab, s.d, s.ph, s.dt]), sensArb: sens[lkArb] && { n: sens[lkArb].n, per: sens[lkArb].ph.mid_slow.per, dt: sens[lkArb].dt.Indy.per },
+  first: P.picks[0] && pk(P.picks[0]), est: P1.picks[0] && pk(P1.picks[0]), estStep: P0.picks[0] && pk(P0.picks[0]), problems: P.problems.map(f => [f.kind, f.p, f.where]) }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class PredictTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + PREDICT_JS)
+
+    def test_only_single_setting_pairs_measure_a_setting(self):
+        s = self.r["samples"]
+        self.assertEqual(len(s), 1)                                     # a-b only: c differs in two settings from a, and from b
+        lab, d, ph, dt = s[0]
+        self.assertEqual((lab, d), ("Front ARB blades", -10))
+        self.assertAlmostEqual(ph["mid_slow"], 1.20 / 1.30 - 1, places=9)
+        self.assertAlmostEqual(dt, -0.1, places=9)
+        self.assertAlmostEqual(self.r["sensArb"]["per"], (1.20 / 1.30 - 1) / -10, places=9)
+
+    def test_learned_prediction_has_a_value_and_a_size(self):
+        p = self.r["first"]
+        per = (1.20 / 1.30 - 1) / -10
+        need = 1 / 1.15 - 1
+        step = 10                                                       # the values you have run: 75, 65, 55
+        d = round(need / per / step) * step
+        self.assertEqual(p["basis"], "learned")
+        self.assertEqual((p["lab"], p["from"]), ("Front ARB blades", 75))
+        self.assertEqual(p["to"], 75 + d)
+        self.assertAlmostEqual(p["eff"]["mid_slow"], per * d, places=9)
+        self.assertAlmostEqual(p["lap"]["dt"], -0.1 / -10 * d, places=9)
+
+    def test_without_tests_it_is_a_labelled_estimate(self):
+        p = self.r["est"]
+        self.assertEqual(p["basis"], "estimate")
+        self.assertEqual((p["lab"], p["from"], p["to"]), ("Front ARB blades", 75, 66))   # a tenth of 0-90, in 1-degree steps
+        self.assertIsNone(p["eff"])
+
+
+GARAGE_JS = r"""
+const car = 'ferrari296gt3';
+RB.cars[car] = { runs: [] };
+const tree = y => setupTree(y);
+const wing9 = ARGS_YAML.split('RearWingAngle: 8 degrees').join('RearWingAngle: 9 degrees').replace('FrontDownforce: 42.9%', 'FrontDownforce: 42.5%');
+const rh = ARGS_YAML.split('RideHeight: 53.1 mm').join('RideHeight: 55.1 mm').replace('FrontRhAtSpeed: 52 mm', 'FrontRhAtSpeed: 54 mm').replace('FrontDownforce: 42.9%', 'FrontDownforce: 42.1%');
+const both = wing9.split('RideHeight: 53.1 mm').join('RideHeight: 55.1 mm').replace('FrontDownforce: 42.5%', 'FrontDownforce: 41.7%').replace('FrontRhAtSpeed: 52 mm', 'FrontRhAtSpeed: 54 mm');
+[ARGS_YAML, wing9, rh, both, ARGS_YAML].forEach(y => gbRecord(car, tree(y)));      // the repeat is not stored twice
+const G = gbSens(RB.cars[car].garage);
+const lkW = Object.keys(G).find(k => G[k].lab === 'Rear wing angle'), lkR = Object.keys(G).find(k => G[k].lab === 'Ride height');
+LIVE.ws = {}; LIVE.setup = tree(ARGS_YAML); LIVE.meta = { carPath: car, carName: 'Ferrari 296 GT3' }; setupHtml();
+const rows = SETUP_ROWS, rRH = rows.find(r => r.k === 'rideheight' && r.ax === 'front');
+const line = gbPredictHtml({ r: rRH, d: -2 }, G, gbCalc(LIVE.setup));
+console.log(JSON.stringify({ stored: RB.cars[car].garage.length, keys: Object.keys(G).length,
+  wing: G[lkW] && { n: G[lkW].n, df: G[lkW].per.frontdownforce.per }, rh: G[lkR] && { n: G[lkR].n, df: G[lkR].per.frontdownforce.per, frh: G[lkR].per.frontrhatspeed.per },
+  line: line.replace(/<[^>]+>/g, '') }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class GarageCalcTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + GARAGE_JS)
+
+    def test_one_click_changes_measure_the_garage_numbers(self):
+        r = self.r
+        self.assertEqual(r["stored"], 4)
+        self.assertEqual(r["keys"], 2)                                # the two-click setup measures nothing on its own...
+        self.assertAlmostEqual(r["wing"]["df"], -0.4, places=6)       # ...except against the setups one click away
+        self.assertAlmostEqual(r["rh"]["df"], -0.4, places=6)         # both front corners moved together: one change
+        self.assertAlmostEqual(r["rh"]["frh"], 1.0, places=6)
+
+    def test_a_prediction_shows_the_garage_numbers_it_leads_to(self):
+        line = self.r["line"]
+        self.assertIn("front downforce 42.9% → 43.7%", line)
+        self.assertIn("front ride height at speed 52 mm → 50.0 mm", line)
+
+
+BUILD_JS = r"""
+const car = 'ferrari296gt3';
+LIVE.ws = {}; LIVE.setup = setupTree(ARGS_YAML); LIVE.meta = { carPath: car, carName: 'Ferrari 296 GT3' }; setupHtml();
+const rows = SETUP_ROWS, base = rbSettings(LIVE.setup), txt = rbText(LIVE.setup), lkArb = rows.find(r => r.k === 'arbblades' && r.ax === 'front').lk;
+const withV = (o, lk, v) => { const c = JSON.parse(JSON.stringify(o)); c[lk].n = v; return c };
+const bal = m => ({ mid_slow: { raw: m, cs: 0, n: 400 }, mid_fast: { raw: 1.0, cs: 0, n: 400 }, exit_slow: { raw: 1.0, cs: 0, n: 400 } });
+const L = t => [t, t + 0.05, t - 0.05, t + 0.02];
+const T = 'Indianapolis Motor Speedway · Road Course';
+const runs = [
+  { id: 'r1', at: 1, track: T, set: base, txt, laps: L(84.0), bal: bal(1.4) },
+  { id: 'r2', at: 2, track: T, set: withV(base, lkArb, 65), txt, laps: L(83.8), bal: bal(1.3) },
+];
+RB.cars[car] = { runs, garage: [] };
+const sens = rbSens(rbSamples(runs)), cur = { set: base, txt };
+const A = buildPlan(car, T, runs, cur, rows, sens);
+const B = buildPlan(car, 'Barber Motorsports Park', runs, cur, rows, sens);
+const val = (P, k, ax) => { const id = Object.keys(P.set).find(i => P.set[i].k === k && (!ax || P.set[i].ax === ax)); return P.set[id].n };
+console.log(JSON.stringify({
+  A: { base: A.base && A.base.id, why: A.why, arb: val(A, 'arbblades', 'front'), wing: val(A, 'rearwingangle'), changes: A.changes.map(c => [c.basis, c.d, c.why]) },
+  B: { base: B.base && B.base.id, why: B.why, wing: val(B, 'rearwingangle'), changes: B.changes.map(c => [c.basis, c.d, c.why]), tyre: Object.values(B.txt).includes('Dry'), trim: B.trim } }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class BuildSetupTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + BUILD_JS)
+
+    def test_same_track_starts_from_the_fastest_run_and_applies_the_learned_fix(self):
+        a = self.r["A"]
+        self.assertEqual(a["base"], "r2")
+        per = (1.3 / 1.4 - 1) / -10
+        d = round((1 / 1.3 - 1) / per / 10) * 10                       # steps of 10, the values run
+        self.assertEqual(a["arb"], 65 + d)
+        self.assertEqual(a["wing"], 8)                                 # same track: wing untouched
+        self.assertEqual([c[0] for c in a["changes"]], ["learned"])
+
+    def test_new_track_moves_the_wing_for_its_downforce_level(self):
+        b = self.r["B"]
+        self.assertEqual(b["trim"]["name"], "High")
+        self.assertEqual(b["wing"], 10)                                # Medium (Indy) -> High: +2 degrees, estimate
+        self.assertIn(["estimate", 2], [c[:2] for c in b["changes"]])
+        self.assertTrue(b["tyre"])                                     # text settings carried into the sheet
