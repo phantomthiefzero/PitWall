@@ -3,8 +3,16 @@ name: Build iRacing Suite
 on:
   push:
     branches: [master, main]
+    paths-ignore: ["docs/**", "**.md"]       # notes and research need no build
   pull_request:
+    paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
+
+# A newer push to the same pull request replaces the check still running for the old one.
+# Builds of master are never cancelled: they make the release the update button installs.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
@@ -14,6 +22,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # pull requests compare with master to pick their tests
 
       - uses: actions/setup-python@v5
         with:
@@ -22,12 +32,17 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pytest pyinstaller
+          python -m pip install -r requirements.txt pytest pytest-xdist pyinstaller
 
-      - name: Tests (PitWall pipeline and the suite app)
+      - name: Tests (a pull request runs what it touches; master runs everything)
         shell: pwsh
         run: |
-          python -m pytest tests -q -rfE --tb=short 2>&1 | Tee-Object -FilePath pytest.txt
+          $tests = "tests"
+          if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
+            $tests = (git diff --name-only "origin/$env:GITHUB_BASE_REF...HEAD" | python scripts/pick_tests.py)
+          }
+          "Running: $tests"
+          python -m pytest @($tests -split ' ') -q -n auto --dist load -rfE --tb=short 2>&1 | Tee-Object -FilePath pytest.txt   # one test process per CPU
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             # Failing test names as annotations, readable without the full log.

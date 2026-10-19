@@ -9,6 +9,9 @@ Hard rules
 - `pitwall/commands.py` is the only module that may call pyirsdk broadcast
   functions. Keep the allowlist there.
 - Tests in `tests/test_pipeline.py` must pass: `python -m pytest tests -q`.
+  Faster with pytest-xdist: `python -m pytest tests -q -n auto` (the whole suite ~4 min instead of ~12).
+  CI: a pull request runs only the tests for the files it changes (scripts/pick_tests.py); every push
+  to master runs everything before the release build. Docs-only changes do not run CI.
   Add a test for every new derived value.
 - Do not add a build step to `client/`. One HTML file.
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).

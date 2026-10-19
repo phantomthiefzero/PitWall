@@ -492,7 +492,22 @@ class FakeSource(TelemetrySource):
         p1 = self.pos_at(pct + 0.0005)
         return math.atan2(p1[1] - p0[1], -(p1[0] - p0[0]))
 
+    CSF_STEPS = 20000
+
     def curvature_speed_factor(self, pct: float) -> float:
+        """Looked up from a table built once (it was ~40% of a simulated race's time:
+        four track look-ups per car per tick). 20,000 steps round the lap, linear in
+        between, so it matches the direct calculation to well under 0.1%."""
+        tab = getattr(self, "_csf", None)
+        if tab is None:
+            M = self.CSF_STEPS
+            tab = self._csf = [self._curvature_speed_factor(i / M) for i in range(M)]
+        x = (pct % 1.0) * self.CSF_STEPS
+        i = int(x)
+        f = x - i
+        return tab[i % self.CSF_STEPS] * (1.0 - f) + tab[(i + 1) % self.CSF_STEPS] * f
+
+    def _curvature_speed_factor(self, pct: float) -> float:
         h0 = self.heading_at(pct - 0.003)
         h1 = self.heading_at(pct + 0.003)
         dh = abs((h1 - h0 + math.pi) % (2 * math.pi) - math.pi)
