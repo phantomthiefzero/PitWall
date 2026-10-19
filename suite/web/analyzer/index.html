@@ -114,16 +114,32 @@ function lapStats(o){const n=o.n,G=9.80665;let fu=0,bk=0,co=0,ov=0,ab=0,sh=0,up=
 for(let i=0;i<n;i++){const T=o.Throttle[i],B=o.Brake[i];sum+=o.Speed[i];top=Math.max(top,o.Speed[i]);if(T>.95)fu++;if(B>.05)bk++;if(T<.05&&B<.05)co++;if(T>.05&&B>.05)ov++;ab+=o.ABS[i];la=Math.max(la,Math.abs(o.LatG[i]));mn=Math.min(mn,o.LonG[i]);mx=Math.max(mx,o.LonG[i]);rm=Math.max(rm,o.RPM[i]);rs+=o.RPM[i];sa=Math.max(sa,Math.abs(o.Steer[i]));gt[Math.min(6,Math.max(0,o.Gear[i]))]++;
 if(i){st+=Math.abs(o.Steer[i]-o.Steer[i-1]);tm+=Math.abs(T-o.Throttle[i-1]);bm+=Math.abs(B-o.Brake[i-1]);}const gz=o.Gear[i];if(gz>0){if(lg>0&&gz!==lg){sh++;if(gz>lg){up++;ur+=lr}}lg=gz;lr=o.RPM[i]}}
 return{top:top*3.6,avg:sum/n*3.6,fu:fu/n*100,bk:bk/n*100,co:co/n*100,ov:ov/n*100,ab:ab/n*100,lat:la/G,dec:-mn/G,acc:mx/G,rpmMax:rm,rpm:rs/n,sa:sa*57.2958,st:st/(2*Math.PI),tm,bm,sh,ur:up?ur/up:0,gt:gt.map(v=>v/n*100)}}
+// Corners of the reference lap, from where the car is actually turning: lateral load of at least
+// 0.45 g on a radius under ~600 m (lateral acceleration / speed squared), so a flat-out kink with
+// real load counts and a straight with a twitch does not. A change of direction starts a new corner
+// (esses), and so does a speed dip after a clear rise inside one long turn (a double apex). The
+// apex is the slowest point, or the tightest point when the speed hardly dips. Files without
+// lateral acceleration fall back to the slowest points of the lap.
+function findCorners(B,sm){const G=9.80665,lg=sma(B.LatG,3),cs=[];
+if(!(Math.max(...Array.from(lg,Math.abs))>2)){for(let g=20;g<N-20;g++){let ok=true;for(let k=-25;k<=25&&ok;k++){const q=g+k;if(q>=0&&q<N&&sm[q]<sm[g])ok=false}
+if(!ok)continue;let pk=0;for(let k=Math.max(0,g-80);k<g;k++)pk=Math.max(pk,sm[k]);if(pk-sm[g]<5)continue;if(cs.length&&g-cs[cs.length-1].ap<30)continue;cs.push({ap:g})}return cs}
+const side=new Int8Array(N);for(let g=0;g<N;g++){const a=lg[g],v=Math.max(sm[g],8);side[g]=Math.abs(a)>=.45*G&&Math.abs(a)/(v*v)>=1/600?Math.sign(a):0}
+// bridge short gaps inside one turn (the load can flicker below the line for a few metres)
+for(let g=1;g<N-1;g++)if(!side[g]){let a=g;while(a<N&&!side[a])a++;if(a<N&&a-g<=4&&side[g-1]&&side[g-1]===side[a])for(let k=g;k<a;k++)side[k]=side[g-1];g=a}
+const regs=[];for(let g=0;g<N;){if(!side[g]){g++;continue}let e=g;while(e+1<N&&side[e+1]===side[g])e++;if(e-g+1>=8)regs.push([g,e]);g=e+1}
+// split a long turn at a clear rise in speed between two dips
+const parts=[];regs.forEach(([s0,e0])=>{let cut=s0;const mins=[];if(sm[s0]<=Math.min(...Array.from(sm.slice(s0,Math.min(e0,s0+6)+1))))mins.push(s0);for(let g=s0+3;g<=e0-3;g++){let lo=true;for(let k=-6;k<=6&&lo;k++){const q=g+k;if(q>=s0&&q<=e0&&sm[q]<sm[g])lo=false}if(lo)mins.push(g)}
+for(let i=1;i<mins.length;i++){const a=mins[i-1],b=mins[i];let pk=a;for(let g=a;g<=b;g++)if(sm[g]>sm[pk])pk=g;if(sm[pk]-Math.max(sm[a],sm[b])>=3&&pk-cut>=8&&e0-pk>=8){parts.push([cut,pk]);cut=pk+1}}parts.push([cut,e0])});
+parts.forEach(([s0,e0])=>{let mn=s0,kx=s0;const kap=g=>Math.abs(lg[g])/Math.max(sm[g],8)**2;for(let g=s0;g<=e0;g++){if(sm[g]<sm[mn])mn=g;if(kap(g)>kap(kx))kx=g}
+cs.push({ap:mn>s0+2&&mn<e0-2&&Math.min(sm[s0],sm[e0])-sm[mn]>=1.5?mn:kx,rs:s0,re:e0})});   // a real dip inside the turn, else the tightest point
+return cs}
 function analyze(a,b){const xs=[];if(a.ext&&b.ext)for(const n in a.ext)if(n in b.ext){xs.push('x:'+n);a['x:'+n]=a.ext[n];b['x:'+n]=b.ext[n]}
 const A=rs(a,xs),B=rs(b,xs),len=a.Speed.reduce((s,v)=>s+v,0)*a.lap/(a.n-1),mpg=len/(N-1),dl=new Float64Array(N);
 for(let g=0;g<N;g++)dl[g]=(A.t[g]-A.t[0])-(B.t[g]-B.t[0]);
 derive(A);derive(B);
-const sm=sma(B.Speed,9),cs=[];
-for(let g=20;g<N-20;g++){let ok=true;for(let k=-25;k<=25&&ok;k++){const q=g+k;if(q>=0&&q<N&&sm[q]<sm[g])ok=false}
-if(!ok)continue;let pk=0;for(let k=Math.max(0,g-80);k<g;k++)pk=Math.max(pk,sm[k]);if(pk-sm[g]<5)continue;
-if(cs.length&&g-cs[cs.length-1].ap<30)continue;cs.push({ap:g})}
+const sm=sma(B.Speed,9),cs=findCorners(B,sm);
 if(typeof TURNS!=="undefined"){for(let i=cs.length-1;i>=0;i--)if(TURNS.off.some(g=>Math.abs(cs[i].ap-g)<10))cs.splice(i,1);TURNS.add.forEach(g=>{if(!cs.some(c=>Math.abs(c.ap-g)<10))cs.push({ap:g})});cs.sort((p,q)=>p.ap-q.ap)}
-cs.forEach((c,i)=>{c.n=i+1;c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80));
+cs.forEach((c,i)=>{c.n=i+1;if(c.rs!=null){c.s=Math.min(c.rs,am(sm,Math.max(0,c.ap-80),c.ap));c.e=Math.max(c.re,c.ap+5)}else{c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80))}
 if(i){const p=cs[i-1];p.e=Math.min(p.e,c.ap-1);c.s=Math.max(c.s,p.e)}if(c.s>=c.ap)c.s=c.ap-5;
 c.a=met(A,c);c.b=met(B,c);c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
 c.d=(c.a.ba-c.b.ba)*mpg;c.dv=c.a.ms-c.b.ms;c.dm=(c.a.ta-c.b.ta)*mpg;c.dp=(c.a.pb-c.b.pb)*100;c.tin=dl[c.ap]-dl[c.s];c.tout=dl[c.e]-dl[c.ap]});
@@ -1670,7 +1686,7 @@ C.corners.filter(c=>c.dt>0.02).forEach(c=>{const t=c.tips[0],notes=SDiff[c.n]||[
 const ev=[];if(isFinite(c.d)&&Math.abs(c.d)>=3)ev.push('brakes '+dm(c.d)+(c.d<0?' earlier':' later'));if(Math.abs(c.dv)>=1)ev.push(sp(c.dv)+(c.dv<0?' slower':' faster')+' at the apex');if(isFinite(c.dm)&&c.dm>=3&&c.dm<=60)ev.push('throttle '+dm(c.dm)+' later');if(c.coast>=3)ev.push(dm(c.coast)+' more coasting');if(c.sd!=null&&c.sd>=.12)ev.push('±'+c.sd.toFixed(2)+' s lap to lap');
 items.push({kind:'drive',gain:c.dt,title:coName(rc)+': '+(t?t.t.split(':')[0]:notes[0].t.split('.')[0]),do:t?t.t.slice(t.t.indexOf(':')+1).trim():'',why:notes.map(x=>x.t),ev:ev.join(' · '),cn:c.n})});
 if(SD&&SD.H){SD.picks.forEach(p=>{const G=coachSetupGain(X,p.f,SD.H),pct=p.f.kind==='us'?Math.round((Math.max(...['slow','fast'].map(z=>(SD.H.B[p.f.p+'_'+z]||{}).ui||1))-1)*100):null;
-items.push({kind:'setup',gain:G.g,upTo:true,title:plain(p.label)+' '+suFmtVal(String(p.from)+(p.u?' '+p.u:''))+' → '+suFmtVal(String(p.to)+(p.u?' '+p.u:'')),
+items.push({kind:'setup',gain:G.g*.5,worth:G.g,title:plain(p.label)+' '+suFmtVal(String(p.from)+(p.u?' '+p.u:''))+' → '+suFmtVal(String(p.to)+(p.u?' '+p.u:'')),
 do:'Fixes '+(p.f.kind==='us'?'understeer':'oversteer')+' '+p.f.lab.toLowerCase()+' in '+(p.f.where==='both'?'slow and fast':p.f.where)+' corners'+(p.basis.kind==='learned'?'; size learned from '+p.basis.n+' test'+(p.basis.n===1?'':'s')+' of yours':'; a first step, measured once you drive it'),
 why:[(pct!=null?'You need '+pct+'% more steering than a neutral car there':'The car needs opposite lock or slides there')+', on every lap, not just the slow ones: the car is limiting you, not only the driving.'],ev:G.cs.length?'affects corner'+(G.cs.length>1?'s ':' ')+G.cs.join(', '):''})});
 SD.other.forEach(o=>items.push({kind:'setup',gain:0,title:plain(o.ch.label)+': '+o.ch.word.toLowerCase(),do:o.f.kind==='abs'?'ABS works '+o.f.v.toFixed(0)+'% of the time braking into corners.':o.f.kind==='bottom'?'The car touches the ground at speed.':CORNER_OF[o.f.t]+' tyre temperatures across the tread call for it.',why:[],ev:'now '+plain(o.ch.cur)}))}
@@ -1681,14 +1697,14 @@ while(d.length||s.length){const nx=!s.length?d.shift():!d.length?s.shift():(s[0]
 function coachDeltaSvg(R,C){const W=640,H=160,P=24,dl=R.dl,lo=Math.min(0,...dl),hi=Math.max(0.05,...dl),x=g=>P+g/(N-1)*(W-2*P),y=v=>8+(hi-v)/(hi-lo||1)*(H-34);
 let pts='';for(let g=0;g<N;g+=2)pts+=(g?'L':'M')+x(g).toFixed(1)+' '+y(dl[g]).toFixed(1);
 const band=R.cs.map((c,i)=>{const cc=C.corners.find(q=>q.n===c.n),lose=cc&&cc.dt>0.02;return '<rect x="'+x(c.s).toFixed(1)+'" y="8" width="'+(x(c.e)-x(c.s)).toFixed(1)+'" height="'+(H-34)+'" style="fill:'+(lose?'var(--bad)':'var(--ln)')+';opacity:'+(lose?.12:.35)+'"/>'+
-'<text x="'+x(c.ap).toFixed(1)+'" y="'+(H-(i%2?2:14))+'" text-anchor="middle" style="fill:var(--mut);font-size:11px">C'+c.n+(lose?' '+sg(cc.dt):'')+'</text>'}).join('');
+'<text x="'+x(c.ap).toFixed(1)+'" y="'+(H-(i%2?3:15))+'" text-anchor="middle" style="fill:'+(lose?'var(--bad)':'var(--mut)')+';font-size:11px;font-weight:'+(lose?700:400)+'">'+c.n+'<title>'+plain(coName(c))+(cc?': '+sg(cc.dt)+' s':'')+'</title></text>'}).join('');
 return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Time lost along the lap">'+band+'<line x1="'+P+'" x2="'+(W-P)+'" y1="'+y(0).toFixed(1)+'" y2="'+y(0).toFixed(1)+'" style="stroke:var(--mut);stroke-dasharray:3 3"/>'+
 '<path d="'+pts+'" style="fill:none;stroke:var(--bad);stroke-width:2"/><text x="'+P+'" y="18" style="fill:var(--mut);font-size:11px">time behind the best, building up around the lap (end: '+sg(dl[N-1])+' s)</text></svg>'}
 function coachMapSvg(R,C){const B=R.B;if(!B.Lat||!B.Lon)return '';let la0=1e9,la1=-1e9,lo0=1e9,lo1=-1e9;for(let g=0;g<N;g++){const a=B.Lat[g],o=B.Lon[g];if(!a&&!o)return '';la0=Math.min(la0,a);la1=Math.max(la1,a);lo0=Math.min(lo0,o);lo1=Math.max(lo1,o)}
-if(la1-la0<1e-4)return '';const k=Math.cos((la0+la1)/2*Math.PI/180),w=(lo1-lo0)*k,h=la1-la0,S=260,sc=S/Math.max(w,h),px=g=>10+(B.Lon[g]-lo0)*k*sc,py=g=>10+(la1-B.Lat[g])*sc,W=w*sc+20,Hh=h*sc+20;
+if(la1-la0<1e-4)return '';const k=Math.cos((la0+la1)/2*Math.PI/180),w=(lo1-lo0)*k,h=la1-la0,S=380,sc=S/Math.max(w,h),px=g=>28+(B.Lon[g]-lo0)*k*sc,py=g=>28+(la1-B.Lat[g])*sc,W=w*sc+56,Hh=h*sc+56;
 const avgR=Math.max(.002,Math.abs(R.dl[N-1]-R.dl[0])/(N/5));let seg='';for(let g=0;g<N-5;g+=5){const r=(R.dl[g+5]-R.dl[g])/avgR;const col=r>2?'var(--bad)':r<-1?'var(--good)':'var(--mut)';seg+='<line x1="'+px(g).toFixed(1)+'" y1="'+py(g).toFixed(1)+'" x2="'+px(g+5).toFixed(1)+'" y2="'+py(g+5).toFixed(1)+'" style="stroke:'+col+';stroke-width:'+(r>2?5:3)+';stroke-linecap:round"/>'}
-const lab=R.cs.map(c=>{const cc=C.corners.find(q=>q.n===c.n),lose=cc&&cc.dt>0.02;return '<circle cx="'+px(c.ap).toFixed(1)+'" cy="'+py(c.ap).toFixed(1)+'" r="9" style="fill:var(--card);stroke:'+(lose?'var(--bad)':'var(--mut)')+'"/><text x="'+px(c.ap).toFixed(1)+'" y="'+(py(c.ap)+4).toFixed(1)+'" text-anchor="middle" style="fill:var(--fg);font-size:10px;font-weight:600">'+c.n+'</text>'}).join('');
-return '<svg viewBox="0 0 '+W.toFixed(0)+' '+Hh.toFixed(0)+'" style="width:100%;max-width:320px;height:auto;display:block" role="img" aria-label="Track map coloured by time lost"><circle cx="'+px(0).toFixed(1)+'" cy="'+py(0).toFixed(1)+'" r="4" style="fill:var(--fg)"/>'+seg+lab+'</svg><small class="m"><span class="bad">■</span> losing time fastest · <span class="good">■</span> gaining · numbers are corners</small>'}
+const lab=R.cs.map(c=>{const cc=C.corners.find(q=>q.n===c.n),lose=cc&&cc.dt>0.02,a=Math.max(0,c.ap-4),b=Math.min(N-1,c.ap+4),dx=px(b)-px(a),dy=py(b)-py(a),L=Math.hypot(dx,dy)||1,sd=(R.B.LatG[c.ap]>0?1:-1),cx=px(c.ap)-dy/L*sd*16,cy=py(c.ap)+dx/L*sd*16;return '<line x1="'+px(c.ap).toFixed(1)+'" y1="'+py(c.ap).toFixed(1)+'" x2="'+cx.toFixed(1)+'" y2="'+cy.toFixed(1)+'" style="stroke:var(--mut);stroke-width:1"/><circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="8" style="fill:var(--card);stroke:'+(lose?'var(--bad)':'var(--mut)')+'"/><text x="'+cx.toFixed(1)+'" y="'+(cy+3.5).toFixed(1)+'" text-anchor="middle" style="fill:var(--fg);font-size:9px;font-weight:600">'+c.n+'</text>'}).join('');
+return '<svg viewBox="0 0 '+W.toFixed(0)+' '+Hh.toFixed(0)+'" style="width:100%;max-width:400px;height:auto;display:block" role="img" aria-label="Track map coloured by time lost"><circle cx="'+px(0).toFixed(1)+'" cy="'+py(0).toFixed(1)+'" r="4" style="fill:var(--fg)"/>'+seg+lab+'</svg><small class="m"><span class="bad">■</span> losing time fastest · <span class="good">■</span> gaining · numbers are corners</small>'}
 function coachCornerSvg(R,c){const s=Math.max(0,c.s-40),e=Math.min(N-1,c.e+25),A=R.A,B=R.B,W=300,H=110;let lo=1e9,hi=-1e9;for(let g=s;g<=e;g++){lo=Math.min(lo,A.Speed[g],B.Speed[g]);hi=Math.max(hi,A.Speed[g],B.Speed[g])}
 const x=g=>(g-s)/(e-s||1)*W,y=v=>6+(hi-v)/(hi-lo||1)*(H-34),u=U(),line=(S,col)=>{let p='';for(let g=s;g<=e;g++)p+=(g>s?'L':'M')+x(g).toFixed(1)+' '+y(S[g]).toFixed(1);return '<path d="'+p+'" style="fill:none;stroke:'+col+';stroke-width:2"/>'};
 const pedalF=(X,col,yy)=>{let r='';for(let g=s;g<=e;g++)if(X.Throttle[g]>.95)r+='<rect x="'+x(g).toFixed(1)+'" y="'+yy+'" width="'+(W/(e-s)+.5).toFixed(1)+'" height="3" style="fill:'+col+'"/>';return r},pedal=(X,key,col,yy)=>{let r='';for(let g=s;g<=e;g++)if(X[key][g]>.1)r+='<rect x="'+x(g).toFixed(1)+'" y="'+yy+'" width="'+(W/(e-s)+.5).toFixed(1)+'" height="5" style="fill:'+col+'"/>';return r};
@@ -1713,7 +1729,7 @@ h+='</div><div style="flex:1 1 240px">'+coachMapSvg(R,C)+'</div></div>';
 // priorities
 if(PR.length){h+='<h3 style="margin:18px 0 6px;font-size:16px">What to do, biggest gain first</h3><div style="display:grid;gap:8px">'+PR.slice(0,6).map((p,i)=>'<div style="border:1px solid var(--ln);border-radius:8px;padding:8px 12px;display:flex;gap:12px;align-items:flex-start">'+
 '<div style="font-size:20px;font-weight:700;color:var(--mut);min-width:20px">'+(i+1)+'</div><div style="flex:1"><span style="font-size:11px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:9px;color:#fff;background:'+(p.kind==='drive'?'var(--you)':'var(--ref)')+'">'+(p.kind==='drive'?'DRIVING':'SETUP')+'</span> '+
-(p.gain>0.005?'<b class="bad" style="margin-left:4px">'+(p.upTo?'up to ':'')+sg(p.gain)+' s</b>':'')+'<div style="font-weight:600;margin-top:3px">'+plain(p.title)+'</div>'+(p.do?'<div>'+plain(p.do)+'</div>':'')+(p.why.length?'<div style="margin-top:3px">'+p.why.map(w=>'<small>'+plain(w)+'</small>').join('<br>')+'</div>':'')+(p.ev?'<div class="m" style="font-size:13px;margin-top:2px">'+plain(p.ev)+'</div>':'')+'</div></div>').join('')+'</div>'}
+(p.worth>0.005?'<b class="bad" style="margin-left:4px">in corners worth '+sg(p.worth)+' s</b>':p.gain>0.005?'<b class="bad" style="margin-left:4px">'+sg(p.gain)+' s</b>':'')+'<div style="font-weight:600;margin-top:3px">'+plain(p.title)+'</div>'+(p.do?'<div>'+plain(p.do)+'</div>':'')+(p.why.length?'<div style="margin-top:3px">'+p.why.map(w=>'<small>'+plain(w)+'</small>').join('<br>')+'</div>':'')+(p.ev?'<div class="m" style="font-size:13px;margin-top:2px">'+plain(p.ev)+'</div>':'')+'</div></div>').join('')+'</div>'}
 else h+='<p style="margin-top:12px"><b>Your average already matches the best in every corner.</b></p>';
 // corner by corner
 const lose=C.corners.filter(c=>c.dt>0.02);if(lose.length){h+='<h3 style="margin:18px 0 6px;font-size:16px">Corner by corner</h3><p class="m" style="margin:0 0 6px;font-size:13px"><span class="you">■ your average</span> &nbsp; <span class="ref">■ the best</span>: speed through the corner, with the brake and full throttle underneath.</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">'+

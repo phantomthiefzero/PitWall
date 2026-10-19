@@ -1470,3 +1470,37 @@ console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind),
         drive = [g for k, g in zip(r["kinds"], r["gains"]) if k == "drive"]
         self.assertEqual(drive, sorted(drive, reverse=True))
         self.assertGreater(r["notes"], 0)                     # technique differences against the best lap
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CornerFinderTest(unittest.TestCase):
+    """Corners from where the car turns: esses split, a double apex split, a loaded kink kept, a twitch ignored."""
+
+    def test_shapes(self):
+        js = r"""
+const G = 9.80665, B = { Speed: new Float64Array(N).fill(60), LatG: new Float64Array(N) };
+const turn = (a, b, g, vmin) => { for (let i = a; i <= b; i++) { const f = Math.sin((i - a) / (b - a) * Math.PI); B.LatG[i] = g * G * f; B.Speed[i] = 60 - (60 - vmin) * f } };
+turn(100, 140, -1.5, 25);                       // a left
+turn(141, 175, 1.4, 28);                        // straight into a right: esses
+turn(300, 340, -1.3, 30); turn(341, 400, -1.3, 32);   // one long left with two dips (double apex)
+for (let i = 500; i < 540; i++) B.LatG[i] = -0.8 * G;  // a flat-out loaded kink at 60 m/s (radius ~460 m)
+for (let i = 600; i < 640; i++) B.LatG[i] = 0.3 * G;   // a twitch on the straight: too little load
+B.LatG[700] = 2 * G;                            // one noisy sample
+const cs = findCorners(B, sma(B.Speed, 9));
+console.log(JSON.stringify({ aps: cs.map(c => c.ap), n: cs.length }));
+"""
+        r = run_js(js)
+        aps = r["aps"]
+        self.assertEqual(r["n"], 5, aps)
+        self.assertTrue(110 <= aps[0] <= 130 and 150 <= aps[1] <= 165, aps)          # the esses, two corners
+        self.assertTrue(310 <= aps[2] <= 330 and 360 <= aps[3] <= 380, aps)          # double apex, two corners
+        self.assertTrue(500 <= aps[4] < 540, aps)                                     # the kink
+
+    @unittest.skipUnless(os.path.exists(REAL_IBT), "the real Indianapolis file is not here")
+    def test_indianapolis_has_its_fourteen_turns(self):
+        js = r"""
+const ib = ibt(readBytes(ARGS[0])), S = sessionStats(ib), o = S.clean.slice().sort((a, b) => a.time - b.time);
+const R = analyze(ib.lapObj(o[5].i), ib.lapObj(o[0].i));
+console.log(JSON.stringify({ n: R.cs.length }));
+"""
+        self.assertEqual(run_js(js, REAL_IBT)["n"], 14)
