@@ -843,7 +843,7 @@ const TYRES=['LF','RF','LR','RR'],TYRE_COL={LF:'#2f6fed',RF:'#d6333a',LR:'#1a8f4
 function sessionStats(ib){if(!ib||!ib._rd)return null;if(ib._sess)return ib._sess;const rd=ib._rd,V=ib._V,y=ib.yaml||'',rc=ib._rc;
 const secs=[...y.matchAll(/SectorStartPct:\s*([\d.]+)/g)].map(m=>+m[1]).filter(p=>p>0&&p<1).sort((a,b)=>a-b);
 const TT=V.TrackTempCrew||V.TrackTemp,STEP=10;
-const rows=ib.laps.map((l,i)=>{const r={i,lap:l.lap,ok:l.ok,time:l.ok?l.time:null,span:l.span,sec:null,fuel:null,refuel:false,inc:null,tt:null,top:null,ty:{},note:''};
+const rows=ib.laps.map((l,i)=>{const r={i,lap:l.lap,ok:l.ok,time:l.ok?l.time:null,span:l.span,sec:null,fuel:null,f0:V.FuelLevel?rd(V.FuelLevel,l.s):null,refuel:false,inc:null,tt:null,top:null,ty:{},note:''};
 const d0=rd(V.LapDistPct,l.s),end=l.e>=rc,pitS=V.OnPitRoad?rd(V.OnPitRoad,l.s):0,pitE=V.OnPitRoad?rd(V.OnPitRoad,l.e-1):0;let pit=false;
 if(V.OnPitRoad)for(let q=l.s;q<l.e;q+=STEP)if(rd(V.OnPitRoad,q)){pit=true;break}
 r.note=pitS&&pitE?'in the pits':pitS?'out lap':pitE?'in lap':pit?'pit stop':end?'not finished':d0>.05?'joined mid-lap':!l.ok?'not timed':'';r.pit=pit;
@@ -966,7 +966,7 @@ if(s!==LIVE.sig){if(LIVE.setup&&LIVE.cur)LIVE.cur.pit=true;   /* a setup only ch
 const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tree:t,diff:prev?liveDiff(prev.tree,t):[],at:Date.now()});LIVE.sig=s;
 if(LIVE.meta.carPath)try{libRecord({carPath:LIVE.meta.carPath,carName:LIVE.meta.carName,setup:t},'live|'+(LIVE.meta.sid||'session')+'|'+LIVE.vers.length)}catch(e){}
 LIVE.setup=t;if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}else{LIVE.setup=t;if(first){if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}}}
-function liveNewLap(lap,v){return{lap,d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
+function liveNewLap(lap,v){if(v.OnPitRoad)LIVE.stint=0;return{lap,f0:v.FuelLevel!=null?v.FuelLevel:null,tt:v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp!=null?v.TrackTemp:null,stint:(LIVE.stint=(LIVE.stint||0)+1),d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
 function liveTick(v){LIVE.v=v;try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
 const p=LIVE.pend;if(p&&v.LapLastLapTime>0&&v.LapLastLapTime!==p.stale){const d=v.LapLastLapTime-p.time;if(d>-0.1&&d<1)p.time=v.LapLastLapTime;LIVE.pend=null;liveRender()}
 if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFinish(LIVE.cur,v);LIVE.cur=liveNewLap(v.Lap,v)}
@@ -1560,7 +1560,7 @@ COACH_KEYS.forEach(key=>{const o=new Float64Array(N);for(let i=0;i<N;i++){for(le
 const t=new Float64Array(N);RS.forEach(R0=>{const t0=R0.t[0];for(let i=0;i<N;i++)t[i]+=(R0.t[i]-t0)/k});comp.t=t;
 comp.spread=(()=>{const L=list.map(x=>x.lap),m=comp.lap;return k>1?Math.sqrt(L.reduce((s,x)=>s+(x-m)**2,0)/(k-1)):0})();return comp}
 // a lap saved from a live session (compact) back into a lap object
-function coachFromSaved(s){const n=s.D.length,o={n,who:s.who||'Live lap',lap:s.lap,lapNum:s.lapNum,D:Float64Array.from(s.D),t:Float64Array.from(s.t),ext:{},meta:{}};
+function coachFromSaved(s){const n=s.D.length,o={n,cond:s.cond||null,who:s.who||'Live lap',lap:s.lap,lapNum:s.lapNum,D:Float64Array.from(s.D),t:Float64Array.from(s.t),ext:{},meta:{}};
 COACH_KEYS.forEach(k=>{o[k]=s[k]?Float64Array.from(s[k]):new Float64Array(n)});return o}
 // pure: what differs between the average and the best, corner by corner, and what to do about it
 function coachCompare(avg,best,laps){const R0=analyze(avg,best),u=U(),out={total:R0.total,pct:R0.pct,len:R0.len,corners:[],R:R0};
@@ -1591,20 +1591,37 @@ for(let g=0;g<M;g++){const d=g/(M-1);while(j<keep.length-2&&b.d[keep[j+1]]<d)j++
 for(const k in src){const a=src[k];if(!a||a[i0]==null||a[i1]==null){o[k].push(0);continue}const v=a[i0]+(a[i1]-a[i0])*f;o[k].push(+v.toFixed(k==='t'?3:3))}}
 // the lap must start at 0 s
 const t0=o.t[0];o.t=o.t.map(x=>+(x-t0).toFixed(3));return o}
-function coachSaveLive(c){try{if(!LIVE.meta||!LIVE.meta.carPath)return;const o=coachCompact(c.b,c.lastT,{lap:c.lap,who:LIVE.meta.who,ver:c.ver});if(!o)return;const S=coachLiveLoad(),k=coachLiveKey(),L=S[k]||(S[k]=[]);L.push(o);while(L.length>COACH_LIVE_MAX)L.shift();
+function coachSaveLive(c){try{if(!LIVE.meta||!LIVE.meta.carPath)return;const o=coachCompact(c.b,c.lastT,{lap:c.lap,who:LIVE.meta.who,ver:c.ver});if(o)o.cond={f0:c.f0,tt:c.tt,stint:c.stint};if(!o)return;const S=coachLiveLoad(),k=coachLiveKey(),L=S[k]||(S[k]=[]);L.push(o);while(L.length>COACH_LIVE_MAX)L.shift();
 for(let tries=0;tries<20;tries++){try{localStorage.setItem(COACH_LIVE_KEY,JSON.stringify(S));return}catch(e){const ks=Object.keys(S).filter(x=>S[x].length).sort((a,b)=>S[a][0].at-S[b][0].at);if(!ks.length)return;S[ks[0]].shift()}}}catch(e){console.error('coach save',e)}}
 
 // ---- Coach card ----
-let COACH={src:null,to:'best',g61:[],set:null,live:null};
-function coachSources(){const out=[];const ib=IB.a;if(ib&&ib.laps){let S=null;try{S=sessionStats(ib)}catch(e){}const cl=S?S.clean:[];if(cl.length>=2)out.push({id:'ibt',lab:'Clean laps in your .ibt ('+cl.length+')',laps:()=>cl.map(r=>ib.lapObj(r.i)),track:ghTrackOf(ib.yaml),car:ib.carPath})}
+let COACH={src:null,to:'best',grp:'',g61:[],set:null,live:null};
+function coachSources(){const out=[];const ib=IB.a;if(ib&&ib.laps){let S=null;try{S=sessionStats(ib)}catch(e){}const cl=S?S.clean:[];if(cl.length>=2)out.push({id:'ibt',lab:'Clean laps in your .ibt ('+cl.length+')',laps:()=>{const st={};let k=0;S.rows.forEach(r=>{k=r.pit||r.note==='out lap'?0:k+1;st[r.i]=k});return cl.map(r=>{const o=ib.lapObj(r.i),ts=TYRES.map(t=>r.ty[t]&&r.ty[t].s).filter(x=>x!=null);o.cond={f0:r.f0,tt:r.tt,stint:st[r.i],ts:ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:null};return o})},track:ghTrackOf(ib.yaml),car:ib.carPath})}
 const L=coachLiveLoad();Object.keys(L).filter(k=>L[k].length>=2).forEach(k=>{const[car,track]=k.split('|');out.push({id:'live|'+k,lab:'Saved live laps: '+(track||'?')+' · '+car+' ('+L[k].length+')',laps:()=>coachLiveLoad()[k].map(coachFromSaved),track,car,key:k})});
 if(COACH.g61.length>=2)out.push({id:'g61',lab:'Garage61 laps dropped here ('+COACH.g61.length+')',laps:()=>COACH.g61.slice()});return out}
+// ---- Conditions: group laps by fuel load, tyre state and track temperature ----
+// pure: conds [{f0, stint, tt, ts}] -> groups {id: {lab, why, idx[]}} with at least 2 laps each.
+// Heavy / light fuel: top / bottom third of the fuel range (when it spans at least 15% of the most);
+// cold tyres: first 2 laps of a stint; late in the stint: the last third of the longest stint (at
+// least lap 6); hot / cool track: above / below the middle when the range is at least 3 C;
+// optimal: none of heavy fuel, cold tyres or late stint.
+function coachConditions(conds){const G={},add=(id,lab,why,f)=>{const idx=conds.map((c,i)=>c&&f(c)?i:-1).filter(i=>i>=0);if(idx.length>=2)G[id]={lab,why,idx}};
+const num=a=>a.filter(x=>x!=null&&isFinite(x)),F=num(conds.map(c=>c&&c.f0)),S=num(conds.map(c=>c&&c.stint)),T=num(conds.map(c=>c&&c.tt));
+let heavy=()=>false,cold=()=>false,late=()=>false;
+if(F.length>=4){const lo=Math.min(...F),hi=Math.max(...F);if(hi-lo>=0.15*hi){const a=lo+(hi-lo)/3,b=lo+2*(hi-lo)/3;heavy=c=>c.f0!=null&&c.f0>=b;
+add('heavy','Heavy fuel','fuel '+b.toFixed(0)+'-'+hi.toFixed(0)+' L at the start of the lap',heavy);add('light','Light fuel','fuel '+lo.toFixed(0)+'-'+a.toFixed(0)+' L',c=>c.f0!=null&&c.f0<=a)}}
+if(S.length>=4){cold=c=>c.stint!=null&&c.stint<=2;add('cold','Cold tyres','the first 2 laps of a stint',cold);add('warm','Warm tyres','lap 3 or later in a stint',c=>c.stint!=null&&c.stint>=3);
+const mx=Math.max(...S),from=Math.max(6,Math.ceil(mx*2/3));late=c=>c.stint!=null&&c.stint>=from;add('late','Late in the stint','lap '+from+' or later of a stint (tyre wear)',late)}
+if(T.length>=4){const lo=Math.min(...T),hi=Math.max(...T);if(hi-lo>=3){const m=(lo+hi)/2;add('hot','Hot track','track above '+m.toFixed(0)+' C',c=>c.tt!=null&&c.tt>m);add('cool','Cool track','track below '+m.toFixed(0)+' C',c=>c.tt!=null&&c.tt<=m)}}
+if(Object.keys(G).length)add('optimal','Optimal conditions','warm tyres, not heavy fuel, not late in the stint',c=>!heavy(c)&&!cold(c)&&!late(c));return G}
 function coachRun(){const srcs=coachSources(),S=srcs.find(x=>x.id===COACH.src)||srcs[0];if(!S)return null;COACH.src=S.id;const laps=S.laps();if(laps.length<2)return null;
-const own=laps.slice().sort((p,q)=>p.lap-q.lap);let best=own[0],bestLab='your best lap in this set ('+ft(best.lap)+')';
+const G=coachConditions(laps.map(l=>l.cond)),pick=id=>id&&G[id]?G[id].idx.map(i=>laps[i]):null;COACH.groups=G;if(COACH.grp&&!G[COACH.grp])COACH.grp='';
+const mine=pick(COACH.grp)||laps,own=mine.slice().sort((p,q)=>p.lap-q.lap);let best=own[0],bestLab='your best lap in this set ('+ft(best.lap)+')';
+if(COACH.to.startsWith('grp:')){const g=G[COACH.to.slice(4)],L=pick(COACH.to.slice(4));if(g&&L&&COACH.to.slice(4)!==COACH.grp){const A=avgLap(L,'Average of '+g.lab.toLowerCase()+' laps ('+L.length+')');const C=coachCompare(avgLap(own),A,own);return{S,avg:avgLap(own),best:A,bestLab:'your average on '+g.lab.toLowerCase()+' laps ('+L.length+' laps, '+ft(A.lap)+')',C,n:own.length,G}}COACH.to='best'}
 if(COACH.to==='g61best'&&COACH.g61.length){const g=COACH.g61.slice().sort((p,q)=>p.lap-q.lap)[0];best=g;bestLab='the fastest Garage61 lap you dropped here ('+(g.who||'')+', '+ft(g.lap)+')'}
 else if(COACH.to==='ref'&&F.b&&!SELF){best=F.b;bestLab='the reference lap in the right box ('+(F.b.who||'')+', '+ft(F.b.lap)+')'}
 else COACH.to='best';
-const use=COACH.to==='best'?own.slice(1):own,avg=avgLap(use),C=coachCompare(avg,best,use);return{S,avg,best,bestLab,C,n:use.length}}
+const use=COACH.to==='best'?own.slice(1):own,avg=avgLap(use),C=coachCompare(avg,best,use);return{S,avg,best,bestLab,C,n:use.length,G}}
 // pure: where the gap goes, by kind of mistake. Each corner's time goes to its biggest cause.
 const COACH_THEME={brake_later:'braking',over_brake:'braking',brake_harder:'braking',apex_speed:'mid-corner speed',throttle_earlier:'corner exits',coast:'coasting',consistency:'consistency'};
 function coachThemes(C){const T={};C.corners.filter(c=>c.dt>0.02).forEach(c=>{const k=c.tips.length?COACH_THEME[c.tips[0].k]:'line and steering';const t=T[k]||(T[k]={k,dt:0,corners:[]});t.dt+=c.dt;t.corners.push(c.n)});
@@ -1619,6 +1636,7 @@ h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-t
 '<label class="dz" id="coDrop" style="padding:6px 10px;min-height:0"><input type="file" accept=".csv" multiple hidden><span>'+(COACH.g61.length?COACH.g61.length+' Garage61 lap'+(COACH.g61.length===1?'':'s')+' loaded · drop more or click':'Drop several Garage61 CSV laps here')+'</span></label>'+(COACH.g61.length?'<button type="button" id="coClr" class="clr" style="display:inline-block;margin:0">Clear Garage61 laps</button>':'')+'</div>';
 if(!srcs.length)return h+'<p class="m" style="margin-top:8px">Needs at least 2 clean laps: drop an .ibt file above, drive a few clean laps live (they are kept automatically, per car and track), or drop several Garage61 CSV laps of your own here.</p>';
 let X=null;try{X=coachRun()}catch(e){console.error('coach',e)}if(!X)return h+'<p class="m">Could not build an average from these laps.</p>';COACH.last=X;const C=X.C,u=U();
+h+=coachCondHtml(X);
 const sp=v=>(v>0?'+':v<0?'−':'')+(Math.abs(v)*u.s[0]).toFixed(1)+' '+u.s[1],dm=v=>(v>0?'+':v<0?'−':'')+(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1];
 h+='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px"><div><span class="m">Average of '+X.n+' laps</span><br><b style="font-size:20px">'+ft(X.avg.lap)+'</b></div><div><span class="m">Against</span><br><b style="font-size:20px">'+ft(X.best.lap)+'</b></div><div><span class="m">Gap</span><br><b style="font-size:20px" class="'+(C.total>0?'bad':'good')+'">'+sg(C.total)+' s</b></div><div><span class="m">Lap-to-lap spread</span><br><b style="font-size:20px">±'+X.avg.spread.toFixed(2)+' s</b></div></div>';
 h+='<p class="m" style="margin:6px 0 0">Against '+plain(X.bestLab)+'. In the corners: '+sg(C.total-C.between)+' s; between them: '+sg(C.between)+' s.</p>';
@@ -1635,6 +1653,14 @@ h+='<h4 style="margin:12px 0 4px">Driving: what to change, biggest gain first</h
 h+=coachSetupHtml(X);
 h+='<div style="margin-top:10px"><button type="button" id="coOpen" style="margin:0">Open average vs best in the full comparison</button> <span class="m">traces, track map, racing line and every channel</span></div>';
 return h}
+// the conditions: each group's laps, and buttons to average one group or set it against another
+function coachCondHtml(X){const G=X.G||{},ids=Object.keys(G);let h='<details style="margin-top:10px"'+(COACH.grp||COACH.to.startsWith('grp:')?' open':'')+'><summary><b>Compare by conditions</b> <span class="m">'+(ids.length?ids.map(i=>G[i].lab.toLowerCase()).join(', '):'needs fuel, stint and track temperature on the laps (.ibt files and live laps have them; Garage61 CSVs do not)')+'</span></summary>';
+if(!ids.length)return h+'</details>';const laps=X.S.laps(),row=i=>{const L=G[i].idx.map(j=>laps[j]),t=L.map(l=>l.lap),m=t.reduce((a,b)=>a+b,0)/t.length,sd=t.length>1?Math.sqrt(t.reduce((a,b)=>a+(b-m)**2,0)/(t.length-1)):0;return{i,n:t.length,m,best:Math.min(...t),sd}};
+const R=ids.map(row),opt=R.find(r=>r.i==='optimal');
+h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0"><label>Use only <select id="coGrp"><option value="">all these laps</option>'+ids.map(i=>'<option value="'+i+'"'+(COACH.grp===i?' selected':'')+'>'+plain(G[i].lab.toLowerCase())+' laps ('+G[i].idx.length+')</option>').join('')+'</select></label>'+
+'<label>against <select id="coVs"><option value="">the best lap (as above)</option>'+ids.map(i=>'<option value="grp:'+i+'"'+(COACH.to==='grp:'+i?' selected':'')+'>the average of '+plain(G[i].lab.toLowerCase())+' laps</option>').join('')+'</select></label></div>';
+h+='<div style="overflow-x:auto"><table><tr><th>Condition</th><th>Laps</th><th>Average</th><th>Best</th><th>Spread</th>'+(opt?'<th>Against optimal</th>':'')+'<th>Which laps</th></tr>'+R.map(r=>'<tr><td><b>'+plain(G[r.i].lab)+'</b></td><td>'+r.n+'</td><td>'+ft(r.m)+'</td><td>'+ft(r.best)+'</td><td>±'+r.sd.toFixed(2)+' s</td>'+(opt?'<td class="'+(r.m-opt.m>0.05?'bad':'')+'">'+(r.i==='optimal'?'—':sg(r.m-opt.m)+' s')+'</td>':'')+'<td class="m">'+plain(G[r.i].why)+'</td></tr>').join('')+'</table></div>';
+return h+'<p class="m" style="font-size:13px;margin:4px 0 0">Pick a condition on the left and another on the right to see, corner by corner, what heavy fuel or cold tyres cost you and where. The rest of this card follows your choice.</p></details>'}
 // setup: only for balance problems measured on the laps; time the best lap finds is driving
 function coachSetupHtml(X){let H=null,rows=null,car=X.S.car,track=X.S.track||'';
 if(X.S.id==='ibt'){try{H=handlingStats(IB.a)}catch(e){}rows=setupRows(IB.a.setup||{});car=IB.a.carPath}
@@ -1648,6 +1674,7 @@ return h+'<p style="margin:0 0 4px">Measured on these laps: '+P.problems.map(f=>
 picks.map(p=>'<li><b>'+plain(p.label)+'</b> '+suFmtVal(String(p.from)+(p.u?' '+p.u:''))+' → <b>'+suFmtVal(String(p.to)+(p.u?' '+p.u:''))+'</b> <span class="m">'+(p.basis.kind==='learned'?'size learned from '+p.basis.n+' test'+(p.basis.n===1?'':'s'):'starting step')+'</span></li>').join('')+'</ul>'}
 function renderCoach(){const el=$('coach');if(!el)return;try{el.innerHTML=coachHtml2()}catch(e){console.error('coach',e);el.innerHTML=''}el.hidden=false;
 const s=$('coSrc'),t=$('coTo'),d=$('coDrop'),cl=$('coClr'),op=$('coOpen');if(s)s.onchange=()=>{COACH.src=s.value;renderCoach()};if(t)t.onchange=()=>{COACH.to=t.value;renderCoach()};
+const cg=$('coGrp'),cv=$('coVs');if(cg)cg.onchange=()=>{COACH.grp=cg.value;renderCoach()};if(cv)cv.onchange=()=>{COACH.to=cv.value||'best';renderCoach()};
 if(cl)cl.onclick=()=>{COACH.g61=[];if(COACH.to==='g61best')COACH.to='best';renderCoach()};
 if(d){const inp=d.querySelector('input'),add=async fs=>{for(const f of fs)if(/\.csv$/i.test(f.name))try{COACH.g61.push(parse(await f.text(),f.name))}catch(e){$('err').textContent=f.name+': '+e.message}if(COACH.g61.length>=2&&!COACH.src)COACH.src='g61';renderCoach()};
 inp.onchange=()=>add(Array.from(inp.files));d.ondragover=e=>{e.preventDefault()};d.ondrop=e=>{e.preventDefault();add(Array.from(e.dataTransfer.files))}}

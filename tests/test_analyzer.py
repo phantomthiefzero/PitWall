@@ -1415,3 +1415,26 @@ console.log(JSON.stringify({ t: coachThemes(C).map(t => [t.k, +t.dt.toFixed(3), 
 """
         self.assertEqual(run_js(js)["t"], [["braking", 0.27, [4, 3]], ["mid-corner speed", 0.2, [2]], ["straights", 0.2, []],
                                       ["line and steering", 0.1, [1]]])
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CoachConditionsTest(unittest.TestCase):
+    def test_laps_grouped_by_fuel_tyres_and_track(self):
+        js = r"""
+// a 10-lap stint from full, a stop, then 4 more laps; the track warms up
+const conds = [];
+for (let i = 1; i <= 10; i++) conds.push({ f0: 60 - 5 * (i - 1), stint: i, tt: 30 + i * 0.5 });
+for (let i = 1; i <= 4; i++) conds.push({ f0: 30 - 5 * (i - 1), stint: i, tt: 36 });
+conds.push(null);                                  // a Garage61 lap: no conditions
+const G = coachConditions(conds), ids = Object.fromEntries(Object.entries(G).map(([k, g]) => [k, g.idx]));
+console.log(JSON.stringify({ ids, none: coachConditions([{}, {}, null]) }));
+"""
+        r = run_js(js)
+        ids = r["ids"]
+        self.assertEqual(ids["heavy"], [0, 1, 2, 3])            # 45-60 L: top third of 15-60 L
+        self.assertEqual(ids["light"], [6, 7, 8, 9, 10, 11, 12, 13])   # 15-30 L
+        self.assertEqual(ids["cold"], [0, 1, 10, 11])           # first two laps of each stint
+        self.assertEqual(ids["late"], [6, 7, 8, 9])             # lap 7+ (two thirds of 10)
+        self.assertEqual(set(ids["hot"]) | set(ids["cool"]), set(range(14)))
+        self.assertEqual(ids["optimal"], [4, 5, 12, 13])        # not heavy, not cold, not late
+        self.assertEqual(r["none"], {})
