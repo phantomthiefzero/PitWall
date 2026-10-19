@@ -83,10 +83,11 @@ class PitWallHost:
                 continue
         if self.analyzer_hub is not None:
             # The Lap Analyzer through the same address, so a share link can show it.
-            from suite.bridge import relay_feed, analyzer_page
+            from suite.bridge import relay_feed, analyzer_page, analyzer_reply
             hub = self.analyzer_hub
             relay.analyzer_feed = lambda ws: relay_feed(hub, ws)
             relay.analyzer_page = analyzer_page()
+            relay.analyzer_serve = analyzer_reply
         self.relay = relay
         if self.port is None:
             self.error = "No free port for PitWall's relay between %d and %d" % (port, port + 9)

@@ -168,6 +168,23 @@ class SuiteTest(unittest.TestCase):
             if path.endswith("/"):
                 self.assertIn(b"<html", body[:400].lower(), path)
 
+    def test_large_analyzer_page_arrives_in_pieces_that_join_back(self):
+        import re
+        base = self.engine.url.rstrip("/")
+        disk = on_disk("suite", "web", "analyzer", "index.html")
+        page = fetch(base + "/analyzer/")[2]
+        urls = re.findall(rb'"(/analyzer/_part[^"]+)"', page)
+        self.assertGreaterEqual(len(urls), 2)                     # it is over the target today
+        parts = [fetch(base + u.decode()) for u in urls]
+        for status, headers, _body in parts:
+            self.assertEqual(headers.get("Content-Type"), "text/javascript; charset=utf-8")
+        code = b"".join(p[2] for p in parts)
+        main = max(re.findall(rb"<script>([\s\S]*?)</script>", disk), key=len)
+        self.assertEqual(code, main)
+        self.assertEqual(page.replace(re.findall(rb"<script>\(async\(\)=>[\s\S]*?</script>", page)[0], b"<script>" + main + b"</script>"), disk)
+        with self.assertRaises(Exception):
+            fetch(base + "/analyzer/_part9.nope.js")
+
     def test_no_escape_from_web_folder(self):
         with self.assertRaises(Exception):
             self.get("/../suite/app.py")
@@ -194,7 +211,7 @@ class SuiteTest(unittest.TestCase):
         from suite.bridge import SUITE_LINK
         base = self.engine.url.rstrip("/")
         expect = {"/": on_disk("suite", "web", "index.html"),
-                  "/analyzer/": on_disk("suite", "web", "analyzer", "index.html"),
+                  "/analyzer/": __import__("suite.pagesplit", fromlist=["x"]).split_page(on_disk("suite", "web", "analyzer", "index.html"), "/analyzer/")[0],
                   "/pitwall/": on_disk("client", "index.html").replace(b"</body>", SUITE_LINK + b"</body>", 1)}
         for path, want in expect.items():
             _s, headers, body = fetch(base + path)
@@ -227,9 +244,17 @@ class SuiteTest(unittest.TestCase):
                     with open(path, "rb") as f:
                         data = f.read()
                     ctype = TYPES.get(os.path.splitext(name)[1].lower(), "application/octet-stream")
-                    sent = len(gzip.compress(data, 6)) if compressible(ctype) else len(data)
-                    if sent >= limit:
-                        too_big.append((os.path.relpath(path, root), sent))
+                    if name.endswith(".html"):
+                        # what the server really sends: large pages go as a page plus pieces
+                        from suite.pagesplit import split_page
+                        page, parts = split_page(data, "/x/")
+                        replies = [page] + list(parts.values())
+                    else:
+                        replies = [data]
+                    for body in replies:
+                        sent = len(gzip.compress(body, 6)) if compressible(ctype) else len(body)
+                        if sent >= limit:
+                            too_big.append((os.path.relpath(path, root), sent))
         self.assertEqual(too_big, [], "files that would be sent at %d bytes or more" % limit)
 
     def test_other_websites_are_refused(self):
@@ -604,9 +629,19 @@ class GuestTokenTest(unittest.TestCase):
                 ws.recv(timeout=3)
 
     def test_relay_serves_the_lap_analyzer(self):
+        """Through the share link too, the page arrives in pieces under the stall size
+        and the pieces join back into the script exactly as written."""
+        import re
         http = self.relay_url.replace("ws://", "http://")
         html = fetch(http + "/analyzer/?token=x")[2]
-        self.assertIn(b"LIVE_SHARE", html)
+        disk = on_disk("suite", "web", "analyzer", "index.html")
+        urls = re.findall(rb'"(/analyzer/_part[^"]+)"', html)
+        if urls:
+            code = b"".join(fetch(http + u.decode())[2] for u in urls)
+            self.assertIn(code, disk)
+            self.assertIn(b"LIVE_SHARE", code)
+        else:
+            self.assertIn(b"LIVE_SHARE", html)
 
     def test_analyzer_link_streams_the_live_session_read_only(self):
         """An engineer on the share link gets what the local analyzer gets: the
