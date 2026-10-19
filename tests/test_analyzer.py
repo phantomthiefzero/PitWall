@@ -877,20 +877,23 @@ class DrivingStyleTest(unittest.TestCase):
 
 
 @unittest.skipUnless(NODE, "Node.js is not installed")
-class DrivingTabTest(unittest.TestCase):
-    def test_conflicting_suggestions_are_called_out(self):
+class CarHelpTest(unittest.TestCase):
+    """Coaching's "or let the car help": setup changes that make up for a habit, for this car,
+    and a setting two habits pull opposite ways is called out instead of suggested."""
+
+    def test_settings_for_the_habits_and_conflicts_called_out(self):
         js = "const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + r"""
 LIVE.ws = {}; LIVE.setup = setupTree(ARGS_YAML); LIVE.meta = { carPath: 'ferrari296gt3', carName: 'Ferrari 296 GT3' };
 setupHtml();
-IB.a = { laps: [{ ok: true, time: 90 }], best: 0, _style: { nLaps: 5, traits: { no_trail: [2], saw: [2] }, per: [] } };
-const h = drivingHtml();
-console.log(JSON.stringify({ note: /Note:<\/b> ([^<]*?) (is|are) suggested in opposite/.exec(h), hasCoast: h.includes('Brake fully off before turning in') }));
+const rows = setupRows(LIVE.setup), one = coachCarHelp(['trail'], rows, 'ferrari296gt3'), two = coachCarHelp(['trail', 'saw'], rows, 'ferrari296gt3');
+console.log(JSON.stringify({ one: one.list.map(r => r.label), oneClash: one.clash, two: two.list.map(r => r.label), clash: two.clash, none: coachCarHelp(['brake_later'], rows, 'ferrari296gt3') }));
 """
         r = run_js(js)
-        self.assertTrue(r["hasCoast"])
-        self.assertIsNotNone(r["note"])
-        self.assertIn("Diff preload", r["note"][1])                   # lower to rotate on entry, higher for stability
-
+        self.assertTrue(r["one"])                                     # trail braking: settings that rotate the car on entry
+        self.assertEqual(r["oneClash"], [])
+        self.assertTrue(any("Diff preload" in c for c in r["clash"]))  # lower to rotate on entry, higher for stability
+        self.assertFalse(any("Diff preload" in l for l in r["two"]))
+        self.assertIsNone(r["none"])                                  # not a habit: no setup help
 
 LIVE_VERDICT_JS = r"""
 // runVerdict on its own
