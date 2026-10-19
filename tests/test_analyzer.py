@@ -1662,12 +1662,13 @@ class FilesMenuTest(unittest.TestCase):
         js = r"""
 const ibtF = { kind: 'ibt', when: Date.UTC(2020, 9, 10, 20, 47) / 1000, car: 'Ferrari 296 GT3', track: 'Indianapolis Motor Speedway · Road Course', session: 'Race', laps: 35, best: 84.033, driver: 'Andrew Brooks' };
 const g = { kind: 'g61', driver: 'nick kalra', lap: 83.75, car: 'Ferrari 296 GT3', track: 'Indianapolis Motor Speedway (Road Course)' };
-console.log(JSON.stringify({ ibt: flLabel(ibtF), g61: flLabel(g),
+console.log(JSON.stringify({ ibt: flLabel(ibtF), g61: flLabel(g), renamed: flLabel({ kind: 'g61', lap: 84.6, est: true, name: 'my fast lap.csv' }),
   same: [flSame(g, 'Ferrari 296 GT3', 'Indianapolis Motor Speedway'), flSame(ibtF, 'Ferrari 296 GT3', 'Indianapolis Motor Speedway'),
          flSame(g, 'Porsche 911 GT3 R', 'Indianapolis Motor Speedway'), flSame(g, 'Ferrari 296 GT3', 'Daytona International Speedway'), flSame(g, null, null)] }));
 """
         r = run_js(js)
         self.assertIn("Ferrari 296 GT3 · Race · 35 laps · best 1:24.033 · Andrew Brooks", r["ibt"])
         self.assertTrue(r["ibt"].startswith("Oct 10, 2020"), r["ibt"])        # when it was recorded comes first
-        self.assertEqual(r["g61"], "nick kalra · 1:23.750 · Ferrari 296 GT3 · Indianapolis Motor Speedway (Road Course)")
+        self.assertEqual(r["g61"], "1:23.750 · nick kalra · Ferrari 296 GT3 · Indianapolis Motor Speedway (Road Course)")   # the lap time first
+        self.assertEqual(r["renamed"], "about 1:24.600 · my fast lap")   # lap time from the file's length
         self.assertEqual(r["same"], [True, True, False, False, True])

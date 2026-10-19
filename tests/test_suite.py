@@ -963,6 +963,14 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(g["sub"], os.path.join("FromRig", "Indy"))          # found one folder down
         self.assertEqual([x["auto"] for x in info["folders"]], [True, False])
 
+    def test_renamed_garage61_lap_gets_its_time_from_its_length(self):
+        from suite.library import g61_info
+        p = os.path.join(self.rig, "my fast lap.csv")
+        with open(p, "w") as f:
+            f.write("Speed,LapDistPct,Brake\n" + "50,0.5,0\n" * 5076)   # 5076 samples at 60 a second
+        g = g61_info(p)
+        self.assertEqual((g["lap"], g["est"]), (84.6, True))
+
     def test_folders_are_kept_and_removed(self):
         from suite.library import Library
         self.lib.add_folder(self.rig)
