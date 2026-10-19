@@ -1,4 +1,4 @@
-"""Your telemetry folders: the .ibt files iRacing writes and the Garage61 lap CSVs you
+"""Your telemetry folders: the .ibt files iRacing writes and the Garage 61 lap CSVs you
 download, listed with what each one is (car, track, session, date, laps, best lap)
 instead of a file name, so the Lap Analyzer can open them from a menu.
 
@@ -143,15 +143,17 @@ G61_RE = re.compile(r"^Garage_61_-_(.+?)_-_(.+?)_-_(.+?)_-_(\d+)_(\d\d)_(\d{3})_
 
 
 def g61_info(path):
-    """A Garage61 lap CSV, from the name Garage61 gives it: driver, car, track, lap time."""
+    """A Garage 61 lap CSV, from the name Garage 61 gives it: driver, car, track, lap time."""
     name = os.path.basename(path)
     m = G61_RE.match(name)
     if not m:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            head = f.readline()
-        if "LapDistPct" not in head or "Speed" not in head:
-            raise ValueError("not a Garage61 telemetry CSV")
-        return {"kind": "g61", "driver": "", "car": "", "track": "", "lap": None}
+        # Renamed: the lap time from the length. Garage 61 records 60 samples a second, one row each.
+        with open(path, "rb") as f:
+            head = f.readline().decode("utf-8", "replace")
+            if "LapDistPct" not in head or "Speed" not in head:
+                raise ValueError("not a Garage 61 telemetry CSV")
+            rows = sum(chunk.count(b"\n") for chunk in iter(lambda: f.read(1 << 20), b""))
+        return {"kind": "g61", "driver": "", "car": "", "track": "", "lap": round(rows / 60, 1) if rows > 600 else None, "est": True}
     nice = lambda s: re.sub(r"\s+", " ", s.replace("__", " (", 1).replace("_", " ")).strip()
     track = nice(m.group(3))
     if "(" in track and not track.endswith(")"):

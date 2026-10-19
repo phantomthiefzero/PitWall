@@ -17,6 +17,7 @@ relay serves the dashboard page itself at /pitwall/.
 
 Nothing here reads iRacing; it only moves the relay's existing stream.
 """
+import hashlib
 import json
 import os
 import re
@@ -61,22 +62,41 @@ def signer_org(subject: str) -> str | None:
     return v[1:-1].replace('""', '"') if v.startswith('"') else v.strip()
 
 
-def signature_problem(path: str) -> str | None:
-    """Why this program must not be run, or None when it is signed by Cloudflare."""
+# PowerShell can take well over 30 s to start on a busy or slow PC (seen on GitHub's test machines).
+SIG_TIMEOUT = 120
+UNCHECKED = "could not check its signature"
+
+
+def signature_problem(path: str, timeout: float = SIG_TIMEOUT) -> str | None:
+    """Why this program must not be run, or None when it is signed by Cloudflare. A reply starting
+    with UNCHECKED means Windows did not answer: not a verdict on the file."""
     if sys.platform != "win32":
         return "the tunnel program can only be checked on Windows"
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _SIG_PS],
                            env={**os.environ, "PITWALL_SIG_PATH": path}, capture_output=True, text=True,
-                           timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         sig = json.loads(r.stdout or "{}")
+    except subprocess.TimeoutExpired:
+        return "%s (Windows took more than %d s to answer)" % (UNCHECKED, timeout)
     except Exception as e:  # noqa: BLE001
-        return "could not check its signature (%s)" % e
+        return "%s (%s)" % (UNCHECKED, e)
     if sig.get("status") != "Valid":
         return "it is not validly signed (%s)" % (sig.get("status") or "no signature")
     if signer_org(sig.get("subject", "")) != SIGNER_ORG:
         return "it is signed by %s, not %s" % (signer_org(sig.get("subject", "")) or "someone else", SIGNER_ORG)
     return None
+
+
+def _sha256(path):
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(1 << 20), b""):
+                h.update(block)
+        return h.hexdigest()
+    except OSError:
+        return None
 
 
 def app_folder():
@@ -187,6 +207,7 @@ class Share:
         self._proc = None
         self._gen = 0
         self._job = None
+        self._checked = None
         self.state = "off"
         self.error = None
         self.progress = None
@@ -305,7 +326,16 @@ class Share:
                                        "Check the internet connection and try again." % e)
         if not self._current(gen):
             return
-        why = self._verify(self.exe)
+        # Checked once per copy each time the app runs: the SHA-256 of a copy that passed is kept in
+        # memory (never on disk, where whatever swapped the program could rewrite it too), so the slow
+        # signature check (PowerShell) is not run again on every share.
+        digest = _sha256(self.exe)
+        why = None if digest and digest == self._checked else self._verify(self.exe)
+        if why and why.startswith(UNCHECKED):
+            return self._fail(gen, "Windows did not finish checking the tunnel program's signature (%s). "
+                                   "Try Share online again in a moment." % why)
+        if not why and digest:
+            self._checked = digest
         if why:
             try:
                 os.remove(self.exe)          # the next share downloads a fresh copy

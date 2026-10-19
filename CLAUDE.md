@@ -64,6 +64,12 @@ iRacing Suite app (suite/)
   The analyzer passed that, so `suite/pagesplit.py` serves it as a small page plus script pieces
   that a loader joins and runs as one script; the file on disk stays one HTML file. Both the suite
   server and the relay (`relay.analyzer_serve`) use it. test_suite checks every reply's size.
+- Words in the Lap Analyzer (Coaching, Setup, Lap Analyzer views) and the home page mean one thing each:
+  "your lap" (the left box), "the reference" / "reference lap" (the right box; which lap it is is said once,
+  in its box), "your best lap" (fastest clean lap; never "fastest lap" for this), "your average lap"
+  (Coaching; never "typical"), "median lap" (a middle lap time), "clean laps" (no pit, incident or off,
+  within 7% of your best), "timed laps" (complete and timed), "Garage 61" (with the space), "Corner 4" in
+  sentences and tables, "C4" only on charts and the corner strip. Views: Coaching, Setup, Lap Analyzer.
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.

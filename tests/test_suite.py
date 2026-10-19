@@ -510,6 +510,33 @@ class ShareTest(unittest.TestCase):
         self.assertFalse(os.path.exists(sh.exe))
         self.assertEqual(made, [])
 
+    def test_a_slow_signature_check_keeps_the_program(self):
+        """Windows not answering in time is not a verdict on the file: it is kept, not run, and the
+        next share checks it again (it used to be deleted and downloaded again every time)."""
+        from suite.share import UNCHECKED
+        sh, made = self._share([FakeTunnel(TUNNEL_OUTPUT)], verify=lambda p: UNCHECKED + " (Windows took more than 120 s to answer)")
+        sh.start()
+        self.assertTrue(_wait(lambda: sh.state == "error"), sh.info())
+        self.assertIn("did not finish checking", sh.info()["error"])
+        self.assertTrue(os.path.exists(sh.exe), "the program was removed")
+        self.assertEqual(made, [])
+
+    def test_a_copy_that_passed_is_not_checked_again_while_the_app_runs(self):
+        calls = []
+        sh, made = self._share([FakeTunnel(TUNNEL_OUTPUT), FakeTunnel(TUNNEL_OUTPUT), FakeTunnel(TUNNEL_OUTPUT)],
+                               verify=lambda p: calls.append(p))
+        for _ in range(2):
+            sh.start()
+            self.assertTrue(_wait(lambda: sh.state == "on"), sh.info())
+            sh.stop()
+        self.assertEqual(len(calls), 1)
+        with open(sh.exe, "ab") as f:                      # a different program in its place: checked again
+            f.write(b"changed")
+        sh.start()
+        self.assertTrue(_wait(lambda: sh.state == "on"), sh.info())
+        sh.stop()
+        self.assertEqual(len(calls), 2)
+
     def test_signer_organisation_is_read_from_the_certificate(self):
         from suite.share import signer_org
         self.assertEqual(signer_org('CN="Cloudflare, Inc.", O="Cloudflare, Inc.", L=San Francisco, C=US'),
@@ -523,7 +550,11 @@ class ShareTest(unittest.TestCase):
         unsigned = os.path.join(tempfile.mkdtemp(), "fake.exe")
         with open(unsigned, "wb") as f:
             f.write(b"MZ" + b"\0" * 4096)
-        self.assertIn("not validly signed", signature_problem(unsigned))
+        from suite.share import UNCHECKED
+        why = signature_problem(unsigned)
+        if why.startswith(UNCHECKED):     # this machine's PowerShell did not answer in time: no verdict to test
+            self.skipTest(why)
+        self.assertIn("not validly signed", why)
         # validly signed, but by Microsoft: still refused
         notepad = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "notepad.exe")
         why = signature_problem(notepad)
@@ -962,6 +993,14 @@ class LibraryTest(unittest.TestCase):
                          ("nick kalra", "Ferrari 296 GT3", "Indianapolis Motor Speedway (Road Course)", 83.75))
         self.assertEqual(g["sub"], os.path.join("FromRig", "Indy"))          # found one folder down
         self.assertEqual([x["auto"] for x in info["folders"]], [True, False])
+
+    def test_renamed_garage61_lap_gets_its_time_from_its_length(self):
+        from suite.library import g61_info
+        p = os.path.join(self.rig, "my fast lap.csv")
+        with open(p, "w") as f:
+            f.write("Speed,LapDistPct,Brake\n" + "50,0.5,0\n" * 5076)   # 5076 samples at 60 a second
+        g = g61_info(p)
+        self.assertEqual((g["lap"], g["est"]), (84.6, True))
 
     def test_folders_are_kept_and_removed(self):
         from suite.library import Library
