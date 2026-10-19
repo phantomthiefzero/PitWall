@@ -250,7 +250,10 @@ Per-car additions under `derived` (any car): `speedMs` (from lap-distance moveme
 track length; iRacing does not give other cars' speed), `topSpeedBestMs`, `consistencyS`,
 `gridPos`, `gridClassPos`, `posGained`, `classPosGained`, `lapsLedSeen`, `classLapsLedSeen`,
 `stintsSeen`, `stintStartLap`, `lapsThisStint`, `longestStintLaps`, `nextStopLapEst`,
-`compoundChanges`, `fastRepairsLeft`, `drivers` (team races: [{"name","timeS","laps","current"}]).
+`compoundChanges`, `fastRepairsLeft`, `drivers` (team races: [{"name","timeS","laps","current",
+"sharePct" (share of the time driven since we connected),"evenPct" (100 / drivers),"next" (the driver
+not in the car with the least time: a suggestion for an even rotation, not the event's rule)}]),
+`stopDue` (below).
 Plain per car: `steerRad` (CarIdxSteer). Lap entries also carry `topSpeedMs` and `tx`
 (interpolated line crossing). `cars.derived.compoundPace`: per class and compound, the
 middle of the cars' last racing laps, `fastest`, `vsFastestS`. Session: `driverTires`
@@ -259,6 +262,53 @@ middle of the cars' last racing laps, `fastest`, `vsFastestS`. Session: `driverT
 New events: `compound_change`, `driver_change`, `adjust` (your in-car changes, reported
 once a control has been left alone for 3 s); `behind_closing`, `you_closing`, `position`
 and `pit_battle` carry `ref` (the car they were measured from); your `incident` carries `pct`.
+
+### Race strategy (cars.derived, race only)
+
+iRacing shares no fuel or tyre data for another car, so a rival's next stop is read from how
+long its stints run. Each car's `derived.stopDue = {"lap","lapsLeft","rangeLaps","basis",
+"stopsOwed","overdue"}` or null (no stint start seen). `basis`: `your_fuel` (your car: laps
+into the stint plus the fuel aboard / burn), `own_stints` (its longest watched stint),
+`class_stints` (the middle of the class's watched stints, at least 2; the class's longest once
+the car is already past the middle), `your_tank` (a car of the same model as yours: your tank /
+your burn). `stopsOwed` needs the race length (`race_laps_left`: `lapsToGo` for a lap race,
+else `lapsByTime`).
+
+`derived.caution = {"active","since","pitsOpen","fieldSlowdown","lossGreenS","lossNowS","savingS"}`:
+`active` from SessionFlags caution / caution_waving (iRacing runs full-course cautions on
+ovals; road races have none). `pitsOpen` is iRacing's `PitsOpen` (null when absent).
+`fieldSlowdown`: the middle, over cars on track (at least 3), of (track length / the car's lap
+pace) / its speed now. `lossNowS` re-scales the stops watched this session: the lane takes as
+long as ever, the field covers `fieldSlowdown` times less track meanwhile, so the loss is the
+lane drive minus the same stretch at caution speed, plus the typical stationary time.
+
+`derived.strategy` (shared stream: the reference car; each `refview` carries its own for the
+followed car) = `{"basis":"fuel"|"stints","lapsToGo","lossGreenS","options":[...],"best","targets"}`
+or null. `basis` is `fuel` for your own car with a fuel plan, else the car's stints. Each option
+`{"kind","stops","lossS","netS","finishClassPos","finishAhead","finishBehind","withPace",...}`:
+`no_stop` (+`spareL`), `box_now` (+`lap`,`addL`,`rejoin`), `box_latest` (+`lap`,`addL`),
+`stretch` (one stop fewer: +`saveLPerLap`,`savePct`, offered up to 15 % of the burn),
+`as_forecast` (from `stopDue`), `tyres` (an extra stop: +`tyreGainS` = the stint's
+`degSPerLap` x laps on the tyres x laps to go, offered from 0.03 s/lap and 5 laps; `netS` =
+`lossS` - `tyreGainS`), `caution_now` (a stop now at `caution.lossNowS`, plus any further stop
+still needed at the green loss; only while the pits are not closed). `best` is the lowest
+`netS`. The finish projection: each class car's time behind the leader + its pace x laps to go
+(when every car has a pace) + the stops `stopDue` says it still owes x the green loss;
+`finishAhead`/`finishBehind` = `{"idx","s","guessed"}` (`guessed`: that car's stops unknown).
+`targets = {"catch":{"idx","gapS","needSPerLap","gainingSPerLap","catchLaps","targetLapS",
+"onCourse"},"hold":{"idx","gapS","closingSPerLap","catchesInLaps","beforeFlag"}}`: the nearest
+class car ahead and behind; `targetLapS` = the car's pace minus what it needs per lap.
+
+`stint` trend (`degSPerLap`) uses racing laps only: a lap more than 7 % slower than the
+stint's quickest (out-lap, caution, spin) is left out.
+
+State (your car): `player.driverChange = {"lapStatus","driversSoFar"}` (DCLapStatus,
+DCDriversSoFar, unverified).
+
+The dashboard's alarms (box now, window open, fuel low, caution, a car close behind or due to
+catch before the flag, rain, a black/repair flag on the followed car, incidents near the limit)
+are thresholds over these values, per viewer and never sent anywhere. The race report is
+built in the page from what it has received (feed, cars, alarms).
 
 ### Delta encoding
 `full:true` = complete message (sent every 5 s and on every reconnect / `resend`).

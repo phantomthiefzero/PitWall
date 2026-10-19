@@ -45,6 +45,7 @@
   .unittoggle { background: var(--panel); color: var(--muted); border: 1px solid var(--line);
                 border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 12px; font-weight: 600;
                 cursor: pointer; letter-spacing: .02em; }
+  #soundToggle { white-space: nowrap; }
   .unittoggle:hover { color: var(--text); border-color: var(--muted); }
   .unittoggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   .unittoggle.mini { margin-left: auto; padding: 2px 7px; font-size: 11px; font-weight: 500; }
@@ -342,6 +343,35 @@
   #connect button:focus-visible, #connect input:focus-visible { outline: 2px solid var(--player); outline-offset: 2px; }
   #connect .err { color: var(--red); margin: 12px 0 0; }
   .hidden { display: none !important; }
+  /* alarms: one strip under the header, per viewer */
+  header .alarms { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+  .alarm { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: 6px;
+           font-size: 13px; font-weight: 600; background: var(--line); border-left: 4px solid var(--blue); }
+  .alarm.hot { border-left-color: var(--red); background: #4A2030; }
+  .alarm.warn { border-left-color: var(--orange); background: #43331F; color: var(--text); }
+  .alarm.cau { border-left-color: var(--yellow); background: #46401C; }
+  .alarm button { background: none; border: 0; color: var(--muted); font: inherit; font-size: 15px; cursor: pointer;
+                  padding: 0 4px; line-height: 1; }
+  .alarm button:hover { color: var(--text); }
+  /* race strategy */
+  .cau-banner { padding: 8px 10px; border-radius: 6px; background: #46401C; border-left: 4px solid var(--yellow);
+                font-size: 13px; margin-bottom: 8px; }
+  .cau-banner .boxnow { color: var(--yellow); font-weight: 800; letter-spacing: .04em; }
+  .opts { display: grid; gap: 4px; margin-top: 6px; }
+  .opt { padding: 5px 8px; border-radius: 6px; background: #19253F; font-size: 12.5px; }
+  .opt.best { box-shadow: inset 3px 0 0 var(--green); }
+  .opt-h { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .opt-h > span:first-child { font-weight: 600; }
+  .opt .tag { font-size: 10.5px; font-weight: 600; color: #0C2A1A; background: var(--green); border-radius: 3px; padding: 0 4px; margin-left: 6px; }
+  .sub-h { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 10px 0 4px; }
+  .tgt { font-size: 12.5px; margin-top: 3px; }
+  table.rivals { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.rivals td { padding: 2px 6px 2px 0; }
+  table.rivals tr.me td { color: var(--player); }
+  /* team */
+  .share { position: relative; height: 6px; background: var(--line); border-radius: 3px; margin: 3px 0 6px; }
+  .share i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--blue); border-radius: 3px; }
+  .share b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--muted); }
 
   /* Below the three-column width the page scrolls as a whole instead of
      squeezing every panel into one viewport: at 900x700 the map and standings
@@ -391,8 +421,10 @@
     <label class="follow" title="The car every relative panel follows, on this screen only. Nobody else's view changes.">Following
       <select id="followSel"><option value="">Auto</option></select> <span id="followSrc" class="note"></span></label>
     <button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button>
+    <button type="button" id="soundToggle" class="unittoggle" title="Play a tone when a new alarm appears. On this screen only.">sound off</button>
     <div class="clock"><span id="remain">–</span><small id="lapline">–</small></div>
   </div>
+  <div class="alarms hidden" id="alarmBar" role="status" aria-live="polite"></div>
 </header>
 
 <main>
@@ -469,6 +501,13 @@
       </details>
     </section>
 
+    <section id="raceStrat">
+      <details class="panel" id="raceStratDetails" open>
+        <summary>Race strategy</summary>
+        <div id="raceBox"><div class="note">Waiting for the field.</div></div>
+      </details>
+    </section>
+
     <section id="fuelPanel">
       <details class="panel" id="fuelDetails" open>
         <summary>Fuel &amp; stops</summary>
@@ -487,6 +526,13 @@
       <details class="panel" id="tiresDetails" open>
         <summary>Tyres &amp; stints</summary>
         <div id="tiresBox"><div class="note">Waiting for the field.</div></div>
+      </details>
+    </section>
+
+    <section id="teamPanel" class="hidden">
+      <details class="panel" id="teamDetails" open>
+        <summary>Team</summary>
+        <div id="teamBox"></div>
       </details>
     </section>
 
@@ -560,6 +606,7 @@
   <span id="age">no data</span>
   <span id="rate"></span>
   <span id="rig" style="color:var(--muted)"></span>
+  <button type="button" id="reportBtn" class="unittoggle mini" style="margin-left:0" title="Save a report of this session as a web page: result, stops, lap times, events and the alarms raised on this screen">Race report</button>
   <span class="legend" style="margin-left:auto">
     <span>plain = reported by iRacing</span>
     <span class="derived">dotted = computed here</span>
@@ -1562,6 +1609,285 @@
     el.innerHTML = h;
   }
 
+  // ---- race strategy: the caution call, options side by side, targets, rivals' stops
+  // All of it is computed in normalize.py (cars.derived.strategy / caution, each car's
+  // derived.stopDue); this only lays it out.
+  const STOP_BASIS = {
+    your_fuel: "your fuel aboard", own_stints: "its longest stint seen",
+    class_stints: "the class's stints", your_tank: "your tank (same car)",
+  };
+  const fuelL = v => v == null ? "–" : U.fuel(v, 1) + " " + U.fuelAbbr;
+  function cautionBanner(cau, st) {
+    if (!cau || !cau.active) return "";
+    const pits = cau.pitsOpen === false ? `<b class="warn">pits closed</b>` : cau.pitsOpen === true ? "pits open" : "pits: not reported";
+    let h = `<div class="cau-banner"><b>Full course caution</b> · ${pits}`;
+    if (cau.fieldSlowdown != null) h += ` · ${D(`field at ${cau.fieldSlowdown.toFixed(1)}× its lap time`, "Computed here: the middle of each car's lap pace against its speed now.")}`;
+    if (cau.lossNowS != null) {
+      h += `<br>${D(`A stop costs <b class="mono">${cau.lossNowS.toFixed(1)} s</b> now`, "Computed here: the stops watched this session, re-scaled by how much slower the field is going. The lane takes as long as ever; the field covers less track meanwhile.")}` +
+           (cau.lossGreenS != null ? ` against ${D(`${cau.lossGreenS.toFixed(1)} s under green`, "Computed here: lane loss plus the typical stationary time.")}` : "") +
+           (cau.savingS != null ? ` · ${D(`saves ${cau.savingS.toFixed(1)} s`, "Computed here: the green loss minus the loss now.")}` : "");
+    } else {
+      h += `<br><span class="note">The cost of a stop now needs a stop watched this session and three cars on track.</span>`;
+    }
+    if (st && st.best === "caution_now") h += `<br><span class="boxnow">BOX NOW</span> <span class="note">stopping under this caution is the cheapest way to the flag below</span>`;
+    return h + `</div>`;
+  }
+  function optionRow(o, best) {
+    const L = {
+      no_stop: "No stop", box_now: "Box this lap", box_latest: `Box at the latest${o.lap != null ? ", lap " + o.lap : ""}`,
+      stretch: "One stop fewer", as_forecast: "Stop as forecast", tyres: "Extra stop for tyres", caution_now: "Box under this caution",
+    }[o.kind] || esc(words(o.kind));
+    const notes = [];
+    if (o.kind === "no_stop" && o.spareL != null) notes.push(`${fuelL(o.spareL)} spare at the flag`);
+    if ((o.kind === "box_now" || o.kind === "box_latest") && o.addL != null) notes.push(`add ${fuelL(o.addL)}`);
+    if (o.kind === "stretch") notes.push(`save ${U.fuel(o.saveLPerLap, 2)} ${U.fuelAbbr}/lap (${o.savePct.toFixed(1)}% of the burn)`);
+    if (o.kind === "as_forecast") notes.push(o.stops ? (o.lap != null ? `next stop around lap ${o.lap}` : "") : "no stop owed");
+    if (o.kind === "tyres") notes.push(`fresh tyres worth about ${o.tyreGainS.toFixed(1)} s over the laps left, so ${o.netS.toFixed(1)} s net`);
+    if (o.rejoin) notes.push(`rejoins class P${o.rejoin.classPos}`);
+    const near = [];
+    if (o.finishAhead) near.push(`${o.finishAhead.s.toFixed(1)} s behind ${shortCar(o.finishAhead.idx)}${o.finishAhead.guessed ? "*" : ""}`);
+    if (o.finishBehind) near.push(`${o.finishBehind.s.toFixed(1)} s ahead of ${shortCar(o.finishBehind.idx)}${o.finishBehind.guessed ? "*" : ""}`);
+    const fin = o.finishClassPos == null ? `<span class="note">finish –</span>`
+      : D(`finish <b>P${o.finishClassPos}</b>`, "Computed here: class position at the flag if every car keeps its pace and makes the stops its stints say it still owes. * = that car's stops are not known yet.");
+    return `<div class="opt${o.kind === best ? " best" : ""}"><div class="opt-h"><span>${L}${o.kind === best ? `<span class="tag">best</span>` : ""}</span>${fin}</div>` +
+      `<div class="note">${D(`${o.stops} stop${o.stops === 1 ? "" : "s"} · ${o.lossS.toFixed(1)} s in stops`, "Computed here: lane loss and stationary time for every stop still to make (refuel time from the measured rate when it is your car).")}` +
+      (near.length ? ` · ${D(near.join(", "), "Computed here: the projected gaps at the flag.")}` : "") +
+      (notes.length ? `<br>${notes.filter(Boolean).join(" · ")}` : "") + `</div></div>`;
+  }
+  function renderRaceStrategy() {
+    const el = $("raceBox");
+    if (!S.cars || !S.cars.derived) return;
+    const d = S.cars.derived, w = RW(), st = d.strategy, cau = d.caution;
+    if (d.isRace === false) { el.innerHTML = `<div class="note">Race strategy works in races, where iRacing reports each car's time behind the leader.</div>`; return; }
+    let h = cautionBanner(cau, st);
+    if (!st) {
+      h += `<div class="note">Needs the race length and ${w.pos} gap to the leader (after the first lap).</div>`;
+      el.innerHTML = h; return;
+    }
+    h += `<div class="fp-line">${D(`${st.lapsToGo} laps to go`, "Computed here: from the leader's lap and the race length, or from the clock and the leader's pace.")}` +
+         ` · ${st.basis === "fuel" ? "from your fuel plan" : `from ${w.pos} stint lengths (iRacing does not share other cars' fuel)`}</div>`;
+    if (st.options && st.options.length) {
+      h += `<div class="opts">` + st.options.map(o => optionRow(o, st.best)).join("") + `</div>`;
+    } else {
+      h += `<div class="note" style="margin-top:4px">Options appear once a stop has been watched this session (for the pit loss)` +
+           (st.basis === "stints" ? ` and ${w.pos} stint length is known.` : ".") + `</div>`;
+    }
+    // targets
+    const t = st.targets || {};
+    if (t.catch || t.hold) {
+      h += `<div class="sub-h">Targets</div>`;
+      if (t.catch) {
+        const c = t.catch;
+        const g = c.gainingSPerLap == null ? `<span class="note">no trend yet</span>`
+          : `<span class="${c.onCourse ? "gain" : "lose"}">${c.gainingSPerLap > 0 ? "gaining" : "losing"} ${Math.abs(c.gainingSPerLap).toFixed(2)} s/lap: ${c.onCourse ? "on course" : "not enough"}</span>`;
+        h += `<div class="tgt">Catch <b>${shortCar(c.idx)}</b>: ${D(`${c.gapS.toFixed(c.gapS < 1 ? 2 : 1)} s ahead, needs <b class="mono">${c.needSPerLap.toFixed(2)} s/lap</b>`, "Computed here: the gap divided by the laps to go.")}` +
+             (c.targetLapS != null ? ` · ${D(`lap target ${fmt.lap(c.targetLapS)}`, "Computed here: the followed car's current pace minus what it needs per lap.")}` : "") + ` · ${g}</div>`;
+      }
+      if (t.hold) {
+        const k = t.hold;
+        const cl = k.closingSPerLap == null ? `<span class="note">no trend yet</span>`
+          : k.closingSPerLap > 0 ? `<span class="lose">closing ${k.closingSPerLap.toFixed(2)} s/lap</span>` : `<span class="gain">dropping back ${Math.abs(k.closingSPerLap).toFixed(2)} s/lap</span>`;
+        h += `<div class="tgt">Hold <b>${shortCar(k.idx)}</b>: ${D(`${k.gapS.toFixed(k.gapS < 1 ? 2 : 1)} s behind`, "Computed here from both cars' time behind the leader.")} · ${cl}` +
+             (k.catchesInLaps != null ? ` · ${D(`catches ${w.obj} in ${k.catchesInLaps} laps`, "Computed here at the current closing rate.")}${k.beforeFlag ? ` <b class="warn">before the flag</b>` : ""}` : "") + `</div>`;
+      }
+    }
+    // rivals' stops in the followed car's class
+    const me = meCar();
+    const rows = Object.values(S.cars.cars || {})
+      .filter(c => me && c.classId === me.classId && c.derived && c.derived.stopDue && c.classPos > 0)
+      .sort((a, b) => a.classPos - b.classPos).slice(0, 12);
+    if (rows.length) {
+      h += `<div class="sub-h">${D("Stops due in class", "Computed here: the stint start plus how long the car's stints run (its own, else the class's, else your tank for the same car). iRacing does not share other cars' fuel.")}</div>` +
+           `<table class="rivals"><tbody>` + rows.map(c => {
+             const sd = c.derived.stopDue;
+             return `<tr class="${me && c.idx === me.idx ? "me" : ""}" title="From ${esc(STOP_BASIS[sd.basis] || words(sd.basis))}"><td class="mono">P${c.classPos}</td><td>${carLabel(c.idx)}</td>` +
+               `<td class="mono">${sd.overdue ? `<b class="warn">overdue</b>` : `lap ${sd.lap}`}</td>` +
+               `<td class="note">${sd.overdue ? "" : sd.lapsLeft ? `in ${sd.lapsLeft}` : "this lap"}${sd.stopsOwed != null ? ` · ${sd.stopsOwed} to make` : ""}</td></tr>`;
+           }).join("") + `</tbody></table>`;
+      const bases = {};
+      rows.forEach(c => { const k = c.derived.stopDue.basis; bases[k] = (bases[k] || 0) + 1; });
+      h += `<div class="note" style="margin-top:4px">From ` + Object.entries(bases).map(([k, n]) =>
+        `${esc(STOP_BASIS[k] || words(k))} (${n} car${n === 1 ? "" : "s"})`).join(", ") + `.</div>`;
+    }
+    el.innerHTML = h;
+  }
+
+  // ---- team: drivers, their share of the time, who is next
+  function renderTeam() {
+    const sec = $("teamPanel"), el = $("teamBox");
+    const c = meCar(), drv = c && c.derived && c.derived.drivers;
+    const dc = isOwnRef() && S.state && S.state.player && S.state.player.driverChange;
+    const dcOn = dc && (dc.lapStatus != null || dc.driversSoFar != null);
+    if (!(drv && drv.length > 1) && !dcOn) { sec.classList.add("hidden"); return; }
+    sec.classList.remove("hidden");
+    let h = "";
+    if (drv && drv.length) {
+      h += drv.map(x =>
+        `<div class="fp-line">${x.current ? `<span class="gain">●</span> ` : ""}<b>${esc(x.name)}</b>` +
+        `${x.current ? ` <span class="note">driving</span>` : ""}${x.next ? ` <span class="badge" style="background:var(--blue);color:#0B1A33">next</span>` : ""}` +
+        ` · ${D(`${fmt.clock(x.timeS)} · ${x.laps} laps${x.sharePct != null ? ` · ${x.sharePct.toFixed(0)}%` : ""}`, "Computed here: time and laps in the car since we connected, and the share of the time driven.")}</div>` +
+        (x.sharePct != null ? `<div class="share" title="Share of the time driven; the mark is an even split"><i style="width:${Math.min(100, x.sharePct)}%"></i><b style="left:${x.evenPct}%"></b></div>` : "")
+      ).join("") +
+      `<div class="note">"Next" is the driver with the least time, for an even rotation. The event's own minimums are not in the telemetry.</div>`;
+    }
+    if (dcOn) h += `<div class="fp-line">Driver change (iRacing): lap status ${esc(dc.lapStatus ?? "–")} · drivers so far ${esc(dc.driversSoFar ?? "–")}</div>`;
+    el.innerHTML = h;
+  }
+
+  // ---- alarms: per viewer, never sent anywhere. A condition raises an alarm once;
+  // dismissing hides it until the condition clears and comes back.
+  const ALARM = { active: new Map(), dismissed: new Set(), history: [], sound: false, ctx: null, at: 0 };
+  try { ALARM.sound = localStorage.getItem("pitwall.sound") === "on"; } catch (e) {}
+  function beep(level) {
+    if (!ALARM.sound) return;
+    try {
+      const ctx = ALARM.ctx || (ALARM.ctx = new (window.AudioContext || window.webkitAudioContext)());
+      const tones = level === "hot" ? [880, 660, 880] : level === "cau" ? [740, 740] : [660];
+      tones.forEach((f, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + i * 0.18;
+        o.frequency.value = f; o.type = "sine";
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
+        o.connect(g).connect(ctx.destination); o.start(t0); o.stop(t0 + 0.16);
+      });
+    } catch (e) { /* no audio */ }
+  }
+  function alarmConditions() {
+    const out = [];
+    const st = S.state, sd = st && st.derived, d = S.cars && S.cars.derived;
+    const add = (key, level, html) => out.push({ key, level, html });
+    if (isOwnRef() && sd && playerBlockIsLive()) {
+      const pl = sd.plan;
+      if (pl && pl.stops > 0 && pl.boxNow) add("box_now", "hot", D(pl.windowCloseLap == null ? "Box now: not enough fuel to finish this lap" : "Box this lap: last chance on fuel", "Computed here: the fuel plan."));
+      else if (pl && pl.stops > 0 && pl.windowOpenLap != null && st.player.lap != null && st.player.lap >= pl.windowOpenLap)
+        add("window", "info", D(`Pit window open · laps ${pl.windowOpenLap}–${pl.windowCloseLap ?? "?"}`, "Computed here: the fuel plan."));
+      if (pl && pl.stops > 0 && !pl.boxNow && sd.lapsOfFuel != null && sd.lapsOfFuel < 3)
+        add("fuel_low", "warn", D(`Fuel for ${sd.lapsOfFuel.toFixed(1)} laps`, "Computed here: fuel aboard divided by the measured burn."));
+      const inc = st.player.incidents && st.player.incidents.my;
+      const lim = S.session && S.session.options && S.session.options.IncidentLimit;
+      if (typeof lim === "number" && lim > 0 && inc != null && inc >= lim - 4)
+        add("inc", inc >= lim - 2 ? "hot" : "warn", `Incidents ${esc(inc)}x of ${esc(lim)}`);
+    }
+    if (d && d.caution && d.caution.active) {
+      // a new key when the call becomes "box now", so it sounds again
+      const best = d.strategy && d.strategy.best === "caution_now";
+      add(best ? "caution_box" : "caution", best ? "hot" : "cau", `Full course caution${d.caution.pitsOpen === false ? " · pits closed" : ""}` +
+        (best ? ` · <b>BOX NOW</b> ${D(`stop costs ${d.caution.lossNowS.toFixed(1)} s, not ${(d.caution.lossGreenS ?? 0).toFixed(1)} s`, "Computed here: see Race strategy.")}` : ""));
+    }
+    const t = d && d.strategy && d.strategy.targets;
+    if (t && t.hold) {
+      if (t.hold.gapS < 1.0) add("close:" + t.hold.idx, "warn", D(`${shortCar(t.hold.idx)} ${t.hold.gapS.toFixed(1)} s behind ${RW().obj}`, "Computed here from both cars' time behind the leader."));
+      else if (t.hold.beforeFlag) add("catch:" + t.hold.idx, "info", D(`${shortCar(t.hold.idx)} catches ${RW().obj} in ${t.hold.catchesInLaps} laps, before the flag`, "Computed here at the current closing rate."));
+    }
+    const wx = st && st.weather;
+    if (wx && ((wx.precipitationPct != null && wx.precipitationPct > 0) || (wx.wetnessRaw != null && wx.wetnessRaw > 1)))
+      add("rain", "info", `Rain${wx.wetness && wx.wetnessRaw > 1 ? " · track " + esc(words(wx.wetness)) : ""}`);
+    const me = meCar();
+    if (me) for (const f of (me.flags || []).filter(x => ["black", "repair", "disqualify", "furled"].includes(x)))
+      add("flag:" + f, "hot", `${esc(words(f))} flag on ${shortCar(me.idx)}`);
+    return out;
+  }
+  function renderAlarms() {
+    const now = alarmConditions(), keys = new Set(now.map(a => a.key));
+    for (const k of [...ALARM.dismissed]) if (!keys.has(k)) ALARM.dismissed.delete(k);
+    let fresh = null;
+    for (const a of now) {
+      if (!ALARM.active.has(a.key)) {
+        const lap = S.state && S.state.player && S.state.player.lap;
+        ALARM.history.push({ at: new Date().toISOString(), lap: meCar() ? meCar().lap : lap, key: a.key, level: a.level,
+                             text: a.html.replace(/<[^>]+>/g, "") });
+        if (ALARM.history.length > 500) ALARM.history.shift();
+        if (!fresh || a.level === "hot") fresh = a;
+      }
+    }
+    ALARM.active = new Map(now.map(a => [a.key, a]));
+    if (fresh) beep(fresh.level);
+    const show = now.filter(a => !ALARM.dismissed.has(a.key));
+    const bar = $("alarmBar");
+    bar.classList.toggle("hidden", !show.length);
+    const html = show.map(a => `<span class="alarm ${a.level}">${a.html}<button type="button" data-k="${esc(a.key)}" aria-label="Dismiss" title="Hide until it clears and comes back">×</button></span>`).join("");
+    if (bar.innerHTML !== html) bar.innerHTML = html;
+  }
+  $("alarmBar").addEventListener("click", e => {
+    const b = e.target.closest("button[data-k]");
+    if (b) { ALARM.dismissed.add(b.dataset.k); renderAlarms(); }
+  });
+  function soundLabel() { $("soundToggle").textContent = ALARM.sound ? "sound on" : "sound off"; }
+  soundLabel();
+  $("soundToggle").addEventListener("click", () => {
+    ALARM.sound = !ALARM.sound; soundLabel();
+    try { localStorage.setItem("pitwall.sound", ALARM.sound ? "on" : "off"); } catch (e) {}
+    if (ALARM.sound) beep("info");     // a click is the gesture browsers need before audio plays
+  });
+
+  // ---- race report: what this screen has seen, saved as one web page
+  function csvCell(v) { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function buildReport() {
+    const st = S.state, sess = S.session || {}, t = sess.track || {};
+    const track = (t.TrackDisplayName || t.TrackName || "Track") + (t.TrackConfigName ? " – " + t.TrackConfigName : "");
+    const sType = st && sess.sessions ? ((sess.sessions.find(x => x.SessionNum === st.session.num) || {}).SessionType || "") : "";
+    const me = meCar(), cars = Object.values((S.cars && S.cars.cars) || {}).filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
+    const multi = isMulticlass();
+    const lapsOf = idx => S.feed.laps.filter(l => l.idx === idx).sort((a, b) => a.lap - b.lap);
+    const strip = h => String(h).replace(/<[^>]+>/g, "");
+    let b = `<h1>${esc(track)}</h1><p class="m">${esc(sType)} · saved ${esc(new Date().toLocaleString())}` +
+            (me ? ` · followed car ${esc("#" + (me.num ?? me.idx))} ${esc(me.name || "")}` : "") + `</p>`;
+    b += `<h2>Result</h2><p class="m">As this screen last saw it${st && (st.session.flags || []).includes("checkered") ? " (chequered flag out)" : ""}.</p>` +
+         `<table><tr><th>Pos</th>${multi ? "<th>Class</th><th>In class</th>" : ""}<th>Car</th><th>Driver</th><th>Laps</th><th>Best</th><th>Last</th><th>Stops seen</th></tr>` +
+         cars.map(c => `<tr${me && c.idx === me.idx ? ' class="me"' : ""}><td>P${c.pos}</td>${multi ? `<td>${esc(c.className || "")}</td><td>P${esc(c.classPos)}</td>` : ""}` +
+           `<td>#${esc(c.num ?? c.idx)}</td><td>${esc(c.name || "")}</td><td>${esc(c.lap ?? "")}</td><td>${fmt.lap(c.bestLapS)}</td><td>${fmt.lap(c.lastLapS)}</td>` +
+           `<td>${esc(c.derived && c.derived.stopsSeen != null ? c.derived.stopsSeen : "")}</td></tr>`).join("") + `</table>`;
+    if (me) {
+      const pits = S.feed.events.filter(e => e.idx === me.idx && (e.kind === "pit_in" || e.kind === "pit_out"));
+      const md = me.derived || {};
+      b += `<h2>Stints and stops · #${esc(me.num ?? me.idx)}</h2>` +
+           (md.stintsSeen && md.stintsSeen.length ? `<p>Stints seen: ${esc(md.stintsSeen.join(", "))} laps (computed).</p>` : "") +
+           (pits.length ? `<table><tr><th>Lap</th><th>Event</th><th>Stationary</th><th>Lane loss</th></tr>` + pits.map(e =>
+             `<tr><td>${esc(e.lap ?? "")}</td><td>${e.kind === "pit_in" ? "pit in" : "pit out"}</td><td>${e.stationaryS != null ? e.stationaryS.toFixed(1) + " s" : ""}</td><td>${e.laneLossS != null ? e.laneLossS.toFixed(1) + " s" : ""}</td></tr>`).join("") + `</table>`
+             : `<p class="m">No stops seen.</p>`);
+      if (md.drivers && md.drivers.length > 1)
+        b += `<h2>Drivers</h2><table><tr><th>Driver</th><th>Time</th><th>Laps</th><th>Share</th></tr>` + md.drivers.map(x =>
+          `<tr><td>${esc(x.name)}</td><td>${fmt.clock(x.timeS)}</td><td>${x.laps}</td><td>${x.sharePct != null ? x.sharePct.toFixed(0) + "%" : ""}</td></tr>`).join("") + `</table>`;
+      const laps = lapsOf(me.idx);
+      b += `<h2>Lap times · #${esc(me.num ?? me.idx)}</h2>` + (laps.length ?
+        `<table><tr><th>Lap</th><th>Time</th><th>Pos</th>${multi ? "<th>Class pos</th>" : ""}<th>Gap to leader</th><th>Pit</th>${laps.some(l => l.fuelL != null) ? "<th>Fuel used</th>" : ""}</tr>` +
+        laps.map(l => `<tr><td>${esc(l.lap)}</td><td>${fmt.lap(l.lapS)}</td><td>${esc(l.pos ?? "")}</td>${multi ? `<td>${esc(l.classPos ?? "")}</td>` : ""}` +
+          `<td>${l.gapS != null ? l.gapS.toFixed(1) : ""}</td><td>${l.pit ? "pit" : ""}</td>${laps.some(x => x.fuelL != null) ? `<td>${l.fuelL != null ? fuelL(l.fuelL) : ""}</td>` : ""}</tr>`).join("") + `</table>`
+        : `<p class="m">No laps seen.</p>`);
+    }
+    const evs = S.feed.events.slice().sort((a, b) => a.t - b.t);
+    b += `<h2>Race events</h2>` + (evs.length ? `<table><tr><th>Lap · session time</th><th>Event</th></tr>` + evs.map(e => {
+      let tm = "", txt = "";
+      try { const p = eventHtml(e).split('</span><span>'); tm = strip(p[0]); txt = strip(p.slice(1).join("")); } catch (x) { txt = words(e.kind); }
+      return `<tr><td>${esc(tm)}</td><td>${esc(txt)}</td></tr>`;
+    }).join("") + `</table>` : `<p class="m">None seen.</p>`);
+    b += `<h2>Alarms on this screen</h2>` + (ALARM.history.length ? `<table><tr><th>Time</th><th>Lap</th><th>Alarm</th></tr>` + ALARM.history.map(a =>
+      `<tr><td>${esc(new Date(a.at).toLocaleTimeString())}</td><td>${esc(a.lap ?? "")}</td><td>${esc(a.text)}</td></tr>`).join("") + `</table>` : `<p class="m">None.</p>`);
+    const csv = ["car,driver,class,lap,lap_s,pos,class_pos,gap_s,pit"].concat(S.feed.laps.map(l => {
+      const c = carByIdx(l.idx) || {};
+      return [c.num ?? l.idx, c.name, c.className, l.lap, l.lapS, l.pos, l.classPos, l.gapS, l.pit ? 1 : 0].map(csvCell).join(",");
+    })).join("\n");
+    b += `<h2>Every lap</h2><p><a download="laps.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(csv)}">Download every car's laps as CSV</a> (${S.feed.laps.length} laps)</p>`;
+    b += `<p class="m">Values marked "computed" in Pitwall were worked out from iRacing's telemetry; the rest are iRacing's own.</p>`;
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Race report – ${esc(track)}</title>` +
+      `<style>body{font-family:"Segoe UI",system-ui,sans-serif;margin:24px auto;max-width:960px;padding:0 16px;color:#16213A;background:#fff;font-variant-numeric:tabular-nums}` +
+      `h1{margin:0 0 4px}h2{margin:28px 0 8px;font-size:18px;border-bottom:1px solid #ccd;padding-bottom:4px}.m{color:#5A6784}` +
+      `table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:3px 8px 3px 0;border-bottom:1px solid #eef}th{color:#5A6784;font-weight:500}` +
+      `tr.me td{background:#FFF4DE}@media (prefers-color-scheme:dark){body{background:#16213A;color:#E8ECF4}.m,th{color:#8A97B3}th,td{border-color:#2F3F63}tr.me td{background:#3A3020}a{color:#6FA8FF}}<\/style>` +
+      // Written "<\/" so this file's own closing body tag stays the only one: the suite
+      // adds its link before the first it finds (suite/bridge.py).
+      `<\/head><body>${b}<\/body><\/html>`;
+  }
+  $("reportBtn").addEventListener("click", () => {
+    const html = buildReport();
+    const t = (S.session && S.session.track && (S.session.track.TrackName || "")) || "session";
+    const name = `race-report-${t.replace(/[^\w-]+/g, "-")}-${new Date().toISOString().slice(0, 10)}.html`;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+
   // ---- traffic forecast (list under the map; markers are drawn by drawMap)
   function sectorOf(pct) {
     const sec = (S.session && S.session.sectors) || [];
@@ -1609,10 +1935,6 @@
         if (rr) h += `<div class="fp-line">${D(`Refuel ${U.fuel(rr, 2)} ${U.fuelAbbr}/s`, "Computed here: measured at your own stops, from the fuel level rising in the box.")}` +
                      (pl && pl.fuelTimeS != null ? ` · ${D(`fuel for the next stop takes ${pl.fuelTimeS.toFixed(1)} s`, "Computed here: the planned fuel divided by the measured refuel rate. Tyre changes and repairs come on top and are not measured.")}` : "") + `</div>`;
       }
-      if (d.drivers && d.drivers.length) {
-        h += `<div class="fp-line"><b>Drivers</b></div>` + d.drivers.map(x =>
-          `<div class="fp-line">${x.current ? `<span class="gain">●</span> ` : ""}${esc(x.name)} · ${D(`${fmt.clock(x.timeS)} · ${x.laps} laps`, "Computed here: time and laps in the car since we connected.")}</div>`).join("");
-      }
     }
     // wet or dry: each class split by compound, from their last racing laps
     const cp = (S.cars.derived && S.cars.derived.compoundPace) || [];
@@ -1635,7 +1957,13 @@
     let h = `<div class="note">iRacing does not share other cars' fuel. This is what ${w.pos} stints say so far.</div>`;
     h += `<div class="fp-line">${d.lapsThisStint != null ? D(`${d.lapsThisStint} laps into this stint`, "Computed here: since the last stop or the start.") : "Stint start not seen"}` +
          (d.longestStintLaps != null ? ` · ${D(`longest stint ${d.longestStintLaps} laps`, "Computed here: between stops we watched.")}` : "") + `</div>`;
-    if (d.nextStopLapEst != null) {
+    const sd = d.stopDue;
+    if (sd) {
+      h += `<div class="fp-big">${D(sd.overdue ? "Stop due" : "Lap " + sd.lap, "Computed here: the stint start plus how far this car's stints run, from " + (STOP_BASIS[sd.basis] || words(sd.basis)) + ".")}</div>` +
+           `<div class="fp-line">${sd.overdue ? "past how far its stints have run: a stop is due" : `next stop expected in about ${sd.lapsLeft} laps`}` +
+           (sd.stopsOwed != null ? ` · ${D(`${sd.stopsOwed} stop${sd.stopsOwed === 1 ? "" : "s"} still to make`, "Computed here: the laps to go against the stint length.")}` : "") + `</div>` +
+           `<div class="fp-line note">From ${esc(STOP_BASIS[sd.basis] || words(sd.basis))}.</div>`;
+    } else if (d.nextStopLapEst != null) {
       const cur = c.lap;
       h += `<div class="fp-big">${D("Lap " + d.nextStopLapEst, "Computed here: stint start plus the longest stint so far.")}</div>` +
            `<div class="fp-line">${cur != null ? (d.nextStopLapEst > cur ? `next stop expected in about ${d.nextStopLapEst - cur} laps` : "past its longest stint: a stop is due") : ""}</div>`;
@@ -2338,8 +2666,9 @@
     }
     if (dirty.cars && now - drawnAt.cars >= 100) {
       drawnAt.cars = now; dirty.cars = false;
-      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderStrategy(); renderTraffic(); renderFollow(); renderTires();
+      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderStrategy(); renderRaceStrategy(); renderTeam(); renderTraffic(); renderFollow(); renderTires();
     }
+    if (now - ALARM.at >= 500 && (S.state || S.cars)) { ALARM.at = now; renderAlarms(); }
     if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {
       chartDirty = false; chartAt = now; drawCharts();
     }

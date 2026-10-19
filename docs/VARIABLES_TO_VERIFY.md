@@ -143,6 +143,16 @@ Cloudflare tunnel**: check the page connects over wss:// and that the engineer's
 Measured on Andrew's Indianapolis .ibt: a telemetry message is ~6.4 KB, ~0.3 KB after the
 connection's compression, so ~10 KB/s per engineer at 30 a second.
 
+### Race strategy (Oct 2026) -- NOT yet run against the sim
+
+| Value | Inputs | Validation |
+|---|---|---|
+| caution | `SessionFlags` caution / caution_waving, `PitsOpen` | Unit-tested and in the fake (oval-style caution, pits closed for its first minute). **`PitsOpen` never read from the sim yet**: check it exists and flips under a caution on an oval. Road racing in iRacing has no full-course cautions, so this path only matters on ovals. |
+| stop cost under caution | stops watched this session, re-scaled by the field's slowdown (lap pace / speed now) | Unit-tested; ~2.2x slowdown in the fake. **Check against a real stop under caution** (the pace car's speed, the lane speed and whether the field bunches change it). |
+| rivals' next stop | stint lengths watched (own longest, class middle, your tank for the same car) | Unit-tested. A forecast, not a reading: a car that short-fills or saves fuel will not match. The fake's other cars stop at random, so their forecasts in the fake look poor. |
+| finish projection per option | time behind the leader + pace x laps to go + stops owed x green loss | Unit-tested. Assumes everyone keeps their pace: compare with a real finish. |
+| driver change | `DCLapStatus`, `DCDriversSoFar` | **Shown raw; meaning not checked.** The team panel's shares are from the driver names seen in the car. |
+
 ### Lap Analyzer: driver laps (any car as a reference)
 
 | Value | Inputs | Validation |

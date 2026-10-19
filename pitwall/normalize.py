@@ -316,6 +316,9 @@ class Deriver:
         self._adj_base: dict | None = None
         self._adj_pend: dict[str, dict] = {}
         self.tank_l: float | None = None
+        # your car's fuel plan as of the last state update, for the strategy options
+        self._fuel_info: dict | None = None
+        self._caut = {"t0": None}
         self._fuel_by_lap: dict[int, dict] = {}
         self._fuel_lap_pit = False
         self._fuel_partial = False
@@ -485,6 +488,7 @@ class Deriver:
     # times are doing across a stint. A car losing 0.8 s over eight laps is
     # telling you about its tyres whether or not the sim will.
     STINT_MIN_LAPS = 4
+    STINT_SLOW_LAP = 1.07       # slower than the stint's quickest by more than this: not a racing lap
 
     def stint(self, idx, lap_completed, last_lap_s, stops_seen) -> dict:
         out = {"stintLaps": 0, "stintAvgS": None, "degSPerLap": None}
@@ -502,6 +506,11 @@ class Deriver:
         if not laps:
             return out
         out["stintAvgS"] = round(sum(l[1] for l in laps) / len(laps), 3)
+        # The trend is read from racing laps only: an out-lap, a lap behind the pace
+        # car or one with a spin says nothing about the tyres (a caution lap ran
+        # 2.5x slower in the fake race and made fresh tyres look worth minutes).
+        quick = min(l[1] for l in laps)
+        laps = [l for l in laps if l[1] <= quick * self.STINT_SLOW_LAP]
         if len(laps) >= self.STINT_MIN_LAPS:
             n = len(laps)
             mx = sum(l[0] for l in laps) / n
@@ -1712,8 +1721,19 @@ class Deriver:
             st["tot"].setdefault(key, {"name": c.get("name"), "timeS": 0.0, "laps": 0})
         if not team_race and len(st["tot"]) < 2:
             return None
-        return [{"name": v["name"], "timeS": round(v["timeS"], 1), "laps": v["laps"], "current": k == st["cur"]}
+        total = sum(v["timeS"] for v in st["tot"].values())
+        rows = [{"name": v["name"], "timeS": round(v["timeS"], 1), "laps": v["laps"], "current": k == st["cur"],
+                 # share of the time driven since we connected; an even split is 100 / drivers
+                 "sharePct": round(v["timeS"] / total * 100, 1) if total > 0 else None}
                 for k, v in st["tot"].items()]
+        # The driver with the least time is next in an even rotation (a suggestion,
+        # not iRacing's rule: its minimums are per event and not in the telemetry).
+        others = [r for r in rows if not r["current"]]
+        nxt = min(others, key=lambda r: r["timeS"]) if others else None
+        for r in rows:
+            r["next"] = r is nxt
+            r["evenPct"] = round(100 / len(rows), 1)       # an even split, to compare sharePct with
+        return rows
 
     def compound_pace(self, cars) -> list:
         """Wet or dry: each class's cars grouped by tyre compound, with the
@@ -1736,6 +1756,233 @@ class Deriver:
                 o["fastest"] = o["medianLastLapS"] == best and len(g) > 1
                 o["vsFastestS"] = round(o["medianLastLapS"] - best, 3) if len(g) > 1 else None
         return sorted(out, key=lambda o: (str(o["classId"]), o["compound"]))
+
+    # ---- strategy: rival stops, the caution call, options side by side ------
+    # iRacing gives no fuel or tyre data for another car, so when a rival must
+    # stop is read from how long its stints run: its own longest watched stint,
+    # else the middle of the watched stints in its class, else -- for a car of
+    # the same model as yours -- how far your tank goes at your burn. Each says
+    # which it used, and all of it is derived.
+    STINT_MIN_SAMPLES = 2
+
+    def stop_forecast(self, cars: list, race: dict | None, own_idx, fpl, tank_l, fuel_l) -> None:
+        """Adds derived.stopDue to every car: {lap, lapsLeft, rangeLaps, basis, stopsOwed, overdue}."""
+        to_go = race_laps_left(race)
+        by_class: dict = {}
+        for c in cars:
+            for s in (c["derived"].get("stintsSeen") or []):
+                if s and s > 0:
+                    by_class.setdefault(c.get("classId"), []).append(s)
+        own = next((c for c in cars if c["idx"] == own_idx), None)
+        fuel_range = math.floor(tank_l / fpl) if fpl and tank_l and fpl > 0 else None
+        for c in cars:
+            d = c["derived"]
+            d["stopDue"] = None
+            this, start = d.get("lapsThisStint"), d.get("stintStartLap")
+            rng, basis = None, None
+            if c is own and fpl and fuel_l is not None and this is not None:
+                rng, basis = this + math.floor(fuel_l / fpl), "your_fuel"
+            elif d.get("longestStintLaps"):
+                rng, basis = d["longestStintLaps"], "own_stints"
+            elif len(by_class.get(c.get("classId"), [])) >= self.STINT_MIN_SAMPLES:
+                seen = by_class[c.get("classId")]
+                rng, basis = int(round(self._median(seen))), "class_stints"
+                # already further than the class usually runs: it can go at least as
+                # far as the longest stint seen, so only call it overdue past that
+                if this is not None and this > rng:
+                    rng = max(seen)
+            elif fuel_range and own is not None and c.get("carId") is not None and c.get("carId") == own.get("carId"):
+                rng, basis = fuel_range, "your_tank"
+            if not rng or rng < 1 or this is None or start is None:
+                continue
+            left = rng - this
+            owed = None
+            if to_go is not None:
+                owed = 0 if left >= to_go else math.ceil((to_go - max(0, left)) / max(1, rng if basis != "your_fuel" else (fuel_range or rng)))
+            d["stopDue"] = {"lap": start + rng, "lapsLeft": max(0, left), "rangeLaps": rng, "basis": basis,
+                            "stopsOwed": owed, "overdue": left < 0}
+
+    def caution(self, cars: list, flags, pits_open, track_len, t) -> dict:
+        """Under a full-course caution the field crawls behind the pace car, so a
+        stop costs far less than under green: the lane takes as long as ever, but
+        the field covers much less track meanwhile. The loss is re-scaled from the
+        stops watched this session by how much slower the field is going now."""
+        flags = flags or []
+        active = "caution" in flags or "caution_waving" in flags
+        st = self._caut
+        if active and st["t0"] is None:
+            st["t0"] = t
+        elif not active:
+            st["t0"] = None
+        out = {"active": active, "since": st["t0"], "pitsOpen": None if pits_open is None else bool(pits_open),
+               "fieldSlowdown": None, "lossGreenS": None, "lossNowS": None, "savingS": None}
+        green = self.typical_loss()
+        out["lossGreenS"] = None if green is None else round(green, 1)
+        ratios = []
+        for c in cars:
+            v = (c.get("derived") or {}).get("speedMs")
+            p = self.pace(c["idx"])
+            if c.get("onPitRoad") or c.get("surface") != "on_track" or not v or v < 2 or not p or not track_len:
+                continue
+            ratios.append((track_len / p) / v)
+        r = self._median(ratios) if len(ratios) >= 3 else None
+        out["fieldSlowdown"] = None if r is None else round(r, 2)
+        if not active or r is None or green is None or not self._loss:
+            return out
+        drive = self._median([s["laneS"] - (s["boxS"] or 0.0) for s in self._loss])
+        track = self._median([s["laneS"] - (s["boxS"] or 0.0) - s["laneLossS"] for s in self._loss])
+        box = self.pit_loss()["boxMedianS"] or 0.0
+        now = max(0.0, drive - max(1.0, r) * track) + box
+        out["lossNowS"] = round(now, 1)
+        out["savingS"] = round(green - now, 1)
+        return out
+
+    def strategy(self, cars: list, ref, race: dict | None, caution: dict | None, own_idx) -> dict | None:
+        """Ways to run the rest of the race for the reference car, side by side: the
+        time each costs in stops and where it is likely to finish in class if every
+        car keeps its pace and stops when its stints run out. Fuel-exact for your
+        own car (the fuel plan); from stint lengths for any other car."""
+        by = {c["idx"]: c for c in cars}
+        me = by.get(ref)
+        to_go = race_laps_left(race)
+        if me is None or to_go is None:
+            return None
+        pl = self.pit_loss()
+        lane = pl["laneLossS"]
+        box = pl["boxMedianS"]
+        green = self.typical_loss()
+        info = self._fuel_info or {}
+        plan = info.get("plan") if ref == own_idx else None
+        fpl, fuel_l, tank, rate = info.get("fpl"), info.get("fuelL"), info.get("tankL"), info.get("refuelLps")
+        md = me.get("derived") or {}
+        out = {"basis": "fuel" if plan and plan.get("stops") is not None else "stints", "lapsToGo": to_go,
+               "lossGreenS": None if green is None else round(green, 1), "options": [], "best": None,
+               "targets": self._targets(cars, me, to_go)}
+
+        def stop_s(add_l):
+            if rate and add_l is not None:
+                return add_l / rate
+            return box or 0.0
+
+        opts = []
+        if out["basis"] == "fuel":
+            stops, short = plan["stops"], max(0.0, (plan.get("needL") or 0.0) - (fuel_l or 0.0))
+            lap_no = plan["finishLap"] - plan["lapsLeft"] + 1 if plan.get("finishLap") is not None else None
+            if stops == 0:
+                opts.append({"kind": "no_stop", "stops": 0, "lossS": 0.0,
+                             "spareL": plan.get("spareAtFlagL")})
+            elif lane is not None:
+                total = stops * lane + (short / rate if rate else stops * (box or 0.0))
+                open_ = plan.get("windowOpenLap")
+                if open_ is not None and lap_no is not None and open_ <= lap_no:
+                    opts.append({"kind": "box_now", "stops": stops, "lossS": total, "lap": lap_no,
+                                 "addL": plan.get("addThisLapL"),
+                                 "rejoin": self.predict_rejoin(cars, ref, lane + stop_s(plan.get("addThisLapL")))})
+                if plan.get("windowCloseLap") is not None:
+                    opts.append({"kind": "box_latest", "stops": stops, "lossS": total, "lap": plan["windowCloseLap"],
+                                 "addL": plan.get("addAtCloseL")})
+                left = plan["lapsLeft"]
+                if fpl and tank and left and left > 0:
+                    over = short - (stops - 1) * tank            # what one stop fewer leaves you short
+                    save = over / left
+                    pct = save / fpl * 100
+                    if 0 < pct <= 15:
+                        opts.append({"kind": "stretch", "stops": stops - 1,
+                                     "lossS": (stops - 1) * lane + (max(0.0, short - over) / rate if rate else (stops - 1) * (box or 0.0)),
+                                     "saveLPerLap": round(save, 3), "savePct": round(pct, 1)})
+        elif lane is not None and green is not None:
+            sd = md.get("stopDue") or {}
+            owed = sd.get("stopsOwed")
+            if owed is not None:
+                opts.append({"kind": "as_forecast", "stops": owed, "lossS": owed * green, "lap": sd.get("lap") if owed else None})
+        # fresh tyres: worth a stop when the stint's fall-off over the laps left beats the stop
+        deg, age = md.get("degSPerLap"), md.get("stintLaps")
+        if lane is not None and deg and deg >= 0.03 and age and age >= 5 and to_go >= 3 and opts:
+            base = min(o["lossS"] for o in opts)
+            gain = deg * age * to_go
+            opts.append({"kind": "tyres", "stops": min(o["stops"] for o in opts) + 1,
+                         "lossS": base + lane + (box or 0.0), "tyreGainS": round(gain, 1),
+                         "rejoin": self.predict_rejoin(cars, ref, lane + (box or 0.0))})
+        # under a caution, a stop now against the stop it replaces
+        if caution and caution.get("active") and caution.get("lossNowS") is not None and caution.get("pitsOpen") is not False and opts:
+            base = min((o for o in opts if o["kind"] != "tyres"), key=lambda o: o["lossS"], default=None)
+            if base is not None and base["stops"] >= 1 and green is not None:
+                extra = 0
+                if out["basis"] == "fuel" and fpl and tank:
+                    need_after = (plan.get("needL") or 0.0)            # filling to full now
+                    extra = max(0, math.ceil((need_after - tank) / tank - 1e-9))
+                else:
+                    extra = base["stops"] - 1
+                opts.append({"kind": "caution_now", "stops": 1 + extra,
+                             "lossS": caution["lossNowS"] + extra * green,
+                             "rejoin": self.predict_rejoin(cars, ref, caution["lossNowS"])})
+        for o in opts:
+            o["lossS"] = round(o["lossS"], 1)
+            o.update(self._finish_estimate(cars, me, o["lossS"], to_go, green))
+        tyres = [o for o in opts if o["kind"] == "tyres"]
+        for o in tyres:                 # the tyre gain comes off its time
+            o["netS"] = round(o["lossS"] - o["tyreGainS"], 1)
+        for o in opts:
+            o.setdefault("netS", o["lossS"])
+        if opts:
+            out["best"] = min(opts, key=lambda o: (o["netS"], o.get("savePct") or 0))["kind"]
+        out["options"] = opts
+        return out
+
+    def _finish_estimate(self, cars, me, loss_s, to_go, green) -> dict:
+        """Class position at the flag if every car keeps its pace and makes the stops
+        its stints say it still owes: time behind the leader now, plus laps left at
+        its pace, plus its stops."""
+        mine = me.get("classId")
+        same = [c for c in cars if c.get("classId") == mine and c.get("gapValid")]
+        if not me.get("gapValid") or green is None:
+            return {"finishClassPos": None, "finishAhead": None, "finishBehind": None}
+        paces = {c["idx"]: self.pace(c["idx"]) for c in same}
+        use_pace = all(p for p in paces.values())
+
+        def proj(c, loss):
+            return c["f2TimeS"] + (paces[c["idx"]] * to_go if use_pace else 0.0) + loss
+
+        mine_t = proj(me, loss_s)
+        others = []
+        for c in same:
+            if c is me:
+                continue
+            owed = ((c.get("derived") or {}).get("stopDue") or {}).get("stopsOwed")
+            others.append((proj(c, (owed or 0) * green), c["idx"], owed is None))
+        ahead = sorted([o for o in others if o[0] < mine_t], key=lambda o: -o[0])
+        behind = sorted([o for o in others if o[0] >= mine_t], key=lambda o: o[0])
+        return {"finishClassPos": len(ahead) + 1,
+                "finishAhead": {"idx": ahead[0][1], "s": round(mine_t - ahead[0][0], 1), "guessed": ahead[0][2]} if ahead else None,
+                "finishBehind": {"idx": behind[0][1], "s": round(behind[0][0] - mine_t, 1), "guessed": behind[0][2]} if behind else None,
+                "withPace": use_pace}
+
+    def _targets(self, cars, me, to_go) -> dict:
+        """What the driver has to do: the class car ahead to catch, the one behind to
+        keep back, by the flag."""
+        mine = me.get("classId")
+        same = [c for c in cars if c is not me and c.get("classId") == mine
+                and (c.get("derived") or {}).get("toPlayerS") is not None]
+        ahead = max((c for c in same if c["derived"]["toPlayerS"] < 0), key=lambda c: c["derived"]["toPlayerS"], default=None)
+        behind = min((c for c in same if c["derived"]["toPlayerS"] > 0), key=lambda c: c["derived"]["toPlayerS"], default=None)
+        out = {"catch": None, "hold": None}
+        if ahead is not None and to_go > 0:
+            gap = -ahead["derived"]["toPlayerS"]
+            gain = ahead["derived"].get("youGainSPerLap")
+            my_pace = self.pace(me["idx"])
+            need = gap / to_go
+            out["catch"] = {"idx": ahead["idx"], "gapS": round(gap, 2), "needSPerLap": round(need, 3),
+                            "gainingSPerLap": gain, "catchLaps": ahead["derived"].get("youCatchLaps"),
+                            "targetLapS": round(my_pace - need, 3) if my_pace else None,
+                            "onCourse": bool(gain and gain >= need)}
+        if behind is not None and to_go > 0:
+            gap = behind["derived"]["toPlayerS"]
+            closing = behind["derived"].get("youGainSPerLap")
+            closing = -closing if closing is not None else None   # + = they are catching you
+            laps = behind["derived"].get("catchesYouLaps")
+            out["hold"] = {"idx": behind["idx"], "gapS": round(gap, 2), "closingSPerLap": closing,
+                           "catchesInLaps": laps, "beforeFlag": bool(laps is not None and laps <= to_go)}
+        return out
 
     # ---- your car: refuel rate, adjustments --------------------------------
     def refuel(self, t, fuel_level, in_stall):
@@ -2070,7 +2317,7 @@ def relative_to(view: RefView, cars_msg: dict, session_msg: dict | None, now) ->
     out = {"type": "refview", "ref": ref, "cars": {},
            "derived": {"ref": {"idx": ref if me is not None else None, "source": "chosen" if me is not None else None,
                                "own": shared_ref.get("own"), "camera": shared_ref.get("camera")},
-                       "rejoin": None, "undercut": [], "traffic": [], "nearby": []},
+                       "rejoin": None, "undercut": [], "traffic": [], "nearby": [], "strategy": None},
            "gaps": {}}
     if me is None:
         return out
@@ -2105,6 +2352,8 @@ def relative_to(view: RefView, cars_msg: dict, session_msg: dict | None, now) ->
         "undercut": Deriver.undercut(view, vcars, ref, now) if is_race else [],
         "traffic": Deriver.traffic(view, vcars, ref),
         "nearby": Deriver.nearby(view, vcars, ref, track_len, now),
+        "strategy": Deriver.strategy(view, vcars, ref, shared.get("race"), shared.get("caution"), shared_ref.get("own"))
+        if is_race else None,
     })
     # Rebuilt only when a lap has been added; it was rebuilt at every update.
     if view._gaps_seq != view._base._last_lap_seq:
@@ -2221,6 +2470,9 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
                      "perTireUsed": {c: _num(g(f"{c}TiresUsed")) for c in ("LF", "RF", "LR", "RR")},
                      "perTireAvailable": {c: _num(g(f"{c}TiresAvailable")) for c in ("LF", "RF", "LR", "RR")}},
         "fastRepairs": {"used": _num(g("PlayerFastRepairsUsed")), "available": _num(g("FastRepairAvailable"))},
+        # Team events: iRacing's own driver-change bookkeeping for your team (never yet
+        # seen in a real team race: see VARIABLES_TO_VERIFY.md).
+        "driverChange": {"lapStatus": _num(g("DCLapStatus")), "driversSoFar": _num(g("DCDriversSoFar"))},
         # iRacing's spotter: whether a car is alongside, and on which side.
         "carLeftRight": CAR_LEFT_RIGHT.get(g("CarLeftRight")) if g("CarLeftRight") is not None else None,
         "carLeftRightRaw": _num(g("CarLeftRight")),
@@ -2295,6 +2547,9 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
     rate = derived["refuelLps"]
     # Fuel time only: tyre changes and repairs add to it, and are not measured.
     plan["fuelTimeS"] = round(add / rate, 1) if add is not None and rate else None
+    deriver._fuel_info = ({"plan": plan, "fpl": derived["fuelPerLap"], "fuelL": player["fuelL"],
+                           "tankL": deriver.tank_l, "refuelLps": rate}
+                          if derived["fuelPerLap"] and player["fuelL"] is not None else None)
     derived["liveEdge"] = live_edge(g)
     # "live" as the dashboard judges the player block: spectating leaves it zero.
     player_live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5 or (player["rpm"] or 0) > 500
@@ -2588,7 +2843,17 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                 c["idx"], now, c["derived"].get("toPlayerS"), my_lap, player_idx))
             if me is not None:
                 c["derived"]["vsYou"] = vs_you(c, me, p, deriver.pace(player_idx))
+        race = race_length(session_msg, session_num, ordered, _num(g("SessionTimeRemain")),
+                           deriver, decode_bits(g("SessionFlags"), FLAG_BITS))
+        fi = deriver._fuel_info or {}
+        deriver.stop_forecast(cars, race if is_race else None, own_idx if own is not None else None,
+                              fi.get("fpl"), deriver.tank_l, fi.get("fuelL"))
+        caution = deriver.caution(cars, decode_bits(g("SessionFlags"), FLAG_BITS), g("PitsOpen"),
+                                  track_length_m(session_msg), now)
         out["derived"] = {
+            "caution": caution,
+            "strategy": deriver.strategy(cars, player_idx, race, caution, own_idx if own is not None else None)
+            if is_race and me is not None else None,
             "ref": {"idx": player_idx, "source": ref_source, "own": own_idx if own is not None else None,
                     "camera": cam_idx if cam_idx in by_idx else None},
             "sessionBestSectorS": deriver.session_best_sectors(),
@@ -2601,8 +2866,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
             "battles": deriver.battles(cars, ahead_of, is_race),
             "predictedIncidents": deriver.predicted_incidents(),
-            "race": race_length(session_msg, session_num, ordered, _num(g("SessionTimeRemain")),
-                                deriver, decode_bits(g("SessionFlags"), FLAG_BITS)),
+            "race": race,
         }
         edge = live_edge(g)
         out["derived"]["liveEdge"] = edge
@@ -2748,6 +3012,15 @@ def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver,
             "lapsToGo": to_go, "timeRemainS": remain if limit_s or not total else remain,
             "timeLimited": bool(limit_s), "lapsByTime": by_time, "endsBy": ends,
             "white": "white" in (flags or []), "checkered": "checkered" in (flags or [])}
+
+
+def race_laps_left(race: dict | None):
+    """Laps the leader still has to run: the lap count, or the clock at the leader's pace."""
+    if not race:
+        return None
+    if race.get("endsBy") == "laps" and race.get("lapsToGo") is not None:
+        return race["lapsToGo"]
+    return race.get("lapsByTime")
 
 
 def _is_race(session_msg: dict | None, session_num) -> bool:
