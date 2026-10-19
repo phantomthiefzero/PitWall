@@ -1369,3 +1369,33 @@ class CoachTest(unittest.TestCase):
         self.assertEqual((r["savedN"], r["savedPts"]), (1, 250))
         self.assertLess(r["size"], 20000)
         self.assertLess(abs(r["roundTrip"]), 0.05)           # the same lap against itself
+
+
+ENG_COLOUR_JS = ENGINEER_JS.split("const txt = ")[0] + r"""
+ENG.on = true; ENG.laps = 6;
+drive(ARGS_YAML, 6, 1.4, 60.0);
+const plan = engPlans()[1];                                        // front bar 75 -> 66
+const chk = y => engCheckHtml(plan, setupTree(y)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+const toward = chk(ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 70 degrees'));
+const wrong = chk(ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 80 degrees'));
+const untouched = chk(ARGS_YAML);
+const done = chk(ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 66 degrees').split('RearWingAngle: 8 degrees').join('RearWingAngle: 9 degrees'));
+console.log(JSON.stringify({ toward, wrong, untouched, done }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class EngineerColoursTest(unittest.TestCase):
+    """What the engineer asked for, against what is in the sim right now."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + ENG_COLOUR_JS)
+
+    def test_each_state_is_named(self):
+        r = self.r
+        self.assertIn("should be 66 degrees , now 70 degrees (on its way)", r["toward"])
+        self.assertIn("now 80 degrees (the wrong way)", r["wrong"])
+        self.assertIn("(not changed yet)", r["untouched"])
+        self.assertIn("The change is in.", r["done"])
+        self.assertIn("Rear wing angle 8 degrees → 9 degrees (changed, not in the plan)", r["done"])
