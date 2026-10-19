@@ -919,3 +919,97 @@ class PickTestsTest(unittest.TestCase):
         self.assertEqual(pick(["requirements.txt"]), ["tests"])                  # unknown: everything
         self.assertEqual(pick([".github/workflows/build.yml"]), ["tests"])
         self.assertEqual(pick(["docs/CAR_MANUALS.md"]), ["tests/test_suite.py"])  # always something
+
+
+# --------------------------------------------------------------------------- #
+# Closing the app ends everything it started.
+# --------------------------------------------------------------------------- #
+
+APP_CHILD = r"""
+import json, subprocess, sys, threading, time
+sys.path.insert(0, sys.argv[1])
+from suite import app
+tunnel, mode = sys.argv[2], sys.argv[3]
+e = app.Engine(rate=20, pitwall_source="fake")
+e.start(18640)
+sh = e.pitwall.share_service(exe_path=tunnel, verify=lambda p: None,
+                             popen=lambda args, **kw: subprocess.Popen([sys.executable, tunnel], **kw))
+app.close_with_app(e)                      # what main() wires up
+sh.start()
+t0 = time.time()
+while sh.state != "on" and time.time() - t0 < 20:
+    time.sleep(0.05)
+print(json.dumps({"state": sh.state, "tunnel": sh._proc.pid if sh._proc else None, "ports": [e.port, e.pitwall.port]}), flush=True)
+if mode == "close":                        # the window's close event runs quit_now on the GUI thread
+    threading.Timer(0.3, app.quit_now).start()
+threading.Event().wait()
+"""
+
+FAKE_CLOUDFLARED = "import sys, time\n" + "".join("print(%r, flush=True)\n" % ln for ln in TUNNEL_OUTPUT) + "time.sleep(600)\n"
+
+
+def _alive(pid):
+    if sys.platform == "win32":
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32")
+        h = k32.OpenProcess(0x1000, False, pid)            # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        k32.GetExitCodeProcess(h, ctypes.byref(code))
+        k32.CloseHandle(h)
+        return code.value == 259                           # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:                                                    # a finished child not yet reaped is a zombie
+        with open("/proc/%d/stat" % pid) as f:
+            return f.read().split(")")[-1].split()[0] != "Z"
+    except OSError:
+        return True
+
+
+class AppClosesTest(unittest.TestCase):
+    """Run the app's engine with PitWall and a share tunnel (a stand-in cloudflared, a real
+    separate program), then close it: nothing it started may keep running."""
+
+    def _run(self, mode):
+        import subprocess
+        d = tempfile.mkdtemp()
+        tunnel = os.path.join(d, "cloudflared.py")
+        with open(tunnel, "w") as f:
+            f.write(FAKE_CLOUDFLARED)
+        child = os.path.join(d, "app_child.py")
+        with open(child, "w") as f:
+            f.write(APP_CHILD)
+        p = subprocess.Popen([sys.executable, child, ROOT, tunnel, mode], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        info = None
+        for line in p.stdout:
+            if line.startswith("{"):
+                info = json.loads(line)
+                break
+        self.assertIsNotNone(info, "the app did not start")
+        self.assertEqual(info["state"], "on")
+        self.assertTrue(_alive(info["tunnel"]))
+        if mode == "kill":
+            p.kill()
+        code = p.wait(timeout=20)
+        return info, code
+
+    def _gone(self, info):
+        # The app's own servers (relay, bridge, web) are threads of its process: once it has
+        # exited (checked by the caller) they are gone. Its ports are not checked here: other
+        # tests running alongside start their own PitWall and may take the same port straight
+        # away. The share tunnel is the one separate program, so that is what is checked.
+        self.assertTrue(_wait(lambda: not _alive(info["tunnel"]), 10), "the tunnel outlived the app")
+
+    def test_closing_the_window_ends_everything(self):
+        info, code = self._run("close")
+        self.assertEqual(code, 0)
+        self._gone(info)
+
+    @unittest.skipUnless(sys.platform == "win32", "the kill-with-the-app job is Windows only")
+    def test_killed_app_takes_the_tunnel_with_it(self):
+        info, _ = self._run("kill")                         # Task Manager, a crash
+        self._gone(info)
