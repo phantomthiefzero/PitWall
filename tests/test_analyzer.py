@@ -1652,3 +1652,22 @@ const R = analyze(ib.lapObj(o[5].i), ib.lapObj(o[0].i));
 console.log(JSON.stringify({ n: R.cs.length }));
 """
         self.assertEqual(run_js(js, REAL_IBT)["n"], 14)
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class FilesMenuTest(unittest.TestCase):
+    """The "Your files" menus: each file named by what it is, and matched to the car and track loaded."""
+
+    def test_labels_and_matching(self):
+        js = r"""
+const ibtF = { kind: 'ibt', when: Date.UTC(2020, 9, 10, 20, 47) / 1000, car: 'Ferrari 296 GT3', track: 'Indianapolis Motor Speedway · Road Course', session: 'Race', laps: 35, best: 84.033, driver: 'Andrew Brooks' };
+const g = { kind: 'g61', driver: 'nick kalra', lap: 83.75, car: 'Ferrari 296 GT3', track: 'Indianapolis Motor Speedway (Road Course)' };
+console.log(JSON.stringify({ ibt: flLabel(ibtF), g61: flLabel(g),
+  same: [flSame(g, 'Ferrari 296 GT3', 'Indianapolis Motor Speedway'), flSame(ibtF, 'Ferrari 296 GT3', 'Indianapolis Motor Speedway'),
+         flSame(g, 'Porsche 911 GT3 R', 'Indianapolis Motor Speedway'), flSame(g, 'Ferrari 296 GT3', 'Daytona International Speedway'), flSame(g, null, null)] }));
+"""
+        r = run_js(js)
+        self.assertIn("Ferrari 296 GT3 · Race · 35 laps · best 1:24.033 · Andrew Brooks", r["ibt"])
+        self.assertTrue(r["ibt"].startswith("Oct 10, 2020"), r["ibt"])        # when it was recorded comes first
+        self.assertEqual(r["g61"], "nick kalra · 1:23.750 · Ferrari 296 GT3 · Indianapolis Motor Speedway (Road Course)")
+        self.assertEqual(r["same"], [True, True, False, False, True])

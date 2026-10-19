@@ -70,6 +70,7 @@ jobs:
           --hidden-import suite.cameras
           --hidden-import suite.share
           --hidden-import suite.updater
+          --hidden-import suite.library
           --hidden-import suite._build
           --hidden-import segno
           --hidden-import websockets.sync.client

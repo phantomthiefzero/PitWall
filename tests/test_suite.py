@@ -326,7 +326,7 @@ class AppWindowApiTest(unittest.TestCase):
         api = Api(engine=object())
         api._window = object()
         public = {n for n in dir(api) if not n.startswith("_")}
-        self.assertEqual(public, {"version", "pick_replay", "use_live", "install_camera_pack", "open_cameras_folder",
+        self.assertEqual(public, {"version", "pick_replay", "use_live", "install_camera_pack", "open_cameras_folder", "library_pick_folder",
                                   "share_start", "share_stop", "share_info",
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
                                   "update_open_key_page"})
@@ -915,3 +915,180 @@ class PickTestsTest(unittest.TestCase):
         self.assertEqual(pick(["requirements.txt"]), ["tests"])                  # unknown: everything
         self.assertEqual(pick([".github/workflows/build.yml"]), ["tests"])
         self.assertEqual(pick(["docs/CAR_MANUALS.md"]), ["tests/test_suite.py"])  # always something
+
+
+# --------------------------------------------------------------------------- #
+# Your files: telemetry folders listed with what each file is (suite/library.py)
+# --------------------------------------------------------------------------- #
+
+G61_NAME = "Garage_61_-_nick_kalra_-_Ferrari_296_GT3_-_Indianapolis_Motor_Speedway__Road_Course__-_01_23_750_-_01M4CSEAK52Z2YG2YVZVDSB8R9.csv"
+
+
+def _library_dirs():
+    """iRacing's folder with one .ibt, a rig folder with a Garage61 lap in a sub-folder,
+    a file that only looks like an .ibt, a file of another kind, and a secret beside them."""
+    base = tempfile.mkdtemp()
+    ir, rig = os.path.join(base, "telemetry"), os.path.join(base, "FromRig")
+    os.makedirs(ir)
+    os.makedirs(os.path.join(rig, "Indy"))
+    write_ibt(os.path.join(ir, "testcar_testraceway 2026-10-10 20-47-23.ibt"), rows=900)
+    with open(os.path.join(rig, "Indy", G61_NAME), "w") as f:
+        f.write("Speed,LapDistPct,Brake,Throttle,SteeringWheelAngle,Gear\n1,0,0,1,0,3\n")
+    with open(os.path.join(rig, "broken.ibt"), "wb") as f:
+        f.write(b"not telemetry" * 20)
+    with open(os.path.join(rig, "notes.txt"), "w") as f:
+        f.write("x")
+    with open(os.path.join(base, "secret.ibt"), "wb") as f:
+        f.write(b"outside the folders")
+    return base, ir, rig
+
+
+class LibraryTest(unittest.TestCase):
+    def setUp(self):
+        from suite.library import Library
+        self.base, self.ir, self.rig = _library_dirs()
+        self.lib = Library(folder=tempfile.mkdtemp(), iracing=[os.path.realpath(self.ir)])
+
+    def test_lists_what_each_file_is(self):
+        self.assertTrue(self.lib.add_folder(self.rig)["ok"])
+        info = self.lib.info()
+        kinds = sorted((f["kind"], f["name"]) for f in info["files"])
+        self.assertEqual([k for k, _ in kinds], ["g61", "ibt"])           # the broken .ibt and the .txt are left out
+        ibt = next(f for f in info["files"] if f["kind"] == "ibt")
+        self.assertEqual((ibt["car"], ibt["track"], ibt["driver"]), ("Test Car GT3", "Test Raceway", "Test Driver"))
+        self.assertAlmostEqual(ibt["minutes"], 900 / 60 / 60, delta=0.06)              # 900 samples at 60 Hz, to a tenth of a minute
+        g = next(f for f in info["files"] if f["kind"] == "g61")
+        self.assertEqual((g["driver"], g["car"], g["track"], g["lap"]),
+                         ("nick kalra", "Ferrari 296 GT3", "Indianapolis Motor Speedway (Road Course)", 83.75))
+        self.assertEqual(g["sub"], os.path.join("FromRig", "Indy"))          # found one folder down
+        self.assertEqual([x["auto"] for x in info["folders"]], [True, False])
+
+    def test_folders_are_kept_and_removed(self):
+        from suite.library import Library
+        self.lib.add_folder(self.rig)
+        again = Library(folder=self.lib.dir, iracing=[])
+        self.assertEqual([f["path"] for f in again.folders()], [os.path.realpath(self.rig)])
+        self.assertFalse(again.add_folder(os.path.join(self.base, "nope"))["ok"])
+        again.remove_folder(os.path.realpath(self.rig))
+        self.assertEqual(again.folders(), [])
+
+    def test_only_listed_files_inside_the_folders_are_served(self):
+        from suite.library import CHUNK, _token
+        files = self.lib.info()["files"]
+        ok = files[0]["id"]
+        size, data = self.lib.chunk(ok, 0)
+        self.assertEqual(size, os.path.getsize(os.path.join(self.ir, files[0]["name"])))
+        self.assertLessEqual(len(data), CHUNK)
+        self.assertIsNone(self.lib.chunk(_token(os.path.realpath(os.path.join(self.base, "secret.ibt"))), 0))
+        self.assertIsNone(self.lib.chunk("../../secret.ibt", 0))
+        self.assertIsNone(self.lib.chunk(_token(os.path.realpath(os.path.join(self.rig, "notes.txt"))), 0))
+
+    def test_big_lists_come_in_pages(self):
+        from suite import library as L
+        old, L.PAGE = L.PAGE, 1
+        try:
+            self.lib.add_folder(self.rig)
+            a, b = self.lib.info(0), self.lib.info(1)
+            self.assertEqual((a["pages"], len(a["files"]), len(b["files"])), (2, 1, 1))
+            self.assertNotEqual(a["files"][0]["id"], b["files"][0]["id"])
+        finally:
+            L.PAGE = old
+
+
+class LibraryServerTest(unittest.TestCase):
+    """The suite's own server lists the folders and hands over a file in pieces or as a stream."""
+
+    @classmethod
+    def setUpClass(cls):
+        from suite import bridge
+        from suite.library import Library
+        cls.base, cls.ir, cls.rig = _library_dirs()
+        cls.old = bridge._LIB
+        bridge._LIB = Library(folder=tempfile.mkdtemp(), iracing=[os.path.realpath(cls.ir)])
+        cls.engine = Engine(rate=20, pitwall_source="fake")
+        cls.engine.start(18660)
+        cls.url = cls.engine.url.rstrip("/")
+
+    @classmethod
+    def tearDownClass(cls):
+        from suite import bridge
+        bridge._LIB = cls.old
+
+    def test_list_pieces_and_stream(self):
+        _s, _h, body = fetch(self.url + "/api/library")
+        info = json.loads(body)
+        f = next(x for x in info["files"] if x["kind"] == "ibt")      # another test may have added the rig folder
+        want = on_disk_abs(os.path.join(self.ir, f["name"]))
+        got = b""
+        while len(got) < f["size"]:
+            _s, h, part = fetch(self.url + "/api/library/file?id=%s&off=%d" % (f["id"], len(got)), gzip_ok=False)
+            self.assertEqual(h.get("Content-Type"), "application/octet-stream")
+            self.assertLessEqual(len(part), info["chunk"])
+            got += part
+        self.assertEqual(got, want)
+        self.assertEqual(stream_file(self.engine.port, f["id"]), want)
+
+    def test_unknown_file_is_refused(self):
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            fetch(self.url + "/api/library/file?id=deadbeefdeadbeef&off=0")
+        self.assertEqual(e.exception.code, 404)
+
+    def test_other_websites_cannot_list_your_files(self):
+        req = urllib.request.Request(self.url + "/api/library", headers={"Origin": "https://evil.example"})
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(e.exception.code, 403)
+
+    def test_folders_added_by_path(self):
+        _s, _h, body = fetch(self.url + "/api/library/folders?add=" + urllib.parse.quote(self.rig))
+        self.assertTrue(json.loads(body)["ok"])
+        _s, _h, body = fetch(self.url + "/api/library")
+        self.assertEqual(sorted(f["kind"] for f in json.loads(body)["files"]), ["g61", "ibt"])
+
+
+def on_disk_abs(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def stream_file(port, fid, timeout=10):
+    """Read /api/library/stream: a text frame with the size, then binary frames."""
+    s = socket.create_connection(("127.0.0.1", port), timeout=timeout)
+    key = base64.b64encode(os.urandom(16)).decode()
+    s.sendall(("GET /api/library/stream?id=%s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n" % (fid, port, key)).encode())
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        buf += s.recv(4096)
+    head, buf = buf.split(b"\r\n\r\n", 1)
+    assert b"101" in head.split(b"\r\n")[0], head
+
+    def need(n):
+        nonlocal buf
+        while len(buf) < n:
+            chunk = s.recv(65536)
+            if not chunk:
+                raise ConnectionError("closed")
+            buf += chunk
+        out, buf = buf[:n], buf[n:]
+        return out
+
+    size, data = None, b""
+    while True:
+        b0, b1 = need(2)
+        n = b1 & 0x7F
+        if n == 126:
+            n = struct.unpack(">H", need(2))[0]
+        elif n == 127:
+            n = struct.unpack(">Q", need(8))[0]
+        payload = need(n)
+        op = b0 & 0x0F
+        if op == 1:
+            size = json.loads(payload)["size"]
+        elif op == 2:
+            data += payload
+        elif op == 8:
+            break
+    s.close()
+    assert size == len(data), (size, len(data))
+    return data

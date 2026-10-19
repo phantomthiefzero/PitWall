@@ -255,6 +255,12 @@ class Client:
         self.w.write(head + data)
         await self.w.drain()
 
+    async def send_binary(self, data):
+        n = len(data)
+        head = bytes([0x82, n]) if n < 126 else bytes([0x82, 126]) + struct.pack(">H", n) if n < 65536 else bytes([0x82, 127]) + struct.pack(">Q", n)
+        self.w.write(head + data)
+        await self.w.drain()
+
     async def send_ctrl(self, opcode, payload=b""):
         self.w.write(bytes([0x80 | opcode, len(payload)]) + payload)
         await self.w.drain()
@@ -534,6 +540,85 @@ def request_allowed(headers: dict) -> bool:
 WS_MAX_IN = 64 * 1024
 
 
+_LIB = None
+
+
+def library():
+    """Your telemetry folders (suite/library.py), made on first use."""
+    global _LIB
+    if _LIB is None:
+        from suite.library import Library
+        _LIB = Library()
+    return _LIB
+
+
+async def library_reply(writer, path, headers):
+    """/api/library?page=N            the list of files, one page at a time
+       /api/library/file?id=..&off=N  a piece of one listed file (application/octet-stream)
+       /api/library/folders?add=PATH | remove=PATH
+    Local only, like the rest of this server (request_allowed); the relay never serves these."""
+    from urllib.parse import parse_qs, urlsplit
+    u = urlsplit(path)
+    q = {k: v[0] for k, v in parse_qs(u.query).items()}
+    loop = asyncio.get_running_loop()
+    lib = library()
+    try:
+        if u.path == "/api/library/file":
+            got = await loop.run_in_executor(None, lib.chunk, q.get("id", ""), int(q.get("off", "0") or 0))
+            if got is None:
+                await http_reply(writer, "404 Not Found", b"Not found")
+            else:
+                await http_reply(writer, "200 OK", got[1], "application/octet-stream")
+            return
+        if u.path == "/api/library/folders":
+            if "add" in q:
+                out = await loop.run_in_executor(None, lib.add_folder, q["add"])
+            elif "remove" in q:
+                out = await loop.run_in_executor(None, lib.remove_folder, q["remove"])
+            else:
+                out = {"ok": True, "folders": lib.folders()}
+        elif u.path == "/api/library":
+            out = await loop.run_in_executor(None, lib.info, max(0, int(q.get("page", "0") or 0)))
+        else:
+            await http_reply(writer, "404 Not Found", b"Not found")
+            return
+    except Exception as e:  # noqa: BLE001
+        out = {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
+    await http_reply(writer, "200 OK", json.dumps(out).encode(), "application/json", gzip_ok=accepts_gzip(headers))
+
+
+STREAM_FRAME = 64 * 1024
+
+
+async def library_stream(reader, writer, path, key):
+    """One listed file over a WebSocket: a text frame {"size": n}, then the bytes in binary frames.
+    Much faster than thousands of small replies (a browser opens only six at a time), and a
+    WebSocket is the same path live telemetry takes, so the reply-size stall does not apply."""
+    from urllib.parse import parse_qs, urlsplit
+    q = {k: v[0] for k, v in parse_qs(urlsplit(path).query).items()}
+    loop = asyncio.get_running_loop()
+    p = await loop.run_in_executor(None, library().path_of, q.get("id", ""))
+    if not p:
+        await http_reply(writer, "404 Not Found", b"Not found")
+        return
+    accept = base64.b64encode(hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
+    writer.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                  "Sec-WebSocket-Accept: %s\r\n\r\n" % accept).encode())
+    await writer.drain()
+    c = Client(writer)
+    with open(p, "rb") as f:
+        size = os.fstat(f.fileno()).st_size
+        await c.send_text(json.dumps({"size": size}))
+        sent = 0
+        while sent < size:
+            data = await loop.run_in_executor(None, f.read, STREAM_FRAME)
+            if not data:
+                break
+            await c.send_binary(data)
+            sent += len(data)
+    await c.send_ctrl(0x8, struct.pack(">H", 1000))
+
+
 def make_handler(hub):
     async def handle(reader, writer):
         try:
@@ -555,6 +640,12 @@ def make_handler(hub):
             if path.split("?")[0] == "/api/info":
                 await http_reply(writer, "200 OK", json.dumps(hub.info()).encode(), "application/json",
                                  gzip_ok=accepts_gzip(headers))
+                return
+            if path.split("?")[0] == "/api/library/stream" and headers.get("upgrade", "").lower() == "websocket":
+                await library_stream(reader, writer, path, headers.get("sec-websocket-key", ""))
+                return
+            if path.split("?")[0].startswith("/api/library"):
+                await library_reply(writer, path, headers)
                 return
             if path.split("?")[0] == "/favicon.ico":
                 await http_reply(writer, "204 No Content")

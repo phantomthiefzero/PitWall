@@ -69,6 +69,11 @@ iRacing Suite app (suite/)
   token): `suite.bridge.relay_feed` puts the suite Hub's messages through a RemoteClient that never
   blocks the pump (half-rate ticks, oldest ticks dropped when slow). The local /ws stays loopback-only.
 
+- Your files (`suite/library.py`): the Lap Analyzer's "Your files" menus list the .ibt and Garage61 .csv
+  files in iRacing's telemetry folder and folders you add (kept in %LOCALAPPDATA%\iRacingSuite\library.json),
+  named by what they are (read from the header and last sample, cached). Only the suite's own server serves
+  them, by an id from the last listing, never a path from the page; over one WebSocket (/api/library/stream),
+  with 96 KB pieces (/api/library/file) as the fallback. The relay never serves them.
 - Updates (`suite/updater.py`): the release build stamps `suite/_build.py` (BUILD = run number,
   COMMIT); the app compares it with the newest `build-N` release, downloads next to itself,
   verifies size + SHA-256, renames itself aside and restarts with `--after-update PIDS` (waits
