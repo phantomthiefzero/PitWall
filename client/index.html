@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pitwall</title>
+<script>
+  // The look is chosen before the page paints (booth unless this screen chose classic), and
+  // "/pitwall" becomes "/pitwall/" so the fonts' relative addresses resolve.
+  (function () {
+    var k = null; try { k = localStorage.getItem("pitwall.skin"); } catch (e) {}
+    document.documentElement.dataset.skin = k === "classic" ? "classic" : "booth";
+    if (/\/pitwall$/.test(location.pathname)) location.replace(location.pathname + "/" + location.search + location.hash);
+  })();
+</script>
 <style>
   :root {
     --bg: #16213A;
@@ -19,6 +28,9 @@
     --blue: #6FA8FF;
     --white: #FFFFFF;
     --wet: #59C2E8;
+    /* surfaces inside a panel (classic look; the booth look redefines them) */
+    --row-line: #253457; --row-focus: #1B2A4D; --row-cmp: #2A2350; --inset: #182540; --inset2: #22304F;
+    --radar-bg: #15203A; --trackline: #3A4C75; --opt-bg: #19253F;
     font-size: 14px;
   }
   * { box-sizing: border-box; }
@@ -138,14 +150,14 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 6px; border-bottom: 1px solid var(--line);
     position: sticky; top: 0; background: var(--panel); }
-  td { padding: 3px 6px; border-bottom: 1px solid #253457; white-space: nowrap; }
+  td { padding: 3px 6px; border-bottom: 1px solid var(--row-line); white-space: nowrap; }
   td.r, th.r { text-align: right; }
   tr.player td { color: var(--player); font-weight: 600; }
-  tr.focus td { background: #1B2A4D; }
+  tr.focus td { background: var(--row-focus); }
   tr.focus td:first-child { box-shadow: inset 3px 0 0 var(--focus, #6FA8FF); }
   #rows tr { cursor: pointer; touch-action: manipulation; }   /* no double-tap zoom on a row */
   /* The car being compared with the followed one (click a row). */
-  tr.cmp td { background: #2A2350; }
+  tr.cmp td { background: var(--row-cmp); }
   tr.cmp td:first-child { box-shadow: inset 3px 0 0 var(--purple, #B98BFF); }
   .cmp-head { font-size: 13px; margin: 0 0 6px; line-height: 1.5; }
   .cmp-head .big2 { font-size: 18px; font-weight: 700; }
@@ -211,7 +223,7 @@
   .bar i { display: block; height: 100%; background: var(--green); width: 0; }
   .bar.brake i { background: var(--red); }
   .tires { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 6px; }
-  .tire { background: #182540; border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  .tire { background: var(--inset); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
   .tire b { display: block; color: var(--muted); font-weight: 500; }
   .tire .temps span { display: inline-block; width: 30%; text-align: center; }
   .tire .snapshot, .tire .na { font-size: 11px; }
@@ -240,7 +252,7 @@
   #chartsPanel { flex: 0 0 auto; }
   .feed { overflow-y: auto; font-size: 12.5px; min-height: 60px; }
   .feed .ev { display: grid; grid-template-columns: 82px 1fr; gap: 8px; padding: 3px 2px;
-              border-bottom: 1px solid #22304F; }
+              border-bottom: 1px solid var(--inset2); }
   .feed .tm { color: var(--dim); font-size: 11.5px; }
   .feed .ev.k-flag b, .feed .ev.k-fastest_lap b { font-weight: 700; }
   .ev.hot { color: var(--red); } .ev.good { color: var(--green); } .ev.warn2 { color: var(--orange); }
@@ -250,7 +262,7 @@
   /* battle box */
   .bb { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .bb-row { display: grid; grid-template-columns: 64px 1fr auto; gap: 4px 10px; align-items: center;
-            background: #182540; border-radius: 8px; padding: 8px 10px; }
+            background: var(--inset); border-radius: 8px; padding: 8px 10px; }
   .bb-side { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
   .bb-gap { font-size: 30px; font-weight: 700; line-height: 1; text-align: right; }
   .bb-who { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -258,16 +270,16 @@
             flex-wrap: wrap; align-items: center; }
   /* strategy */
   .rj { width: 100%; font-size: 12px; }
-  .rj td { padding: 3px 4px; border-bottom: 1px solid #253457; white-space: normal; vertical-align: top; }
+  .rj td { padding: 3px 4px; border-bottom: 1px solid var(--row-line); white-space: normal; vertical-align: top; }
   .rj td:first-child { color: var(--muted); font-family: inherit; }
-  .uc { margin-top: 8px; font-size: 12px; background: #182540; border-radius: 6px; padding: 6px 8px; }
+  .uc { margin-top: 8px; font-size: 12px; background: var(--inset); border-radius: 6px; padding: 6px 8px; }
   .uc + .uc { margin-top: 6px; }
   .note { color: var(--muted); font-size: 12px; }
   /* charts */
   .tabs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin-left: auto; text-transform: none; letter-spacing: 0; }
   .tabs button { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 5px;
                  padding: 1px 8px; font: inherit; font-size: 11px; cursor: pointer; }
-  .tabs button.on { color: var(--text); border-color: var(--muted); background: #22304F; }
+  .tabs button.on { color: var(--text); border-color: var(--muted); background: var(--inset2); }
   #chart { width: 100%; height: 240px; display: block; }
   .sect { font-size: 12px; }
   .sect span { display: inline-block; text-align: right; }
@@ -284,7 +296,7 @@
   .tabview { height: 240px; overflow: auto; font-size: 12px; }
   .tabview table { font-size: 12px; }
   .tabview td, .tabview th { padding: 2px 6px; }
-  .tabview tr.best td { background: #2A2350; }
+  .tabview tr.best td { background: var(--row-cmp); }
   .tabview .faster { color: var(--green); font-weight: 600; }
   .tabview .h2h-sum { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; margin-bottom: 6px; }
   .tabview select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px;
@@ -292,7 +304,7 @@
   .tabview .muted { color: var(--muted); }
   /* spotter */
   .spot { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: start; }
-  #radar { width: 110px; height: 180px; display: block; background: #15203A; border-radius: 8px; }
+  #radar { width: 110px; height: 180px; display: block; background: var(--radar-bg); border-radius: 8px; }
   .spot-call { font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: .04em; margin: 2px 0 6px; }
   .spot-call.clear { color: var(--green); } .spot-call.busy { color: var(--red); } .spot-call.off { color: var(--muted); }
   .spot-list { font-size: 12px; display: grid; gap: 2px; }
@@ -358,7 +370,7 @@
                 font-size: 13px; margin-bottom: 8px; }
   .cau-banner .boxnow { color: var(--yellow); font-weight: 800; letter-spacing: .04em; }
   .opts { display: grid; gap: 4px; margin-top: 6px; }
-  .opt { padding: 5px 8px; border-radius: 6px; background: #19253F; font-size: 12.5px; }
+  .opt { padding: 5px 8px; border-radius: 6px; background: var(--opt-bg); font-size: 12.5px; }
   .opt.best { box-shadow: inset 3px 0 0 var(--green); }
   .opt-h { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
   .opt-h > span:first-child { font-weight: 600; }
@@ -408,6 +420,130 @@
     footer { padding: 6px 12px; gap: 4px 12px; }
     footer .legend { margin-left: 0; }
   }
+
+  /* ================================================================ booth look
+     The default look: a row of monitors on a pit-wall stand. Each panel is a
+     screen in a bezel with a status light on its chin (green live, amber stale,
+     off when disconnected), a title bar like a monitor's on-screen label, timing
+     type (Barlow), timing colours used the standard way, an LED race clock and a
+     track-status light strip in the flag's colour. "classic" in the header puts
+     the earlier look back. Fonts: client/assets (licences in LICENSES.md); without
+     them the page falls back to system fonts. */
+  @font-face { font-family: "Barlow Semi Condensed"; font-weight: 400; font-display: swap;
+               src: url("assets/barlow-semi-condensed-latin-400-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Barlow Semi Condensed"; font-weight: 600 700; font-display: swap;
+               src: url("assets/barlow-semi-condensed-latin-600-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap;
+               src: url("assets/barlow-condensed-latin-600-normal.woff2") format("woff2"); }
+  @font-face { font-family: "DSEG7 Classic"; font-weight: 700; font-display: swap;
+               src: url("assets/dseg7-classic-bold.woff2") format("woff2"); }
+  :root[data-skin="booth"] {
+    --bg: #141619; --panel: #000; --line: #262B32; --text: #E9EDF2; --muted: #8B94A0; --dim: #59616C;
+    --green: #2BD96B; --yellow: #FFD100; --red: #FF3B30; --blue: #4FA3FF; --purple: #B44CFF; --orange: #FF8A1F;
+    --row-line: #15191E; --row-focus: #0E1D2C; --row-cmp: #1C1230; --inset: #0A0E13; --inset2: #1A2029;
+    --radar-bg: #05070A; --trackline: #3A414B; --opt-bg: #0A0E13;
+    --led: #FF9F1C; --bezel: #2A2D32; --stand: #141619;
+    --ui: "Barlow Semi Condensed", "Segoe UI", system-ui, sans-serif;
+    --title: "Barlow Condensed", "Barlow Semi Condensed", "Segoe UI", system-ui, sans-serif;
+    --mono: var(--ui); --canvas-font: "Barlow Semi Condensed", system-ui, sans-serif;
+    font-size: 14.5px;
+  }
+  :root[data-skin="booth"] body {
+    font-family: var(--ui);
+    /* the stand: a dark carbon weave, lit from above */
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.035), rgba(0,0,0,.25) 70%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,.022) 0 2px, transparent 2px 4px),
+      repeating-linear-gradient(-45deg, rgba(0,0,0,.4) 0 2px, transparent 2px 4px),
+      var(--stand);
+  }
+  :root[data-skin="booth"] main { gap: 12px; }
+  :root[data-skin="booth"] .col, :root[data-skin="booth"] .stack { gap: 12px; }
+  /* a monitor: black glass with a faint sheen, a bezel lit from above, a deeper chin */
+  :root[data-skin="booth"] section {
+    position: relative; padding: 0 10px 10px; border-radius: 5px;
+    background: linear-gradient(155deg, rgba(255,255,255,.04), rgba(255,255,255,0) 30%), #000;
+    border: 7px solid var(--bezel); border-color: #373B41 #2A2D32 #222529; border-bottom-width: 14px;
+    box-shadow: 0 0 0 1px #07080A, inset 0 0 0 1px #000, 0 12px 22px rgba(0,0,0,.55);
+  }
+  :root[data-skin="booth"] section::after {           /* status light on the chin */
+    content: ""; position: absolute; right: 8px; bottom: -10px; width: 5px; height: 5px; border-radius: 50%;
+    background: #3A2A12; pointer-events: none;
+  }
+  :root[data-skin="booth"] body[data-link="live"] section::after { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  :root[data-skin="booth"] body[data-link="stale"] section::after { background: var(--led); box-shadow: 0 0 6px var(--led); }
+  /* the monitor's on-screen title bar */
+  :root[data-skin="booth"] details.panel > summary {
+    font-family: var(--title); text-transform: none; letter-spacing: .02em; font-size: 13.5px; font-weight: 600;
+    color: #C5CDD7; background: linear-gradient(#161A20, #0B0E12); border-bottom: 1px solid #1D232B;
+    padding: 5px 10px; margin: 0 -10px;
+  }
+  :root[data-skin="booth"] details.panel[open] > summary { margin-bottom: 8px; }
+  :root[data-skin="booth"] details.panel > summary::before { color: var(--dim); }
+  :root[data-skin="booth"] details.panel > summary:hover { color: #fff; }
+  /* tables read like a timing screen */
+  :root[data-skin="booth"] th { font-family: var(--title); font-weight: 600; color: var(--muted); }
+  :root[data-skin="booth"] tbody tr:nth-child(even) > td { background-color: rgba(255,255,255,.02); }
+  :root[data-skin="booth"] .fp-big { font-family: var(--title); font-size: 28px; font-weight: 600; letter-spacing: .01em; }
+  :root[data-skin="booth"] .bb-gap { font-family: var(--title); font-size: 32px; font-weight: 600; color: var(--led);
+                                     text-shadow: 0 0 8px rgba(255,159,28,.4); }
+  /* header: the timing gantry, with the track-status light strip along its foot */
+  :root[data-skin="booth"] header { position: relative; background: linear-gradient(#0F1114, #08090B);
+                                    border-bottom: 0; padding-bottom: 14px; }
+  :root[data-skin="booth"] header::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px;
+                                           background: var(--status, #2A2D32); box-shadow: 0 0 14px var(--status-glow, transparent); }
+  :root[data-skin="booth"] body[data-flag="green"] header { --status: var(--green); --status-glow: rgba(43,217,107,.5); }
+  :root[data-skin="booth"] body[data-flag="yellow"] header, :root[data-skin="booth"] body[data-flag="caution"] header { --status: var(--yellow); --status-glow: rgba(255,209,0,.55); }
+  :root[data-skin="booth"] body[data-flag="red"] header { --status: var(--red); --status-glow: rgba(255,59,48,.6); }
+  :root[data-skin="booth"] body[data-flag="white"] header { --status: #fff; --status-glow: rgba(255,255,255,.4); }
+  :root[data-skin="booth"] body[data-flag="blue"] header { --status: var(--blue); --status-glow: rgba(79,163,255,.45); }
+  :root[data-skin="booth"] body[data-flag="checkered"] header { --status: repeating-linear-gradient(90deg, #fff 0 10px, #111 10px 20px); }
+  :root[data-skin="booth"] header .track { font-family: var(--title); font-weight: 600; font-size: 22px; letter-spacing: .01em; }
+  :root[data-skin="booth"] header .track small { font-family: var(--ui); }
+  /* the flag as a light panel */
+  :root[data-skin="booth"] header .flag { font-family: var(--title); font-weight: 600; border-radius: 3px;
+    border: 2px solid #000; box-shadow: 0 0 0 2px #2A2D32, 0 0 18px var(--status-glow, transparent); }
+  :root[data-skin="booth"] header .flag[data-flag=""] { background: #15181C; color: var(--muted); }
+  /* the race clock: amber LED digits in a recessed window, unlit segments faintly visible */
+  :root[data-skin="booth"] header .clock { font-family: var(--ui); }
+  :root[data-skin="booth"] #remain { position: relative; display: inline-block; padding: 3px 10px 2px; border-radius: 3px;
+    background: #050505; border: 1px solid #24272B; box-shadow: inset 0 2px 8px #000;
+    font-family: "DSEG7 Classic", var(--ui); font-weight: 700; font-size: 26px; letter-spacing: .02em;
+    color: var(--led); text-shadow: 0 0 8px rgba(255,159,28,.55); }
+  :root[data-skin="booth"] #remain::before { content: attr(data-ghost); position: absolute; left: 10px; top: 3px;
+    color: rgba(255,159,28,.09); text-shadow: none; pointer-events: none; }
+  :root[data-skin="booth"] #remain.txt { font-family: var(--title); font-size: 22px; padding: 2px 10px; }
+  :root[data-skin="booth"] #remain.txt::before { content: none; }
+  :root[data-skin="booth"] header .clock small { font-family: var(--title); font-size: 13.5px; color: #AEB6C0; margin-top: 3px; }
+  /* hardware keys */
+  :root[data-skin="booth"] .unittoggle, :root[data-skin="booth"] .tabs button {
+    background: linear-gradient(#2A2E34, #1B1E22); color: #C9D1DB; border: 1px solid #3A3F46; border-bottom-color: #0E1012;
+    border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255,255,255,.06); font-family: var(--title); font-weight: 600; }
+  :root[data-skin="booth"] .unittoggle:hover, :root[data-skin="booth"] .tabs button:hover { color: #fff; border-color: #5A616B; }
+  :root[data-skin="booth"] .tabs button.on { background: linear-gradient(#3B4048, #2A2E34); color: #fff; border-color: #6B737E; }
+  :root[data-skin="booth"] input, :root[data-skin="booth"] select { background: #07090C !important; border-color: #2E333A !important; border-radius: 3px !important; }
+  /* alarms read like race control's message board */
+  :root[data-skin="booth"] .alarm { background: #0A0C0F; border: 1px solid #23272D; border-left: 4px solid var(--blue);
+    border-radius: 3px; font-family: var(--title); font-size: 14px; letter-spacing: .01em; }
+  :root[data-skin="booth"] .alarm.hot { border-left-color: var(--red); color: #FFB1AB; background: #1A0909; }
+  :root[data-skin="booth"] .alarm.warn { border-left-color: var(--orange); color: #FFD2A8; background: #170F06; }
+  :root[data-skin="booth"] .alarm.cau { border-left-color: var(--yellow); color: #FFE98A; background: #161305; }
+  :root[data-skin="booth"] .cau-banner { background: #161305; border-radius: 3px; }
+  :root[data-skin="booth"] .opt, :root[data-skin="booth"] .tire, :root[data-skin="booth"] .uc { border: 1px solid #161B22; border-radius: 3px; }
+  :root[data-skin="booth"] .badge { border-radius: 2px; }
+  /* the rack strip along the bottom */
+  :root[data-skin="booth"] footer { background: #0B0D10; border-top: 1px solid #23272D; font-family: var(--ui); }
+  :root[data-skin="booth"] footer .dot { box-shadow: 0 0 6px var(--red); }
+  :root[data-skin="booth"] footer .dot.on { box-shadow: 0 0 6px var(--green); }
+  /* a phone: thinner bezels, so the screens keep their room */
+  @media (max-width: 700px) {
+    :root[data-skin="booth"] section { border-width: 4px; border-bottom-width: 9px; padding: 0 8px 8px; }
+    :root[data-skin="booth"] details.panel > summary { margin: 0 -8px; }
+    :root[data-skin="booth"] section::after { bottom: -7px; right: 6px; width: 4px; height: 4px; }
+    :root[data-skin="booth"] #remain { font-size: 20px; }
+  }
+  .ico { width: 1.05em; height: 1.05em; vertical-align: -0.16em; flex: none; }
+  .alarm .ico { margin-right: -2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -421,6 +557,7 @@
     <label class="follow" title="The car every relative panel follows, on this screen only. Nobody else's view changes.">Following
       <select id="followSel"><option value="">Auto</option></select> <span id="followSrc" class="note"></span></label>
     <button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button>
+    <button type="button" id="skinToggle" class="unittoggle" title="Switch between the pit-wall booth look and the classic look. On this screen only.">booth</button>
     <button type="button" id="soundToggle" class="unittoggle" title="Play a tone when a new alarm appears. On this screen only.">sound off</button>
     <div class="clock"><span id="remain">–</span><small id="lapline">–</small></div>
   </div>
@@ -606,7 +743,7 @@
   <span id="age">no data</span>
   <span id="rate"></span>
   <span id="rig" style="color:var(--muted)"></span>
-  <button type="button" id="reportBtn" class="unittoggle mini" style="margin-left:0" title="Save a report of this session as a web page: result, stops, lap times, events and the alarms raised on this screen">Race report</button>
+  <button type="button" id="reportBtn" class="unittoggle mini" style="margin-left:0" title="Save a report of this session as a web page: result, stops, lap times, events and the alarms raised on this screen"></button>
   <span class="legend" style="margin-left:auto">
     <span>plain = reported by iRacing</span>
     <span class="derived">dotted = computed here</span>
@@ -642,6 +779,15 @@
   const esc = v => v == null ? "" : String(v).replace(/[&<>"']/g, ch => ESC[ch]);
   // iRacing enum names as words: "get_in_car" -> "get in car". Its flag table
   // spells one of them "servicible"; show the word, not the typo.
+  // Colours and type for what is drawn on canvas (map, radar, charts): read from the
+  // page's tokens so the booth and classic looks both apply. Re-read when the look changes.
+  const CV = {};
+  function readColors() {
+    const st = getComputedStyle(document.documentElement), v = k => st.getPropertyValue("--" + k).trim();
+    Object.assign(CV, { line: v("line"), dim: v("dim"), muted: v("muted"), text: v("text"), trackline: v("trackline"),
+                        font: v("canvas-font") || "system-ui, sans-serif" });
+  }
+  readColors();
   const words = v => v == null ? "" : String(v).replace(/_/g, " ").replace(/\bservicible\b/, "serviceable");
   // Unit system. These are pure display conversions of values iRacing reported --
   // no estimation, so the "plain = reported by iRacing" rule still holds. iRacing
@@ -847,11 +993,18 @@
     const flags = st.session.flags || [];
     const prio = ["red", "checkered", "white", "caution", "yellow", "blue", "green"];
     const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || "";
-    const el = $("flag"); el.dataset.flag = f;
+    const el = $("flag"); el.dataset.flag = f; document.body.dataset.flag = f;
     const stateTxt = words(st.session.state);
     el.textContent = f ? (f === "caution" ? "Full course yellow" : f[0].toUpperCase() + f.slice(1) + " flag")
       : (stateTxt ? stateTxt[0].toUpperCase() + stateTxt.slice(1) : "No flag");
-    $("remain").textContent = st.session.timeRemainS != null ? fmt.clock(st.session.timeRemainS) : "–";
+    const rem = st.session.timeRemainS != null ? fmt.clock(st.session.timeRemainS) : "–", remEl = $("remain");
+    if (remEl.textContent !== rem) {
+      remEl.textContent = rem;
+      // digits go on the LED display, with its unlit segments behind; words do not
+      const num = /^[\d:]+$/.test(rem);
+      remEl.classList.toggle("txt", !num);
+      remEl.dataset.ghost = num ? rem.replace(/\d/g, "8") : "";
+    }
     const lr = st.session.lapsRemain;
     $("lapline").textContent = "Lap " + (st.player.lap ?? "–") + (lr != null && lr < 32767 ? " · " + lr + " to go" : "");
   }
@@ -1734,6 +1887,25 @@
     el.innerHTML = h;
   }
 
+  // Tabler Icons (MIT, Paweł Kuna; see client/assets/LICENSES.md), outline paths only.
+  const ICON = {
+    flag: '<path d="M5 5a5 5 0 0 1 7 0a5 5 0 0 0 7 0v9a5 5 0 0 1 -7 0a5 5 0 0 0 -7 0v-9"/><path d="M5 21v-7"/>',
+    fuel: '<path d="M14 11h1a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0v-7l-3 -3"/><path d="M4 20v-14a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v14"/><path d="M3 20l12 0"/><path d="M18 7v1a1 1 0 0 0 1 1h1"/><path d="M4 11l10 0"/>',
+    caution: '<path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0"/><path d="M12 16h.01"/>',
+    rain: '<path d="M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7"/><path d="M11 13v2m0 3v2m4 -5v2m0 3v2"/>',
+    soundOn: '<path d="M15 8a5 5 0 0 1 0 8"/><path d="M17.7 5a9 9 0 0 1 0 14"/><path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5"/>',
+    soundOff: '<path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5"/><path d="M16 10l4 4m0 -4l-4 4"/>',
+    report: '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M12 17v-6"/><path d="M9.5 14.5l2.5 2.5l2.5 -2.5"/>',
+    window: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M12 12l3 2"/><path d="M12 7v5"/>',
+    car: '<path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2 -5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>',
+    inc: '<path d="M12.802 2.165l5.575 2.389c.48 .206 .863 .589 1.07 1.07l2.388 5.574c.22 .512 .22 1.092 0 1.604l-2.389 5.575c-.206 .48 -.589 .863 -1.07 1.07l-5.574 2.388c-.512 .22 -1.092 .22 -1.604 0l-5.575 -2.389a2.036 2.036 0 0 1 -1.07 -1.07l-2.388 -5.574a2.036 2.036 0 0 1 0 -1.604l2.389 -5.575c.206 -.48 .589 -.863 1.07 -1.07l5.574 -2.388a2.036 2.036 0 0 1 1.604 0"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+    team: '<path d="M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0 -3 -3.85"/>',
+  };
+  const icon = k => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k] || ""}</svg>`;
+  const ALARM_ICON = k => k === "box_now" || k === "fuel_low" ? "fuel" : k === "window" ? "window" : k === "inc" ? "inc"
+    : k.startsWith("caution") ? "caution" : k.startsWith("close:") || k.startsWith("catch:") ? "car" : k === "rain" ? "rain"
+    : k.startsWith("flag:") ? "flag" : "";
+
   // ---- alarms: per viewer, never sent anywhere. A condition raises an alarm once;
   // dismissing hides it until the condition clears and comes back.
   const ALARM = { active: new Map(), dismissed: new Set(), history: [], sound: false, ctx: null, at: 0 };
@@ -1742,9 +1914,18 @@
     if (!ALARM.sound) return;
     try {
       const ctx = ALARM.ctx || (ALARM.ctx = new (window.AudioContext || window.webkitAudioContext)());
+      let lead = 0;
+      if (document.documentElement.dataset.skin === "booth") {
+        // a radio squelch first: a short burst of band-limited noise, like a team radio opening
+        const n = Math.floor(ctx.sampleRate * 0.09), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+        const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+        bp.type = "bandpass"; bp.frequency.value = 1900; bp.Q.value = 1.2; g.gain.value = 0.35;
+        src.buffer = buf; src.connect(bp).connect(g).connect(ctx.destination); src.start(); lead = 0.12;
+      }
       const tones = level === "hot" ? [880, 660, 880] : level === "cau" ? [740, 740] : [660];
       tones.forEach((f, i) => {
-        const o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + i * 0.18;
+        const o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + lead + i * 0.18;
         o.frequency.value = f; o.type = "sine";
         g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02);
         g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
@@ -1805,14 +1986,14 @@
     const show = now.filter(a => !ALARM.dismissed.has(a.key));
     const bar = $("alarmBar");
     bar.classList.toggle("hidden", !show.length);
-    const html = show.map(a => `<span class="alarm ${a.level}">${a.html}<button type="button" data-k="${esc(a.key)}" aria-label="Dismiss" title="Hide until it clears and comes back">×</button></span>`).join("");
-    if (bar.innerHTML !== html) bar.innerHTML = html;
+    const html = show.map(a => `<span class="alarm ${a.level}">${ALARM_ICON(a.key) ? icon(ALARM_ICON(a.key)) : ""}${a.html}<button type="button" data-k="${esc(a.key)}" aria-label="Dismiss" title="Hide until it clears and comes back">×</button></span>`).join("");
+    if (bar.dataset.h !== html) { bar.dataset.h = html; bar.innerHTML = html; }   // the browser rewrites SVG, so compare what was set
   }
   $("alarmBar").addEventListener("click", e => {
     const b = e.target.closest("button[data-k]");
     if (b) { ALARM.dismissed.add(b.dataset.k); renderAlarms(); }
   });
-  function soundLabel() { $("soundToggle").textContent = ALARM.sound ? "sound on" : "sound off"; }
+  function soundLabel() { $("soundToggle").innerHTML = icon(ALARM.sound ? "soundOn" : "soundOff") + (ALARM.sound ? " sound on" : " sound off"); }
   soundLabel();
   $("soundToggle").addEventListener("click", () => {
     ALARM.sound = !ALARM.sound; soundLabel();
@@ -1878,6 +2059,17 @@
       // adds its link before the first it finds (suite/bridge.py).
       `<\/head><body>${b}<\/body><\/html>`;
   }
+  $("reportBtn").innerHTML = icon("report") + " Race report";
+  function skinLabel() { $("skinToggle").textContent = document.documentElement.dataset.skin === "classic" ? "classic" : "booth"; }
+  skinLabel();
+  $("skinToggle").addEventListener("click", () => {
+    const next = document.documentElement.dataset.skin === "classic" ? "booth" : "classic";
+    document.documentElement.dataset.skin = next;
+    try { localStorage.setItem("pitwall.skin", next); } catch (e) {}
+    skinLabel(); readColors(); chartDirty = true;
+  });
+  // the canvases are drawn with the fonts' names: redraw once the fonts have arrived
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); chartDirty = true; });
   $("reportBtn").addEventListener("click", () => {
     const html = buildReport();
     const t = (S.session && S.session.track && (S.session.track.TrackName || "")) || "session";
@@ -2045,12 +2237,12 @@
     if (cvs.width !== Math.round(r.width * dpr) || cvs.height !== Math.round(r.height * dpr)) { cvs.width = Math.round(r.width * dpr); cvs.height = Math.round(r.height * dpr); }
     const g = cvs.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
     const W = r.width, H = r.height, L = 64, R = 46, T = 10, B = 20;
-    g.font = "10px system-ui, sans-serif"; g.lineJoin = "round";
+    g.font = "10px " + CV.font; g.lineJoin = "round";
     const note = $("chartNote");
     const axes = (x0, x1, y0, y1, yfmt, xfmt, invert, yInt) => {
       const X = v => L + (v - x0) / ((x1 - x0) || 1) * (W - L - R);
       const Y = v => invert ? T + (v - y0) / ((y1 - y0) || 1) * (H - T - B) : H - B - (v - y0) / ((y1 - y0) || 1) * (H - T - B);
-      g.strokeStyle = "#2F3F63"; g.lineWidth = 1; g.fillStyle = "#5A6784"; g.textAlign = "right";
+      g.strokeStyle = CV.line; g.lineWidth = 1; g.fillStyle = CV.dim; g.textAlign = "right";
       const ticks = [];
       if (yInt && y1 - y0 <= 14) { for (let v = Math.ceil(y0); v <= y1; v++) ticks.push(v); }
       else for (let k = 0; k <= 4; k++) ticks.push(y0 + (y1 - y0) * k / 4);
@@ -2151,7 +2343,7 @@
     // and keep them inside the plot, above the lap numbers along the bottom
     let maxY = H - B - 4;
     for (let i = labels.length - 1; i >= 0; i--) { if (labels[i].y > maxY) labels[i].y = maxY; maxY = labels[i].y - 11; }
-    for (const l of labels) { g.fillStyle = l.col; g.textAlign = "left"; g.font = (l.mine ? "bold " : "") + "10px system-ui, sans-serif"; g.fillText(l.txt, l.x, l.y); }
+    for (const l of labels) { g.fillStyle = l.col; g.textAlign = "left"; g.font = (l.mine ? "bold " : "") + "10px " + CV.font; g.fillText(l.txt, l.x, l.y); }
     note.innerHTML = chartTab === "gap" ? `<span class="derived" title="Computed here: each car's time behind the leader minus the class leader's, at every lap crossing.">Gap to your class leader at each lap</span>, your class leader and the cars within four places of you. You are orange.`
       : chartTab === "you" ? `<span class="derived" title="Computed here: the moment each car crossed the line on that lap minus the moment the followed car did.">Gap to ${RW().obj} at each lap line</span>: above the middle line is ahead, below is behind. Orange is the followed car.`
       : "Class position at each lap crossing, as iRacing scored it.";
@@ -2434,7 +2626,7 @@
     const g = radarCtx; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
     const W = r.width, H = r.height, cx = W / 2, cy = H / 2, RANGE = 60;      // metres shown each way
     const Y = m => cy - m / RANGE * (H / 2 - 10);
-    g.strokeStyle = "#2F3F63"; g.lineWidth = 1;
+    g.strokeStyle = CV.line; g.lineWidth = 1;
     for (const m of [-40, -20, 20, 40]) { g.beginPath(); g.moveTo(10, Y(m)); g.lineTo(W - 10, Y(m)); g.stroke(); }
     const p = S.state && S.state.player;
     const live = !!meCar();
@@ -2449,7 +2641,7 @@
     if (lr === "two_cars_right") g.fillRect(W - 16, cy - 40, 10, 14);
     // cars ahead and behind along the track (lap-distance gap, derived)
     const near = live ? ((S.cars && S.cars.derived && S.cars.derived.nearby) || []) : [];
-    g.font = "bold 9px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = "bold 9px " + CV.font; g.textAlign = "center"; g.textBaseline = "middle";
     for (const n of near) {
       if (Math.abs(n.meters) > RANGE || n.inPit) continue;
       const y = Y(n.meters), close = Math.abs(n.meters) < 10;
@@ -2458,7 +2650,7 @@
       g.fillStyle = "#08203F"; g.fillText(String((carByIdx(n.idx) || {}).num ?? n.idx), cx, y);
     }
     g.fillStyle = "#FFB23F"; g.fillRect(cx - 9, cy - 12, 18, 24);
-    g.fillStyle = "#5A6784"; g.font = "9px system-ui, sans-serif"; g.textAlign = "left";
+    g.fillStyle = CV.dim; g.font = "9px " + CV.font; g.textAlign = "left";
     g.fillText(U.short(RANGE), 2, 8);
   }
 
@@ -2536,13 +2728,13 @@
     ggCtx.clearRect(0, 0, r.width, r.height);
     const cx = r.width / 2, cy = r.height / 2;
     const scale = (Math.min(r.width, r.height) / 2 - 14) / 2.0;   // full scale = 2.0 g
-    ggCtx.strokeStyle = "#2F3F63"; ggCtx.lineWidth = 1;
+    ggCtx.strokeStyle = CV.line; ggCtx.lineWidth = 1;
     for (const g of [0.5, 1.0, 1.5, 2.0]) {
       ggCtx.beginPath(); ggCtx.arc(cx, cy, g * scale, 0, 7); ggCtx.stroke();
     }
     ggCtx.beginPath(); ggCtx.moveTo(cx - scale * 2, cy); ggCtx.lineTo(cx + scale * 2, cy);
     ggCtx.moveTo(cx, cy - scale * 2); ggCtx.lineTo(cx, cy + scale * 2); ggCtx.stroke();
-    ggCtx.fillStyle = "#5A6784"; ggCtx.font = "10px system-ui, sans-serif"; ggCtx.textAlign = "left";
+    ggCtx.fillStyle = CV.dim; ggCtx.font = "10px " + CV.font; ggCtx.textAlign = "left";
     ggCtx.fillText("1g", cx + scale + 3, cy - 3);
     // Newest samples brightest, so the current corner reads out of the envelope.
     for (let i = 0; i < gg.length; i++) {
@@ -2579,15 +2771,15 @@
       const a = pct * Math.PI * 2 - Math.PI / 2; return [ox + size / 2 + Math.cos(a) * size / 2, oy + size / 2 + Math.sin(a) * size / 2];
     };
     // outline
-    ctx.lineWidth = pts ? 6 : 3; ctx.strokeStyle = pts ? "#3A4C75" : "#2F3F63"; ctx.lineJoin = "round"; ctx.beginPath();
+    ctx.lineWidth = pts ? 6 : 3; ctx.strokeStyle = pts ? CV.trackline : CV.line; ctx.lineJoin = "round"; ctx.beginPath();
     for (let k = 0; k <= 360; k++) { const [x, y] = P(k / 360); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
     ctx.stroke();
-    if (!pts) { ctx.fillStyle = "#8A97B3"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillText("no outline yet", ox + size / 2, oy + size / 2 - 8); ctx.fillText("cars placed by lap distance", ox + size / 2, oy + size / 2 + 8); }
+    if (!pts) { ctx.fillStyle = CV.muted; ctx.font = "12px " + CV.font; ctx.textAlign = "center"; ctx.fillText("no outline yet", ox + size / 2, oy + size / 2 - 8); ctx.fillText("cars placed by lap distance", ox + size / 2, oy + size / 2 + 8); }
     // start/finish
-    const [sx, sy] = P(0); ctx.fillStyle = "#E8ECF4"; ctx.fillRect(sx - 2, sy - 9, 4, 18);
+    const [sx, sy] = P(0); ctx.fillStyle = CV.text; ctx.fillRect(sx - 2, sy - 9, 4, 18);
     // sectors
     const sectors = S.session && S.session.sectors || [];
-    ctx.fillStyle = "#5A6784"; for (const s of sectors) { if (!s.SectorStartPct) continue; const [x, y] = P(s.SectorStartPct); ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+    ctx.fillStyle = CV.dim; for (const s of sectors) { if (!s.SectorStartPct) continue; const [x, y] = P(s.SectorStartPct); ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
     // cars
     if (!S.cars) return;
     const me = refInfo().own;
@@ -2597,19 +2789,19 @@
     const cars = Object.values(S.cars.cars || {}).filter(c => c.pct != null && c.pct >= 0 && c.surface !== "not_in_world");
     // Incidents of the followed car, where on the lap they happened: predicted
     // from telemetry for any car, and your own counted incidents when driving.
-    ctx.font = "bold 10px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "bold 10px " + CV.font; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const e of S.feed.events.slice(-300)) {
       if (e.idx !== focus || e.pct == null || !["race_incident", "car_incident", "incident", "off_track", "slowed"].includes(e.kind)) continue;
       const [x, y] = P(e.pct);
       ctx.strokeStyle = "#FF5A5A"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke();
     }
-    ctx.font = "bold 10px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "bold 10px " + CV.font; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const c of cars.sort((a, b) => (a.idx === me) - (b.idx === me))) {
       const [x, y] = P(c.pct); const mine = c.idx === me;
       ctx.beginPath(); ctx.arc(x, y, mine ? 9 : 7, 0, 7);
       ctx.fillStyle = mine ? "#FFB23F"
-        : c.onPitRoad ? "#5A6784"
+        : c.onPitRoad ? CV.dim
         : (multi && c.classColor != null ? classCss(c.classColor) : "#6FA8FF");
       ctx.fill();
       if (c.idx === focus) {   // ring the car being watched so it is findable at a glance
@@ -2635,7 +2827,7 @@
       const [x, y] = P(t.atPct);
       ctx.strokeStyle = t.kind === "you_catch" ? "#FF9A3D" : "#6FA8FF"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.stroke();
-      ctx.fillStyle = ctx.strokeStyle; ctx.font = "bold 10px system-ui, sans-serif"; ctx.textAlign = "left";
+      ctx.fillStyle = ctx.strokeStyle; ctx.font = "bold 10px " + CV.font; ctx.textAlign = "left";
       ctx.fillText(Math.round(t.inS) + "s", x + 10, y - 6);
     }
   }
@@ -2672,6 +2864,8 @@
     if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {
       chartDirty = false; chartAt = now; drawCharts();
     }
+    const link = !S.lastStateAt ? "off" : (now - S.lastStateAt) < 3000 ? "live" : "stale";
+    if (document.body.dataset.link !== link) document.body.dataset.link = link;
     if (S.lastStateAt) { const age = (now - S.lastStateAt) / 1000; $("age").textContent = age < 1.5 ? "live" : "last update " + age.toFixed(0) + " s ago"; $("age").style.color = age < 3 ? "" : "#FF5A5A"; }
     // Divide by the real elapsed time, not a constant 2 s: this loop is driven by
     // requestAnimationFrame, which browsers throttle to ~1 Hz or stop outright while

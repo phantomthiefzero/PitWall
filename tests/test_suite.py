@@ -168,6 +168,17 @@ class SuiteTest(unittest.TestCase):
             if path.endswith("/"):
                 self.assertIn(b"<html", body[:400].lower(), path)
 
+    def test_dashboard_link_without_the_slash_keeps_its_address_and_token(self):
+        """/pitwall?relay=..&token=.. is sent on to /pitwall/ with the same query: the
+        dashboard reads the relay and token from it (dropped, it showed the connect form)."""
+        base = self.engine.url.rstrip("/")
+        req = urllib.request.Request(base + "/pitwall?relay=ws://127.0.0.1:1&token=abc", headers={"Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            self.assertTrue(r.url.endswith("/pitwall/?relay=ws://127.0.0.1:1&token=abc"), r.url)
+        status, headers, body = fetch(base + "/pitwall/assets/barlow-condensed-latin-600-normal.woff2", gzip_ok=False)
+        self.assertEqual((status, headers.get("Content-Type")), (200, "font/woff2"))
+        self.assertEqual(body, on_disk("client", "assets", "barlow-condensed-latin-600-normal.woff2"))
+
     def test_large_analyzer_page_arrives_in_pieces_that_join_back(self):
         import re
         base = self.engine.url.rstrip("/")
@@ -583,6 +594,29 @@ class GuestTokenTest(unittest.TestCase):
         html = fetch(http + "/pitwall/")[2]
         self.assertIn(b"<title>", html)
         self.assertNotIn(b"&larr; Suite", html)           # the suite's way home is not for remote crew
+
+    def test_relay_serves_the_dashboard_fonts_and_nothing_else(self):
+        """The booth look's fonts come from client/assets by plain name; any other
+        name, extension or a path out of the folder is refused."""
+        http = self.relay_url.replace("ws://", "http://")
+        status, headers, body = fetch(http + "/pitwall/assets/dseg7-classic-bold.woff2", gzip_ok=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("Content-Type"), "font/woff2")
+        self.assertEqual(body, on_disk("client", "assets", "dseg7-classic-bold.woff2"))
+        for bad in ("/pitwall/assets/LICENSES.md", "/pitwall/assets/..%2Findex.html", "/pitwall/assets/../index.html",
+                    "/pitwall/assets/nope.woff2", "/pitwall/assets/.woff2"):
+            with self.assertRaises(urllib.error.HTTPError, msg=bad) as cm:
+                fetch(http + bad, gzip_ok=False)
+            self.assertEqual(cm.exception.code, 404, bad)
+
+    def test_every_dashboard_font_is_there(self):
+        """Every font the dashboard asks for is in client/assets."""
+        import re
+        html = on_disk("client", "index.html").decode("utf-8")
+        names = set(re.findall(r'url\("assets/([\w.-]+)"\)', html))
+        self.assertGreaterEqual(len(names), 4)
+        for n in names:
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, "client", "assets", n)), n)
 
     def test_share_panel_reports_what_guests_really_use(self):
         """The Share panel shows how many are watching through the link and the
