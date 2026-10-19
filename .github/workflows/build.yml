@@ -32,7 +32,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pytest pytest-xdist pyinstaller
+          python -m pip install -r requirements.txt pytest pytest-xdist pytest-timeout pyinstaller
 
       - name: Tests (a pull request runs what it touches; master runs everything)
         shell: pwsh
@@ -42,7 +42,7 @@ jobs:
             $tests = (git diff --name-only "origin/$env:GITHUB_BASE_REF...HEAD" | python scripts/pick_tests.py)
           }
           "Running: $tests"
-          python -m pytest @($tests -split ' ') -q -n auto --dist load -rfE --tb=short 2>&1 | Tee-Object -FilePath pytest.txt   # one test process per CPU
+          python -m pytest @($tests -split ' ') -q -n auto --dist load -rfE --tb=short --timeout 300 2>&1 | Tee-Object -FilePath pytest.txt   # one test process per CPU
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             # Failing test names as annotations, readable without the full log.
@@ -70,6 +70,7 @@ jobs:
           --hidden-import suite.cameras
           --hidden-import suite.share
           --hidden-import suite.updater
+          --hidden-import suite.library
           --hidden-import suite._build
           --hidden-import segno
           --hidden-import websockets.sync.client

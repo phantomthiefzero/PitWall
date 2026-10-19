@@ -116,6 +116,17 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": "Could not open that file: %s" % e}
 
+    def library_pick_folder(self):
+        """Choose a folder of telemetry files (.ibt and Garage61 .csv) for the Lap Analyzer's menus."""
+        import webview
+        from suite.bridge import library
+        kind = webview.FileDialog.FOLDER if hasattr(webview, "FileDialog") else webview.FOLDER_DIALOG
+        picked = self._window.create_file_dialog(kind)
+        if not picked:
+            return {"ok": False}
+        path = picked[0] if isinstance(picked, (list, tuple)) else picked
+        return library().add_folder(path)
+
     def use_live(self):
         self._engine.live()
         return {"ok": True}
