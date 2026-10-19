@@ -684,6 +684,7 @@ class FakeSource(TelemetrySource):
         self.track_temp += (rng.random() - 0.5) * 0.004 + math.cos(self.t / 260.0) * 0.00030
         v = {}
         pcts, laps, lapsc, onpit, surf, last, best, comp, fr, gear, rpm = ([0] * 64 for _ in range(11))
+        comp = [-1] * 64                          # iRacing: -1 = not known (empty slot, not loaded)
         f2 = [0.0] * 64
         for c in self.cars:
             if c.pit_phase == "box":
@@ -758,7 +759,11 @@ class FakeSource(TelemetrySource):
             surf[i] = 1 if c.pit_phase == "box" else 2 if c.on_pit else 3
             last[i] = c.last_lap
             best[i] = c.best_lap
-            comp[i] = c.compound
+            # As in the sim at the start of a session: every car's compound reads -1
+            # until that car has loaded (staggered over the first ~10 s), and one car
+            # drops back to -1 for a moment. None of that is a tyre change.
+            loading = self.t < 1.0 + (i * 0.37) % 9.0 or (i == 3 and 12.0 <= self.t < 13.0)
+            comp[i] = -1 if loading else c.compound
             fr[i] = c.fast_repairs
             gear[i] = c.gear
             rpm[i] = c.rpm

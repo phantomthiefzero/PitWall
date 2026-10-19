@@ -124,8 +124,9 @@ meaningful in a race.
 on `resend`, and when the derived history resets); `full:false` carries only entries with
 `seq` above the previous message's. Clients ignore partial feeds until they have a full
 one, and drop entries whose `seq` they have already seen. Everything in it is derived.
-Event kinds: `pit_in`, `pit_out` (stationaryS, laneLossS), `fastest_lap` (lapS, classId,
-overall), `incident` (delta, total, limit), `behind_closing` / `you_closing` (gapS,
+Event kinds: `pit_in` (carLap, pos, classPos, towed -- from the track straight into the box),
+`pit_out` (stationaryS, laneLossS, stop -- stops seen, pos, classPos), `fastest_lap` (lapS, classId,
+overall, lapNum, prevS -- never a car's first lap), `incident` (delta, total, limit), `behind_closing` / `you_closing` (gapS,
 rateSPerLap), `position` (fromPos, toPos -- class position), `lead_change`, `flag`,
 `engine` (warnings), `tow` (towS), `rain_start`, `rain_stop`, `track_wetness`,
 `declared_wet`, `pit_battle` (preS, nowS, first),
@@ -262,6 +263,21 @@ middle of the cars' last racing laps, `fastest`, `vsFastestS`. Session: `driverT
 New events: `compound_change`, `driver_change`, `adjust` (your in-car changes, reported
 once a control has been left alone for 3 s); `behind_closing`, `you_closing`, `position`
 and `pit_battle` carry `ref` (the car they were measured from); your `incident` carries `pct`.
+
+### What race control leaves out (cars that are not really doing anything)
+
+`compound` is null where iRacing reports -1 (a car not loaded into the world yet, or gone from
+it). A `compound_change` or `driver_change` is announced only within 120 s of the car being on
+pit road or in its box (both are only possible there; a difference anywhere else is the session
+info catching up and is taken in quietly), and never while a replay is being watched. Pit events
+skip cars loading into or leaving the world, and run only in the `parade_laps` and `racing` states
+(not cars leaving the pits for the grid, or driving in after the flag). Engine warnings need the
+player in the car; oil and fuel pressure need the engine running (500 rpm). Track wetness from or to
+"unknown" is not a change.
+
+`cars.derived.sof = {"overall","cars","classes":[{"classId","className","sof","cars"}]}`: strength of
+field with iRacing's formula, (1600 / ln 2) x ln(n / sum(exp(-iR x ln 2 / 1600))), over the entries'
+`IRating` from the session info (0 or missing left out). iRacing does not publish it in the telemetry.
 
 ### Race strategy (cars.derived, race only)
 
