@@ -89,6 +89,9 @@ return Object.keys(top).length?top:null}
 // put into innerHTML all over this page. .ibt files get shared and downloaded, so the
 // characters that could make that text into markup are removed where it comes in.
 const plain=s=>String(s==null?'':s).replace(/[<>&"'`]/g,'');
+// Who recorded the file. In a team car the car's entry in the session info names whoever is driving
+// it when the file is written, which can be a teammate, so the name is found by the recorder's user id.
+function ibtWho(y,carName,team){const uid=(/DriverUserID:\s*(\d+)/.exec(y)||[])[1];if(uid){for(const blk of y.split(/\n\s*-\s*CarIdx:/).slice(1)){if(new RegExp('\\n\\s*UserID:\\s*'+uid+'\\s*(\\n|$)').test(blk)){const m=/\n\s*UserName:\s*([^\n]+)/.exec(blk);if(m)return m[1].trim()}}if(team)return 'You'}return carName||'You'}
 function ibt(buf){const dv=new DataView(buf),u8=new Uint8Array(buf),I=o=>dv.getInt32(o,true),tx=(o,l)=>{let s='';for(let i=0;i<l&&u8[o+i];i++)s+=String.fromCharCode(u8[o+i]);return s};
 const sl=I(16),so=I(20),nv=I(24),vo=I(28),bl=I(36),bo=I(52);const rc=Math.floor((buf.byteLength-bo)/bl);
 const V={};for(let i=0;i<nv;i++){const p=vo+i*144;V[tx(p+16,32).replace(/[^\w.-]/g,'_')]={t:I(p),o:I(p+4),c:I(p+8),u:plain(tx(p+112,32)),d:plain(tx(p+48,64))}}
@@ -97,12 +100,13 @@ const rd=(v,r)=>{const a=bo+r*bl+v.o;return v.t===1?u8[a]:v.t===4?dv.getFloat32(
 const lc=Int32Array.from({length:rc},(_,r)=>rd(V.Lap,r)),laps=[];
 for(let s=0;s<rc;){let e=s;while(e<rc&&lc[e]===lc[s])e++;const l={lap:lc[s],s,e,time:0,ok:false},tick=I(8)||60,span=V.SessionTime?rd(V.SessionTime,e-1)-rd(V.SessionTime,s)+1/tick:(e-s)/tick;let tc=V.LapCurrentLapTime?rd(V.LapCurrentLapTime,e-1):span;if(e<rc&&V.LapLastLapTime)for(let r=e;r<Math.min(rc,e+900);r++){const v=rd(V.LapLastLapTime,r);if(v>0&&Math.abs(v-tc)<.05){tc=v;break}}if(e<rc)l.time=tc;l.span=span;
 const d0=rd(V.LapDistPct,s),d1=rd(V.LapDistPct,e-1);let pit=false;if(V.OnPitRoad)for(let r=s;r<e;r++)if(rd(V.OnPitRoad,r)){pit=true;break}
-l.ok=e<rc&&l.time>0&&Math.abs(l.time-span)<.25&&e-s>=100&&d0<.05&&d1>.95&&!pit;laps.push(l);s=e}
+let away=false;if(V.IsOnTrack&&!pit){let n0=0,n=0;for(let r=s;r<e;r+=10){n++;if(!rd(V.IsOnTrack,r))n0++}away=n>0&&n0/n>.2}l.away=away;
+l.ok=e<rc&&l.time>0&&Math.abs(l.time-span)<.25&&e-s>=100&&d0<.05&&d1>.95&&!pit&&!away;laps.push(l);s=e}
 let best=-1;laps.forEach((l,i)=>{if(l.ok&&(best<0||l.time<laps[best].time))best=i});if(best<0)throw new Error('No complete, timed laps found in this file');
-const y=plain(new TextDecoder('latin1').decode(u8.subarray(so,so+sl))),di=+((/DriverCarIdx:\s*(\d+)/.exec(y)||[0,0])[1]),mm=new RegExp('CarIdx:\\s*'+di+'\\s*\\n\\s*UserName:\\s*(.+)').exec(y),who=mm?mm[1].trim():'You';
+const y=plain(new TextDecoder('latin1').decode(u8.subarray(so,so+sl))),di=+((/DriverCarIdx:\s*(\d+)/.exec(y)||[0,0])[1]),mm=new RegExp('CarIdx:\\s*'+di+'\\s*\\n\\s*UserName:\\s*(.+)').exec(y),team=/TeamRacing:\s*1/.test(y),who=ibtWho(y,mm?mm[1].trim():'',team);
 const blk=mm?y.slice(mm.index,mm.index+3000):'',gx=(re,s)=>{const q=re.exec(s);return q?q[1].trim():''},carPath=gx(/CarPath:\s*(\S+)/,blk),carName=gx(/CarScreenName:\s*([^\n]+)/,blk),track=gx(/TrackDisplayName:\s*([^\n]+)/,y),fuelKg=+gx(/DriverCarFuelKgPerLtr:\s*([\d.]+)/,y)||0;let top=0;if(V.Speed)laps.forEach(l=>{if(!l.ok)return;for(let r=l.s;r<l.e;r++){const v=rd(V.Speed,r);if(v>top)top=v}});
 const MAP={Speed:'Speed',D:'LapDistPct',Lat:'Lat',Lon:'Lon',Brake:'Brake',Throttle:'Throttle',Steer:'SteeringWheelAngle',Gear:'Gear',RPM:'RPM',ABS:'BrakeABSactive',LatG:'LatAccel',LonG:'LongAccel',VertG:'VertAccel',YawRate:'YawRate'},SKIP=new Set(Object.values(MAP).concat(['Lap','LapDist','SessionTime','SessionTick','SessionNum','SessionState','SessionFlags','SessionUniqueID','ReplayFrameNum','ReplayFrameNumEnd','ReplaySessionNum','ReplaySessionTime','ReplayPlaybackSpeed','ReplayPlaybackSlowMotion','ReplayPlaybackReal']));
-return{laps,best,_rd:rd,_V:V,_rc:rc,yaml:y,setup:setupTree(y),carPath,carName,track,top,fuelKg,lapObj(i){const L=laps[i],n=L.e-L.s,o={n,who,lap:L.time,lapNum:L.lap,ext:{},meta:{}};
+return{laps,best,_rd:rd,_V:V,_rc:rc,yaml:y,who,team,setup:setupTree(y),carPath,carName,track,top,fuelKg,lapObj(i){const L=laps[i],n=L.e-L.s,o={n,who,lap:L.time,lapNum:L.lap,ext:{},meta:{}};
 for(const k in MAP){const v=V[MAP[k]];o[k]=new Float64Array(n);if(v)for(let r=0;r<n;r++)o[k][r]=rd(v,L.s+r)}
 const ST=V.SessionTime;o.t=Float64Array.from({length:n},(_,j)=>j*L.time/(n-1));if(ST){const t0=rd(ST,L.s),span=rd(ST,L.e-1)-t0;if(span>0)o.t=Float64Array.from({length:n},(_,j)=>(rd(ST,L.s+j)-t0)*L.time/span)}
 for(const k in V){const v=V[k];if(v.c!==1||v.t<1||v.t>5||SKIP.has(k)||k.startsWith('CarIdx'))continue;const a=new Float64Array(n);for(let r=0;r<n;r++)a[r]=rd(v,L.s+r);o.ext[k]=a;o.meta[k]={u:v.u,d:v.d}}
@@ -866,7 +870,7 @@ const TT=V.TrackTempCrew||V.TrackTemp,STEP=10;
 const rows=ib.laps.map((l,i)=>{const r={i,lap:l.lap,ok:l.ok,time:l.ok?l.time:null,span:l.span,sec:null,fuel:null,f0:V.FuelLevel?rd(V.FuelLevel,l.s):null,refuel:false,inc:null,tt:null,top:null,ty:{},note:''};
 const d0=rd(V.LapDistPct,l.s),end=l.e>=rc,pitS=V.OnPitRoad?rd(V.OnPitRoad,l.s):0,pitE=V.OnPitRoad?rd(V.OnPitRoad,l.e-1):0;let pit=false;
 if(V.OnPitRoad)for(let q=l.s;q<l.e;q+=STEP)if(rd(V.OnPitRoad,q)){pit=true;break}
-r.note=pitS&&pitE?'in the pits':pitS?'out lap':pitE?'in lap':pit?'pit stop':end?'not finished':d0>.05?'joined mid-lap':!l.ok?'not timed':'';r.pit=pit;
+r.note=pitS&&pitE?'in the pits':pitS?'out lap':pitE?'in lap':pit?'pit stop':l.away?'not you driving':end?'not finished':d0>.05?'joined mid-lap':!l.ok?'not timed':'';r.pit=pit;
 if(l.ok&&secs.length&&V.SessionTime){const t0=rd(V.SessionTime,l.s),span=rd(V.SessionTime,l.e-1)-t0,k=span>0?l.time/span:1,b=[];let si=0,pp=d0,pt=0;
 for(let q=l.s+1;q<l.e&&si<secs.length;q++){const p=rd(V.LapDistPct,q),t=(rd(V.SessionTime,q)-t0)*k;while(si<secs.length&&pp<secs[si]&&p>=secs[si]){b.push(pt+(secs[si]-pp)/((p-pp)||1)*(t-pt));si++}pp=p;pt=t}
 if(b.length===secs.length){const pts=[0,...b,l.time];r.sec=pts.slice(1).map((v,j)=>v-pts[j])}}
@@ -993,10 +997,10 @@ if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFini
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
 const c=LIVE.cur,b=c.b;if(b.Speed.length<40000&&v.Speed!=null&&v.LapDistPct!=null&&v.LapDistPct>=0){b.Speed.push(v.Speed);b.Brake.push(v.Brake||0);b.LatG.push(v.LatAccel||0);b.gear.push(v.Gear||0);b.rpm.push(v.RPM||0);b.lon.push(v.LongAccel||0);b.yaw.push(v.YawRate||0);b.abs.push(v.BrakeABSactive?1:0);const rhv={};LIVE_TIRES.forEach(k=>rhv[k]=liveRh(v,k));LIVE_TIRES.forEach(k=>{b.rh[k].push(rhv[k]);const tc=[v[k+'tempCL'],v[k+'tempCM'],v[k+'tempCR']].filter(x=>x!=null);b.tc[k].push(tc.length?tc.reduce((s,x)=>s+x,0)/tc.length:null)});if(v.dcBrakeBias!=null)b.bb.push(v.dcBrakeBias);b.d.push(v.LapDistPct);b.t.push(v.LapCurrentLapTime);b.thr.push(v.Throttle);b.str.push(v.SteeringWheelAngle);b.rhLF.push(rhv.LF);b.rhRF.push(rhv.RF);b.rhLR.push(rhv.LR);b.rhRR.push(rhv.RR);const rf=liveRef(),rt=rf&&v.LapDistPct!=null?liveRefTime(rf,v.LapDistPct):null;const dd=rt==null||!(v.LapCurrentLapTime>0)||(v.LapDistPct>0.5&&v.LapCurrentLapTime<10)||(v.LapDistPct<0.1&&v.LapCurrentLapTime>30)?null:v.LapCurrentLapTime-rt;b.dlt.push(dd!=null&&Math.abs(dd)<15?dd:null)}
 if(v.Speed>12&&!v.OnPitRoad&&v.YawRate!=null&&v.SteeringWheelAngle!=null&&v.LatAccel!=null){c.tk=(c.tk||0)+1;if(c.tk%(LIVE.remote?1:2)===0){c.hs=c.hs||[];if(c.hs.length<20000)c.hs.push({v:v.Speed,k:v.YawRate/v.Speed,s:v.SteeringWheelAngle,y:v.YawRate,g:Math.abs(v.LatAccel)/9.80665,t:v.Throttle||0,b:v.Brake||0,beta:v.VelocityX!=null&&v.VelocityY!=null?Math.atan2(v.VelocityY,Math.max(1,v.VelocityX))*57.2958:null,abs:v.BrakeABSactive?1:0})}}
-if(v.OnPitRoad)c.pit=true;if(v.LapDistPct!=null&&v.LapDistPct>=0)c.lastD=v.LapDistPct;if(v.LapCurrentLapTime>0)c.lastT=v.LapCurrentLapTime;
+if(v.OnPitRoad)c.pit=true;if(v.IsOnTrack===false||v.IsOnTrack===0)c.away=true;if(v.LapDistPct!=null&&v.LapDistPct>=0)c.lastD=v.LapDistPct;if(v.LapCurrentLapTime>0)c.lastT=v.LapCurrentLapTime;
 liveFrame()}
 function liveFrame(){if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE.raf=0;const now=performance.now(),txt=!(now-(LIVE.lastTxt||0)<100);if(txt)LIVE.lastTxt=now;liveGauges(!txt);const box=$('liveCharts');if(box&&box.clientWidth)liveDrawCharts()})}
-function liveFinish(c,v){const b=c.b,n=b.Speed.length,valid=c.d0<0.05&&c.lastD>0.95&&!c.pit&&n>=50&&c.lastT>0;
+function liveFinish(c,v){const b=c.b,n=b.Speed.length,valid=c.d0<0.05&&c.lastD>0.95&&!c.pit&&!c.away&&n>=50&&c.lastT>0;
 const mean=a=>{const x=a.filter(y=>y!=null);return x.length?x.reduce((s,y)=>s+y,0)/x.length:null};let st=null;
 if(LIVE_TIRES.every(k=>b.rh[k].every(x=>x!=null))){const ext={};LIVE_TIRES.forEach(k=>ext[k+'rideHeight']=Float64Array.from(b.rh[k]));st=aeroRhStats({n,Speed:Float64Array.from(b.Speed),Brake:Float64Array.from(b.Brake),LatG:Float64Array.from(b.LatG),ext,lapNum:c.lap})}
 const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
@@ -1725,8 +1729,10 @@ function coachThemes(C){const T={};C.corners.filter(c=>c.dt>0.02).forEach(c=>{co
 if(C.between>0.02)T['straights']={k:'straights',dt:C.between,corners:[]};return Object.values(T).sort((a,b)=>b.dt-a.dt)}
 // average-vs-best results kept per car and track, to show the trend across sessions
 const COACH_HIST_KEY='coachHist';
-function coachHistAdd(key,X){try{const H=JSON.parse(localStorage.getItem(COACH_HIST_KEY)||'{}')||{},L=H[key]||(H[key]=[]),e={at:Date.now(),src:X.S.lab,n:X.n,avg:+X.avg.lap.toFixed(3),best:+X.best.lap.toFixed(3),gap:+X.C.total.toFixed(3),spread:+X.avg.spread.toFixed(3),cs:Object.fromEntries(X.C.corners.map(c=>[c.n,+c.dt.toFixed(3)]))};
-if(L.some(x=>x.src===e.src&&x.n===e.n&&Math.abs(x.avg-e.avg)<1e-3))return L;L.push(e);while(L.length>30)L.shift();localStorage.setItem(COACH_HIST_KEY,JSON.stringify(H));return L}catch(e){return []}}
+function coachHistAdd(key,X){try{const H=JSON.parse(localStorage.getItem(COACH_HIST_KEY)||'{}')||{},L=H[key]||(H[key]=[]),e={at:Date.now(),src:X.S.lab,n:X.n,avg:+X.avg.lap.toFixed(3),best:+X.best.lap.toFixed(3),gap:+X.C.total.toFixed(3),spread:+X.avg.spread.toFixed(3),who:coachWho(X),cs:Object.fromEntries(X.C.corners.map(c=>[c.n,+c.dt.toFixed(3)]))};
+const mine=x=>!x.who||!e.who||x.who===e.who;if(!L.some(x=>x.src===e.src&&x.n===e.n&&Math.abs(x.avg-e.avg)<1e-3)){L.push(e);while(L.length>30)L.shift();localStorage.setItem(COACH_HIST_KEY,JSON.stringify(H))}return L.filter(mine)}catch(e){return []}}
+// whose laps these are (a teammate's .ibt keeps its own progress)
+function coachWho(X){const l=X.laps&&X.laps[0];return l&&l.who&&!/^(You|Lap|Live lap)$/.test(l.who)?l.who:null}
 function coachHtml2(){const srcs=coachSources();let h='<b>Coach: turn your average lap into your best</b> <span class="m">Your typical lap (the middle of your clean laps at every point of the track) against your best, corner by corner, with what to change.</span>';
 h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px"><label>Average of <select id="coSrc">'+(srcs.length?srcs.map(x=>'<option value="'+plain(x.id)+'"'+(x.id===COACH.src?' selected':'')+'>'+plain(x.lab)+'</option>').join(''):'<option>no laps yet</option>')+'</select></label>'+
 '<label>against <select id="coTo"><option value="best"'+(COACH.to==='best'?' selected':'')+'>your best lap in that set</option>'+(COACH.g61.length?'<option value="g61best"'+(COACH.to==='g61best'?' selected':'')+'>the fastest Garage61 lap below</option>':'')+(F.b&&!SELF?'<option value="ref"'+(COACH.to==='ref'?' selected':'')+'>the reference lap (right box)</option>':'')+'</select></label>'+

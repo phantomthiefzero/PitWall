@@ -95,6 +95,11 @@ CarSetup:
  UpdateCount: 1
 """
 
+# A team event as the recorder's file has it: the car's entry names the teammate who was in the car
+# when the file was written; the recorder is only known by DriverUserID.
+TEAM_YAML = SESSION_YAML.replace("DriverInfo:\n DriverCarIdx: 0", "WeekendInfo2:\n TeamRacing: 1\nDriverInfo:\n DriverCarIdx: 0\n DriverUserID: 222").replace(
+    "   UserName: Test Driver\n", "   UserName: Team Mate\n   AbbrevName: Mate, T\n   Initials: TM\n   UserID: 111\n   TeamName: Test Team\n")
+
 CHANNELS = [("SessionTime", 5, "s"), ("Lap", 2, ""), ("LapDistPct", 4, "%"), ("Speed", 4, "m/s"),
             ("Brake", 4, "%"), ("Throttle", 4, "%"), ("SteeringWheelAngle", 4, "rad"), ("Gear", 2, ""),
             ("LapLastLapTime", 4, "s"), ("LapCurrentLapTime", 4, "s"), ("OnPitRoad", 1, ""),
@@ -109,7 +114,7 @@ def sector_times(k):
     return [6.0 + 0.10 * ((k * 3) % 4), 7.0 + 0.08 * ((k * 5) % 3), 8.0 + 0.12 * ((k * 7) % 5)]
 
 
-def build_session(path):
+def build_session(path, team=False):
     """Grid lap 0 in the pits, a 5 s 'lap 1' then the counter back to 0 (as seen),
     timed laps 1-6, lap 7 an in-lap, lap 8 an out-lap with a refuel, lap 9 timed,
     then 10 for a moment and back to 9 in the pits. Incident +2 on lap 4."""
@@ -158,7 +163,8 @@ def build_session(path):
                 fuel = 40.0                     # refuel in the stall
             if kind == "lap" and lapno == 4 and abs(p - 0.5) < 1e-3 and inc == 0:
                 inc = 2
-            rows.append({"SessionTime": t, "Lap": lapno, "LapDistPct": p, "Speed": 50.0, "Throttle": 1.0, "Gear": 4,
+            rows.append({"IsOnTrack": 0 if team and lapno in (3, 4) else 1, "IsOnTrackCar": 1,
+                         "SessionTime": t, "Lap": lapno, "LapDistPct": p, "Speed": 50.0, "Throttle": 1.0, "Gear": 4,
                          "OnPitRoad": 1 if pit else 0, "FuelLevel": fuel - lap_fuel * i / n,
                          "PlayerCarMyIncidentCount": inc, "TrackTempCrew": 30.0 - 0.1 * lapno,
                          "LapCurrentLapTime": tt, "LapLastLapTime": last,
@@ -170,9 +176,46 @@ def build_session(path):
         # LapLastLapTime against the lap's own span, so report the true span.
         last = n / HZ if kind != "rejoin" else last
         expected.setdefault("laps", []).append((lapno, kind, n / HZ, st))
-    write_ibt(path, SESSION_YAML, CHANNELS, rows)
+    if team:
+        write_ibt(path, TEAM_YAML, CHANNELS + [("IsOnTrack", 1, ""), ("IsOnTrackCar", 1, "")], rows)
+    else:
+        write_ibt(path, SESSION_YAML, CHANNELS, rows)
     return expected
 
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class TeamSessionTest(unittest.TestCase):
+    """A team event: laps 3 and 4 were driven by a teammate (IsOnTrack 0, the car still running), and
+    the session info names the teammate. Only the recorder's laps are theirs, under their own name."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.mkdtemp()
+        cls.path = os.path.join(cls.dir, "team.ibt")
+        build_session(cls.path, team=True)
+        cls.res = run_js("""
+const ib = ibt(readBytes(ARGS[0])), S = sessionStats(ib);
+const named = ibtWho('DriverInfo:\\n DriverUserID: 222\\n Drivers:\\n - CarIdx: 0\\n   UserName: Team Mate\\n   UserID: 111\\n - CarIdx: 1\\n   UserName: Andrew Brooks\\n   AbbrevName: Brooks, A\\n   UserID: 222\\n', 'Team Mate', true);
+console.log(JSON.stringify({ who: ib.who, team: ib.team, lapWho: ib.lapObj(ib.best).who, named, solo: ibtWho('Drivers:\\n - CarIdx: 0\\n   UserName: Solo\\n', 'Solo', false),
+  rows: S.rows.map(r => [r.lap, r.ok, r.note]), clean: S.clean.map(r => r.lap), best: ib.laps[ib.best].lap }));
+""", cls.path)
+
+    def test_the_teammates_laps_are_not_yours(self):
+        r = self.res
+        notes = {lap: (ok, note) for lap, ok, note in r["rows"] if lap in (3, 4)}
+        self.assertEqual(notes, {3: (False, "not you driving"), 4: (False, "not you driving")})
+        self.assertNotIn(3, r["clean"])
+        self.assertNotIn(4, r["clean"])
+        self.assertIn(5, r["clean"])
+        self.assertNotIn(r["best"], (3, 4))
+
+    def test_named_by_who_recorded_the_file(self):
+        r = self.res
+        self.assertTrue(r["team"])
+        self.assertEqual(r["who"], "You")                     # the teammate's name is never used for your laps
+        self.assertEqual(r["lapWho"], "You")
+        self.assertEqual(r["named"], "Andrew Brooks")         # found by user id when the recorder is listed
+        self.assertEqual(r["solo"], "Solo")
 
 @unittest.skipUnless(NODE, "Node.js is not installed")
 class SessionReviewTest(unittest.TestCase):
