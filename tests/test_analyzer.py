@@ -1438,3 +1438,35 @@ console.log(JSON.stringify({ ids, none: coachConditions([{}, {}, null]) }));
         self.assertEqual(set(ids["hot"]) | set(ids["cool"]), set(range(14)))
         self.assertEqual(ids["optimal"], [4, 5, 12, 13])        # not heavy, not cold, not late
         self.assertEqual(r["none"], {})
+
+
+@unittest.skipUnless(NODE and os.path.exists(REAL_IBT), "needs Node and the real Indianapolis file")
+class CoachPageRealFileTest(unittest.TestCase):
+    """The coaching page on Andrew's real Indianapolis laps: every section is there and says something."""
+
+    @classmethod
+    def setUpClass(cls):
+        js = r"""
+IB.a = ibt(readBytes(ARGS[0]));
+COACH.src = 'ibt'; COACH.to = 'best';
+const X = coachRun(), SD = coachSetupData(X), SDiff = coachStyleDiff(X.C.R, X.laps), PR = coachPriorities(X, SD, SDiff), html = coachBody(X);
+const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind), gains: PR.map(p => +p.gain.toFixed(3)),
+  titles: PR.map(p => p.title), notes: Object.keys(SDiff).length, svgs: (html.match(/<svg/g) || []).length,
+  hasMap: html.indexOf('Track map coloured') >= 0, text: text.slice(0, 600), sections: ['Where the time goes', 'What to do, biggest gain first', 'Corner by corner', 'Setup'].map(s => text.indexOf(s) >= 0) }));
+"""
+        cls.r = run_js(js, REAL_IBT)
+
+    def test_sections_and_visuals(self):
+        r = self.r
+        self.assertEqual(r["sections"], [True, True, True, True])
+        self.assertTrue(r["hasMap"])
+        self.assertGreaterEqual(r["svgs"], 3)                 # delta trace, map, a corner trace
+
+    def test_priorities_mix_driving_and_setup_ranked_by_time(self):
+        r = self.r
+        self.assertIn("drive", r["kinds"])
+        self.assertIn("setup", r["kinds"])                    # the laps understeer mid-corner
+        drive = [g for k, g in zip(r["kinds"], r["gains"]) if k == "drive"]
+        self.assertEqual(drive, sorted(drive, reverse=True))
+        self.assertGreater(r["notes"], 0)                     # technique differences against the best lap
