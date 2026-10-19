@@ -95,6 +95,11 @@ CarSetup:
  UpdateCount: 1
 """
 
+# A team event as the recorder's file has it: the car's entry names the teammate who was in the car
+# when the file was written; the recorder is only known by DriverUserID.
+TEAM_YAML = SESSION_YAML.replace("DriverInfo:\n DriverCarIdx: 0", "WeekendInfo2:\n TeamRacing: 1\nDriverInfo:\n DriverCarIdx: 0\n DriverUserID: 222").replace(
+    "   UserName: Test Driver\n", "   UserName: Team Mate\n   AbbrevName: Mate, T\n   Initials: TM\n   UserID: 111\n   TeamName: Test Team\n")
+
 CHANNELS = [("SessionTime", 5, "s"), ("Lap", 2, ""), ("LapDistPct", 4, "%"), ("Speed", 4, "m/s"),
             ("Brake", 4, "%"), ("Throttle", 4, "%"), ("SteeringWheelAngle", 4, "rad"), ("Gear", 2, ""),
             ("LapLastLapTime", 4, "s"), ("LapCurrentLapTime", 4, "s"), ("OnPitRoad", 1, ""),
@@ -109,7 +114,7 @@ def sector_times(k):
     return [6.0 + 0.10 * ((k * 3) % 4), 7.0 + 0.08 * ((k * 5) % 3), 8.0 + 0.12 * ((k * 7) % 5)]
 
 
-def build_session(path):
+def build_session(path, team=False):
     """Grid lap 0 in the pits, a 5 s 'lap 1' then the counter back to 0 (as seen),
     timed laps 1-6, lap 7 an in-lap, lap 8 an out-lap with a refuel, lap 9 timed,
     then 10 for a moment and back to 9 in the pits. Incident +2 on lap 4."""
@@ -158,7 +163,8 @@ def build_session(path):
                 fuel = 40.0                     # refuel in the stall
             if kind == "lap" and lapno == 4 and abs(p - 0.5) < 1e-3 and inc == 0:
                 inc = 2
-            rows.append({"SessionTime": t, "Lap": lapno, "LapDistPct": p, "Speed": 50.0, "Throttle": 1.0, "Gear": 4,
+            rows.append({"IsOnTrack": 0 if team and lapno in (3, 4) else 1, "IsOnTrackCar": 1,
+                         "SessionTime": t, "Lap": lapno, "LapDistPct": p, "Speed": 50.0, "Throttle": 1.0, "Gear": 4,
                          "OnPitRoad": 1 if pit else 0, "FuelLevel": fuel - lap_fuel * i / n,
                          "PlayerCarMyIncidentCount": inc, "TrackTempCrew": 30.0 - 0.1 * lapno,
                          "LapCurrentLapTime": tt, "LapLastLapTime": last,
@@ -170,9 +176,46 @@ def build_session(path):
         # LapLastLapTime against the lap's own span, so report the true span.
         last = n / HZ if kind != "rejoin" else last
         expected.setdefault("laps", []).append((lapno, kind, n / HZ, st))
-    write_ibt(path, SESSION_YAML, CHANNELS, rows)
+    if team:
+        write_ibt(path, TEAM_YAML, CHANNELS + [("IsOnTrack", 1, ""), ("IsOnTrackCar", 1, "")], rows)
+    else:
+        write_ibt(path, SESSION_YAML, CHANNELS, rows)
     return expected
 
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class TeamSessionTest(unittest.TestCase):
+    """A team event: laps 3 and 4 were driven by a teammate (IsOnTrack 0, the car still running), and
+    the session info names the teammate. Only the recorder's laps are theirs, under their own name."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.mkdtemp()
+        cls.path = os.path.join(cls.dir, "team.ibt")
+        build_session(cls.path, team=True)
+        cls.res = run_js("""
+const ib = ibt(readBytes(ARGS[0])), S = sessionStats(ib);
+const named = ibtWho('DriverInfo:\\n DriverUserID: 222\\n Drivers:\\n - CarIdx: 0\\n   UserName: Team Mate\\n   UserID: 111\\n - CarIdx: 1\\n   UserName: Andrew Brooks\\n   AbbrevName: Brooks, A\\n   UserID: 222\\n', 'Team Mate', true);
+console.log(JSON.stringify({ who: ib.who, team: ib.team, lapWho: ib.lapObj(ib.best).who, named, solo: ibtWho('Drivers:\\n - CarIdx: 0\\n   UserName: Solo\\n', 'Solo', false),
+  rows: S.rows.map(r => [r.lap, r.ok, r.note]), clean: S.clean.map(r => r.lap), best: ib.laps[ib.best].lap }));
+""", cls.path)
+
+    def test_the_teammates_laps_are_not_yours(self):
+        r = self.res
+        notes = {lap: (ok, note) for lap, ok, note in r["rows"] if lap in (3, 4)}
+        self.assertEqual(notes, {3: (False, "not you driving"), 4: (False, "not you driving")})
+        self.assertNotIn(3, r["clean"])
+        self.assertNotIn(4, r["clean"])
+        self.assertIn(5, r["clean"])
+        self.assertNotIn(r["best"], (3, 4))
+
+    def test_named_by_who_recorded_the_file(self):
+        r = self.res
+        self.assertTrue(r["team"])
+        self.assertEqual(r["who"], "You")                     # the teammate's name is never used for your laps
+        self.assertEqual(r["lapWho"], "You")
+        self.assertEqual(r["named"], "Andrew Brooks")         # found by user id when the recorder is listed
+        self.assertEqual(r["solo"], "Solo")
 
 @unittest.skipUnless(NODE, "Node.js is not installed")
 class SessionReviewTest(unittest.TestCase):
@@ -1453,15 +1496,27 @@ const X = coachRun(), SD = coachSetupData(X), SDiff = coachStyleDiff(X.C.R, X.la
 const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind), gains: PR.map(p => +p.gain.toFixed(3)),
   titles: PR.map(p => p.title), notes: Object.keys(SDiff).length, svgs: (html.match(/<svg/g) || []).length,
-  hasMap: html.indexOf('Track map coloured') >= 0, text: text.slice(0, 600), sections: ['Where the time goes', 'What to do, biggest gain first', 'Corner by corner', 'Setup'].map(s => text.indexOf(s) >= 0) }));
+  hasMap: html.indexOf('Track map coloured') >= 0, text: text.slice(0, 600), sections: ['Your next session', 'Where the time goes', 'Corner by corner', 'Consistency', 'Track limits', 'Setup'].map(s => text.indexOf(s) >= 0),
+  c4: (X.C.corners.find(c => c.n === 4).cause || { steps: [] }).steps.map(s => s.k), lineMaps: (html.match(/aria-label="Your line through the corner/g) || []).length, offs: coachOffs(IB.a, X.C.R.cs) }));
 """
         cls.r = run_js(js, REAL_IBT)
 
     def test_sections_and_visuals(self):
         r = self.r
-        self.assertEqual(r["sections"], [True, True, True, True])
+        self.assertEqual(r["sections"], [True] * 6)
+        self.assertGreaterEqual(r["lineMaps"], 3)             # the three things and the corner cards
         self.assertTrue(r["hasMap"])
         self.assertGreaterEqual(r["svgs"], 3)                 # delta trace, map, a corner trace
+
+    def test_corner_four_brakes_and_turns_in_early(self):
+        # measured on the real laps: 9 m early on the brake and the turn-in, 3.9 m tight on the exit
+        self.assertEqual(self.r["c4"], ["brake_later", "turn_later", "use_exit"])
+
+    def test_track_limits_count_every_timed_lap(self):
+        o = self.r["offs"]
+        self.assertEqual(o["offsN"], 4)
+        self.assertEqual(o["offs"], {"9": 1, "13": 3})
+        self.assertEqual(o["incN"], 9)
 
     def test_priorities_mix_driving_and_setup_ranked_by_time(self):
         r = self.r
@@ -1470,6 +1525,96 @@ console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind),
         drive = [g for k, g in zip(r["kinds"], r["gains"]) if k == "drive"]
         self.assertEqual(drive, sorted(drive, reverse=True))
         self.assertGreater(r["notes"], 0)                     # technique differences against the best lap
+
+
+FACTS_JS = r"""
+// a 2 km circular track (always turning left), two corners made by braking; GPS, steering, wheels and kerbs
+function lap(o) {
+  const n = 2000, len = 2000, Rr = len / (2 * Math.PI), la0 = 39.79, lo0 = -86.23, D = new Float64Array(n), S = new Float64Array(n), Br = new Float64Array(n), Th = new Float64Array(n), t = new Float64Array(n),
+    St = new Float64Array(n), Lat = new Float64Array(n), Lon = new Float64Array(n), W = { LF: new Float64Array(n), RF: new Float64Array(n), LR: new Float64Array(n), RR: new Float64Array(n) },
+    K = { LF: new Float64Array(n), RF: new Float64Array(n), LR: new Float64Array(n), RR: new Float64Array(n) }, TS = new Float64Array(n).fill(3);
+  const corners = [[0.35, o.brake, o.turn], [0.75, 0.70, 0.73]];
+  for (let i = 0; i < n; i++) {
+    const d = i / (n - 1); D[i] = d; let v = 60, br = 0, th = 1, st = 0, out = 0;
+    for (const [ap, bp, tp] of corners) {
+      if (d >= bp && d < ap) { const f = (d - bp) / (ap - bp); v = 60 - 35 * f; br = 0.9 * (1 - 0.5 * f); th = 0 }
+      else if (d >= ap && d < ap + 0.05) { const f = (d - ap) / 0.05; v = 25 + 35 * f; br = 0; th = f > 0.2 ? 1 : 0.3 }
+      if (d >= tp && d <= ap) st = 0.5 * (d - tp) / (ap - tp); else if (d > ap && d < ap + 0.05) st = 0.5 * (1 - (d - ap) / 0.05);
+    }
+    if (o.tight && d >= 0.36 && d < 0.40) out = -2;                    // 2 m inside on the exit of corner 1
+    S[i] = v; Br[i] = br; Th[i] = th; St[i] = st;
+    const th0 = 2 * Math.PI * d, r = Rr + out; Lon[i] = lo0 + r * Math.cos(th0) / (111320 * Math.cos(la0 * Math.PI / 180)); Lat[i] = la0 + r * Math.sin(th0) / 110574;
+    for (const k in W) W[k][i] = v * 0.97;
+    if (o.spin && d >= 0.36 && d < 0.38) { W.LR[i] = W.RR[i] = v * 1.15 }
+    if (o.kerb && d >= 0.37 && d < 0.39) for (const k in K) K[k][i] = 25;
+    if (o.off && d >= 0.38 && d < 0.385) TS[i] = 0;
+    t[i] = i ? t[i - 1] + (len / (n - 1)) / ((S[i] + S[i - 1]) / 2) : 0;
+  }
+  const z = () => new Float64Array(n), ext = { TireLF_RumblePitch: K.LF, TireRF_RumblePitch: K.RF, TireLR_RumblePitch: K.LR, TireRR_RumblePitch: K.RR, PlayerTrackSurface: TS };
+  for (const k in W) ext[k + 'speed'] = W[k];
+  return { n, D, Speed: S, Brake: Br, Throttle: Th, t, lap: t[n - 1], Steer: St, Gear: z().fill(3), Lat, Lon, RPM: z(), ABS: z(), LatG: z(), LonG: z(), VertG: z(), YawRate: z(), who: 'x', ext, meta: {} };
+}
+const best = lap({ brake: 0.31, turn: 0.33, kerb: true });
+const laps = [0, 1, 2, 3, 4].map(i => lap({ brake: 0.29, turn: 0.32, tight: true, spin: true, off: i === 0 }));
+const C = coachCompare(avgLap(laps), best, laps), c1 = C.corners.find(c => Math.abs(c.ap - 350) < 40), c2 = C.corners.find(c => Math.abs(c.ap - 750) < 40);
+const y = c1.fx.y, b = c1.fx.b;
+// practice: the best lap graded against itself, and a lap that brakes early
+const T = [pracTarget(c1, 'Corner 1')], gb = pracGrade(best, T)[0], gl = pracGrade(laps[1], T)[0];
+// track limits from a stand-in .ibt: two timed laps, one goes off at 38% and picks up 1x
+const rows = [];for (let l = 0; l < 2; l++) for (let i = 0; i < 600; i++) { const d = i / 599; rows.push({ d, ts: l === 1 && d > 0.38 && d < 0.39 ? 0 : 3, ic: l === 1 && d > 0.385 ? 1 : 0 }) }
+const V = { LapDistPct: 'd', PlayerTrackSurface: 'ts', PlayerCarMyIncidentCount: 'ic' }, ib = { _rd: (v, r) => rows[r][v], _V: V, laps: [{ ok: true, s: 0, e: 600 }, { ok: true, s: 600, e: 1200 }] };
+const O = coachOffs(ib, C.R.cs);
+// progress: two sessions, corner 1 better in the second
+const ph = coachProgressHtml([{ at: 1, n: 5, avg: 90, best: 89, gap: 1, spread: .3, cs: { 1: .4, 2: .1 } }, { at: 2, n: 5, avg: 89.5, best: 89, gap: .5, spread: .2, cs: { 1: .1, 2: .1 } }]);
+console.log(JSON.stringify({ c1n: c1.n, steps: c1.cause && c1.cause.steps.map(s => s.k), head: c1.cause && c1.cause.head, c2: c2.cause, d_ba: (y.ba - b.ba) * c1.mpg, d_tin: (y.tin - b.tin) * c1.mpg,
+  line: y.line, kerbB: b.kerb, kerbY: y.kerb, spinY: y.spin, spinB: b.spin, lockY: y.lock, offY: y.offTrack, trail: y.trail,
+  gb: [gb.dct, gb.dms, gb.dba, gb.ok], gl: [gl.dct > 0.05, gl.dba, gl.ok.brake], offs: O, prog: [ph.indexOf('<svg') >= 0, /Better since[^<]*Corner 1/.test(ph)], cons: coachConsist(C).map(x => x.n) }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CoachCauseTest(unittest.TestCase):
+    """What a driver does differently in a corner, measured from the inputs, GPS, wheels and kerbs:
+    laps that brake 40 m early, turn in early, run 2 m tight on the exit, spin the rears and miss the
+    exit kerb the best lap uses."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(FACTS_JS)
+
+    def test_the_cause_in_the_order_you_meet_it(self):
+        r = self.r
+        self.assertEqual(r["steps"], ["brake_later", "turn_later", "spin"])   # the three biggest, in corner order
+        self.assertEqual(r["head"], "Brake later, then turn in later")
+        self.assertIsNone(r["c2"])                                             # the same in every lap: nothing to say
+
+    def test_measured_against_the_best(self):
+        r = self.r
+        self.assertAlmostEqual(r["d_ba"], -40, delta=3)        # brakes 0.29 instead of 0.31 of 2 km
+        self.assertAlmostEqual(r["d_tin"], -14, delta=3)       # steering starts 0.01 earlier; 30% of the peak 0.0072 earlier
+        self.assertAlmostEqual(r["line"]["ex"], 2, delta=.2)   # 2 m inside (tighter) at the track-out
+        self.assertAlmostEqual(r["line"]["in"], 0, delta=.2)
+        self.assertEqual(r["trail"], 1)
+
+    def test_wheels_kerbs_and_track_limits(self):
+        r = self.r
+        self.assertEqual(r["kerbB"], {"in": False, "ap": False, "ex": True})
+        self.assertEqual(r["kerbY"]["ex"], 0)
+        self.assertEqual((r["spinY"], r["spinB"], r["lockY"]), (1, False, 0))
+        self.assertAlmostEqual(r["offY"], 0.2)                  # one lap of five leaves the track
+        self.assertEqual(r["offs"], {"laps": 2, "offs": {"1": 1}, "inc": {"1": 1}, "offsN": 1, "incN": 1})
+
+    def test_practice_grades_a_lap_against_the_best(self):
+        r = self.r
+        dct, dms, dba, ok = r["gb"]
+        self.assertEqual((round(dct, 6), round(dms, 6), round(dba, 6)), (0, 0, 0))
+        self.assertTrue(all(ok.values()))
+        self.assertTrue(r["gl"][0])                              # the early-braking lap is slower through the corner
+        self.assertAlmostEqual(r["gl"][1], -40, delta=3)
+        self.assertFalse(r["gl"][2])
+
+    def test_progress_chart(self):
+        self.assertEqual(self.r["prog"], [True, True])
 
 
 @unittest.skipUnless(NODE, "Node.js is not installed")

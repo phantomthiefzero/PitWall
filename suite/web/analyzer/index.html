@@ -18,6 +18,7 @@ canvas{width:100%;display:block}.ch{margin-bottom:10px}.ch small{color:var(--mut
 #map{width:320px;height:320px;max-width:100%}#err{color:var(--bad)}#ro{font-size:13px;color:var(--mut);min-height:20px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--card);padding:6px 0;z-index:2;border-bottom:1px solid var(--ln);margin-bottom:8px}
 @media(max-width:600px){.drops{grid-template-columns:1fr}}
 details.fold{margin-bottom:14px}.pbar{height:8px;background:var(--ln);border-radius:4px;overflow:hidden;margin:4px 0 8px}.pbar span{display:block;height:100%;background:var(--good)}details.fold>summary{cursor:pointer;font-weight:600;margin:0 0 8px;list-style-position:inside}details.fold>summary .m{font-weight:400}#start{border-color:var(--fg)}#start ol li{margin-bottom:4px}
+.cothings{display:grid;gap:10px}.cothing{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--ln);border-radius:10px;padding:10px 12px;background:var(--card)}.cothing-n{font-size:24px;font-weight:800;color:var(--mut);min-width:22px;line-height:1.1}.cothing-t{flex:1 1 0;min-width:0}.cothing-v{flex:0 0 240px;max-width:240px}.cotag{font-size:11px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:9px;color:#fff}.cotarget{display:inline-block;margin-top:6px;padding:3px 9px;border-radius:6px;background:var(--bg);border:1px solid var(--ln);font-weight:600;font-size:14px}.cofold{margin-top:12px;border-top:1px solid var(--ln);padding-top:8px}.cofold>summary{cursor:pointer;font-size:16px}.cocards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;margin-top:6px}.cocard{border:1px solid var(--ln);border-radius:8px;padding:8px 10px;min-width:0}.covis{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:6px}.cofacts{width:100%;font-size:13px;margin-top:6px}.cofacts td,.cofacts th{padding:2px 6px}.cofacts td:nth-child(n+2),.cofacts th:nth-child(n+2){text-align:right;white-space:nowrap}.coprac{margin-top:12px;padding:10px 12px;border:2px solid var(--you);border-radius:10px}button.on{background:var(--you);color:#fff;border-color:var(--you)}@media(max-width:640px){.cothing{flex-wrap:wrap}.cothing-t{flex:1 1 calc(100% - 40px)}.cothing-v{flex:1 1 100%;max-width:240px;margin:0 auto}.cocards{grid-template-columns:1fr}}
 @media(max-width:640px){.heatMarks{visibility:hidden}body{padding:12px}.drops{grid-template-columns:1fr}.dz{padding:14px}h1{font-size:20px}.card{padding:10px}table{font-size:13px}th,td{padding:5px 6px}}
 #setup a{color:var(--fg);text-decoration:underline;text-underline-offset:2px}#setup a[data-inf]{text-decoration:none;color:var(--mut);font-size:15px}#setup a[data-inf]:hover{color:var(--fg)}#setup input[type=number]{background:var(--bg);color:var(--fg);border:1px solid var(--ln);border-radius:4px;padding:3px 5px;font:inherit;font-size:14px}#setup button{font:inherit;font-size:12px}.stabs{display:flex;gap:2px;border-bottom:1px solid var(--ln);margin-top:12px;flex-wrap:wrap}#setup .stabs button{background:none;border:0;border-bottom:3px solid transparent;color:var(--mut);font-size:14px;font-weight:700;padding:8px 12px;cursor:pointer;text-transform:uppercase;letter-spacing:.03em}#setup .stabs button.on{color:var(--fg);border-bottom-color:#2f6fd6}.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-top:12px}.sfull{max-width:560px;margin:12px auto 0}.sx{min-width:0}.sxh{border-left:3px solid #d9a400;padding:5px 9px;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.04em;background:rgba(127,127,127,.12)}table.sxt{width:100%;margin-top:4px;border-collapse:collapse}table.sxt td{padding:4px 6px;border:0;vertical-align:middle}td.sxl{text-align:right;color:var(--mut);white-space:nowrap}tr.sxd td{background:rgba(184,120,0,.18)}@media(max-width:640px){.sgrid{grid-template-columns:1fr}td.sxl{white-space:normal}}
 .clr{display:block;margin:8px auto 0;font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--ln);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}.clr:hover{border-color:var(--fg)}
@@ -88,6 +89,9 @@ return Object.keys(top).length?top:null}
 // put into innerHTML all over this page. .ibt files get shared and downloaded, so the
 // characters that could make that text into markup are removed where it comes in.
 const plain=s=>String(s==null?'':s).replace(/[<>&"'`]/g,'');
+// Who recorded the file. In a team car the car's entry in the session info names whoever is driving
+// it when the file is written, which can be a teammate, so the name is found by the recorder's user id.
+function ibtWho(y,carName,team){const uid=(/DriverUserID:\s*(\d+)/.exec(y)||[])[1];if(uid){for(const blk of y.split(/\n\s*-\s*CarIdx:/).slice(1)){if(new RegExp('\\n\\s*UserID:\\s*'+uid+'\\s*(\\n|$)').test(blk)){const m=/\n\s*UserName:\s*([^\n]+)/.exec(blk);if(m)return m[1].trim()}}if(team)return 'You'}return carName||'You'}
 function ibt(buf){const dv=new DataView(buf),u8=new Uint8Array(buf),I=o=>dv.getInt32(o,true),tx=(o,l)=>{let s='';for(let i=0;i<l&&u8[o+i];i++)s+=String.fromCharCode(u8[o+i]);return s};
 const sl=I(16),so=I(20),nv=I(24),vo=I(28),bl=I(36),bo=I(52);const rc=Math.floor((buf.byteLength-bo)/bl);
 const V={};for(let i=0;i<nv;i++){const p=vo+i*144;V[tx(p+16,32).replace(/[^\w.-]/g,'_')]={t:I(p),o:I(p+4),c:I(p+8),u:plain(tx(p+112,32)),d:plain(tx(p+48,64))}}
@@ -96,12 +100,13 @@ const rd=(v,r)=>{const a=bo+r*bl+v.o;return v.t===1?u8[a]:v.t===4?dv.getFloat32(
 const lc=Int32Array.from({length:rc},(_,r)=>rd(V.Lap,r)),laps=[];
 for(let s=0;s<rc;){let e=s;while(e<rc&&lc[e]===lc[s])e++;const l={lap:lc[s],s,e,time:0,ok:false},tick=I(8)||60,span=V.SessionTime?rd(V.SessionTime,e-1)-rd(V.SessionTime,s)+1/tick:(e-s)/tick;let tc=V.LapCurrentLapTime?rd(V.LapCurrentLapTime,e-1):span;if(e<rc&&V.LapLastLapTime)for(let r=e;r<Math.min(rc,e+900);r++){const v=rd(V.LapLastLapTime,r);if(v>0&&Math.abs(v-tc)<.05){tc=v;break}}if(e<rc)l.time=tc;l.span=span;
 const d0=rd(V.LapDistPct,s),d1=rd(V.LapDistPct,e-1);let pit=false;if(V.OnPitRoad)for(let r=s;r<e;r++)if(rd(V.OnPitRoad,r)){pit=true;break}
-l.ok=e<rc&&l.time>0&&Math.abs(l.time-span)<.25&&e-s>=100&&d0<.05&&d1>.95&&!pit;laps.push(l);s=e}
+let away=false;if(V.IsOnTrack&&!pit){let n0=0,n=0;for(let r=s;r<e;r+=10){n++;if(!rd(V.IsOnTrack,r))n0++}away=n>0&&n0/n>.2}l.away=away;
+l.ok=e<rc&&l.time>0&&Math.abs(l.time-span)<.25&&e-s>=100&&d0<.05&&d1>.95&&!pit&&!away;laps.push(l);s=e}
 let best=-1;laps.forEach((l,i)=>{if(l.ok&&(best<0||l.time<laps[best].time))best=i});if(best<0)throw new Error('No complete, timed laps found in this file');
-const y=plain(new TextDecoder('latin1').decode(u8.subarray(so,so+sl))),di=+((/DriverCarIdx:\s*(\d+)/.exec(y)||[0,0])[1]),mm=new RegExp('CarIdx:\\s*'+di+'\\s*\\n\\s*UserName:\\s*(.+)').exec(y),who=mm?mm[1].trim():'You';
+const y=plain(new TextDecoder('latin1').decode(u8.subarray(so,so+sl))),di=+((/DriverCarIdx:\s*(\d+)/.exec(y)||[0,0])[1]),mm=new RegExp('CarIdx:\\s*'+di+'\\s*\\n\\s*UserName:\\s*(.+)').exec(y),team=/TeamRacing:\s*1/.test(y),who=ibtWho(y,mm?mm[1].trim():'',team);
 const blk=mm?y.slice(mm.index,mm.index+3000):'',gx=(re,s)=>{const q=re.exec(s);return q?q[1].trim():''},carPath=gx(/CarPath:\s*(\S+)/,blk),carName=gx(/CarScreenName:\s*([^\n]+)/,blk),track=gx(/TrackDisplayName:\s*([^\n]+)/,y),fuelKg=+gx(/DriverCarFuelKgPerLtr:\s*([\d.]+)/,y)||0;let top=0;if(V.Speed)laps.forEach(l=>{if(!l.ok)return;for(let r=l.s;r<l.e;r++){const v=rd(V.Speed,r);if(v>top)top=v}});
 const MAP={Speed:'Speed',D:'LapDistPct',Lat:'Lat',Lon:'Lon',Brake:'Brake',Throttle:'Throttle',Steer:'SteeringWheelAngle',Gear:'Gear',RPM:'RPM',ABS:'BrakeABSactive',LatG:'LatAccel',LonG:'LongAccel',VertG:'VertAccel',YawRate:'YawRate'},SKIP=new Set(Object.values(MAP).concat(['Lap','LapDist','SessionTime','SessionTick','SessionNum','SessionState','SessionFlags','SessionUniqueID','ReplayFrameNum','ReplayFrameNumEnd','ReplaySessionNum','ReplaySessionTime','ReplayPlaybackSpeed','ReplayPlaybackSlowMotion','ReplayPlaybackReal']));
-return{laps,best,_rd:rd,_V:V,_rc:rc,yaml:y,setup:setupTree(y),carPath,carName,track,top,fuelKg,lapObj(i){const L=laps[i],n=L.e-L.s,o={n,who,lap:L.time,lapNum:L.lap,ext:{},meta:{}};
+return{laps,best,_rd:rd,_V:V,_rc:rc,yaml:y,who,team,setup:setupTree(y),carPath,carName,track,top,fuelKg,lapObj(i){const L=laps[i],n=L.e-L.s,o={n,who,lap:L.time,lapNum:L.lap,ext:{},meta:{}};
 for(const k in MAP){const v=V[MAP[k]];o[k]=new Float64Array(n);if(v)for(let r=0;r<n;r++)o[k][r]=rd(v,L.s+r)}
 const ST=V.SessionTime;o.t=Float64Array.from({length:n},(_,j)=>j*L.time/(n-1));if(ST){const t0=rd(ST,L.s),span=rd(ST,L.e-1)-t0;if(span>0)o.t=Float64Array.from({length:n},(_,j)=>(rd(ST,L.s+j)-t0)*L.time/span)}
 for(const k in V){const v=V[k];if(v.c!==1||v.t<1||v.t>5||SKIP.has(k)||k.startsWith('CarIdx'))continue;const a=new Float64Array(n);for(let r=0;r<n;r++)a[r]=rd(v,L.s+r);o.ext[k]=a;o.meta[k]={u:v.u,d:v.d}}
@@ -865,7 +870,7 @@ const TT=V.TrackTempCrew||V.TrackTemp,STEP=10;
 const rows=ib.laps.map((l,i)=>{const r={i,lap:l.lap,ok:l.ok,time:l.ok?l.time:null,span:l.span,sec:null,fuel:null,f0:V.FuelLevel?rd(V.FuelLevel,l.s):null,refuel:false,inc:null,tt:null,top:null,ty:{},note:''};
 const d0=rd(V.LapDistPct,l.s),end=l.e>=rc,pitS=V.OnPitRoad?rd(V.OnPitRoad,l.s):0,pitE=V.OnPitRoad?rd(V.OnPitRoad,l.e-1):0;let pit=false;
 if(V.OnPitRoad)for(let q=l.s;q<l.e;q+=STEP)if(rd(V.OnPitRoad,q)){pit=true;break}
-r.note=pitS&&pitE?'in the pits':pitS?'out lap':pitE?'in lap':pit?'pit stop':end?'not finished':d0>.05?'joined mid-lap':!l.ok?'not timed':'';r.pit=pit;
+r.note=pitS&&pitE?'in the pits':pitS?'out lap':pitE?'in lap':pit?'pit stop':l.away?'not you driving':end?'not finished':d0>.05?'joined mid-lap':!l.ok?'not timed':'';r.pit=pit;
 if(l.ok&&secs.length&&V.SessionTime){const t0=rd(V.SessionTime,l.s),span=rd(V.SessionTime,l.e-1)-t0,k=span>0?l.time/span:1,b=[];let si=0,pp=d0,pt=0;
 for(let q=l.s+1;q<l.e&&si<secs.length;q++){const p=rd(V.LapDistPct,q),t=(rd(V.SessionTime,q)-t0)*k;while(si<secs.length&&pp<secs[si]&&p>=secs[si]){b.push(pt+(secs[si]-pp)/((p-pp)||1)*(t-pt));si++}pp=p;pt=t}
 if(b.length===secs.length){const pts=[0,...b,l.time];r.sec=pts.slice(1).map((v,j)=>v-pts[j])}}
@@ -992,16 +997,16 @@ if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFini
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
 const c=LIVE.cur,b=c.b;if(b.Speed.length<40000&&v.Speed!=null&&v.LapDistPct!=null&&v.LapDistPct>=0){b.Speed.push(v.Speed);b.Brake.push(v.Brake||0);b.LatG.push(v.LatAccel||0);b.gear.push(v.Gear||0);b.rpm.push(v.RPM||0);b.lon.push(v.LongAccel||0);b.yaw.push(v.YawRate||0);b.abs.push(v.BrakeABSactive?1:0);const rhv={};LIVE_TIRES.forEach(k=>rhv[k]=liveRh(v,k));LIVE_TIRES.forEach(k=>{b.rh[k].push(rhv[k]);const tc=[v[k+'tempCL'],v[k+'tempCM'],v[k+'tempCR']].filter(x=>x!=null);b.tc[k].push(tc.length?tc.reduce((s,x)=>s+x,0)/tc.length:null)});if(v.dcBrakeBias!=null)b.bb.push(v.dcBrakeBias);b.d.push(v.LapDistPct);b.t.push(v.LapCurrentLapTime);b.thr.push(v.Throttle);b.str.push(v.SteeringWheelAngle);b.rhLF.push(rhv.LF);b.rhRF.push(rhv.RF);b.rhLR.push(rhv.LR);b.rhRR.push(rhv.RR);const rf=liveRef(),rt=rf&&v.LapDistPct!=null?liveRefTime(rf,v.LapDistPct):null;const dd=rt==null||!(v.LapCurrentLapTime>0)||(v.LapDistPct>0.5&&v.LapCurrentLapTime<10)||(v.LapDistPct<0.1&&v.LapCurrentLapTime>30)?null:v.LapCurrentLapTime-rt;b.dlt.push(dd!=null&&Math.abs(dd)<15?dd:null)}
 if(v.Speed>12&&!v.OnPitRoad&&v.YawRate!=null&&v.SteeringWheelAngle!=null&&v.LatAccel!=null){c.tk=(c.tk||0)+1;if(c.tk%(LIVE.remote?1:2)===0){c.hs=c.hs||[];if(c.hs.length<20000)c.hs.push({v:v.Speed,k:v.YawRate/v.Speed,s:v.SteeringWheelAngle,y:v.YawRate,g:Math.abs(v.LatAccel)/9.80665,t:v.Throttle||0,b:v.Brake||0,beta:v.VelocityX!=null&&v.VelocityY!=null?Math.atan2(v.VelocityY,Math.max(1,v.VelocityX))*57.2958:null,abs:v.BrakeABSactive?1:0})}}
-if(v.OnPitRoad)c.pit=true;if(v.LapDistPct!=null&&v.LapDistPct>=0)c.lastD=v.LapDistPct;if(v.LapCurrentLapTime>0)c.lastT=v.LapCurrentLapTime;
+if(v.OnPitRoad)c.pit=true;if(v.IsOnTrack===false||v.IsOnTrack===0)c.away=true;if(v.LapDistPct!=null&&v.LapDistPct>=0)c.lastD=v.LapDistPct;if(v.LapCurrentLapTime>0)c.lastT=v.LapCurrentLapTime;
 liveFrame()}
 function liveFrame(){if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE.raf=0;const now=performance.now(),txt=!(now-(LIVE.lastTxt||0)<100);if(txt)LIVE.lastTxt=now;liveGauges(!txt);const box=$('liveCharts');if(box&&box.clientWidth)liveDrawCharts()})}
-function liveFinish(c,v){const b=c.b,n=b.Speed.length,valid=c.d0<0.05&&c.lastD>0.95&&!c.pit&&n>=50&&c.lastT>0;
+function liveFinish(c,v){const b=c.b,n=b.Speed.length,valid=c.d0<0.05&&c.lastD>0.95&&!c.pit&&!c.away&&n>=50&&c.lastT>0;
 const mean=a=>{const x=a.filter(y=>y!=null);return x.length?x.reduce((s,y)=>s+y,0)/x.length:null};let st=null;
 if(LIVE_TIRES.every(k=>b.rh[k].every(x=>x!=null))){const ext={};LIVE_TIRES.forEach(k=>ext[k+'rideHeight']=Float64Array.from(b.rh[k]));st=aeroRhStats({n,Speed:Float64Array.from(b.Speed),Brake:Float64Array.from(b.Brake),LatG:Float64Array.from(b.LatG),ext,lapNum:c.lap})}
 const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
-LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){coachSaveLive(c);if(!COACH.src||COACH.src.startsWith('live|'))try{renderCoach()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
+LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{renderCoach()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
 const liveMm=v=>v==null?'—':suNum(Math.round(v*10)/10,'mm'),liveTemp=v=>v==null?'—':(SETUP_UNITS==='imperial'?(v*1.8+32).toFixed(0)+'°F':v.toFixed(0)+'°C'),liveSpd=ms=>(ms*3.6*U().s[0]).toFixed(0)+' '+U().s[1];
 const liveMed=a=>{const s=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q);return s.length?s[Math.floor((s.length-1)/2)]:null};
 function liveGauges(barsOnly){const el=$('liveNow');if(!el)return;const v=LIVE.v;if(!v){el.innerHTML='<span class="m">Waiting for data...</span>';el.dataset.g='';return}
@@ -1582,9 +1587,85 @@ comp.spread=(()=>{const L=list.map(x=>x.lap),m=comp.lap;return k>1?Math.sqrt(L.r
 function coachFromSaved(s){const n=s.D.length,o={n,cond:s.cond||null,who:s.who||'Live lap',lap:s.lap,lapNum:s.lapNum,D:Float64Array.from(s.D),t:Float64Array.from(s.t),ext:{},meta:{}};
 COACH_KEYS.forEach(k=>{o[k]=s[k]?Float64Array.from(s[k]):new Float64Array(n)});return o}
 // pure: what differs between the average and the best, corner by corner, and what to do about it
+// ---- What each lap does in each corner (the inputs behind the time) ----
+// Extra .ibt channels used when the laps have them: wheel speeds (lock-ups, wheelspin), kerbs, off track.
+const CO_XK=['LFspeed','RFspeed','LRspeed','RRspeed','TireLF_RumblePitch','TireRF_RumblePitch','TireLR_RumblePitch','TireRR_RumblePitch','PlayerTrackSurface'];
+// pure: how far lap A is from lap B's line at every grid point (m, + = left of B). null without GPS.
+function coLineOff(A,B){if(!A||!B||!A.Lat||!B.Lat)return null;for(let g=0;g<N;g+=50)if(!A.Lat[g]||!B.Lat[g])return null;
+const la0=B.Lat[0],lo0=B.Lon[0],mx=111320*Math.cos(la0*Math.PI/180),my=110574,bx=g=>(B.Lon[g]-lo0)*mx,by=g=>(B.Lat[g]-la0)*my,off=new Float64Array(N);
+for(let g=0;g<N;g++){const p=Math.max(0,g-2),q=Math.min(N-1,g+2),dx=bx(q)-bx(p),dy=by(q)-by(p),l=Math.hypot(dx,dy)||1;off[g]=(dx*((A.Lat[g]-la0)*my-by(g))-dy*((A.Lon[g]-lo0)*mx-bx(g)))/l}return off}
+// pure: +1 when lap B turns left through corner c (the inside is on the left), -1 right, 0 unknown
+function coSide(B,c){if(!B||!B.Lat||!B.Lat[c.s]||!B.Lat[c.e])return 0;const mx=Math.cos(B.Lat[c.s]*Math.PI/180),h=g=>{const p=Math.max(0,g-2),q=Math.min(N-1,g+2);return[(B.Lon[q]-B.Lon[p])*mx,B.Lat[q]-B.Lat[p]]},a=h(c.s),b=h(c.e),x=a[0]*b[1]-a[1]*b[0];return x>0?1:x<0?-1:0}
+// pure: one lap (resampled) through corner c. Grid indices for positions, km/h for speed, seconds for times.
+// ref: the same facts on the reference lap, so the line, kerbs and zones are measured where the reference turns in and is slowest.
+function coachFacts(X,c,prevE,ref,off,side){const s=c.s,e=c.e,ap=c.ap,f={};
+// turn-in: back from the most steering before the apex to where the steering was under 30% of it (the
+// steering left over from the corner before does not count)
+let pg=s;for(let g=s;g<=Math.min(e,ap+3);g++)if(Math.abs(X.Steer[g])>Math.abs(X.Steer[pg]))pg=g;const mx=Math.abs(X.Steer[pg]),sgn=Math.sign(X.Steer[pg]);
+f.tin=-1;if(mx>.05){let g=pg;while(g>s&&Math.sign(X.Steer[g-1])===sgn&&Math.abs(X.Steer[g-1])>=.3*mx)g--;f.tin=g}
+// track-out: where the steering has unwound to 20% after the corner (the end of the zone when it never does)
+f.tout=e;if(mx>.05)for(let g=pg;g<=e;g++)if(Math.abs(X.Steer[g])<.2*mx||Math.sign(X.Steer[g])!==sgn){f.tout=g;break}
+const from=Math.max(0,s-150,prevE!=null?prevE:0);let ba=-1,pk=0,pkg=-1;for(let g=from;g<=ap;g++)if(X.Brake[g]>.08){if(ba<0)ba=g;if(X.Brake[g]>pk){pk=X.Brake[g];pkg=g}}
+f.braked=pk>=.3;f.ba=f.braked?ba:-1;f.pk=f.braked?pk:0;f.tpk=null;f.off=-1;f.abs=null;
+if(f.braked){for(let g=ba;g<=pkg;g++)if(X.Brake[g]>=.9*pk){f.tpk=X.t[g]-X.t[ba];break}for(let g=pkg;g<=e;g++)if(X.Brake[g]<.05){f.off=g;break}
+let a=0,n=0;for(let g=ba;g<=(f.off>=0?f.off:ap);g++){n++;if(X.ABS[g]>.5)a++}f.abs=n?a/n:null}
+let ms=1e9,mg=ap;for(let g=s;g<=e;g++)if(X.Speed[g]<ms){ms=X.Speed[g];mg=g}f.mg=mg;f.ms=ms*3.6;f.gr=Math.round(X.Gear[mg]||0);
+f.ta=-1;f.tf=-1;for(let g=mg;g<=e;g++){if(f.ta<0&&X.Throttle[g]>.6)f.ta=g;if(X.Throttle[g]>.95){f.tf=g;break}}
+let co=0;for(let g=Math.max(s,f.tin>=0?f.tin:s);g<e;g++)if(X.Brake[g]<.05&&X.Throttle[g]<.05)co+=X.t[g+1]-X.t[g];f.coast=co;f.ct=X.t[e]-X.t[s];
+const Rf=ref||f;if(off&&side){const at=g=>off[g]*side;f.line={in:at(Rf.tin>=0?Rf.tin:s),ap:at(Rf.mg),ex:at(Rf.tout!=null?Rf.tout:e)}}
+const W=['LF','RF','LR','RR'].map(k=>X['x:'+k+'speed']);
+if(W.every(Boolean)){let lk=0,sp=0;for(let g=f.ba>=0?f.ba:s;g<=mg;g++){const v=X.Speed[g];if(v>15&&X.Brake[g]>.3&&Math.min(W[0][g],W[1][g],W[2][g],W[3][g])<.85*v)lk++}
+for(let g=mg;g<=e;g++){const fr=(W[0][g]+W[1][g])/2,rr=(W[2][g]+W[3][g])/2;if(X.Speed[g]>8&&X.Throttle[g]>.5&&fr>1&&rr>1&&Math.max(rr/fr,fr/rr)>1.1)sp++}f.lock=lk>=2;f.spin=sp>=2}
+const K=['LF','RF','LR','RR'].map(k=>X['x:Tire'+k+'_RumblePitch']).filter(Boolean);
+if(K.length===4){const m=Rf.mg,on=(a,b)=>{for(let g=Math.max(s,a);g<=Math.min(e,b);g++)if(K.some(k=>k[g]>1))return true;return false};f.kerb={in:on(s,m-9),ap:on(m-8,m+8),ex:on(m+9,e)}}
+const TS=X['x:PlayerTrackSurface'];if(TS){f.offTrack=false;for(let g=s;g<=e;g++)if(TS[g]>-.5&&TS[g]<1.5){f.offTrack=true;break}}
+return f}
+// pure: the laps' facts in one corner, summed up: middle values, shares and the lap-to-lap spread
+function coachFactsSum(L,mpg){const md=a=>{const v=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q),m=v.length;return m?m%2?v[(m-1)/2]:(v[m/2-1]+v[m/2])/2:null},
+sdv=a=>{const v=a.filter(x=>x!=null&&isFinite(x));if(v.length<3)return null;const m=v.reduce((s,x)=>s+x,0)/v.length;return Math.sqrt(v.reduce((s,x)=>s+(x-m)**2,0)/(v.length-1))},
+share=(A,f)=>A.length?A.filter(f).length/A.length:null,pos=a=>a.map(x=>x>=0?x:null),br=L.filter(f=>f.braked),gs={};L.forEach(f=>{if(f.gr)gs[f.gr]=(gs[f.gr]||0)+1});
+const y={n:L.length,braked:share(L,f=>f.braked),ba:md(br.map(f=>f.ba)),pk:md(br.map(f=>f.pk)),tpk:md(br.map(f=>f.tpk)),off:md(pos(br.map(f=>f.off))),abs:md(br.map(f=>f.abs)),
+trail:share(br.filter(f=>f.tin>=0),f=>f.off<0||f.off>f.tin),tin:md(pos(L.map(f=>f.tin))),mg:md(L.map(f=>f.mg)),ms:md(L.map(f=>f.ms)),gr:+(Object.keys(gs).sort((a,b)=>gs[b]-gs[a])[0]||0),
+ta:md(pos(L.map(f=>f.ta))),tf:md(pos(L.map(f=>f.tf))),coast:md(L.map(f=>f.coast)),ct:md(L.map(f=>f.ct))};
+const ln=L.filter(f=>f.line);y.line=ln.length?{in:md(ln.map(f=>f.line.in)),ap:md(ln.map(f=>f.line.ap)),ex:md(ln.map(f=>f.line.ex))}:null;
+const kb=L.filter(f=>f.kerb);y.kerb=kb.length?{in:share(kb,f=>f.kerb.in),ap:share(kb,f=>f.kerb.ap),ex:share(kb,f=>f.kerb.ex),n:kb.length}:null;
+const wh=L.filter(f=>'lock' in f);y.lock=wh.length?share(wh,f=>f.lock):null;y.spin=wh.length?share(wh,f=>f.spin):null;y.nw=wh.length;
+const ot=L.filter(f=>'offTrack' in f);y.offTrack=ot.length?share(ot,f=>f.offTrack):null;
+const sd={ba:sdv(br.map(f=>f.ba)),ms:sdv(L.map(f=>f.ms)),tin:sdv(pos(L.map(f=>f.tin))),ta:sdv(pos(L.map(f=>f.ta))),ct:sdv(L.map(f=>f.ct))};['ba','tin','ta'].forEach(k=>{if(sd[k]!=null)sd[k]*=mpg});return{y,sd}}
+// pure: from the facts, what to do differently in this corner, in the order you meet it, at most three things,
+// and the speed to aim for. Distances are measured against the reference lap: m later, m further out.
+const CO_HEAD={brake_later:'Brake later',brake_earlier:'Brake earlier',no_brake:'Lift instead of braking',brake_harder:'Brake harder at the start',lock:'Stop the wheels locking',trail:'Trail the brake into the turn',turn_later:'Turn in later',turn_sooner:'Turn in sooner',wide_entry:'Use the width on entry',gear:'Use the same gear as your best',early_apex:'Apex later',miss_apex:'Get closer to the apex',kerb_apex:'Use the apex kerb',throttle_sooner:'Throttle sooner',coast:'Less coasting',spin:'Less wheelspin on exit',use_exit:'Use the exit width',kerb_exit:'Use the exit kerb',apex_speed:'Carry more speed'};
+function coachCause(cc,u){const F=cc.fx;if(!F||!F.y||!F.y.n)return null;const b=F.b,y=F.y,m=cc.mpg,n=y.n,
+D=v=>(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1],Lm=v=>(Math.abs(v)*u.d[0]).toFixed(1)+' '+u.d[1],S=v=>(v*u.s[0]).toFixed(0)+' '+u.s[1],P=v=>Math.round(v*100)+'%',of=v=>Math.round(v*n)+' of '+n+' laps',st=[];
+const add=(k,o,w,t)=>st.push({k,o,w,t});
+if(b.braked&&y.ba!=null){const d=(y.ba-b.ba)*m;if(d<=-6)add('brake_later',1,-d/6,'Brake '+D(d)+' later.');else if(d>=6&&cc.dv<-1)add('brake_earlier',1,d/6,'Brake '+D(d)+' earlier: you arrive too fast and lose speed at the apex.')}
+if(!b.braked&&y.braked>=.5)add('no_brake',1,1.5+y.braked,'Your best does not brake here; you do on '+of(y.braked)+'. A lift is enough.');
+if(b.braked&&y.pk!=null&&y.pk<b.pk-.08)add('brake_harder',2,(b.pk-y.pk)/.08,'Brake harder at the start: '+P(y.pk)+' peak pressure against '+P(b.pk)+' on your best.');
+if(y.lock!=null&&y.lock>=.3&&b.lock===false)add('lock',2.5,1+y.lock*2,'A wheel locks under braking on '+of(y.lock)+' (not on your best): a little less pressure at the start, then build it.');
+if(b.braked&&b.tin>=0&&(b.off<0||b.off>b.tin+1)&&y.trail!=null&&y.trail<.5)add('trail',3,1.2+(.5-y.trail)*2,'Keep a little brake on as you turn in: your best is still braking '+D(((b.off<0?b.mg:b.off)-b.tin)*m)+' past turn-in; you are off the brake before turning on '+of(1-y.trail)+'.');
+if(b.tin>=0&&y.tin!=null){const d=(y.tin-b.tin)*m;if(d<=-6)add('turn_later',4,-d/6,'Turn in '+D(d)+' later.');else if(d>=6)add('turn_sooner',4,d/6,'Turn in '+D(d)+' sooner.')}
+if(y.line&&y.line.in!=null&&y.line.in>=1)add('wide_entry',5,y.line.in,'Turn in from '+Lm(y.line.in)+' further out: use the width of the track on the way in.');
+if(y.gr&&b.gr&&y.gr!==b.gr)add('gear',6,1.5,'Take it in gear '+b.gr+' like your best (you use '+y.gr+').');
+if(y.mg!=null){const d=(y.mg-b.mg)*m;if(d<=-10)add('early_apex',7,-d/10,'Your slowest point comes '+D(d)+' earlier than on your best (an early apex): turn in a touch later so the car points out of the corner sooner.')}
+if(y.line&&y.line.ap!=null&&y.line.ap<=-1)add('miss_apex',7.5,-y.line.ap,'Get '+Lm(y.line.ap)+' closer to the apex.');
+if(b.kerb&&y.kerb&&b.kerb.ap&&y.kerb.ap<.5)add('kerb_apex',7.6,1.2,'Your best rides the apex kerb; you touch it on '+of(y.kerb.ap)+'.');
+if(b.ta>=0&&y.ta!=null){const d=(y.ta-b.ta)*m;if(d>=6&&d<=60)add('throttle_sooner',8,d/6,'Back on the throttle '+D(d)+' sooner.')}
+if(y.coast!=null&&y.coast-b.coast>=.25)add('coast',8.5,(y.coast-b.coast)/.25,'Less coasting: '+(y.coast-b.coast).toFixed(1)+' s more with neither pedal than your best.');
+if(y.spin!=null&&y.spin>=.3&&b.spin===false)add('spin',8.6,1+y.spin*2,'Wheelspin on the exit on '+of(y.spin)+' (not on your best): squeeze the throttle on more gradually.');
+if(y.line&&y.line.ex!=null&&y.line.ex>=1.5)add('use_exit',9,y.line.ex/1.5,'Let the car run out '+Lm(y.line.ex)+' wider on the exit'+(b.ta>=0&&y.ta!=null&&(y.ta-b.ta)*m>=3?' and use that room to get on the throttle sooner.':': the wider arc carries more speed onto the straight.'));
+if(b.kerb&&y.kerb&&b.kerb.ex&&y.kerb.ex<.5)add('kerb_exit',9.5,1.2,'Your best uses the exit kerb; you do on '+of(y.kerb.ex)+'.');
+const steps=st.sort((p,q)=>q.w-p.w).slice(0,3).sort((p,q)=>p.o-q.o);
+if(!steps.length&&cc.dv<=-1.5)steps.push({k:'apex_speed',o:7,w:1,t:'Carry more speed through the middle: your '+(b.braked?'braking point, ':'')+'turn-in and line already match your best, so the difference is commitment. '+(b.braked?'Brake a touch lighter':'Lift less')+' and trust the grip.'});
+const target=cc.dv<=-1.5&&b.ms&&y.ms?{ms:b.ms,now:y.ms,t:'Aim for '+S(b.ms)+' at the slowest point (now '+S(y.ms)+').'}:null;
+const hd=steps.slice(0,2).map((x,i)=>{const t=CO_HEAD[x.k]||x.t.split(/[:.]/)[0];return i?t.charAt(0).toLowerCase()+t.slice(1):t}).join(', then ');
+return steps.length||target?{steps,target,head:hd||'Carry more speed'}:null}
 function coachCompare(avg,best,laps){const R0=analyze(avg,best),u=U(),out={total:R0.total,pct:R0.pct,len:R0.len,corners:[],R:R0};
-// lap-to-lap spread of each corner's time against the best (from the individual laps)
-const per=(laps||[]).map(l=>{try{return analyze(l,best).cs}catch(e){return null}}).filter(Boolean);
+// the reference lap with its extra channels, and each lap's facts in every corner, measured against it
+const xs=CO_XK.filter(k=>best.ext&&best.ext[k]);xs.forEach(k=>best['x:'+k]=best.ext[k]);const Bx=rs(best,xs.map(k=>'x:'+k));
+const fb=R0.cs.map((c,k)=>coachFacts(Bx,c,k?R0.cs[k-1].e:null,null,null,0)),side=R0.cs.map(c=>coSide(Bx,c));
+const per=[],LF=[];(laps||[]).forEach(l=>{try{const r=analyze(l,best);per.push(r.cs);if(r.cs.length!==R0.cs.length)return;const off=coLineOff(r.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(r.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k])))}catch(e){}});
+if(!LF.length){const off=coLineOff(R0.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(R0.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k])))}
+R0.cs.forEach((c,k)=>{c.fx=Object.assign({b:fb[k]},coachFactsSum(LF.map(L=>L[k]),c.mpg))});
 R0.cs.forEach(c=>{const ds=per.map(cs=>{let b=null,bd=1e9;cs.forEach(q=>{const d=Math.abs(q.ap-c.ap);if(d<bd){bd=d;b=q}});return bd<=30&&b?b.dt:null}).filter(v=>v!=null);
 const m=ds.length?ds.reduce((s,x)=>s+x,0)/ds.length:null,sd=ds.length>1?Math.sqrt(ds.reduce((s,x)=>s+(x-m)**2,0)/(ds.length-1)):null;
 let coastA=0,coastB=0;for(let g=c.s;g<=c.e;g++){coastA+=R0.A.Coast[g];coastB+=R0.B.Coast[g]}const coast=(coastA-coastB)*c.mpg;
@@ -1596,7 +1677,7 @@ if(c.a.ta>=0&&c.b.ta>=0&&c.dm>=5&&c.dm<=60)tips.push({k:'throttle_earlier',w:c.d
 if(coast>=8)tips.push({k:'coast',w:coast,t:'Less coasting: '+ds2(coast)+' more with neither pedal than your best. Trail the brake into the turn, or pick up the throttle sooner.'});
 if(c.dp<=-10&&c.a.ba>=0)tips.push({k:'brake_harder',w:-c.dp,t:'Brake harder at the start: your best uses '+Math.abs(c.dp).toFixed(0)+'% more peak brake pressure.'});
 if(sd!=null&&sd>=0.12)tips.push({k:'consistency',w:sd*100,t:'Inconsistent here (±'+sd.toFixed(2)+' s lap to lap): pick one fixed marker for braking and turn-in and repeat it.'});
-tips.sort((p,q)=>q.w-p.w);out.corners.push({n:c.n,ap:c.ap,pos:c.pos,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips})});
+tips.sort((p,q)=>q.w-p.w);const o={n:c.n,ap:c.ap,s:c.s,e:c.e,pos:c.pos,mpg:c.mpg,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips,fx:c.fx};o.cause=coachCause(o,u);out.corners.push(o)});
 out.corners.sort((p,q)=>q.dt-p.dt);out.between=R0.total-R0.cs.reduce((s,c)=>s+c.dt,0);return out}
 // live laps kept per car and track (compact: 250 points), so an average can be built later
 const COACH_LIVE_KEY='coachLive',COACH_LIVE_MAX=40,COACH_PTS=250;
@@ -1610,8 +1691,8 @@ for(let g=0;g<M;g++){const d=g/(M-1);while(j<keep.length-2&&b.d[keep[j+1]]<d)j++
 for(const k in src){const a=src[k];if(!a||a[i0]==null||a[i1]==null){o[k].push(0);continue}const v=a[i0]+(a[i1]-a[i0])*f;o[k].push(+v.toFixed(k==='t'?3:3))}}
 // the lap must start at 0 s
 const t0=o.t[0];o.t=o.t.map(x=>+(x-t0).toFixed(3));return o}
-function coachSaveLive(c){try{if(!LIVE.meta||!LIVE.meta.carPath)return;const o=coachCompact(c.b,c.lastT,{lap:c.lap,who:LIVE.meta.who,ver:c.ver});if(o)o.cond={f0:c.f0,tt:c.tt,stint:c.stint};if(!o)return;const S=coachLiveLoad(),k=coachLiveKey(),L=S[k]||(S[k]=[]);L.push(o);while(L.length>COACH_LIVE_MAX)L.shift();
-for(let tries=0;tries<20;tries++){try{localStorage.setItem(COACH_LIVE_KEY,JSON.stringify(S));return}catch(e){const ks=Object.keys(S).filter(x=>S[x].length).sort((a,b)=>S[a][0].at-S[b][0].at);if(!ks.length)return;S[ks[0]].shift()}}}catch(e){console.error('coach save',e)}}
+function coachSaveLive(c){try{if(!LIVE.meta||!LIVE.meta.carPath)return;const o=coachCompact(c.b,c.lastT,{lap:c.lap,who:LIVE.meta.who,ver:c.ver});if(o)o.cond={f0:c.f0,tt:c.tt,stint:c.stint};if(!o)return null;const S=coachLiveLoad(),k=coachLiveKey(),L=S[k]||(S[k]=[]);L.push(o);while(L.length>COACH_LIVE_MAX)L.shift();
+for(let tries=0;tries<20;tries++){try{localStorage.setItem(COACH_LIVE_KEY,JSON.stringify(S));return o}catch(e){const ks=Object.keys(S).filter(x=>S[x].length).sort((a,b)=>S[a][0].at-S[b][0].at);if(!ks.length)return o;S[ks[0]].shift()}}return o}catch(e){console.error('coach save',e);return null}}
 
 // ---- Coach card ----
 let COACH={src:null,to:'best',grp:'',g61:[],set:null,live:null};
@@ -1643,12 +1724,15 @@ else COACH.to='best';
 const use=COACH.to==='best'?own.slice(1):own,avg=avgLap(use),C=coachCompare(avg,best,use);return{S,laps:use,avg,best,bestLab,C,n:use.length,G}}
 // pure: where the gap goes, by kind of mistake. Each corner's time goes to its biggest cause.
 const COACH_THEME={brake_later:'braking',over_brake:'braking',brake_harder:'braking',apex_speed:'mid-corner speed',throttle_earlier:'corner exits',coast:'coasting',consistency:'consistency'};
-function coachThemes(C){const T={};C.corners.filter(c=>c.dt>0.02).forEach(c=>{const k=c.tips.length?COACH_THEME[c.tips[0].k]:'line and steering';const t=T[k]||(T[k]={k,dt:0,corners:[]});t.dt+=c.dt;t.corners.push(c.n)});
+const COACH_THEME2={brake_later:'braking',brake_earlier:'braking',no_brake:'braking',brake_harder:'braking',lock:'braking',trail:'braking',turn_later:'turn-in and line',turn_sooner:'turn-in and line',wide_entry:'turn-in and line',early_apex:'turn-in and line',miss_apex:'turn-in and line',kerb_apex:'turn-in and line',use_exit:'turn-in and line',kerb_exit:'turn-in and line',gear:'gear choice',throttle_sooner:'corner exits',spin:'corner exits',coast:'coasting',apex_speed:'mid-corner speed'};
+function coachThemes(C){const T={};C.corners.filter(c=>c.dt>0.02).forEach(c=>{const st=c.cause&&c.cause.steps.length?c.cause.steps.slice().sort((p,q)=>q.w-p.w)[0]:null,k=st?COACH_THEME2[st.k]||'mid-corner speed':c.tips.length?COACH_THEME[c.tips[0].k]:'line and steering';const t=T[k]||(T[k]={k,dt:0,corners:[]});t.dt+=c.dt;t.corners.push(c.n)});
 if(C.between>0.02)T['straights']={k:'straights',dt:C.between,corners:[]};return Object.values(T).sort((a,b)=>b.dt-a.dt)}
 // average-vs-best results kept per car and track, to show the trend across sessions
 const COACH_HIST_KEY='coachHist';
-function coachHistAdd(key,X){try{const H=JSON.parse(localStorage.getItem(COACH_HIST_KEY)||'{}')||{},L=H[key]||(H[key]=[]),e={at:Date.now(),src:X.S.lab,n:X.n,avg:+X.avg.lap.toFixed(3),best:+X.best.lap.toFixed(3),gap:+X.C.total.toFixed(3),spread:+X.avg.spread.toFixed(3)};
-if(L.some(x=>x.src===e.src&&x.n===e.n&&Math.abs(x.avg-e.avg)<1e-3))return L;L.push(e);while(L.length>30)L.shift();localStorage.setItem(COACH_HIST_KEY,JSON.stringify(H));return L}catch(e){return []}}
+function coachHistAdd(key,X){try{const H=JSON.parse(localStorage.getItem(COACH_HIST_KEY)||'{}')||{},L=H[key]||(H[key]=[]),e={at:Date.now(),src:X.S.lab,n:X.n,avg:+X.avg.lap.toFixed(3),best:+X.best.lap.toFixed(3),gap:+X.C.total.toFixed(3),spread:+X.avg.spread.toFixed(3),who:coachWho(X),cs:Object.fromEntries(X.C.corners.map(c=>[c.n,+c.dt.toFixed(3)]))};
+const mine=x=>!x.who||!e.who||x.who===e.who;if(!L.some(x=>x.src===e.src&&x.n===e.n&&Math.abs(x.avg-e.avg)<1e-3)){L.push(e);while(L.length>30)L.shift();localStorage.setItem(COACH_HIST_KEY,JSON.stringify(H))}return L.filter(mine)}catch(e){return []}}
+// whose laps these are (a teammate's .ibt keeps its own progress)
+function coachWho(X){const l=X.laps&&X.laps[0];return l&&l.who&&!/^(You|Lap|Live lap)$/.test(l.who)?l.who:null}
 function coachHtml2(){const srcs=coachSources();let h='<b>Coach: turn your average lap into your best</b> <span class="m">Your typical lap (the middle of your clean laps at every point of the track) against your best, corner by corner, with what to change.</span>';
 h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px"><label>Average of <select id="coSrc">'+(srcs.length?srcs.map(x=>'<option value="'+plain(x.id)+'"'+(x.id===COACH.src?' selected':'')+'>'+plain(x.lab)+'</option>').join(''):'<option>no laps yet</option>')+'</select></label>'+
 '<label>against <select id="coTo"><option value="best"'+(COACH.to==='best'?' selected':'')+'>your best lap in that set</option>'+(COACH.g61.length?'<option value="g61best"'+(COACH.to==='g61best'?' selected':'')+'>the fastest Garage61 lap below</option>':'')+(F.b&&!SELF?'<option value="ref"'+(COACH.to==='ref'?' selected':'')+'>the reference lap (right box)</option>':'')+'</select></label>'+
@@ -1685,7 +1769,8 @@ function coachSetupGain(X,f,H){const R=X.C.R,vm=H.vmed,ph={entry:['braking'],mid
 X.C.corners.filter(c=>c.dt>0.02).forEach(c=>{const rc=R.cs.find(q=>q.n===c.n);if(!rc)return;const v=R.B.Speed[rc.ap],slow=v<vm;if(f.where!=='both'&&(f.where==='slow')!==slow)return;
 const th=c.tips.length?COACH_THEME[c.tips[0].k]:'line and steering';if(ph.indexOf(th)<0)return;g+=c.dt;cs.push(c.n)});return{g,cs}}
 function coachPriorities(X,SD,SDiff){const items=[],C=X.C,u=U(),sp=v=>(Math.abs(v)*u.s[0]).toFixed(1)+' '+u.s[1],dm=v=>(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1];
-C.corners.filter(c=>c.dt>0.02).forEach(c=>{const t=c.tips[0],notes=SDiff[c.n]||[];if(!t&&!notes.length)return;const rc=C.R.cs.find(q=>q.n===c.n)||c;
+C.corners.filter(c=>c.dt>0.02).forEach(c=>{const t=c.tips[0],notes=SDiff[c.n]||[],K=c.cause;if(!t&&!notes.length&&!K)return;const rc=C.R.cs.find(q=>q.n===c.n)||c;
+if(K){items.push({kind:'drive',gain:c.dt,title:coName(rc)+': '+K.head,steps:K.steps.map(s=>s.t),target:K.target?K.target.t:'',do:'',why:[],ev:'',cn:c.n});return}
 const ev=[];if(isFinite(c.d)&&Math.abs(c.d)>=3)ev.push('brakes '+dm(c.d)+(c.d<0?' earlier':' later'));if(Math.abs(c.dv)>=1)ev.push(sp(c.dv)+(c.dv<0?' slower':' faster')+' at the apex');if(isFinite(c.dm)&&c.dm>=3&&c.dm<=60)ev.push('throttle '+dm(c.dm)+' later');if(c.coast>=3)ev.push(dm(c.coast)+' more coasting');if(c.sd!=null&&c.sd>=.12)ev.push('±'+c.sd.toFixed(2)+' s lap to lap');
 items.push({kind:'drive',gain:c.dt,title:coName(rc)+': '+(t?t.t.split(':')[0]:notes[0].t.split('.')[0]),do:t?t.t.slice(t.t.indexOf(':')+1).trim():'',why:notes.map(x=>x.t),ev:ev.join(' · '),cn:c.n})});
 if(SD&&SD.H){SD.picks.forEach(p=>{const G=coachSetupGain(X,p.f,SD.H),pct=p.f.kind==='us'?Math.round((Math.max(...['slow','fast'].map(z=>(SD.H.B[p.f.p+'_'+z]||{}).ui||1))-1)*100):null;
@@ -1708,7 +1793,7 @@ if(la1-la0<1e-4)return '';const k=Math.cos((la0+la1)/2*Math.PI/180),w=(lo1-lo0)*
 const avgR=Math.max(.002,Math.abs(R.dl[N-1]-R.dl[0])/(N/5));let seg='';for(let g=0;g<N-5;g+=5){const r=(R.dl[g+5]-R.dl[g])/avgR;const col=r>2?'var(--bad)':r<-1?'var(--good)':'var(--mut)';seg+='<line x1="'+px(g).toFixed(1)+'" y1="'+py(g).toFixed(1)+'" x2="'+px(g+5).toFixed(1)+'" y2="'+py(g+5).toFixed(1)+'" style="stroke:'+col+';stroke-width:'+(r>2?5:3)+';stroke-linecap:round"/>'}
 const lab=R.cs.map(c=>{const cc=C.corners.find(q=>q.n===c.n),lose=cc&&cc.dt>0.02,a=Math.max(0,c.ap-4),b=Math.min(N-1,c.ap+4),dx=px(b)-px(a),dy=py(b)-py(a),L=Math.hypot(dx,dy)||1,sd=(R.B.LatG[c.ap]>0?1:-1),cx=px(c.ap)-dy/L*sd*16,cy=py(c.ap)+dx/L*sd*16;return '<line x1="'+px(c.ap).toFixed(1)+'" y1="'+py(c.ap).toFixed(1)+'" x2="'+cx.toFixed(1)+'" y2="'+cy.toFixed(1)+'" style="stroke:var(--mut);stroke-width:1"/><circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="8" style="fill:var(--card);stroke:'+(lose?'var(--bad)':'var(--mut)')+'"/><text x="'+cx.toFixed(1)+'" y="'+(cy+3.5).toFixed(1)+'" text-anchor="middle" style="fill:var(--fg);font-size:9px;font-weight:600">'+c.n+'</text>'}).join('');
 return '<svg viewBox="0 0 '+W.toFixed(0)+' '+Hh.toFixed(0)+'" style="width:100%;max-width:400px;height:auto;display:block" role="img" aria-label="Track map coloured by time lost"><circle cx="'+px(0).toFixed(1)+'" cy="'+py(0).toFixed(1)+'" r="4" style="fill:var(--fg)"/>'+seg+lab+'</svg><small class="m"><span class="bad">■</span> losing time fastest · <span class="good">■</span> gaining · numbers are corners</small>'}
-function coachCornerSvg(R,c){const s=Math.max(0,c.s-40),e=Math.min(N-1,c.e+25),A=R.A,B=R.B,W=300,H=110;let lo=1e9,hi=-1e9;for(let g=s;g<=e;g++){lo=Math.min(lo,A.Speed[g],B.Speed[g]);hi=Math.max(hi,A.Speed[g],B.Speed[g])}
+function coachCornerSvg(R,c,W0,H0){const s=Math.max(0,c.s-40),e=Math.min(N-1,c.e+25),A=R.A,B=R.B,W=W0||300,H=H0||110;let lo=1e9,hi=-1e9;for(let g=s;g<=e;g++){lo=Math.min(lo,A.Speed[g],B.Speed[g]);hi=Math.max(hi,A.Speed[g],B.Speed[g])}
 const x=g=>(g-s)/(e-s||1)*W,y=v=>6+(hi-v)/(hi-lo||1)*(H-34),u=U(),line=(S,col)=>{let p='';for(let g=s;g<=e;g++)p+=(g>s?'L':'M')+x(g).toFixed(1)+' '+y(S[g]).toFixed(1);return '<path d="'+p+'" style="fill:none;stroke:'+col+';stroke-width:2"/>'};
 const pedalF=(X,col,yy)=>{let r='';for(let g=s;g<=e;g++)if(X.Throttle[g]>.95)r+='<rect x="'+x(g).toFixed(1)+'" y="'+yy+'" width="'+(W/(e-s)+.5).toFixed(1)+'" height="3" style="fill:'+col+'"/>';return r},pedal=(X,key,col,yy)=>{let r='';for(let g=s;g<=e;g++)if(X[key][g]>.1)r+='<rect x="'+x(g).toFixed(1)+'" y="'+yy+'" width="'+(W/(e-s)+.5).toFixed(1)+'" height="5" style="fill:'+col+'"/>';return r};
 return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:340px;height:auto;display:block" role="img" aria-label="Speed through the corner, your average against the best">'+line(B.Speed,'var(--ref)')+line(A.Speed,'var(--you)')+
@@ -1716,38 +1801,144 @@ return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:340px;height:
 function coachBalanceGrid(H){const cell=x=>{if(!x||x.n<150)return '<td class="m" style="text-align:center">—</td>';const d=(x.ui-1)*100,os=x.cs>=1.5||(x.slip||0)>=3.5,bg=os?'var(--ref)':d>=12?'var(--bad)':d>=6?'#d99a1e':'var(--good)';
 return '<td style="text-align:center"><span style="display:inline-block;min-width:96px;padding:3px 6px;border-radius:5px;background:'+bg+';color:#fff;font-weight:600">'+(os?'oversteer':d>=6?'understeer +'+d.toFixed(0)+'%':'balanced')+'</span></td>'};
 return '<table style="width:auto"><tr><th></th><th>Slow corners</th><th>Fast corners</th></tr>'+HPH.map(([p,lab])=>'<tr><td><b>'+lab+'</b></td>'+cell(H.B[p+'_slow'])+cell(H.B[p+'_fast'])+'</tr>').join('')+'</table>'}
-function coachBody(X){const C=X.C,R=C.R,u=U(),sp=v=>(v>0?'+':v<0?'−':'')+(Math.abs(v)*u.s[0]).toFixed(1)+' '+u.s[1],dm=v=>(v>0?'+':v<0?'−':'')+(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1];
+// the corner seen from above: your typical line against the best, with where each brakes (B), turns in (T) and is slowest (S).
+// The gap between the lines is drawn 3x bigger so a metre shows.
+function coachLineSvg(R,cc,W0){const B=R.B,F=cc.fx,off=R._off!==undefined?R._off:(R._off=coLineOff(R.A,R.B));if(!off||!F)return '';const mk=[F.b.ba,F.b.tin,F.b.mg,F.b.ta,F.y.ba,F.y.tin,F.y.mg,F.y.ta].filter(v=>v!=null&&v>=0);let g0=Math.round(Math.min(cc.s,...mk))-10,g1=Math.round(Math.max(...mk,cc.ap))+15;if(g1-g0<30){g0-=8;g1+=8}g0=Math.max(0,g0);g1=Math.min(N-1,g1);const K=3;
+const la0=B.Lat[g0],lo0=B.Lon[g0],mx=111320*Math.cos(la0*Math.PI/180),my=110574,P=[],A=[];
+for(let g=g0;g<=g1;g++){const x=(B.Lon[g]-lo0)*mx,y=(B.Lat[g]-la0)*my,p=Math.max(0,g-2),q=Math.min(N-1,g+2),dx=(B.Lon[q]-B.Lon[p])*mx,dy=(B.Lat[q]-B.Lat[p])*my,l=Math.hypot(dx,dy)||1;P.push([x,y]);A.push([x-dy/l*off[g]*K,y+dx/l*off[g]*K])}
+// turn the picture so the car enters going up the page
+const a0=Math.atan2(P[Math.min(8,P.length-1)][1]-P[0][1],P[Math.min(8,P.length-1)][0]-P[0][0]),rot=Math.PI/2-a0,cr=Math.cos(rot),sr=Math.sin(rot),T=([x,y])=>[x*cr-y*sr,x*sr+y*cr];
+const PP=P.map(T),AA=A.map(T);let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;PP.concat(AA).forEach(([x,y])=>{x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)});
+const W=W0||220,H=Math.round(W*.8),pad=24,sc=Math.min((W-2*pad)/((x1-x0)||1),(H-2*pad)/((y1-y0)||1)),ox=(W-(x1-x0)*sc)/2,oy=(H-(y1-y0)*sc)/2,X=([x,y])=>(ox+(x-x0)*sc).toFixed(1)+' '+(H-oy-(y-y0)*sc).toFixed(1);
+const path=(Q,col)=>'<path d="M'+Q.map(X).join('L')+'" style="fill:none;stroke:'+col+';stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>';
+const mark=(Q,g,l,col,sd)=>{if(g==null||g<0)return '';const i=Math.round(g)-g0;if(i<0||i>=Q.length)return '';const p=X(Q[i]).split(' ').map(Number),a=X(Q[Math.max(0,i-2)]).split(' ').map(Number),c=X(Q[Math.min(Q.length-1,i+2)]).split(' ').map(Number),dx=c[0]-a[0],dy=c[1]-a[1],L=Math.hypot(dx,dy)||1,lx=p[0]-dy/L*13*sd,ly=p[1]+dx/L*13*sd;return '<line x1="'+p[0].toFixed(1)+'" y1="'+p[1].toFixed(1)+'" x2="'+lx.toFixed(1)+'" y2="'+ly.toFixed(1)+'" style="stroke:'+col+';stroke-width:1.2"/><circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.6" style="fill:'+col+'"/><circle cx="'+lx.toFixed(1)+'" cy="'+ly.toFixed(1)+'" r="6" style="fill:'+col+'"/><text x="'+lx.toFixed(1)+'" y="'+(ly+3).toFixed(1)+'" text-anchor="middle" style="fill:#fff;font-size:8px;font-weight:700">'+l+'</text>'};
+const b=F.b,y=F.y,ms=(Q,f,col,sd)=>mark(Q,f.ba,'B',col,sd)+mark(Q,f.tin,'T',col,sd)+mark(Q,f.mg,'S',col,sd);
+return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;height:auto;display:block" role="img" aria-label="Your line through the corner against the best">'+path(PP,'var(--ref)')+path(AA,'var(--you)')+ms(PP,b,'var(--ref)',-1)+ms(AA,y,'var(--you)',1)+'</svg>'}
+const CO_LINE_NOTE='<small class="m">Corner maps: seen from above, car going up, <span class="you">yours</span> on one side of the line and <span class="ref">your best</span> on the other. <b>B</b> starts braking · <b>T</b> turns in · <b>S</b> slowest point. The gap between the lines is drawn 3× bigger.</small>';
+// what you do in the corner against the best, as a short table (only the rows that have data)
+function coachFactRows(cc){const F=cc.fx;if(!F)return '';const b=F.b,y=F.y,m=cc.mpg,u=U(),n=y.n,D=v=>(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1],S=v=>v==null?'—':(v*u.s[0]).toFixed(0)+' '+u.s[1],P=v=>v==null?'—':Math.round(v*100)+'%',
+rel=(yv,bv,lo,hi)=>{if(yv==null||bv==null||bv<0)return null;const d=(yv-bv)*m;return Math.abs(d)<3?'same place':D(d)+' '+(d<0?lo:hi)},of=v=>v==null?'—':Math.round(v*n)+' of '+n,yes=v=>v?'yes':'no',rows=[];
+const tp=v=>v==null?'':v<.05?' at once':' in '+v.toFixed(2)+' s',row=(a,yv,bv,bad)=>rows.push('<tr><td class="m">'+a+'</td><td'+(bad?' class="bad"':'')+'>'+yv+'</td><td>'+bv+'</td></tr>');
+if(b.braked||y.ba!=null){row('Starts braking',b.braked&&y.ba!=null?rel(y.ba,b.ba,'earlier','later'):y.ba!=null?'brakes on '+of(y.braked):'no brake',b.braked?'—':'no brake',b.braked&&y.ba!=null&&Math.abs((y.ba-b.ba)*m)>=6||!b.braked&&y.braked>=.5);
+if(b.braked&&y.pk!=null)row('Peak brake',P(y.pk)+tp(y.tpk),P(b.pk)+tp(b.tpk),y.pk<b.pk-.08);
+if(b.braked&&y.abs!=null&&(y.abs>.02||b.abs>.02))row('ABS working',P(y.abs)+' of the braking',P(b.abs),false);
+if(b.braked&&b.tin>=0&&y.trail!=null)row('Brake on at turn-in',of(y.trail),b.off<0||b.off>b.tin?'yes':'no',y.trail<.5&&(b.off<0||b.off>b.tin))}
+if(b.tin>=0&&y.tin!=null)row('Turns in',rel(y.tin,b.tin,'earlier','later'),'—',Math.abs((y.tin-b.tin)*m)>=6);
+if(y.line){const L=v=>v==null?'—':Math.abs(v)<.5?'same line':(Math.abs(v)*u.d[0]).toFixed(1)+' '+u.d[1]+' '+(v>0?'tighter':'wider');row('Line at turn-in',L(y.line.in),'—',y.line.in>=1);row('Line at the apex',L(y.line.ap),'—',y.line.ap<=-1);row('Line on exit',L(y.line.ex),'—',y.line.ex>=1.5)}
+row('Slowest point',S(y.ms)+(y.mg!=null&&Math.abs((y.mg-b.mg)*m)>=3?', '+rel(y.mg,b.mg,'earlier','later'):''),S(b.ms),cc.dv<=-1.5);
+if(y.gr&&b.gr)row('Gear there',y.gr,b.gr,y.gr!==b.gr);
+if(b.ta>=0&&y.ta!=null)row('Back on the throttle',rel(y.ta,b.ta,'sooner','later'),'—',(y.ta-b.ta)*m>=6);
+if(y.coast!=null&&(y.coast>.15||b.coast>.15))row('Coasting',y.coast.toFixed(1)+' s',b.coast.toFixed(1)+' s',y.coast-b.coast>=.25);
+if(y.kerb&&b.kerb){const k=z=>(y.kerb[z]>0?of(y.kerb[z]):'no');row('Kerb on entry',k('in'),yes(b.kerb.in),false);row('Kerb at the apex',k('ap'),yes(b.kerb.ap),b.kerb.ap&&y.kerb.ap<.5);row('Kerb on exit',k('ex'),yes(b.kerb.ex),b.kerb.ex&&y.kerb.ex<.5)}
+if(y.lock!=null&&(y.lock>0||b.lock))row('Wheel locks braking',of(y.lock),yes(b.lock),y.lock>=.3&&!b.lock);
+if(y.spin!=null&&(y.spin>0||b.spin))row('Wheelspin on exit',of(y.spin),yes(b.spin),y.spin>=.3&&!b.spin);
+if(y.offTrack)row('Off track here',of(y.offTrack),yes(b.offTrack),true);
+if(F.sd&&F.sd.ct!=null)row('Varies lap to lap','±'+F.sd.ct.toFixed(2)+' s'+(F.sd.ba!=null&&F.sd.ba>=4?', braking ±'+D(F.sd.ba):''),'—',F.sd.ct>=.1);
+return '<table class="cofacts"><tr><th></th><th>You (typical)</th><th>Your best</th></tr>'+rows.join('')+'</table>'}
+// ---- track limits and incidents in the whole .ibt (every timed lap, not only the clean ones) ----
+// pure-ish: -> {laps, offs:{corner n: count}, inc:{corner n: points}, offsN, incN}
+function coachOffs(ib,cs){if(!ib||!ib._rd||!cs||!cs.length)return null;const rd=ib._rd,V=ib._V,TS=V.PlayerTrackSurface,IC=V.PlayerCarMyIncidentCount;if(!TS&&!IC)return null;
+const at=d=>{const g=Math.round(d*(N-1));for(let k=0;k<cs.length;k++){const lo=k?cs[k-1].e:-1;if(g>lo&&g<=cs[k].e)return cs[k].n}return cs[0].n},o={laps:0,offs:{},inc:{},offsN:0,incN:0};
+ib.laps.forEach(l=>{if(!l.ok)return;let pit=false;if(V.OnPitRoad)for(let r=l.s;r<l.e;r+=10)if(rd(V.OnPitRoad,r)){pit=true;break}if(pit)return;o.laps++;
+let was=true,ic=IC?rd(IC,l.s):0;for(let r=l.s;r<l.e;r++){const d=rd(V.LapDistPct,r);if(TS){const on=rd(TS,r)!==0;if(was&&!on){const n=at(d);o.offs[n]=(o.offs[n]||0)+1;o.offsN++}was=on}
+if(IC){const v=rd(IC,r);if(v>ic){const n=at(d);o.inc[n]=(o.inc[n]||0)+(v-ic);o.incN+=v-ic}ic=v}}});return o}
+function coachOffsHtml(O){if(!O)return '';const ks=Object.keys(O.offs).sort((a,b)=>O.offs[b]-O.offs[a]),ki=Object.keys(O.inc).sort((a,b)=>O.inc[b]-O.inc[a]);
+const sum=O.offsN?'Off track '+O.offsN+' time'+(O.offsN>1?'s':'')+' in '+O.laps+' laps, most at '+coNn(ks[0]):'No trips off track in '+O.laps+' laps';
+let h='<details class="cofold"><summary><b>Track limits</b> <span class="m">'+sum+(O.incN?' · '+O.incN+'x incident points':'')+'</span></summary>';
+if(!O.offsN&&!O.incN)return h+'<p style="margin:6px 0">Clean: no wheels off and no incident points on any timed lap in this file.</p></details>';
+const mx=Math.max(1,...ks.map(k=>O.offs[k]));h+='<div style="display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;max-width:520px;margin-top:6px">'+ks.map(k=>'<span>'+plain(coNn(k))+'</span><span style="height:10px;border-radius:5px;background:var(--bad);width:'+(O.offs[k]/mx*100).toFixed(0)+'%"></span><span>'+O.offs[k]+(O.offs[k]>1?' times':' time')+' off'+(O.inc[k]?' · '+O.inc[k]+'x incident points':'')+'</span>').join('')+'</div>';
+const only=ki.filter(k=>!O.offs[k]);if(only.length)h+='<p class="m" style="margin:6px 0 0">Incident points without leaving the track (a spin or contact): '+only.map(k=>plain(coNn(k))+' '+O.inc[k]+'x').join(', ')+'.</p>';
+return h+'<p class="m" style="font-size:13px;margin:6px 0 0">Every timed lap in the file counts here, not only the clean ones. A lap that goes off is left out of your average, so these corners cost more than the average shows.</p></details>'}
+// ---- consistency: the corners where your laps vary most, and which input moves ----
+function coachConsist(C){return C.corners.filter(c=>c.fx&&c.fx.sd&&c.fx.sd.ct!=null&&c.fx.sd.ct>=.05).sort((a,b)=>b.fx.sd.ct-a.fx.sd.ct).slice(0,5).map(c=>{const s=c.fx.sd,u=U(),D=v=>(v*u.d[0]).toFixed(0)+' '+u.d[1],
+c4=[['ba',s.ba,6,'Your braking point moves ±'+(s.ba!=null?D(s.ba):'')+' from lap to lap: pick one marker (a board, a shadow, a kerb end) and brake there every lap.'],['tin',s.tin,6,'Your turn-in point moves ±'+(s.tin!=null?D(s.tin):'')+': pick a turn-in marker and use it every lap.'],
+['ms',s.ms,3,'Your speed at the slowest point varies ±'+(s.ms!=null?(s.ms*u.s[0]).toFixed(1)+' '+u.s[1]:'')+': brake to the same speed each lap, then build from there.'],['ta',s.ta,10,'Where you pick up the throttle moves ±'+(s.ta!=null?D(s.ta):'')+': wait for the same point each lap before you squeeze it on.']].filter(x=>x[1]!=null).sort((a,b)=>b[1]/b[2]-a[1]/a[2])[0];
+return{n:c.n,sd:s.ct,dt:c.dt,why:c4&&c4[1]/c4[2]>=.6?c4[3]:'The inputs look steady; the time varies in small amounts across the corner.'}})}
+function coachConsistHtml(C,R){const L=coachConsist(C);if(!L.length)return '';const mx=Math.max(...L.map(x=>x.sd)),nm=n=>plain(coName(R.cs.find(q=>q.n===n)||{n}));
+return '<details class="cofold"><summary><b>Consistency</b> <span class="m">'+nm(L[0].n)+' varies most: ±'+L[0].sd.toFixed(2)+' s lap to lap</span></summary><p class="m" style="font-size:13px;margin:6px 0">How much your time through each corner changes from lap to lap. A steady lap is worth as much in a race as a fast one: fix these with a fixed marker before chasing speed.</p>'+
+'<div style="display:grid;gap:8px">'+L.map(x=>'<div><div style="display:flex;gap:10px;align-items:center"><b style="min-width:120px">'+nm(x.n)+'</b><span style="flex:1;max-width:260px;height:10px;border-radius:5px;background:var(--ln);overflow:hidden"><span style="display:block;height:100%;width:'+(x.sd/mx*100).toFixed(0)+'%;background:#d99a1e"></span></span><span>±'+x.sd.toFixed(2)+' s</span></div><small>'+plain(x.why)+'</small></div>').join('')+'</div></details>'}
+// ---- progress across sessions ----
+function coachProgressHtml(L){if(!L||L.length<2)return '';const W=560,H=150,P=30,g=L.map(e=>e.gap),lo=Math.min(0,...g),hi=Math.max(.05,...g),x=i=>P+i/(L.length-1)*(W-2*P),y=v=>10+(hi-v)/(hi-lo||1)*(H-40);
+let svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;height:auto;display:block" role="img" aria-label="Gap to the best over sessions"><line x1="'+P+'" x2="'+(W-P)+'" y1="'+y(0).toFixed(1)+'" y2="'+y(0).toFixed(1)+'" style="stroke:var(--mut);stroke-dasharray:3 3"/>'+
+'<path d="'+L.map((e,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(e.gap).toFixed(1)).join('')+'" style="fill:none;stroke:var(--you);stroke-width:2"/>'+L.map((e,i)=>'<circle cx="'+x(i).toFixed(1)+'" cy="'+y(e.gap).toFixed(1)+'" r="3.5" style="fill:var(--you)"><title>'+new Date(e.at).toLocaleDateString()+': average '+ft(e.avg)+', '+sg(e.gap)+' s behind</title></circle>').join('')+
+'<text x="'+P+'" y="'+(H-6)+'" style="fill:var(--mut);font-size:11px">'+new Date(L[0].at).toLocaleDateString()+'</text><text x="'+(W-P)+'" y="'+(H-6)+'" text-anchor="end" style="fill:var(--mut);font-size:11px">'+new Date(L[L.length-1].at).toLocaleDateString()+'</text><text x="'+P+'" y="'+(y(hi)+2).toFixed(1)+'" style="fill:var(--mut);font-size:11px">'+sg(hi)+' s</text></svg>';
+const a=L.find(e=>e.cs),b=L[L.length-1];let mv='';if(a&&b.cs&&a!==b){const ch=Object.keys(b.cs).filter(n=>n in a.cs).map(n=>({n,d:b.cs[n]-a.cs[n]})).sort((p,q)=>p.d-q.d);const up=ch.filter(c=>c.d<=-.02).slice(0,3),dn=ch.filter(c=>c.d>=.02).slice(-3).reverse();
+if(up.length||dn.length)mv='<p style="margin:6px 0 0">'+(up.length?'Better since '+new Date(a.at).toLocaleDateString()+': '+up.map(c=>coNn(c.n)+' '+sg(c.d)+' s').join(', ')+'. ':'')+(dn.length?'Worse: '+dn.map(c=>coNn(c.n)+' '+sg(c.d)+' s').join(', ')+'.':'')+'</p>'}
+return '<details class="cofold"'+(L.length>=3?' open':'')+'><summary><b>Your progress</b> <span class="m">'+L.length+' sessions here; gap to the best '+sg(L[0].gap)+' → '+sg(b.gap)+' s</span></summary><p class="m" style="font-size:13px;margin:6px 0">How far your average lap is behind the lap it is compared with, each time you open coaching on this car and track.</p>'+svg+mv+
+'<div style="overflow-x:auto;margin-top:6px"><table><tr><th>When</th><th>Laps</th><th>Average</th><th>Best</th><th>Gap</th><th>Lap to lap</th></tr>'+L.slice().reverse().map(e=>'<tr><td>'+new Date(e.at).toLocaleDateString()+'</td><td>'+e.n+'</td><td>'+ft(e.avg)+'</td><td>'+ft(e.best)+'</td><td>'+sg(e.gap)+' s</td><td>±'+e.spread.toFixed(2)+' s</td></tr>').join('')+'</table></div></details>'}
+// ---- practice targets: pick up to three, then every live lap is graded on them ----
+const COACH_PRAC_KEY='coachPrac',PRAC_MAX=3,PRAC_LAPS=10;
+function pracLoad(){try{return JSON.parse(localStorage.getItem(COACH_PRAC_KEY)||'{}')||{}}catch(e){return {}}}
+function pracSave(P){try{localStorage.setItem(COACH_PRAC_KEY,JSON.stringify(P))}catch(e){}}
+// pure: a corner of the coaching result -> a target (grid positions and the best lap's numbers)
+function pracTarget(cc,name){const b=cc.fx.b;return{n:cc.n,name,s:cc.s,e:cc.e,mg:b.mg,ba:b.braked?b.ba:-1,ta:b.ta,ms:b.ms,ct:b.ct,mpg:cc.mpg,focus:cc.cause?cc.cause.steps.map(s=>s.k):[],head:cc.cause?cc.cause.head:'',at:Date.now()}}
+// pure: one lap (a lap object) graded on the targets. dct: corner time against the best (s, + slower);
+// dba / dta: braking and throttle point against the best (m, + later); ms: slowest speed (km/h).
+function pracGrade(lap,T){const X=rs(lap);return T.map(t=>{const s=t.s,e=t.e;let ms=1e9;for(let g=s;g<=e;g++)ms=Math.min(ms,X.Speed[g]);ms*=3.6;
+let ba=-1;if(t.ba>=0)for(let g=Math.max(0,t.ba-40);g<=t.mg;g++)if(X.Brake[g]>.08){ba=g;break}let mg=s;for(let g=s;g<=e;g++)if(X.Speed[g]<X.Speed[mg])mg=g;let ta=-1;for(let g=mg;g<=e;g++)if(X.Throttle[g]>.6){ta=g;break}
+const r={n:t.n,dct:X.t[e]-X.t[s]-t.ct,ms,dms:ms-t.ms,dba:ba>=0&&t.ba>=0?(ba-t.ba)*t.mpg:null,dta:ta>=0&&t.ta>=0?(ta-t.ta)*t.mpg:null};
+r.ok={time:r.dct<=.03,speed:r.dms>=-1.5,brake:r.dba==null?null:r.dba>=-5,throttle:r.dta==null?null:r.dta<=6};return r})}
+function pracOnLap(o){try{const P=pracLoad(),k=coachLiveKey(),E=P[k];if(!E||!E.targets||!E.targets.length)return;const lap=coachFromSaved(o);E.laps=E.laps||[];E.laps.push({lap:o.lap,at:Date.now(),r:pracGrade(lap,E.targets)});while(E.laps.length>PRAC_LAPS)E.laps.shift();pracSave(P);renderPractice()}catch(e){console.error('practice',e)}}
+function pracKeyOf(X){return(X.S.car||(IB.a&&IB.a.carPath)||'')+'|'+(X.S.track||(IB.a?ghTrackOf(IB.a.yaml):''))}
+function pracHtml(key){const E=pracLoad()[key];if(!E||!E.targets||!E.targets.length)return '';const u=U(),S=v=>(v*u.s[0]).toFixed(0)+' '+u.s[1],D=v=>(v>0?'+':v<0?'−':'')+(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1],L=(E.laps||[]).slice().reverse();
+let h='<div class="coprac"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><b style="font-size:16px">Practice</b><span class="m" style="font-size:13px">Each live lap is checked on these corners against your best. <a href="#" data-pracclr="1">Clear targets</a></span></div>';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:6px">'+E.targets.map(t=>{const rs0=L.map(l=>(l.r||[]).find(x=>x.n===t.n)).filter(Boolean),last=rs0[0];
+const chip=r=>'<span title="'+(r.dct>0?'+':'')+r.dct.toFixed(2)+' s" style="display:inline-block;width:14px;height:14px;border-radius:3px;margin-right:2px;background:'+(r.ok.time?'var(--good)':r.dct<=.1?'#d99a1e':'var(--bad)')+'"></span>';
+return '<div style="border:1px solid var(--ln);border-radius:8px;padding:8px 10px"><b>'+plain(t.name)+'</b><div style="font-size:13px">'+plain(t.head||'Match your best')+'</div><div class="m" style="font-size:13px">Target: '+S(t.ms)+' at the slowest point</div>'+
+(last?'<div style="margin-top:6px;font-size:13px"><b class="'+(last.ok.time?'good':'bad')+'">'+(last.dct>0?'+':'')+last.dct.toFixed(2)+' s</b> last lap · '+S(last.ms)+(last.dba!=null?' · '+(Math.abs(last.dba)<2?'braked on the mark':'braked '+(Math.abs(last.dba)*u.d[0]).toFixed(0)+' '+u.d[1]+(last.dba<0?' early':' late')):'')+'</div><div style="margin-top:4px" aria-label="last laps, newest first">'+rs0.map(chip).join('')+'</div>':'<div class="m" style="margin-top:6px;font-size:13px">Drive a lap to see how it went.</div>')+'</div>'}).join('')+'</div>';
+return h+'<small class="m">Squares are your last laps, newest first: <span class="good">■</span> as quick as your best through the corner · <span style="color:#d99a1e">■</span> within 0.1 s · <span class="bad">■</span> slower.</small></div>'}
+function renderPractice(){const el=$('coPrac');if(!el||!COACH.last)return;el.innerHTML=pracHtml(pracKeyOf(COACH.last));const c=el.querySelector('[data-pracclr]');if(c)c.onclick=ev=>{ev.preventDefault();const P=pracLoad();delete P[pracKeyOf(COACH.last)];pracSave(P);renderCoach()}}
+function pracToggle(n){const X=COACH.last;if(!X)return;const cc=X.C.corners.find(c=>c.n===n);if(!cc||!cc.fx)return;const k=pracKeyOf(X),P=pracLoad(),E=P[k]||(P[k]={targets:[],laps:[]}),i=E.targets.findIndex(t=>t.n===n);
+if(i>=0)E.targets.splice(i,1);else{if(E.targets.length>=PRAC_MAX)E.targets.shift();E.targets.push(pracTarget(cc,coName(X.C.R.cs.find(q=>q.n===n)||cc)))}E.laps=[];if(!E.targets.length)delete P[k];pracSave(P);renderCoach()}
+// ---- the three things for your next session ----
+function coachThingsHtml(X,PR){const C=X.C,R=C.R,top=PR.filter(p=>p.kind==='setup'?p.gain>0:true).slice(0,3);if(!top.length)return '';const key=pracKeyOf(X),T=(pracLoad()[key]||{}).targets||[];
+return '<h3 style="margin:16px 0 6px;font-size:17px">Your next session: '+(top.length===1?'one thing':top.length+' things')+'</h3><div class="cothings">'+top.map((p,i)=>{const cc=p.cn?C.corners.find(c=>c.n===p.cn):null,on=cc&&T.some(t=>t.n===cc.n);
+const vis=cc&&R.A.Lat&&R.A.Lat[cc.s]?coachLineSvg(R,cc,240):cc?coachCornerSvg(R,R.cs.find(q=>q.n===cc.n)||cc):'';
+return '<div class="cothing"><div class="cothing-n">'+(i+1)+'</div><div class="cothing-t"><div><span class="cotag" style="background:'+(p.kind==='drive'?'var(--you)':'var(--ref)')+'">'+(p.kind==='drive'?'DRIVING':'SETUP')+'</span> <b class="bad">'+(p.worth>0.005?'corners worth '+sg(p.worth):sg(p.gain))+' s</b></div>'+
+'<div style="font-weight:700;font-size:16px;margin-top:3px">'+plain(p.title)+'</div>'+(p.steps&&p.steps.length?'<ol style="margin:4px 0 0 18px;padding:0">'+p.steps.map(s=>'<li>'+plain(s)+'</li>').join('')+'</ol>':p.do?'<div>'+plain(p.do)+'</div>':'')+
+(p.target?'<div class="cotarget">'+plain(p.target)+'</div>':'')+(p.kind==='setup'&&p.why.length?'<small class="m">'+plain(p.why[0])+'</small>':'')+
+(cc&&cc.fx?'<div style="margin-top:6px"><button type="button" data-prac="'+cc.n+'" class="'+(on?'on':'')+'" style="margin:0">'+(on?'✓ Practising this':'Practise this live')+'</button></div>':'')+'</div>'+(vis?'<div class="cothing-v">'+vis+'</div>':'')+'</div>'}).join('')+'</div>'+
+(top.some(p=>p.cn&&R.A.Lat&&R.A.Lat[1])?CO_LINE_NOTE:'')}
+const coNn=n=>{const c=COACH.last&&COACH.last.C.R.cs.find(q=>q.n===+n);return c?coName(c):'Corner '+n};
+// Reading order: the numbers, one sentence, three things to do next session (with practice), where the time
+// goes, then the detail folded away: every corner, consistency, track limits, setup, conditions, progress.
+function coachBody(X){const C=X.C,R=C.R;
 const SD=(()=>{try{return coachSetupData(X)}catch(e){console.error('coach setup',e);return{H:null,why:''}}})(),SDiff=(()=>{try{return coachStyleDiff(R,X.laps)}catch(e){return {}}})(),PR=coachPriorities(X,SD,SDiff),TH=coachThemes(C);
 const tile=(lab,val,sub,cls)=>'<div style="min-width:120px"><span class="m">'+lab+'</span><br><b style="font-size:22px" class="'+(cls||'')+'">'+val+'</b>'+(sub?'<br><small class="m">'+sub+'</small>':'')+'</div>';
 let tb=null;if(X.S.id==='ibt'&&COACH.to==='best'&&!COACH.grp){try{tb=sessionStats(IB.a).tb}catch(e){}}
-let h='<div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:12px">'+tile('Your average',ft(X.avg.lap),X.n+' laps, ±'+X.avg.spread.toFixed(2)+' s')+tile('Against',ft(X.best.lap),plain(X.bestLab.replace(/ \([^)]*\)$/,'')))+tile('Gap',sg(C.total)+' s',(C.pct-100).toFixed(1)+'% slower',C.total>0?'bad':'good')+(tb?tile('Best sectors combined',ft(tb),'what your best sectors add up to'):'')+'</div>';
-if(TH.length&&C.total>0.02){const top=TH[0],pct=x=>Math.round(Math.max(0,x)/C.total*100),drive=PR.filter(p=>p.kind==='drive').slice(0,2),set=PR.find(p=>p.kind==='setup'&&p.gain>0);
+let h='<div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:12px">'+tile('Your average',ft(X.avg.lap),X.n+' laps, most within ±'+X.avg.spread.toFixed(2)+' s')+tile('Against',ft(X.best.lap),plain(X.bestLab.replace(/ \([^)]*\)$/,'')))+tile('Gap',sg(C.total)+' s',(C.pct-100).toFixed(1)+'% slower',C.total>0?'bad':'good')+(tb?tile('Best sectors combined',ft(tb),'what your best sectors add up to'):'')+'</div>';
+if(TH.length&&C.total>0.02){const top=TH[0],pct=x=>Math.round(Math.max(0,x)/C.total*100);
 h+='<div style="margin-top:12px;padding:10px 14px;border-left:4px solid var(--bad);background:var(--bg);border-radius:4px"><b style="font-size:17px">'+(pct(top.dt)>=40?'Most of your gap is '+top.k:'Your gap is spread out; the biggest part is '+top.k)+' ('+sg(top.dt)+' s'+(top.corners.length?', corner'+(top.corners.length>1?'s ':' ')+top.corners.join(', '):'')+').</b>'+
-'<div style="margin-top:4px">'+(drive.length?'Driving: '+drive.map(p=>'<b>'+plain(p.title)+'</b>').join(', then ')+'. ':'')+(set?'Setup: <b>'+set.title+'</b> should help in corner'+(set.ev.split(',').length>1?'s ':' ')+set.ev.replace(/^affects corners? /,'')+'.':SD.H?'Setup: the balance is fine; this gap is driving.':'')+'</div></div>'}
+(SD.H&&!PR.some(p=>p.kind==='setup'&&p.gain>0)?'<div style="margin-top:4px">The car\'s balance is fine on these laps: this gap is driving.</div>':'')+'</div>'}
+h+=coachThingsHtml(X,PR);
+const more=PR.filter(p=>p.kind==='setup'?p.gain>0:true).slice(3,8);if(more.length)h+='<div style="margin-top:8px"><small class="m">Then:</small> '+more.map(p=>'<span style="white-space:nowrap">'+plain(p.title)+' <b class="bad">'+sg(p.worth>0.005?p.worth:p.gain)+' s</b></span>').join(' · ')+'</div>';
+if(!PR.length)h+='<p style="margin-top:12px"><b>Your average already matches the best in every corner.</b></p>';
+h+='<div id="coPrac">'+pracHtml(pracKeyOf(X))+'</div>';
 // where the time goes
-h+='<h3 style="margin:16px 0 6px;font-size:16px">Where the time goes</h3><div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start"><div style="flex:2 1 380px;min-width:280px">'+coachDeltaSvg(R,C);
+h+='<h3 style="margin:18px 0 6px;font-size:16px">Where the time goes</h3><div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start"><div style="flex:2 1 380px;min-width:280px">'+coachDeltaSvg(R,C);
 if(TH.length&&C.total>0.02){const pct=x=>Math.max(0,x)/C.total*100,col=i=>['var(--bad)','#d99a1e','var(--ref)','var(--good)','var(--rear)','var(--mut)','var(--you)'][i%7];
-h+='<div style="margin-top:8px"><small class="m">By cause</small><div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin:3px 0">'+TH.map((t,i)=>'<span title="'+t.k+'" style="width:'+pct(t.dt).toFixed(1)+'%;background:'+col(i)+'"></span>').join('')+'</div><small>'+TH.map((t,i)=>'<span style="color:'+col(i)+'">■</span> '+t.k+' <b>'+sg(t.dt)+' s</b>').join(' &nbsp; ')+'</small></div>'}
+h+='<div style="margin-top:8px"><small class="m">By cause</small><div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin:3px 0">'+TH.map((t,i)=>'<span title="'+t.k+'" style="width:'+pct(t.dt).toFixed(1)+'%;background:'+col(i)+'"></span>').join('')+'</div><small>'+TH.map((t,i)=>'<span style="white-space:nowrap"><span style="color:'+col(i)+'">■</span> '+t.k+' <b>'+sg(t.dt)+' s</b></span>').join(' &nbsp; ')+'</small></div>'}
 h+='</div><div style="flex:1 1 240px">'+coachMapSvg(R,C)+'</div></div>';
-// priorities
-if(PR.length){h+='<h3 style="margin:18px 0 6px;font-size:16px">What to do, biggest gain first</h3><div style="display:grid;gap:8px">'+PR.slice(0,6).map((p,i)=>'<div style="border:1px solid var(--ln);border-radius:8px;padding:8px 12px;display:flex;gap:12px;align-items:flex-start">'+
-'<div style="font-size:20px;font-weight:700;color:var(--mut);min-width:20px">'+(i+1)+'</div><div style="flex:1"><span style="font-size:11px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:9px;color:#fff;background:'+(p.kind==='drive'?'var(--you)':'var(--ref)')+'">'+(p.kind==='drive'?'DRIVING':'SETUP')+'</span> '+
-(p.worth>0.005?'<b class="bad" style="margin-left:4px">in corners worth '+sg(p.worth)+' s</b>':p.gain>0.005?'<b class="bad" style="margin-left:4px">'+sg(p.gain)+' s</b>':'')+'<div style="font-weight:600;margin-top:3px">'+plain(p.title)+'</div>'+(p.do?'<div>'+plain(p.do)+'</div>':'')+(p.why.length?'<div style="margin-top:3px">'+p.why.map(w=>'<small>'+plain(w)+'</small>').join('<br>')+'</div>':'')+(p.ev?'<div class="m" style="font-size:13px;margin-top:2px">'+plain(p.ev)+'</div>':'')+'</div></div>').join('')+'</div>'}
-else h+='<p style="margin-top:12px"><b>Your average already matches the best in every corner.</b></p>';
 // corner by corner
-const lose=C.corners.filter(c=>c.dt>0.02);if(lose.length){h+='<h3 style="margin:18px 0 6px;font-size:16px">Corner by corner</h3><p class="m" style="margin:0 0 6px;font-size:13px"><span class="you">■ your average</span> &nbsp; <span class="ref">■ the best</span>: speed through the corner, with the brake and full throttle underneath.</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">'+
-lose.map(c=>{const rc=R.cs.find(q=>q.n===c.n);return '<div style="border:1px solid var(--ln);border-radius:8px;padding:8px 10px"><div style="display:flex;justify-content:space-between"><b>'+plain(coName(rc||c))+'</b><b class="bad">'+sg(c.dt)+' s</b></div>'+(rc?coachCornerSvg(R,rc):'')+
-'<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:13px;margin-top:4px">'+[['Braking',isFinite(c.d)&&Math.abs(c.d)>=1?dm(Math.abs(c.d)).replace('+','')+(c.d<0?' earlier':' later'):'same'],['Apex speed',Math.abs(c.dv)>=.5?sp(Math.abs(c.dv)).replace('+','')+(c.dv<0?' slower':' faster'):'same'],['Full throttle',isFinite(c.dm)&&Math.abs(c.dm)<=60&&Math.abs(c.dm)>=1?dm(Math.abs(c.dm)).replace('+','')+(c.dm>0?' later':' sooner'):'same'],['Lap to lap',c.sd!=null?'±'+c.sd.toFixed(2)+' s':'—']].map(([a,b])=>'<span><span class="m">'+a+'</span> '+b+'</span>').join('')+'</div>'+
-(c.tips.length?'<ul style="margin:4px 0 0 16px;padding:0;font-size:13px">'+c.tips.slice(0,3).map(t=>'<li>'+plain(t.t)+'</li>').join('')+'</ul>':'')+((SDiff[c.n]||[]).length?'<div style="font-size:13px;margin-top:4px"><b>Technique:</b> '+SDiff[c.n].map(x=>plain(x.t)).join(' ')+'</div>':'')+'</div>'}).join('')+'</div>'}
+const lose=C.corners.filter(c=>c.dt>0.02),T=(pracLoad()[pracKeyOf(X)]||{}).targets||[],hasLine=!!(R.A.Lat&&R.A.Lat[1]&&coLineOff(R.A,R.B));
+if(lose.length){h+='<details class="cofold" id="coCorners"'+(COACH.cornersOpen?' open':'')+'><summary><b>Corner by corner</b> <span class="m">'+lose.length+' corners where you lose time: your line, braking, kerbs and wheels against your best</span></summary>'+
+'<p class="m" style="margin:6px 0;font-size:13px"><span class="you">■ your typical lap</span> &nbsp; <span class="ref">■ your best</span>. The speed trace has the brake and full throttle underneath.</p>'+(hasLine?CO_LINE_NOTE:'')+'<div class="cocards">'+
+lose.map(c=>{const rc=R.cs.find(q=>q.n===c.n),K=c.cause,on=T.some(t=>t.n===c.n);return '<div class="cocard"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+plain(coName(rc||c))+'</b><b class="bad">'+sg(c.dt)+' s</b></div>'+
+(K&&K.steps.length?'<div style="font-size:14px;margin-top:2px">'+K.steps.map(s=>plain(s.t)).join(' ')+'</div>':'')+(K&&K.target?'<div class="cotarget">'+plain(K.target.t)+'</div>':'')+
+'<div class="covis">'+(hasLine&&c.fx?'<div style="flex:0 1 160px;min-width:120px">'+coachLineSvg(R,c,170)+'</div>':'')+'<div style="flex:1 1 140px;min-width:140px;max-width:280px">'+(rc?coachCornerSvg(R,rc,190,140):'')+'</div></div>'+coachFactRows(c)+
+(()=>{const nt=(SDiff[c.n]||[]).filter(x=>!(c.fx&&x.k==='trail'));return nt.length?'<div style="font-size:13px;margin-top:4px"><b>Technique:</b> '+nt.map(x=>plain(x.t)).join(' ')+'</div>':''})()+
+(c.fx?'<div style="margin-top:6px"><button type="button" data-prac="'+c.n+'" class="'+(on?'on':'')+'" style="margin:0">'+(on?'✓ Practising this':'Practise this live')+'</button></div>':'')+'</div>'}).join('')+'</div></details>'}
+h+=coachConsistHtml(C,R);
+if(X.S.id==='ibt'&&IB.a){try{h+=coachOffsHtml(coachOffs(IB.a,R.cs))}catch(e){console.error('offs',e)}}
 // setup
 h+='<h3 style="margin:18px 0 6px;font-size:16px">Setup</h3>';
 if(!SD.H)h+='<p class="m" style="margin:0">'+SD.why+'</p>';
-else{h+='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start"><div>'+coachBalanceGrid(SD.H)+'<small class="m">Steering you need against a neutral car, by phase, on these laps.</small></div><div style="flex:1;min-width:240px">'+
+else{h+='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start"><div style="max-width:100%;overflow-x:auto">'+coachBalanceGrid(SD.H)+'<small class="m">How much more steering you need than a neutral car, by phase, on these laps.</small></div><div style="flex:1;min-width:240px">'+
 (SD.picks.length||SD.other.length?'<ul style="margin:0 0 0 18px;padding:0">'+SD.picks.map(p=>'<li><b>'+plain(p.label)+'</b> '+suFmtVal(String(p.from)+(p.u?' '+p.u:''))+' → <b>'+suFmtVal(String(p.to)+(p.u?' '+p.u:''))+'</b> <span class="m">for '+(p.f.kind==='us'?'understeer':'oversteer')+' '+p.f.lab.toLowerCase()+'</span></li>').join('')+SD.other.map(o=>'<li><b>'+plain(o.ch.label)+'</b>: '+plain(o.ch.word.toLowerCase())+' <span class="m">(now '+plain(o.ch.cur)+')</span></li>').join('')+'</ul>'+
 '<p class="m" style="font-size:13px;margin:6px 0 0">Directions are for this car (iRacing\'s manual). Open the <a href="?view=setup">Setup view</a> while driving to have the engineer track the changes and give a verdict after 6 laps.</p>':'<p style="margin:0">No phase shows clear understeer or oversteer: the gap is driving. The best lap shows the car can do it.</p>')+'</div></div>'}
-// conditions, trend, full comparison
+// conditions, progress, full comparison
 h+=coachCondHtml(X);
-{const key=(X.S.car||(IB.a&&IB.a.carPath)||'')+'|'+(X.S.track||(IB.a?ghTrackOf(IB.a.yaml):''));const L=coachHistAdd(key,X);if(L.length>=2)h+='<details style="margin-top:8px"><summary><b>Your average over time</b> <span class="m">'+L.length+' sessions here; gap to the best '+sg(L[0].gap)+' → '+sg(L[L.length-1].gap)+' s</span></summary><div style="overflow-x:auto"><table><tr><th>When</th><th>Laps</th><th>Average</th><th>Best</th><th>Gap</th><th>Spread</th></tr>'+L.slice().reverse().map(e=>'<tr><td>'+new Date(e.at).toLocaleDateString()+'</td><td>'+e.n+'</td><td>'+ft(e.avg)+'</td><td>'+ft(e.best)+'</td><td>'+sg(e.gap)+' s</td><td>±'+e.spread.toFixed(2)+' s</td></tr>').join('')+'</table></div></details>'}
+{const L=coachHistAdd(pracKeyOf(X),X);h+=coachProgressHtml(L)}
 h+='<div style="margin-top:12px"><button type="button" id="coOpen" style="margin:0">Open average vs best in the full comparison</button> <span class="m">every trace, the racing line and every channel</span></div>';
 return h}
 // the conditions: each group's laps, and buttons to average one group or set it against another
@@ -1761,6 +1952,7 @@ return h+'<p class="m" style="font-size:13px;margin:4px 0 0">Pick a condition on
 function renderCoach(){const el=$('coach');if(!el)return;try{el.innerHTML=coachHtml2()}catch(e){console.error('coach',e);el.innerHTML=''}el.hidden=false;
 const s=$('coSrc'),t=$('coTo'),d=$('coDrop'),cl=$('coClr'),op=$('coOpen');if(s)s.onchange=()=>{COACH.src=s.value;renderCoach()};if(t)t.onchange=()=>{COACH.to=t.value;renderCoach()};
 const cg=$('coGrp'),cv=$('coVs');if(cg)cg.onchange=()=>{COACH.grp=cg.value;renderCoach()};if(cv)cv.onchange=()=>{COACH.to=cv.value||'best';renderCoach()};
+el.querySelectorAll('[data-prac]').forEach(b=>b.onclick=()=>pracToggle(+b.dataset.prac));renderPractice();{const cd=$('coCorners');if(cd)cd.ontoggle=()=>{COACH.cornersOpen=cd.open}}
 if(cl)cl.onclick=()=>{COACH.g61=[];if(COACH.to==='g61best')COACH.to='best';renderCoach()};
 if(d){const inp=d.querySelector('input'),add=async fs=>{for(const f of fs)if(/\.csv$/i.test(f.name))try{COACH.g61.push(parse(await f.text(),f.name))}catch(e){$('err').textContent=f.name+': '+e.message}if(COACH.g61.length>=2&&!COACH.src)COACH.src='g61';renderCoach()};
 inp.onchange=()=>add(Array.from(inp.files));d.ondragover=e=>{e.preventDefault()};d.ondrop=e=>{e.preventDefault();add(Array.from(e.dataTransfer.files))}}
