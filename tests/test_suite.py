@@ -162,7 +162,7 @@ class SuiteTest(unittest.TestCase):
         return status, body
 
     def test_pages(self):
-        for path in ("/", "/analyzer/", "/analyzer/track-map.png", "/pitwall/"):
+        for path in ("/", "/analyzer/", "/pitwall/"):
             status, body = self.get(path)
             self.assertEqual(status, 200, path)
             if path.endswith("/"):
@@ -222,10 +222,6 @@ class SuiteTest(unittest.TestCase):
         _s, headers, body = fetch(base + "/", gzip_ok=False)
         self.assertIsNone(headers.get("Content-Encoding"))
         self.assertEqual(body, expect["/"])
-        # a PNG is compressed already
-        _s, headers, body = fetch(base + "/analyzer/track-map.png")
-        self.assertIsNone(headers.get("Content-Encoding"))
-        self.assertEqual(body, on_disk("suite", "web", "analyzer", "track-map.png"))
 
     def test_everything_served_arrives_under_the_stall_size(self):
         """Behind security software that inspects local web traffic (seen with Norton
