@@ -355,6 +355,9 @@
   #connect button:focus-visible, #connect input:focus-visible { outline: 2px solid var(--player); outline-offset: 2px; }
   #connect .err { color: var(--red); margin: 12px 0 0; }
   .hidden { display: none !important; }
+  .sof-line { font-size: 12.5px; color: var(--muted); margin: -2px 0 6px; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+  .sof-line:empty { display: none; }
+  .sof-line b { color: var(--text); font-weight: 600; }
   /* alarms: one strip under the header, per viewer */
   header .alarms { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
   .alarm { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: 6px;
@@ -592,6 +595,7 @@
   <section id="standings">
     <details class="panel" id="standingsPanel" open>
       <summary>Standings</summary>
+      <div id="sofLine" class="sof-line"></div>
       <div class="tbl">
       <table>
         <thead><tr>
@@ -1049,8 +1053,23 @@
   }
 
   // ---------------------------------------------------------------- standings
+  function renderSof() {
+    const el = $("sofLine"), s = S.cars && S.cars.derived && S.cars.derived.sof;
+    if (!s || s.overall == null) { el.innerHTML = ""; return; }
+    const tip = "Computed here with iRacing's strength-of-field formula from each entry's iRating in the session info. iRacing does not put the number in the telemetry, so it can differ slightly from the one on the results page (drivers without an iRating are left out).";
+    const n = v => v == null ? "–" : v.toLocaleString("en-US");
+    const multi = s.classes.length > 1;
+    let h = D(`SoF <b>${n(s.overall)}</b>`, tip) + ` <span>${s.cars} car${s.cars === 1 ? "" : "s"}</span>`;
+    if (multi) h = `<span>${h}</span>` + s.classes.map(r => {
+      const c = Object.values(S.cars.cars || {}).find(x => x.classId === r.classId);
+      const dot = c && c.classColor != null ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:${classCss(c.classColor)}"></i>` : "";
+      return `<span>${dot}${esc(r.className || "class " + r.classId)} ${D(`<b>${n(r.sof)}</b>`, tip)} <span>(${r.cars})</span></span>`;
+    }).join("");
+    if (el.innerHTML !== h) el.innerHTML = h;
+  }
   function renderStandings() {
     if (!S.cars) return;
+    renderSof();
     const cars = Object.values(S.cars.cars || {}).filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
     const me = refInfo().own;
     const focus = focusIdx();
@@ -1560,6 +1579,13 @@
     }
     return out;
   }
+  // A tyre compound's name: iRacing names them (DriverTires) only for your car's class;
+  // otherwise its number.
+  function tyreName(idx, carIdx) {
+    const c = carByIdx(carIdx), own = ownCar(), tires = (S.session && S.session.driverTires) || [];
+    const t = own && c && c.classId === own.classId ? tires.find(x => x.index === idx) : null;
+    return t ? esc(words(t.type)) : "compound " + esc(idx);
+  }
   function eventHtml(e) {
     const cls = { pit_in: "dim", pit_out: "info", fastest_lap: "purple", incident: "hot", behind_closing: "warn2",
                   you_closing: "good", position: "info", lead_change: "info", flag: "info", engine: "hot",
@@ -1568,23 +1594,28 @@
                   compound_change: "info", driver_change: "info", adjust: "dim", race_incident: "warn2" }[e.kind] || "info";
     let t = "";
     switch (e.kind) {
-      case "pit_in": t = `${carLabel(e.idx)} into the pits`; break;
-      case "pit_out": t = `${carLabel(e.idx)} out of the pits` +
+      case "pit_in": t = e.towed ? `${carLabel(e.idx)} <b>towed to the pits</b>` : `${carLabel(e.idx)} into the pits` +
+        (e.carLap != null && e.carLap >= 0 ? ` after lap ${esc(e.carLap)}` : "") +
+        (e.classPos ? ` from ${isMulticlass() ? "class " : ""}P${esc(isMulticlass() ? e.classPos : e.pos)}` : ""); break;
+      case "pit_out": t = `${carLabel(e.idx)} out of the pits` + (e.stop ? ` (stop ${esc(e.stop)} seen)` : "") +
+        (e.classPos ? ` in ${isMulticlass() ? "class " : ""}P${esc(isMulticlass() ? e.classPos : e.pos)}` : "") +
         (e.stationaryS != null ? ` · ${D(e.stationaryS.toFixed(1) + " s stationary", "Computed here: time stopped in the box.")}` : "") +
         (e.laneLossS != null ? ` · ${D("lane loss " + e.laneLossS.toFixed(1) + " s", "Computed here: time in the pit lane minus stationary time, minus the time this car takes to cover the same stretch at its own pace.")}` : ""); break;
       case "fastest_lap": {
         const c = carByIdx(e.idx);
         const scope = e.overall ? "Fastest lap" : `Fastest ${esc(c && c.className ? c.className : "class")} lap`;
-        t = `<b>${scope}</b> ${carLabel(e.idx)} <span class="mono">${fmt.lap(e.lapS)}</span>`; break;
+        t = `<b>${scope}</b> ${carLabel(e.idx)} <span class="mono">${fmt.lap(e.lapS)}</span>` +
+            (e.lapNum ? ` on lap ${esc(e.lapNum)}` : "") +
+            (e.prevS != null ? ` · ${D((e.prevS - e.lapS).toFixed(3) + " s quicker", "Computed here: the previous fastest lap minus this one.")}` : ""); break;
       }
       case "incident": t = `<b>Incident +${esc(e.delta)}x</b> · ${esc(e.total)}x` + (e.limit != null ? ` of ${esc(e.limit)}` : ""); break;
       case "behind_closing": t = `${carLabel(e.idx)} closing on ${evWho(e, false)}: ${secs(e.gapS, 2)} behind, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
       case "you_closing": t = `${evWho(e, true)} closing on ${carLabel(e.idx)}: ${secs(e.gapS, 2)} ahead, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
       case "position": { const better = e.toPos < e.fromPos;
         t = `<span class="${better ? "gain" : "lose"}">${e.idx != null && e.idx !== refInfo().own ? carLabel(e.idx) : "You"} ${isMulticlass() ? "class " : ""}P${esc(e.fromPos)} → P${esc(e.toPos)}</span>`; break; }
-      case "race_incident": t = `${carLabel(e.idx)} ${D(esc(words(e.what || "incident")) + (e.likelyPoints ? ` (likely ${e.likelyPoints}x)` : ""), "Predicted here from telemetry (off track, a spin, slowing, contact). iRacing hides other cars' incident counts from a spectator until the finish.")}` +
+      case "race_incident": t = `${carLabel(e.idx)} ${D(esc(e.what === "tow" ? "disappeared from the track (tow, reset to the pits or left the session)" : words(e.what || "incident")) + (e.likelyPoints ? ` (likely ${e.likelyPoints}x)` : ""), "Predicted here from telemetry (off track, a spin, slowing, contact). iRacing hides other cars' incident counts from a spectator until the finish.")}` +
         (e.contactWith && e.contactWith.length ? ` with ${e.contactWith.map(shortCar).join(", ")}` : ""); break;
-      case "compound_change": t = `${carLabel(e.idx)} changed tyre compound (${esc(e.fromCompound)} → ${esc(e.toCompound)})`; break;
+      case "compound_change": t = `${carLabel(e.idx)} switched tyres: ${tyreName(e.fromCompound, e.idx)} → <b>${tyreName(e.toCompound, e.idx)}</b>`; break;
       case "driver_change": t = `${carLabel(e.idx)} driver change: ${esc(e.fromName ?? "?")} → <b>${esc(e.toName ?? "?")}</b>`; break;
       case "adjust": t = `You adjusted <b>${esc(words(e.control))}</b> ${esc(e.fromValue)} → ${esc(e.toValue)}`; break;
       case "lead_change": t = `${carLabel(e.idx)} takes the ${isMulticlass() ? "class " : ""}lead`; break;
@@ -1598,7 +1629,7 @@
       }
       case "flag": t = `<b>${esc(words(e.flag)).replace(/^./, x => x.toUpperCase())} flag</b>`; break;
       case "engine": t = `<b>Engine warning:</b> ${esc((e.warnings || []).map(words).join(", "))}`; break;
-      case "tow": t = `<b>Tow</b> · ${esc(e.towS)} s`; break;
+      case "tow": t = `<b>Towed to the pits</b> · ${esc(e.towS)} s tow`; break;
       case "rain_start": t = "Rain started"; break;
       case "rain_stop": t = "Rain stopped"; break;
       case "track_wetness": t = `Track surface now ${esc(words(e.value))}`; break;
@@ -1613,7 +1644,7 @@
       }
       default: t = esc(e.kind);
     }
-    return `<div class="ev ${cls} k-${esc(e.kind)}"><span class="tm">${e.lap != null ? "L" + esc(e.lap) + " · " : ""}${sessClock(e.t)}</span><span>${t}</span></div>`;
+    return `<div class="ev ${cls} k-${esc(e.kind)}"><span class="tm">${e.lap != null && e.lap >= 0 ? "L" + esc(e.lap) + " · " : ""}${sessClock(e.t)}</span><span>${t}</span></div>`;
   }
   // Who an event was measured from: "you" for your own car (and for events
   // recorded before this field existed), else that car.

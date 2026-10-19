@@ -89,6 +89,10 @@ def incident_causes(points: int, surface: str = "paved") -> dict:
     return {"causes": single, "single": bool(single), "maybeSeveral": points > 1}
 
 
+def _compound(v):
+    return int(v) if isinstance(v, (int, float)) and v >= 0 else None
+
+
 def live_edge(g) -> dict:
     """Where the telemetry is in time. While spectating, iRacing is playing its
     replay, and every CarIdx* variable comes from the replay frame -- so after a
@@ -329,7 +333,10 @@ class Deriver:
         self.feed_seq = 0
         self.feed_laps: list[dict] = []
         self.feed_events: list[dict] = []
-        self._ev = {"pit": {}, "best": {}, "bestSeeded": False, "closing": {}, "stable": {},
+        # False while a replay is being watched: per-car changes read from the past
+        # are not news (field_events is skipped then; this covers the per-car ones)
+        self.events_live = True
+        self._ev = {"pit": {}, "best": {}, "bestSeeded": False, "closing": {}, "stable": {}, "surf": {},
                     "flags": None, "flagAt": {}, "inc": None, "warn": None, "tow": None,
                     "wet": None, "rain": None, "declaredWet": None}
 
@@ -1122,24 +1129,39 @@ class Deriver:
     CLOSING_EVENT_GAIN = 0.3
     CLOSING_EVENT_GAP = 3.0
 
-    def field_events(self, cars: list, t, player_idx, stops: dict):
+    # Before the start (cars leaving the pits for the grid) and after the flag
+    # (cars driving back in) pit lane traffic is not a pit stop.
+    PIT_EVENT_STATES = {"parade_laps", "racing", None}
+
+    def field_events(self, cars: list, t, player_idx, stops: dict, state=None):
         ev = self._ev
         by = {c["idx"]: c for c in cars}
         me = by.get(player_idx)
-        # pit in / out
+        # pit in / out. A car loading into the world in its pit box, or leaving the
+        # world (a disconnect, a tow, the garage), changes the pit-road flag without
+        # driving anywhere: those are not pit stops and reset the car's state.
+        pit_states = state in self.PIT_EVENT_STATES
         for i, c in by.items():
             onr = bool(c.get("onPitRoad"))
-            was = ev["pit"].get(i)
+            surf = c.get("surface")
+            was, was_surf = ev["pit"].get(i), ev["surf"].get(i)
+            ev["surf"][i] = surf
+            if surf == "not_in_world":
+                ev["pit"][i] = None
+                continue
             ev["pit"][i] = onr
-            if was is None:
+            if was is None or was_surf == "not_in_world" or not pit_states:
                 continue
             if onr and not was:
-                self.event(t, "pit_in", idx=i, carLap=c.get("lapCompleted"))
+                towed = was_surf in ("on_track", "off_track") and surf == "in_pit_stall"
+                self.event(t, "pit_in", idx=i, carLap=c.get("lapCompleted"), towed=towed,
+                           pos=c.get("pos") or None, classPos=c.get("classPos") or None)
             elif was and not onr:
                 d = c.get("derived") or {}
                 s = stops.get(i)
                 self.event(t, "pit_out", idx=i, stationaryS=d.get("lastStopS") if d.get("stopsSeen") else None,
-                           laneLossS=s["laneLossS"] if s else None)
+                           laneLossS=s["laneLossS"] if s else None, stop=d.get("stopsSeen") or None,
+                           pos=c.get("pos") or None, classPos=c.get("classPos") or None)
         # fastest laps, overall and per class. Seeded silently from what is
         # already on the board: only an improvement we watched is news.
         best_all = ev["best"].get("all")
@@ -1151,10 +1173,14 @@ class Deriver:
             cb = ev["best"].get(key)
             seeded = ev["bestSeeded"]
             if cb is None or b < cb - 1e-4:
-                if seeded and cb is not None:
+                n = c.get("bestLapNum")
+                # a first lap includes the start (or the out-lap): never a headline
+                if seeded and cb is not None and not (isinstance(n, (int, float)) and n < 2):
                     overall = best_all is None or b < best_all - 1e-4
                     self.event(t, "fastest_lap", idx=c["idx"], lapS=round(b, 3),
-                               classId=c.get("classId"), overall=overall)
+                               classId=c.get("classId"), overall=overall,
+                               lapNum=n if isinstance(n, (int, float)) and n > 0 else None,
+                               prevS=round(cb, 3))
                 ev["best"][key] = b
             if best_all is None or b < best_all - 1e-4:
                 ev["best"]["all"] = best_all = b
@@ -1210,6 +1236,7 @@ class Deriver:
                    "repair", "disqualify", "blue", "furled")
     FLAG_REPEAT_S = 20.0
     QUIET_WARNINGS = {"pit_speed_limiter", "rev_limiter"}
+    ENGINE_RUNNING_RPM = 500
 
     def state_events(self, t, session: dict, player: dict, weather: dict):
         ev = self._ev
@@ -1241,6 +1268,12 @@ class Deriver:
                            else round(player["lapPct"], 4))
             ev["inc"] = inc
         warn = set(player.get("engineWarnings") or []) - self.QUIET_WARNINGS
+        # With the engine off (in the box before the start, after a stall) the oil
+        # and fuel pressure lights are on by design: not news. Out of the car, none is.
+        if not player.get("isOnTrack"):
+            warn = set()
+        elif (player.get("rpm") or 0) < self.ENGINE_RUNNING_RPM:
+            warn -= {"oil_pressure", "fuel_pressure"}
         if ev["warn"] is not None:
             new = sorted(warn - ev["warn"])
             if new:
@@ -1252,6 +1285,8 @@ class Deriver:
                 self.event(t, "tow", towS=round(tow, 1))
             ev["tow"] = tow
         wet = weather.get("wetness")
+        if wet == "unknown":                      # not reported yet (or no longer): not a change
+            wet = None
         if wet is not None:
             if ev["wet"] is not None and wet != ev["wet"]:
                 self.event(t, "track_wetness", value=wet, prev=ev["wet"])
@@ -1648,6 +1683,10 @@ class Deriver:
         top, sp["max"] = sp["max"], None
         return round(top, 1)
 
+    # A tyre or driver change shows up while the car is in the pits or soon after
+    # it leaves (the session info that names the driver can lag the stop).
+    PIT_CHANGE_WINDOW_S = 120.0
+
     def car_extras(self, c, t, grid_by_idx, fast_limit, is_race, team_race) -> dict:
         idx = c["idx"]
         out = {}
@@ -1679,14 +1718,23 @@ class Deriver:
         out["nextStopLapEst"] = start + max(stints) if stints and start is not None else None
         # Tyres: a compound change is the only tyre fact iRacing gives for
         # another car (same-compound changes are invisible).
+        # Tyres can only be changed in the pits, so a compound that differs anywhere
+        # else (the sim catching up as the field loads, a choice made in the garage)
+        # is taken in quietly, not reported as a change.
         cs = self._cmp.get(idx)
         comp = c.get("compound")
+        in_pits = bool(c.get("onPitRoad")) or c.get("surface") == "in_pit_stall"
         if cs is None:
-            self._cmp[idx] = cs = {"c": comp, "changes": 0}
-        elif comp is not None and comp != cs["c"]:
-            if cs["c"] is not None:
+            self._cmp[idx] = cs = {"c": comp, "changes": 0, "pitT": t if in_pits else None}
+        if in_pits:
+            cs["pitT"] = t
+        if comp is not None and comp != cs["c"]:
+            recent = cs.get("pitT") is not None and t is not None and t - cs["pitT"] <= self.PIT_CHANGE_WINDOW_S
+            if cs["c"] is not None and recent and c.get("surface") != "not_in_world":
                 cs["changes"] += 1
-                self.event(t, "compound_change", idx=idx, fromCompound=cs["c"], toCompound=comp)
+                if self.events_live:
+                    self.event(t, "compound_change", idx=idx, fromCompound=cs["c"], toCompound=comp,
+                               classId=c.get("classId"))
             cs["c"] = comp
         out["compoundChanges"] = cs["changes"]
         used = c.get("fastRepairsUsed")
@@ -1716,7 +1764,11 @@ class Deriver:
         st["t"], st["lap"] = t, lc
         if key != st["cur"]:
             prev = st["tot"].get(st["cur"], {}).get("name")
-            self.event(t, "driver_change", idx=idx, fromName=prev, toName=c.get("name"))
+            # drivers swap in the pit box; a name changing anywhere else is the
+            # session info catching up, counted but not announced
+            pit_t = (self._cmp.get(idx) or {}).get("pitT")
+            if self.events_live and pit_t is not None and t - pit_t <= self.PIT_CHANGE_WINDOW_S:
+                self.event(t, "driver_change", idx=idx, fromName=prev, toName=c.get("name"))
             st["cur"] = key
             st["tot"].setdefault(key, {"name": c.get("name"), "timeS": 0.0, "laps": 0})
         if not team_race and len(st["tot"]) < 2:
@@ -2650,7 +2702,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "onPitRoad": _arr(onpit, i),
             "surface": TRACK_SURFACE.get(s, str(s)) if s is not None else None,
             "lastLapS": _arr(last, i), "bestLapS": _arr(best, i), "bestLapNum": _arr(bestn, i),
-            "compound": _arr(comp, i),
+            # -1 is iRacing's "not known": a car not loaded into the world yet (every
+            # car at the start of a session) or gone from it. Not a compound.
+            "compound": _compound(_arr(comp, i)),
             # The class's reference lap from the session info: what CarIdxEstTime
             # is measured against (its value at the line).
             "classEstLapS": d.get("CarClassEstLapTime") if d else None,
@@ -2829,6 +2883,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     if deriver is not None:
         for c in cars:
             deriver.record_lap(c, now)
+        deriver.events_live = live_edge(g)["atLive"]
         for c in cars:
             c["derived"].update(deriver.car_extras(c, now, grid_by_idx, fast_limit, is_race, team_race))
         my_lap = deriver.pace(player_idx) if me is not None else None
@@ -2867,6 +2922,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "battles": deriver.battles(cars, ahead_of, is_race),
             "predictedIncidents": deriver.predicted_incidents(),
             "race": race,
+            "sof": strength_of_field(cars),
         }
         edge = live_edge(g)
         out["derived"]["liveEdge"] = edge
@@ -2874,7 +2930,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         # watched the field data is from the past, and pit stops or lead changes
         # read from it would be old news reported as new.
         if edge["atLive"]:
-            deriver.field_events(cars, now, player_idx, deriver._stops_tick)
+            deriver.field_events(cars, now, player_idx, deriver._stops_tick,
+                                 state=SESSION_STATE.get(g("SessionState"), "invalid"))
         deriver.incidents(cars, edge, session_num,
                           surface_kind(((session_msg or {}).get("track") or {}).get("TrackType")),
                           state=SESSION_STATE.get(g("SessionState"), "invalid"),
@@ -3012,6 +3069,35 @@ def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver,
             "lapsToGo": to_go, "timeRemainS": remain if limit_s or not total else remain,
             "timeLimited": bool(limit_s), "lapsByTime": by_time, "endsBy": ends,
             "white": "white" in (flags or []), "checkered": "checkered" in (flags or [])}
+
+
+SOF_K = 1600 / math.log(2)
+
+
+def _sof(ratings):
+    """iRacing's strength-of-field formula over the drivers' iRatings:
+    (1600 / ln 2) * ln(n / sum(exp(-iR * ln 2 / 1600))). iRacing does not publish
+    the number in the telemetry, so it is computed here from DriverInfo."""
+    rs = [r for r in ratings if isinstance(r, (int, float)) and r > 0]
+    if not rs:
+        return None
+    return int(round(SOF_K * math.log(len(rs) / sum(math.exp(-r / SOF_K) for r in rs))))
+
+
+def strength_of_field(cars: list) -> dict | None:
+    """{"overall", "cars", "classes": [{"classId","className","sof","cars"}]} from the
+    entry list (spectators and the pace car are not in it). Drivers without an
+    iRating (AI, rookies at 0) are left out."""
+    rated = [c for c in cars if isinstance(c.get("iRating"), (int, float)) and c["iRating"] > 0]
+    if not rated:
+        return None
+    classes = {}
+    for c in rated:
+        classes.setdefault(c.get("classId"), []).append(c)
+    rows = [{"classId": k, "className": v[0].get("className"), "sof": _sof([c["iRating"] for c in v]), "cars": len(v)}
+            for k, v in classes.items()]
+    rows.sort(key=lambda r: -(r["sof"] or 0))
+    return {"overall": _sof([c["iRating"] for c in rated]), "cars": len(rated), "classes": rows}
 
 
 def race_laps_left(race: dict | None):

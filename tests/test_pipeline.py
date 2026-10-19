@@ -1157,7 +1157,8 @@ def test_state_events_incidents_flags_weather_engine():
     d.incident_limit = 17
     base = lambda **kw: ({"flags": kw.get("flags", ["green"])},
                          {"lap": 3, "incidents": {"my": kw.get("inc", 2)},
-                          "engineWarnings": kw.get("warn", []), "towTimeS": kw.get("tow", 0.0)},
+                          "engineWarnings": kw.get("warn", []), "towTimeS": kw.get("tow", 0.0),
+                          "isOnTrack": kw.get("on", 1), "rpm": kw.get("rpm", 6000)},
                          {"wetness": kw.get("wet", "dry"), "precipitationPct": kw.get("rain", 0.0),
                           "declaredWet": kw.get("dw", False)})
     d.state_events(0.0, *base())                               # seeds silently
@@ -1849,7 +1850,8 @@ def test_compound_changes_and_pace_by_compound():
     cp = {o["compound"]: o for o in d.compound_pace(cars)}
     assert cp[0]["medianLastLapS"] == 101.5 and cp[1]["medianLastLapS"] == 98.0
     assert cp[1]["fastest"] and cp[0]["vsFastestS"] == 3.5
-    cars[0]["compound"] = 1                                    # a switch
+    cars[0]["compound"] = 1                                    # a switch, in the pits
+    cars[0]["onPitRoad"] = True
     x = d.car_extras(cars[0], 10.0, {}, None, True, False)
     assert x["compoundChanges"] == 1
     ev = [e for e in d.feed_events if e["kind"] == "compound_change"]
@@ -2147,3 +2149,106 @@ def test_stint_trend_leaves_out_laps_that_are_not_racing_laps():
         out = d.stint(1, k, t, 0)
     assert out["stintLaps"] == 7
     assert 0.05 <= out["degSPerLap"] <= 0.12, out             # ~0.08 s a lap from the racing laps
+
+
+def test_compound_placeholder_and_changes_away_from_the_pits_are_not_tyre_changes():
+    """Seen at the start of a real race: every car's CarIdxTireCompound went -1 -> 0
+    as it loaded, and a towed car flickered 0 -> -1 -> 0 several times. None of
+    those is a tyre change; only a different compound around a pit visit is."""
+    from pitwall.normalize import _compound
+    assert _compound(-1) is None and _compound(0) == 0 and _compound(None) is None
+    d = Deriver()
+    c = _car(1, classId=10, compound=None)                     # -1 arrives as None
+    d.car_extras(c, 0.0, {}, None, True, False)
+    for t, comp in ((1.0, 0), (2.0, None), (3.0, 0), (4.0, None), (5.0, 0)):
+        c["compound"] = comp
+        d.car_extras(c, t, {}, None, True, False)
+    c["compound"] = 1                                          # on track, nowhere near the pits
+    x = d.car_extras(c, 6.0, {}, None, True, False)
+    assert x["compoundChanges"] == 0
+    assert not [e for e in d.feed_events if e["kind"] == "compound_change"]
+    # a stop, then the new compound shows up just after the car leaves the lane
+    c["onPitRoad"] = True
+    d.car_extras(c, 100.0, {}, None, True, False)
+    c["onPitRoad"], c["compound"] = False, 0
+    x = d.car_extras(c, 130.0, {}, None, True, False)
+    assert x["compoundChanges"] == 1
+    # watching a replay: not news
+    d.events_live = False
+    c["onPitRoad"] = True
+    c["compound"] = 1
+    d.car_extras(c, 200.0, {}, None, True, False)
+    assert len([e for e in d.feed_events if e["kind"] == "compound_change"]) == 1
+
+
+def test_pit_events_ignore_cars_loading_or_leaving_the_world_and_the_grid_run():
+    d = Deriver()
+
+    def tick(t, state="racing", **by_idx):
+        cars = []
+        for i, (onr, surf) in by_idx.items():
+            c = _car(int(i[1:]), onPitRoad=onr, surface=surf)
+            cars.append(c)
+        d.field_events(cars, t, None, {}, state=state)
+        return [e["kind"] for e in d.feed_events]
+
+    tick(0.0, c1=(False, "not_in_world"), c2=(True, "in_pit_stall"), c3=(False, "on_track"))
+    tick(1.0, c1=(True, "in_pit_stall"), c2=(True, "in_pit_stall"), c3=(False, "on_track"))   # c1 loads in its box
+    tick(2.0, c1=(True, "in_pit_stall"), c2=(False, "not_in_world"), c3=(False, "on_track"))  # c2 leaves
+    assert tick(3.0, c1=(True, "in_pit_stall"), c2=(False, "not_in_world"), c3=(False, "on_track")) == []
+    # leaving the pits for the grid before the start: not a stop
+    assert tick(4.0, state="warmup", c1=(False, "on_track"), c3=(False, "on_track")) == []
+    # a real stop in the race, with its details
+    tick(5.0, c1=(False, "on_track"), c3=(True, "approaching_pits"))
+    tick(6.0, c1=(False, "on_track"), c3=(False, "on_track"))
+    ev = [e for e in d.feed_events if e["kind"] in ("pit_in", "pit_out")]
+    assert [e["kind"] for e in ev] == ["pit_in", "pit_out"] and ev[0]["idx"] == 3 and ev[0]["towed"] is False
+    # towed: from the track straight into the box
+    tick(7.0, c1=(True, "in_pit_stall"), c3=(False, "on_track"))
+    assert d.feed_events[-1]["kind"] == "pit_in" and d.feed_events[-1]["towed"] is True
+
+
+def test_fastest_lap_says_which_lap_and_by_how_much_and_skips_first_laps():
+    d = Deriver()
+    a = _car(1, classId=10, bestLapS=90.0, bestLapNum=3)
+    b = _car(2, classId=10, bestLapS=None)
+    d.field_events([a, b], 0.0, None, {})                      # seeded silently
+    b.update(bestLapS=89.8, bestLapNum=1)                       # quicker, but a first lap: no headline
+    d.field_events([a, b], 1.0, None, {})
+    assert not [e for e in d.feed_events if e["kind"] == "fastest_lap"]
+    a.update(bestLapS=89.5, bestLapNum=5)
+    d.field_events([a, b], 2.0, None, {})
+    ev = [e for e in d.feed_events if e["kind"] == "fastest_lap"]
+    assert len(ev) == 1 and ev[0]["idx"] == 1 and ev[0]["lapNum"] == 5 and ev[0]["prevS"] == 89.8
+
+
+def test_engine_pressure_lights_with_the_engine_off_are_not_warnings():
+    d = Deriver()
+    base = lambda **kw: ({"flags": ["green"]}, {"lap": 1, "incidents": {"my": 0}, "towTimeS": 0.0,
+                                                "engineWarnings": kw.get("warn", []),
+                                                "isOnTrack": kw.get("on", 1), "rpm": kw.get("rpm", 0)},
+                         {"wetness": "unknown", "precipitationPct": 0.0, "declaredWet": False})
+    d.state_events(1.0, *base())
+    d.state_events(2.0, *base(warn=["oil_pressure", "fuel_pressure"]))        # sitting in the box, engine off
+    d.state_events(3.0, *base(warn=["oil_pressure"], on=0, rpm=7000))         # not in the car
+    assert not [e for e in d.feed_events if e["kind"] == "engine"]
+    d.state_events(4.0, *base(warn=["oil_pressure"], rpm=7000))               # running: real
+    assert [e["warnings"] for e in d.feed_events if e["kind"] == "engine"] == [["oil_pressure"]]
+    # the track surface going from "unknown" to dry is not a change
+    d.state_events(5.0, base()[0], base()[1], {"wetness": "dry", "precipitationPct": 0.0, "declaredWet": False})
+    assert not [e for e in d.feed_events if e["kind"] == "track_wetness"]
+
+
+def test_strength_of_field_per_class_with_iracings_formula():
+    from pitwall.normalize import strength_of_field
+    cars = [_car(i, classId=1, className="GT3", iRating=r) for i, r in enumerate((2000, 2000, 2000))] + \
+           [_car(10 + i, classId=2, className="GT4", iRating=r) for i, r in enumerate((1000, 3000))] + \
+           [_car(20, classId=2, className="GT4", iRating=0), _car(21, classId=2, className="GT4", iRating=None)]
+    s = strength_of_field(cars)
+    by = {r["className"]: r for r in s["classes"]}
+    assert by["GT3"]["sof"] == 2000 and by["GT3"]["cars"] == 3            # equal ratings: that rating
+    # unequal: below the plain average (2000), pulled toward the weaker driver
+    assert 1500 < by["GT4"]["sof"] < 2000 and by["GT4"]["cars"] == 2
+    assert s["cars"] == 5 and by["GT4"]["sof"] < s["overall"] < 2000
+    assert s["classes"][0]["className"] == "GT3"                            # strongest first
+    assert strength_of_field([_car(1, iRating=0)]) is None
