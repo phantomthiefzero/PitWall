@@ -1305,3 +1305,202 @@ class EngineerWaitsForCorneringTest(unittest.TestCase):
         self.assertEqual(r["waiting"], 0)
         self.assertIn("not enough cornering yet", r["hw"])
         self.assertEqual(r["items"], [["Front ARB blades", 75, 66]])
+
+
+COACH_JS = r"""
+// a 2 km track with two corners; laps differ only in where the driver brakes for corner 1
+function lap(brake1, who) {
+  const n = 2000, len = 2000, D = new Float64Array(n), S = new Float64Array(n), Br = new Float64Array(n), Th = new Float64Array(n), t = new Float64Array(n);
+  const corners = [[0.35, brake1], [0.75, 0.70]];        // [apex, braking point]
+  for (let i = 0; i < n; i++) {
+    const d = i / (n - 1); D[i] = d; let v = 60, br = 0, th = 1;
+    for (const [ap, bp] of corners) {
+      if (d >= bp && d < ap) { const f = (d - bp) / (ap - bp); v = 60 - 35 * f; br = 0.9; th = 0 }
+      else if (d >= ap && d < ap + 0.05) { const f = (d - ap) / 0.05; v = 25 + 35 * f; br = 0; th = f > 0.2 ? 1 : 0.3 }
+    }
+    S[i] = v; Br[i] = br; Th[i] = th;
+    t[i] = i ? t[i - 1] + (len / (n - 1)) / ((S[i] + S[i - 1]) / 2) : 0;
+  }
+  const z = () => new Float64Array(n);
+  return { n, D, Speed: S, Brake: Br, Throttle: Th, t, lap: t[n - 1], Steer: z(), Gear: z(), Lat: z(), Lon: z(), RPM: z(), ABS: z(), LatG: z(), LonG: z(), VertG: z(), YawRate: z(), who, ext: {}, meta: {} };
+}
+const best = lap(0.31, 'best');
+const laps = [lap(0.28, 'a'), lap(0.285, 'b'), lap(0.29, 'c'), lap(0.31, 'd'), lap(0.28, 'e')];
+const avg = avgLap(laps);
+const C = coachCompare(avg, best, laps);
+const c1 = C.corners.find(c => Math.abs(c.ap - 350) < 40), c2 = C.corners.find(c => Math.abs(c.ap - 750) < 40);
+// live laps are kept compactly and come back as laps
+LIVE.meta = { carPath: 'ferrari296gt3', who: 'Me' }; LIVE.yaml = 'TrackDisplayName: Test Raceway';
+const b = { d: [], t: [], Speed: [], Brake: [], thr: [], str: [], gear: [], rpm: [], LatG: [], lon: [], yaw: [], abs: [] };
+for (let i = 0; i < best.n; i += 3) { b.d.push(best.D[i]); b.t.push(best.t[i]); b.Speed.push(best.Speed[i]); b.Brake.push(best.Brake[i]); b.thr.push(best.Throttle[i]);
+  ['str', 'gear', 'rpm', 'LatG', 'lon', 'yaw', 'abs'].forEach(k => b[k].push(0)) }
+coachSaveLive({ b, lastT: best.lap, lap: 7, ver: 1 });
+const saved = coachLiveLoad()[coachLiveKey()], back = coachFromSaved(saved[0]);
+const C2 = coachCompare(avgLap([back]), best, [back]);
+console.log(JSON.stringify({ avgLap: avg.lap, meanLap: laps.reduce((s, l) => s + l.lap, 0) / laps.length, spread: avg.spread, bestLap: best.lap, total: C.total,
+  c1: c1 && { dt: c1.dt, d: c1.d, tips: c1.tips.map(t => t.k) }, c2: c2 && { dt: c2.dt, tips: c2.tips.map(t => t.k) },
+  savedN: saved.length, savedPts: saved[0].D.length, size: JSON.stringify(saved[0]).length, roundTrip: C2.total }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CoachTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(COACH_JS)
+
+    def test_average_lap_is_the_mean_time_and_typical_inputs(self):
+        r = self.r
+        self.assertAlmostEqual(r["avgLap"], r["meanLap"], places=6)
+        self.assertGreater(r["spread"], 0)
+        self.assertAlmostEqual(r["total"], r["meanLap"] - r["bestLap"], places=6)
+
+    def test_finds_the_corner_and_says_brake_later(self):
+        c1, c2 = self.r["c1"], self.r["c2"]
+        self.assertGreater(c1["dt"], 0.05)
+        self.assertLess(c1["d"], -30)                         # the median lap brakes ~50 m earlier
+        self.assertEqual(c1["tips"][0], "brake_later")
+        self.assertIn("consistency", c1["tips"])              # braking point moves lap to lap
+        self.assertLess(abs(c2["dt"]), 0.02)                  # corner 2 is the same in every lap
+        self.assertEqual(c2["tips"], [])
+
+    def test_live_laps_are_saved_small_and_come_back(self):
+        r = self.r
+        self.assertEqual((r["savedN"], r["savedPts"]), (1, 250))
+        self.assertLess(r["size"], 20000)
+        self.assertLess(abs(r["roundTrip"]), 0.05)           # the same lap against itself
+
+
+ENG_COLOUR_JS = ENGINEER_JS.split("const txt = ")[0] + r"""
+ENG.on = true; ENG.laps = 6;
+drive(ARGS_YAML, 6, 1.4, 60.0);
+const plan = engPlans()[1];                                        // front bar 75 -> 66
+const chk = y => engCheckHtml(plan, setupTree(y)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+const toward = chk(ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 70 degrees'));
+const wrong = chk(ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 80 degrees'));
+const untouched = chk(ARGS_YAML);
+const done = chk(ARGS_YAML.replace('ArbBlades: 75 degrees', 'ArbBlades: 66 degrees').split('RearWingAngle: 8 degrees').join('RearWingAngle: 9 degrees'));
+console.log(JSON.stringify({ toward, wrong, untouched, done }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class EngineerColoursTest(unittest.TestCase):
+    """What the engineer asked for, against what is in the sim right now."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("const ARGS_YAML = " + json.dumps(SETUP_296_YAML) + ";\n" + ENG_COLOUR_JS)
+
+    def test_each_state_is_named(self):
+        r = self.r
+        self.assertIn("should be 66 degrees , now 70 degrees (on its way)", r["toward"])
+        self.assertIn("now 80 degrees (the wrong way)", r["wrong"])
+        self.assertIn("(not changed yet)", r["untouched"])
+        self.assertIn("The change is in.", r["done"])
+        self.assertIn("Rear wing angle 8 degrees → 9 degrees (changed, not in the plan)", r["done"])
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CoachThemesTest(unittest.TestCase):
+    def test_gap_split_by_cause(self):
+        js = r"""
+const C = { total: 0.9, between: 0.2, corners: [
+  { n: 4, dt: 0.21, tips: [{ k: 'brake_later' }, { k: 'coast' }] },
+  { n: 2, dt: 0.20, tips: [{ k: 'apex_speed' }] },
+  { n: 3, dt: 0.06, tips: [{ k: 'over_brake' }] },
+  { n: 1, dt: 0.10, tips: [] },
+  { n: 6, dt: 0.01, tips: [{ k: 'coast' }] } ] };
+console.log(JSON.stringify({ t: coachThemes(C).map(t => [t.k, +t.dt.toFixed(3), t.corners]) }));
+"""
+        self.assertEqual(run_js(js)["t"], [["braking", 0.27, [4, 3]], ["mid-corner speed", 0.2, [2]], ["straights", 0.2, []],
+                                      ["line and steering", 0.1, [1]]])
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CoachConditionsTest(unittest.TestCase):
+    def test_laps_grouped_by_fuel_tyres_and_track(self):
+        js = r"""
+// a 10-lap stint from full, a stop, then 4 more laps; the track warms up
+const conds = [];
+for (let i = 1; i <= 10; i++) conds.push({ f0: 60 - 5 * (i - 1), stint: i, tt: 30 + i * 0.5 });
+for (let i = 1; i <= 4; i++) conds.push({ f0: 30 - 5 * (i - 1), stint: i, tt: 36 });
+conds.push(null);                                  // a Garage61 lap: no conditions
+const G = coachConditions(conds), ids = Object.fromEntries(Object.entries(G).map(([k, g]) => [k, g.idx]));
+console.log(JSON.stringify({ ids, none: coachConditions([{}, {}, null]) }));
+"""
+        r = run_js(js)
+        ids = r["ids"]
+        self.assertEqual(ids["heavy"], [0, 1, 2, 3])            # 45-60 L: top third of 15-60 L
+        self.assertEqual(ids["light"], [6, 7, 8, 9, 10, 11, 12, 13])   # 15-30 L
+        self.assertEqual(ids["cold"], [0, 1, 10, 11])           # first two laps of each stint
+        self.assertEqual(ids["late"], [6, 7, 8, 9])             # lap 7+ (two thirds of 10)
+        self.assertEqual(set(ids["hot"]) | set(ids["cool"]), set(range(14)))
+        self.assertEqual(ids["optimal"], [4, 5, 12, 13])        # not heavy, not cold, not late
+        self.assertEqual(r["none"], {})
+
+
+@unittest.skipUnless(NODE and os.path.exists(REAL_IBT), "needs Node and the real Indianapolis file")
+class CoachPageRealFileTest(unittest.TestCase):
+    """The coaching page on Andrew's real Indianapolis laps: every section is there and says something."""
+
+    @classmethod
+    def setUpClass(cls):
+        js = r"""
+IB.a = ibt(readBytes(ARGS[0]));
+COACH.src = 'ibt'; COACH.to = 'best';
+const X = coachRun(), SD = coachSetupData(X), SDiff = coachStyleDiff(X.C.R, X.laps), PR = coachPriorities(X, SD, SDiff), html = coachBody(X);
+const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind), gains: PR.map(p => +p.gain.toFixed(3)),
+  titles: PR.map(p => p.title), notes: Object.keys(SDiff).length, svgs: (html.match(/<svg/g) || []).length,
+  hasMap: html.indexOf('Track map coloured') >= 0, text: text.slice(0, 600), sections: ['Where the time goes', 'What to do, biggest gain first', 'Corner by corner', 'Setup'].map(s => text.indexOf(s) >= 0) }));
+"""
+        cls.r = run_js(js, REAL_IBT)
+
+    def test_sections_and_visuals(self):
+        r = self.r
+        self.assertEqual(r["sections"], [True, True, True, True])
+        self.assertTrue(r["hasMap"])
+        self.assertGreaterEqual(r["svgs"], 3)                 # delta trace, map, a corner trace
+
+    def test_priorities_mix_driving_and_setup_ranked_by_time(self):
+        r = self.r
+        self.assertIn("drive", r["kinds"])
+        self.assertIn("setup", r["kinds"])                    # the laps understeer mid-corner
+        drive = [g for k, g in zip(r["kinds"], r["gains"]) if k == "drive"]
+        self.assertEqual(drive, sorted(drive, reverse=True))
+        self.assertGreater(r["notes"], 0)                     # technique differences against the best lap
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CornerFinderTest(unittest.TestCase):
+    """Corners from where the car turns: esses split, a double apex split, a loaded kink kept, a twitch ignored."""
+
+    def test_shapes(self):
+        js = r"""
+const G = 9.80665, B = { Speed: new Float64Array(N).fill(60), LatG: new Float64Array(N) };
+const turn = (a, b, g, vmin) => { for (let i = a; i <= b; i++) { const f = Math.sin((i - a) / (b - a) * Math.PI); B.LatG[i] = g * G * f; B.Speed[i] = 60 - (60 - vmin) * f } };
+turn(100, 140, -1.5, 25);                       // a left
+turn(141, 175, 1.4, 28);                        // straight into a right: esses
+turn(300, 340, -1.3, 30); turn(341, 400, -1.3, 32);   // one long left with two dips (double apex)
+for (let i = 500; i < 540; i++) B.LatG[i] = -0.8 * G;  // a flat-out loaded kink at 60 m/s (radius ~460 m)
+for (let i = 600; i < 640; i++) B.LatG[i] = 0.3 * G;   // a twitch on the straight: too little load
+B.LatG[700] = 2 * G;                            // one noisy sample
+const cs = findCorners(B, sma(B.Speed, 9));
+console.log(JSON.stringify({ aps: cs.map(c => c.ap), n: cs.length }));
+"""
+        r = run_js(js)
+        aps = r["aps"]
+        self.assertEqual(r["n"], 5, aps)
+        self.assertTrue(110 <= aps[0] <= 130 and 150 <= aps[1] <= 165, aps)          # the esses, two corners
+        self.assertTrue(310 <= aps[2] <= 330 and 360 <= aps[3] <= 380, aps)          # double apex, two corners
+        self.assertTrue(500 <= aps[4] < 540, aps)                                     # the kink
+
+    @unittest.skipUnless(os.path.exists(REAL_IBT), "the real Indianapolis file is not here")
+    def test_indianapolis_has_its_fourteen_turns(self):
+        js = r"""
+const ib = ibt(readBytes(ARGS[0])), S = sessionStats(ib), o = S.clean.slice().sort((a, b) => a.time - b.time);
+const R = analyze(ib.lapObj(o[5].i), ib.lapObj(o[0].i));
+console.log(JSON.stringify({ n: R.cs.length }));
+"""
+        self.assertEqual(run_js(js, REAL_IBT)["n"], 14)

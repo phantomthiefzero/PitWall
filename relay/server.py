@@ -176,6 +176,9 @@ class Relay:
         # /analyzer/. Any viewer token works; it is read-only.
         self.analyzer_feed = None
         self.analyzer_page: str | None = None
+        # Or a callable(path) -> (body, content type) | None that serves the page and its
+        # pieces (the suite's, which splits a large page under the stall size).
+        self.analyzer_serve = None
         self._guests: set = set()
         # The car each viewer follows, for that viewer alone. Choosing one never
         # changes what anyone else sees: the bridge computes a view per chosen car
@@ -607,6 +610,17 @@ class Relay:
             except OSError:
                 return connection.respond(http.HTTPStatus.NOT_FOUND, "the PitWall page is not installed\n")
             return page_response(request, body)
+        if self.analyzer_serve and path.startswith("/analyzer") and request.headers.get("Upgrade") is None:
+            got = self.analyzer_serve(path)
+            if got:
+                body, ctype = got
+                if ctype.startswith("text/html"):
+                    return page_response(request, body)
+                headers = [("Content-Type", ctype), ("Cache-Control", "no-cache")]
+                if "gzip" in (request.headers.get("Accept-Encoding") or "").lower():
+                    body = gzip.compress(body, compresslevel=6, mtime=0)
+                    headers += [("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")]
+                return Response(200, "OK", Headers(headers + [("Content-Length", str(len(body)))]), body)
         if path in ("/analyzer/", "/analyzer", "/analyzer/index.html") and self.analyzer_page and request.headers.get("Upgrade") is None:
             try:
                 with open(self.analyzer_page, "rb") as f:

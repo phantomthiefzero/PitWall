@@ -49,6 +49,10 @@ iRacing Suite app (suite/)
   Its logic is tested in Node: `tests/analyzer_harness.js` runs the page's own script with a
   stand-in page, and `tests/test_analyzer.py` feeds it synthetic .ibt files shaped like real ones
   (lap counter going back, mid-lap joins, pit laps, refuels). Skipped when Node is missing.
+- Size: every reply must stay under ~128 KB on the wire (Norton stall, see suite/bridge.py GZIP_MIN).
+  The analyzer passed that, so `suite/pagesplit.py` serves it as a small page plus script pieces
+  that a loader joins and runs as one script; the file on disk stays one HTML file. Both the suite
+  server and the relay (`relay.analyzer_serve`) use it. test_suite checks every reply's size.
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.

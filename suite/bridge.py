@@ -454,6 +454,24 @@ def analyzer_page():
     return os.path.join(web_root(), "analyzer", "index.html")
 
 
+def analyzer_reply(path):
+    """The Lap Analyzer as it is sent: (body, content type) for its page or one of its
+    script pieces (suite/pagesplit.py), or None for any other path."""
+    from suite.pagesplit import split_page, part, PART_PREFIX
+    p = path.split("?")[0]
+    if p in ("/analyzer", "/analyzer/", "/analyzer/index.html") or p.startswith("/analyzer/" + PART_PREFIX):
+        try:
+            with open(analyzer_page(), "rb") as f:
+                data = f.read()
+        except OSError:
+            return None
+        if p.startswith("/analyzer/" + PART_PREFIX):
+            body = part(data, "/analyzer/", p[len("/analyzer/"):])
+            return (body, TYPES[".js"]) if body is not None else None
+        return split_page(data, "/analyzer/")[0], TYPES[".html"]
+    return None
+
+
 def resolve(path):
     """Map a URL path to a file inside the web folder (or PitWall's client folder); never outside them."""
     rel = path.split("?")[0].lstrip("/")
@@ -539,6 +557,10 @@ def make_handler(hub):
             if path.split("?")[0] in ("/analyzer", "/pitwall"):
                 writer.write(("HTTP/1.1 301 Moved\r\nLocation: %s/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n" % path.split("?")[0]).encode())
                 await writer.drain()
+                return
+            ana = analyzer_reply(path) if path.split("?")[0] != "/analyzer" else None
+            if ana:
+                await http_reply(writer, "200 OK", ana[0], ana[1], gzip_ok=accepts_gzip(headers))
                 return
             full = resolve(path)
             if not full:
