@@ -43,9 +43,14 @@ def pitwall_client_root():
 
 # Shown on PitWall's dashboard when it runs inside the suite, so the app window has a way home.
 # Added while serving; PitWall's client/index.html itself is not modified.
-SUITE_LINK = (b'<a href="/" style="position:fixed;left:10px;bottom:46px;z-index:99999;padding:5px 11px;'
+# The way back to the suite home, added to PitWall's page when the suite serves it. It goes at
+# the start of the page's footer bar (it used to float over the bottom of the panels and covered
+# the last race-control line); a page without a footer keeps it floating in the corner.
+SUITE_LINK = (b'<a id="suiteBack" href="/" style="position:fixed;left:10px;bottom:46px;z-index:99999;padding:3px 10px;'
               b'border-radius:7px;background:rgba(20,22,26,.85);color:#e8e9eb;font:13px Segoe UI,system-ui,sans-serif;'
-              b'text-decoration:none;border:1px solid rgba(255,255,255,.18)">&larr; Suite</a>')
+              b'text-decoration:none;border:1px solid rgba(255,255,255,.18);white-space:nowrap">&larr; Suite</a>'
+              b'<script>(function(){var a=document.getElementById("suiteBack"),f=document.querySelector("footer");'
+              b'if(a&&f){a.style.position="static";f.insertBefore(a,f.firstChild)}})()</script>')
 
 
 def clean(x):

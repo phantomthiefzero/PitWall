@@ -48,6 +48,7 @@ header h1{margin:0;font:800 24px/1 var(--num);letter-spacing:.02em}
 main{display:grid;grid-template-columns:minmax(300px,360px) minmax(360px,1fr) minmax(320px,420px);gap:12px;padding:12px 14px 40px;align-items:start}
 @media (max-width:1150px){main{grid-template-columns:1fr 1fr}#colMid{grid-column:1/-1;order:-1}}
 @media (max-width:740px){main{grid-template-columns:1fr}}
+main>*{min-width:0}   /* a column may shrink below its widest row; long rows wrap instead of widening the page */
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:12px}
 h2{margin:0 0 9px;font:800 19px/1 var(--num);letter-spacing:.02em;display:flex;align-items:center;gap:8px}
 h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
