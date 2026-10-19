@@ -903,3 +903,19 @@ class CarArraysTest(unittest.TestCase):
         self.assertEqual(CARIDX_SEND["CarIdxLapDistPct"], 6)
         for name in ("CarIdxLap", "CarIdxOnPitRoad", "CarIdxTrackSurface", "CarIdxLastLapTime"):
             self.assertIn(name, CARIDX_SEND)
+
+
+class PickTestsTest(unittest.TestCase):
+    """Pull requests run the tests for what they change (scripts/pick_tests.py)."""
+
+    def test_choices(self):
+        sys.path.insert(0, os.path.join(ROOT, "scripts"))
+        try:
+            from pick_tests import pick
+        finally:
+            sys.path.pop(0)
+        self.assertEqual(pick(["suite/web/analyzer/index.html"]), ["tests/test_analyzer.py", "tests/test_suite.py"])
+        self.assertEqual(pick(["pitwall/normalize.py", "README.md"])[0], "tests/test_pipeline.py")
+        self.assertEqual(pick(["requirements.txt"]), ["tests"])                  # unknown: everything
+        self.assertEqual(pick([".github/workflows/build.yml"]), ["tests"])
+        self.assertEqual(pick(["docs/CAR_MANUALS.md"]), ["tests/test_suite.py"])  # always something
