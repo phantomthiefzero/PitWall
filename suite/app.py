@@ -90,6 +90,19 @@ class Engine:
         self.loop.call_soon_threadsafe(self.hub.set_source, LiveSource())
 
 
+def reports_dir():
+    """Documents\\iRacingSuite\\Reports (created when first used)."""
+    base = os.path.join(os.path.expanduser("~"), "Documents")
+    if not os.path.isdir(base):
+        base = os.path.expanduser("~")
+    path = os.path.join(base, "iRacingSuite", "Reports")
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        return base
+    return path
+
+
 class Api:
     """Functions the pages can call from the app window (window.pywebview.api)."""
 
@@ -126,6 +139,32 @@ class Api:
             return {"ok": False}
         path = picked[0] if isinstance(picked, (list, tuple)) else picked
         return library().add_folder(path)
+
+    def save_report(self, html, name):
+        """PitWall's race report. The app window does not save downloads, so the page
+        hands the report here: a Save dialog (Documents\\iRacingSuite\\Reports by
+        default), then the report opens in the browser. Returns where it went."""
+        import webview
+        folder = reports_dir()
+        safe = "".join(ch for ch in str(name or "race-report.html") if ch.isalnum() or ch in "-_. ")[:120] or "race-report.html"
+        if not safe.lower().endswith(".html"):
+            safe += ".html"
+        kind = webview.FileDialog.SAVE if hasattr(webview, "FileDialog") else webview.SAVE_DIALOG
+        picked = self._window.create_file_dialog(kind, directory=folder, save_filename=safe,
+                                                 file_types=("Web page (*.html)", "All files (*.*)"))
+        if not picked:
+            return {"ok": False, "cancelled": True}
+        path = picked[0] if isinstance(picked, (list, tuple)) else picked
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(str(html))
+        except OSError as e:
+            return {"ok": False, "error": "Could not save the report: %s" % e}
+        try:
+            os.startfile(path)                     # Windows: open it in the default browser
+        except Exception:
+            pass
+        return {"ok": True, "path": path}
 
     def use_live(self):
         self._engine.live()

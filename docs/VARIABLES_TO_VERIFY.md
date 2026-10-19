@@ -153,6 +153,16 @@ connection's compression, so ~10 KB/s per engineer at 30 a second.
 | finish projection per option | time behind the leader + pace x laps to go + stops owed x green loss | Unit-tested. Assumes everyone keeps their pace: compare with a real finish. |
 | driver change | `DCLapStatus`, `DCDriversSoFar` | **Shown raw; meaning not checked.** The team panel's shares are from the driver names seen in the car. |
 
+### Live timing, replays, weather outlook (Oct 2026) -- NOT yet run against the sim
+
+| Value | Inputs | Validation |
+|---|---|---|
+| running order (`livePos`) | `CarIdxLap` + `CarIdxLapDistPct` | Unit-tested, including a lap counter stepping before the lap fraction. **Check at a real start and through pit stops** that it never flickers between two cars side by side. |
+| held picture while a replay is watched | `IsReplayPlaying`, `ReplaySessionTime`; `SessionInfo/Sessions/ResultsPositions` | Bridge-tested with a fake replay. **Assumed, not seen: that ResultsPositions keeps updating from the server while the replay plays.** If it does not, positions hold too, and the note says so. |
+| meeting time and place | `CarIdxEstTime`, `CarClassEstLapTime`, lap pace | Unit-tested on a lap with slow and fast parts: counts down evenly and stays in one place. **Check the marker on a real track.** |
+| weather outlook | `SolarAltitude`, `TrackLatitude`, WeekendOptions `Date`, `SessionTimeOfDay`, temps, humidity, `Skies`, `TrackWetness` | Physics checked against the fake's real sun path (37 N, June). **Not compared with iRacing's own forecast.** The track-heating coefficient is a typical asphalt value until a session has enough sun change to fit it. `AirPressure` is assumed to be in pascals; `WindDir` is shown as given (compass words), its convention (from or towards) not checked. |
+| race report in the app window | pywebview save dialog | Unit-tested with a stand-in window. |
+
 ### Lap Analyzer: driver laps (any car as a reference)
 
 | Value | Inputs | Validation |

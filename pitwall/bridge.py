@@ -29,7 +29,8 @@ from .camerapacks import packs_message
 from .carrender import CarRenderer, render_key
 from .director import Director
 from .liveries import LiveryCapture, LiveryStore, livery_key
-from .normalize import Deriver, RefView, build_cars, build_session, build_state, relative_to
+from .normalize import (Deriver, RefView, build_cars, build_session, build_state, hold_cars, relative_to,
+                        results_positions)
 from .sources import TelemetrySource
 
 
@@ -70,6 +71,7 @@ class Bridge:
         self._packs_key, self._packs_at = None, 0.0
         self._last_cars = None
         self._last_state = None
+        self._last_live_cars = None       # the last cars message built from live telemetry
         self._cam_hold = None                     # (carIdx, group, since)
         self._liveries_sent: set[str] = set()
         self._auto_tried: set[str] = set()
@@ -202,7 +204,7 @@ class Bridge:
                 if prev is not None:
                     self._new_deriver()
                     self.log(f"session {prev} -> {session_num}; derived history reset")
-            st = build_state(self.src, self.deriver)
+            st = build_state(self.src, self.deriver, self.session_msg)
             self._last_state = st
             self._maybe_build_map(st, outbox)
             enc = self.delta.encode(st, now)
@@ -210,7 +212,18 @@ class Bridge:
                 outbox.append(enc)
         if now >= self._next_cars:
             self._next_cars = now + self.cars_dt
-            cars_msg = build_cars(self.src, self.session_msg, self.deriver)
+            # Watching a replay behind live: the telemetry is the replay's, so the
+            # live picture is held (hold_cars) and nothing is fed into the derived
+            # history; iRacing's results keep the positions and laps current.
+            edge = ((self._last_state or {}).get("derived") or {}).get("liveEdge") or {}
+            held = edge.get("atLive") is False and self._last_live_cars is not None
+            if held:
+                cars_msg = hold_cars(self._last_live_cars,
+                                     results_positions(self.src.session_info("SessionInfo"), self.src.get("SessionNum")),
+                                     edge, edge.get("tLive"))
+            else:
+                cars_msg = build_cars(self.src, self.session_msg, self.deriver)
+                self._last_live_cars = cars_msg
             self._last_cars = cars_msg
             self._broadcast_tick(cars_msg, outbox)
             enc = self.delta.encode(cars_to_wire(cars_msg), now)
@@ -222,11 +235,13 @@ class Bridge:
             rg = self._refgaps_message()
             if rg:
                 outbox.append(rg)
-            outbox.extend(self._ref_messages(cars_msg, now))
+            if not held:                  # a followed car's view keeps its last live picture
+                outbox.extend(self._ref_messages(cars_msg, now))
         return outbox
 
     def _new_deriver(self):
         self.deriver = Deriver()
+        self._last_live_cars = None
         self._feed_full_due = True
         self._ref_views.clear()           # they read the old Deriver's history
         self._ref_enc.clear()             # and their viewers need a fresh keyframe

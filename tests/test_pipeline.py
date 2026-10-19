@@ -985,6 +985,19 @@ def test_gaps_to_you_and_to_the_class_leader():
     by = {c["idx"]: c for c in cars["cars"]}
     me = by[0]
     assert me["gapValid"]
+    from pitwall.normalize import ref_gap, _dist
+    # the race is running: gaps to you are live, from where the cars are now
+    assert cars["derived"]["liveTiming"] is True
+    for c in cars["cars"]:
+        if c is not me and c["derived"]["toPlayerS"] is not None and _dist(c) is not None:
+            assert c["derived"]["toPlayerS"] == ref_gap(c, me, True)
+            assert (c["derived"]["toPlayerS"] > 0) == (_dist(c) < _dist(me))   # + = behind you
+    # not running (after the flag): iRacing's F2Time differences, as before
+    src._vars["SessionState"] = 5
+    cars = build_cars(src, sess, d)
+    assert cars["derived"]["liveTiming"] is False
+    by = {c["idx"]: c for c in cars["cars"]}
+    me = by[0]
     checked = 0
     for c in cars["cars"]:
         dd = c["derived"]
@@ -2252,3 +2265,196 @@ def test_strength_of_field_per_class_with_iracings_formula():
     assert s["cars"] == 5 and by["GT4"]["sof"] < s["overall"] < 2000
     assert s["classes"][0]["className"] == "GT3"                            # strongest first
     assert strength_of_field([_car(1, iRating=0)]) is None
+
+
+def test_running_order_moves_between_the_lines_and_survives_line_glitches():
+    """The standings and battle follow where the cars are now (a pass shows when it
+    happens, not at the next timing line); a car out of the world keeps its slot; a
+    lap counter stepping one update before the lap fraction is not a lap gained."""
+    from pitwall.normalize import live_order, run_gaps
+    a = _car(1, pos=1, classPos=1, lap=6, pct=0.40, classEstLapS=100.0)
+    b = _car(2, pos=2, classPos=2, lap=6, pct=0.45, classEstLapS=100.0)       # passed a since the line
+    c = _car(3, pos=3, classPos=3, lap=6, pct=0.90, surface="not_in_world", classEstLapS=100.0)
+    e = _car(4, pos=4, classPos=4, lap=6, pct=0.10, classEstLapS=100.0)
+    prev = {}
+    run = live_order([a, b, c, e], True, prev)
+    assert [x["idx"] for x in run] == [2, 1, 3, 4]
+    assert b["derived"]["livePos"] == 1 and a["derived"]["livePos"] == 2 and c["derived"]["livePos"] == 3
+    run_gaps(run)
+    assert abs(a["derived"]["runIntervalS"] - 5.0) < 0.01 and b["derived"]["runGapS"] is None
+    # a's lap counter steps before its lap fraction wraps: still behind b
+    a.update(lap=7, pct=0.42)
+    run = live_order([a, b, c, e], True, prev)
+    assert [x["idx"] for x in run][:2] == [2, 1]
+    # not live (before the start, after the flag): iRacing's order
+    run = live_order([a, b, c, e], False)
+    assert [x["idx"] for x in run] == [1, 2, 3, 4] and a["derived"]["livePos"] == 1
+
+
+def test_watching_a_replay_holds_the_live_picture_and_keeps_results_current():
+    """Rewinding the in-sim replay makes every CarIdx* variable the replay's. The
+    standings jumped to the replay moment and the derived history was fed the past
+    (laps going backwards, stops that never happened). Now the bridge holds the
+    last live cars message, lays iRacing's live results over it, and feeds nothing."""
+    from pitwall.bridge import Bridge
+    from pitwall.normalize import hold_cars, results_positions
+
+    class Src(FakeSource):
+        replay = False
+        results = []
+
+        def get(self, name):
+            v = super().get(name)
+            if self.replay:
+                if name == "IsReplayPlaying":
+                    return True
+                if name == "ReplaySessionTime":
+                    return super().get("SessionTime") - 90.0
+                if name == "CarIdxLapDistPct":          # the field as it was 90 s ago
+                    return [((p - 0.7) % 1.0) if p >= 0 else p for p in v]
+                if name == "CarIdxLap":
+                    return [max(0, x - 1) for x in v]
+            return v
+
+        def session_info(self, key):
+            si = super().session_info(key)
+            if key == "SessionInfo" and self.results:
+                si = dict(si or {})
+                si["Sessions"] = [dict(s, ResultsPositions=self.results) if s.get("SessionNum") == super().get("SessionNum") else s
+                                  for s in (si.get("Sessions") or [])]
+            return si
+
+    src = Src(realtime=False, speed=4.0)
+    src.connect()
+    b = Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None)
+    b.session_msg = build_session(src)
+    now = 0.0
+    for _ in range(15 * 60 * 3):                       # 3 sim-minutes live
+        src.tick()
+        now += 1 / 15
+        b._build(now)
+    live = b._last_live_cars
+    assert live is not None and not (live.get("derived") or {}).get("held")
+    laps_before = len(b.deriver.feed_laps)
+    pcts = {c["idx"]: c["pct"] for c in live["cars"]}
+    # the producer rewinds; iRacing's results meanwhile say car 5 now leads
+    src.replay = True
+    first = next(c for c in live["cars"] if c["pos"] == 1)
+    src.results = [{"CarIdx": 5, "Position": 1, "ClassPosition": 0, "LapsComplete": 9, "LastTime": 91.5, "FastestTime": 90.1},
+                   {"CarIdx": first["idx"], "Position": 2, "ClassPosition": 1, "LapsComplete": 9, "LastTime": 92.0, "FastestTime": 90.5}]
+    for _ in range(15 * 20):
+        src.tick()
+        now += 1 / 15
+        b._build(now)
+    held = b._last_cars
+    assert held["derived"]["held"]["fromResults"] is True and held["derived"]["held"]["behindLiveS"] >= 89
+    by = {c["idx"]: c for c in held["cars"]}
+    assert by[5]["pos"] == 1 and by[5]["derived"]["livePos"] == 1 and by[5]["lapCompleted"] == 9
+    assert by[first["idx"]]["pos"] == 2 and by[first["idx"]]["classPos"] == 2
+    assert all(by[i]["pct"] == p for i, p in pcts.items())          # track positions as they were live
+    assert len(b.deriver.feed_laps) == laps_before                   # the past fed nothing
+    assert b._last_live_cars is live
+    # back to live: built from the telemetry again
+    src.replay = False
+    for _ in range(15 * 2):
+        src.tick()
+        now += 1 / 15
+        b._build(now)
+    assert "held" not in (b._last_cars.get("derived") or {})
+    assert results_positions(None, 1) == [] and hold_cars(live, [], {"behindLiveS": 5}, 1.0)["derived"]["held"]["fromResults"] is False
+
+
+def test_meetings_are_worked_in_lap_time_so_the_marker_holds_still():
+    """On a lap with slow and fast parts, two cars a fixed TIME apart are a changing
+    DISTANCE apart. Worked on lap fraction, the catch time swung with every corner
+    and the marker wandered round the map; worked in lap time it counts down evenly
+    and stays put, and the place maps back through the class's lap profile."""
+    import math as m
+    d = Deriver()
+    _laps(d, 0, [99.9, 100.1])                                  # followed car: 100 s
+    _laps(d, 1, [109.9, 110.1])                                 # slower car: 110 s
+    u_of = lambda p: p + 0.05 * m.sin(2 * m.pi * p)             # lap time fraction at lap fraction p
+
+    def pct_of(u):
+        lo, hi = 0.0, 1.0
+        for _ in range(60):
+            mid = (lo + hi) / 2
+            lo, hi = (mid, hi) if u_of(mid) < u else (lo, mid)
+        return lo
+    # learn the class's profile from cars spread round the lap
+    field = [_car(10 + k, pct=k / 400, estTimeS=u_of(k / 400) * 100.0, classEstLapS=100.0) for k in range(400)]
+    d.learn_lap_profile(field)
+    u0, u1 = 0.20, 0.25
+    got = []
+    for step in range(30):
+        t = step * 1.0
+        a = _car(0, pct=pct_of((u0 + t / 100.0) % 1.0), estTimeS=((u0 + t / 100.0) % 1.0) * 100.0, classEstLapS=100.0)
+        b = _car(1, pct=pct_of((u1 + t / 110.0) % 1.0), estTimeS=((u1 + t / 110.0) % 1.0) * 100.0, classEstLapS=100.0)
+        mt = {x["idx"]: x for x in d.meetings([a, b], 0, t)}
+        got.append((t, mt[1]["inS"], mt[1]["atPct"]))
+    # 0.05 lap of time closes at 1/100 - 1/110 per s: 55 s, counting down second by second
+    for t, ins, at in got:
+        assert abs(ins - (55.0 - t)) < 0.3, (t, ins)
+        assert abs(at - pct_of(0.75)) < 0.01, (t, at)           # the same place throughout
+    # the place is on the track's lap fraction, not the lap-time fraction
+    assert abs(pct_of(0.75) - 0.75) > 0.005
+    # a followed car's view meets the same cars without touching the shared history
+    from pitwall.normalize import RefView
+    v = RefView(d, 0)
+    assert Deriver.meetings(v, [a, b], 0, 30.0)[0]["idx"] == 1
+
+
+def test_weather_outlook_physics_dew_point_sunlight_and_the_sun():
+    d = Deriver
+    # Magnus dew point: 20 C at 50 % is about 9.3 C
+    assert abs(d.dew_point(20.0, 0.5) - 9.3) < 0.1
+    assert d.dew_point(20.0, None) is None
+    # clear-sky sunlight: none with the sun down, ~900+ W/m2 high in the sky, cut by cloud
+    import math
+    assert d.irradiance(-0.1, 0.0) == 0.0
+    hi = d.irradiance(math.radians(70), 0.0)
+    assert 900 < hi < 1050
+    assert d.irradiance(math.radians(70), 1.0) < 0.3 * hi
+
+
+def test_weather_outlook_from_a_fake_afternoon():
+    """The fake's sun moves as it really does at 37 N in June. The outlook finds the
+    hour angle from where the sun is, runs it on: sunset about 7 h after 14:00 local
+    (solar noon at 13:00), the sun lower an hour on, and the track cooling with it."""
+    src = FakeSource(realtime=False, speed=4.0)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    st = None
+    for i in range(15 * 60 * 6):                               # 6 sim-minutes
+        src.tick()
+        if i % 15 == 0:
+            st = build_state(src, d, sess)
+    o = st["derived"]["weatherOutlook"]
+    assert o["clockSpeed"] == 1.0
+    sun = o["sun"]
+    assert sun["rising"] is False and 65 < sun["altDeg"] < 75
+    # sunset: hour angle about 7.2 h past solar noon at 37 N, 23.3 deg declination
+    assert 5.6 * 3600 < sun["setsInS"] < 6.4 * 3600, sun
+    steps = o["steps"]
+    assert [s["inS"] for s in steps] == [900, 1800, 2700, 3600]
+    assert steps[-1]["sunAltDeg"] < sun["altDeg"]
+    # less sun: the track's lead over the air shrinks (the air itself follows its trend)
+    lead_now = st["weather"]["trackTempC"] - st["weather"]["airTempC"]
+    assert steps[-1]["trackC"] - steps[-1]["airC"] < lead_now
+    assert o["trackModel"]["basis"] in ("typical", "fitted") and o["dewPointC"] is not None
+
+
+def test_weather_outlook_drying_rate_and_next_level():
+    d = Deriver()
+    w = {"airTempC": 18.0, "trackTempC": 22.0, "humidity": 0.7, "precipitationPct": 0.0, "windMs": 2.0,
+         "wetnessRaw": 5.0, "solarAltitudeRad": 0.5, "skiesRaw": 3}
+    # the track drying one level every 10 minutes
+    for k in range(60):
+        t = k * 10.0
+        ww = dict(w, wetnessRaw=5.0 - t / 600.0)
+        d.trends(t, ww, {}, False)
+    o = d.weather_outlook(590.0, dict(w, wetnessRaw=5.0 - 590 / 600.0), {"timeOfDayS": None}, None)
+    assert o["rain"]["state"] == "drying" and abs(o["rain"]["wetnessTrendPer10Min"] + 1.0) < 0.05
+    assert o["rain"]["nextWetness"]["level"] == 3 and 0 < o["rain"]["nextWetness"]["inS"] < 700
+    assert o["sun"] is None                                    # no latitude or date: no sun path

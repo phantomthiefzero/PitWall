@@ -264,6 +264,40 @@ New events: `compound_change`, `driver_change`, `adjust` (your in-car changes, r
 once a control has been left alone for 3 s); `behind_closing`, `you_closing`, `position`
 and `pit_battle` carry `ref` (the car they were measured from); your `incident` carries `pct`.
 
+### Live timing, replays, meetings and the weather outlook
+
+`cars.derived.liveTiming` is true while a race is running (SessionState racing). Then each car's
+`derived.livePos` / `liveClassPos` is the running order now (lap + lap fraction; a car not in the
+world keeps its scored slot; a lap counter stepping one update before the lap fraction is taken out),
+and `runIntervalS` / `runIntervalLaps`, `runGapS` / `runGapLaps`, `runClassIntervalS` are live gaps
+along that order (PitWall's standings). `toPlayerS` is then live too (`normalize.ref_gap`), so the
+battle, targets and rejoin follow the track, not the timing lines. Otherwise (before the start,
+after the flag) `livePos` = `pos` and everything is iRacing's F2Time as before. The broadcast keeps
+`liveIntervalS` / `liveGapS` along iRacing's scored order.
+
+While a replay is watched behind live (`state.derived.liveEdge.atLive` false) the bridge does not
+build cars from the replay's telemetry. It sends the last live cars message with iRacing's
+`SessionInfo/Sessions/ResultsPositions` laid over it (Position, ClassPosition + 1, LapsComplete,
+LastTime, FastestTime) and `cars.derived.held = {"sinceT","behindLiveS","fromResults"}`; nothing is
+fed into the derived history, and followed-car views keep their last message.
+
+`cars.derived.meetings` (and in every `refview`): every car the reference car will meet on track
+within 600 s at both cars' pace, `[{"idx","kind":"you_catch"|"catches_you","inS","inLaps","atPct"}]`,
+worked in lap TIME (CarIdxEstTime / CarClassEstLapTime) and placed on the track through the class's
+lap profile (learned as the cars run), smoothed over ~2 s. `traffic` is the first six within 90 s.
+
+`state.derived.weatherOutlook = {"dewPointC","clockSpeed","sun":{"altDeg","rising","setsInS",
+"risesInS"},"steps":[{"inS","airC","trackC","sunAltDeg","humidity","rainPct"}],"trackModel":
+{"basis":"typical"|"fitted","cPerWm2","offsetC","sunWm2"},"rain":{"rainTrendPer10Min",
+"wetnessTrendPer10Min","nextWetness":{"level","inS"},"state"}}`. An estimate, never iRacing's
+forecast (none in the SDK): the sun from TrackLatitude, WeekendOptions Date and SolarAltitude, at
+the sim clock's measured speed; the track temperature from the air plus a heating term in the
+sunlight (Haurwitz clear sky x Kasten-Czeplak cloud factor; 0.025 degC per W/m2 until the session
+has enough sun change to fit it); air, humidity and rain carried on their 15-minute trend (air
+capped at 4 degC/h). `session.options` now also carries the weather settings and the sim
+calendar (WeatherType, Skies, TimeOfDay, Date, EarthRotationSpeedupFactor, ...), `session.track`
+TrackAltitude, TrackCity, TrackCountry.
+
 ### What race control leaves out (cars that are not really doing anything)
 
 `compound` is null where iRacing reports -1 (a car not loaded into the world yet, or gone from

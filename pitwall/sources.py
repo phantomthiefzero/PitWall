@@ -478,6 +478,13 @@ class FakeSource(TelemetrySource):
         waving = self.t - self.caution[0] < 5.0
         return 0x4000 | (0x8000 if waving else 0)            # caution (waving at first)
 
+    @staticmethod
+    def _sun_alt(tod_s):
+        import math
+        phi, dec = math.radians(37.0), math.radians(23.3)
+        h = math.radians((tod_s / 3600.0 - 13.0) * 15.0)
+        return math.asin(math.sin(phi) * math.sin(dec) + math.cos(phi) * math.cos(dec) * math.cos(h))
+
     def _pits_open(self) -> bool:
         return not (self._in_caution() and self.t - self.caution[0] < self.pits_closed_s)
 
@@ -600,6 +607,8 @@ class FakeSource(TelemetrySource):
                 "TrackNumTurns": 11, "TrackDynamicTrack": 1, "TrackCleanup": 0,
                 "TrackPitSpeedLimit": "60.00 kph",
                 "TrackType": "road course",
+                # as iRacing writes them: numbers with units
+                "TrackLatitude": "37.000000 m", "TrackLongitude": "-79.000000 m", "TrackAltitude": "150.00 m",
                 "EventType": "Race",
                 "Category": "Road",
                 "SessionID": 1,
@@ -607,7 +616,9 @@ class FakeSource(TelemetrySource):
                 "TeamRacing": 1 if self.team else 0,
                 # iRacing writes the limit as a number, or the word "unlimited".
                 "WeekendOptions": {"IncidentLimit": 17, "FastRepairsLimit": 1,
-                                   "StandingStart": 0, "NumStarters": self.n_cars},
+                                   "StandingStart": 0, "NumStarters": self.n_cars,
+                                   "Date": "2026-06-15", "TimeOfDay": "2:00 pm",
+                                   "EarthRotationSpeedupFactor": 1, "WeatherType": "Dynamic", "Skies": "Partly Cloudy"},
             },
             "DriverInfo": {
                 "DriverCarIdx": 0,
@@ -838,7 +849,8 @@ class FakeSource(TelemetrySource):
             "AirPressure": 101325.0, "AirDensity": 1.19, "WindVel": 3.2, "WindDir": 1.1,
             "RelativeHumidity": 0.48, "Skies": 1, "FogLevel": 0.0, "Precipitation": self.precip,
             "TrackWetness": self.wetness, "WeatherDeclaredWet": False,
-            "SolarAltitude": 0.9, "SolarAzimuth": 3.4,
+            # the sun as it really moves at 37 N in mid June, solar noon at 13:00 local
+            "SolarAltitude": self._sun_alt(14 * 3600 + self.t), "SolarAzimuth": 3.4,
             "Speed": speed, "RPM": player.rpm, "Gear": player.gear,
             "Throttle": min(1.0, self.curvature_speed_factor(player.pct) * 1.1),
             "Brake": max(0.0, 0.9 - self.curvature_speed_factor(player.pct)) * 1.5,
