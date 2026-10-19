@@ -835,15 +835,16 @@ def test_bridge_survives_a_frame_the_normalizer_cannot_handle():
     b = bridge_mod.Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None)
     real, calls = bridge_mod.build_state, {"n": 0}
 
-    def flaky(s, d):
+    def flaky(s, d, *more):
         # Count only this test's source: another bridge running in the same test process (the
         # suite tests keep one going) calls build_state too, and must not use up the bad frame.
+        # Pass every argument on: a stand-in with a narrower signature broke them all.
         if s is not src:
-            return real(s, d)
+            return real(s, d, *more)
         calls["n"] += 1
         if calls["n"] == 3:
             raise KeyError("a variable this build has never seen")
-        return real(s, d)
+        return real(s, d, *more)
 
     class Done(Exception):
         pass
