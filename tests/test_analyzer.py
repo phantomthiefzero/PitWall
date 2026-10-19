@@ -1399,3 +1399,19 @@ class EngineerColoursTest(unittest.TestCase):
         self.assertIn("(not changed yet)", r["untouched"])
         self.assertIn("The change is in.", r["done"])
         self.assertIn("Rear wing angle 8 degrees → 9 degrees (changed, not in the plan)", r["done"])
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CoachThemesTest(unittest.TestCase):
+    def test_gap_split_by_cause(self):
+        js = r"""
+const C = { total: 0.9, between: 0.2, corners: [
+  { n: 4, dt: 0.21, tips: [{ k: 'brake_later' }, { k: 'coast' }] },
+  { n: 2, dt: 0.20, tips: [{ k: 'apex_speed' }] },
+  { n: 3, dt: 0.06, tips: [{ k: 'over_brake' }] },
+  { n: 1, dt: 0.10, tips: [] },
+  { n: 6, dt: 0.01, tips: [{ k: 'coast' }] } ] };
+console.log(JSON.stringify({ t: coachThemes(C).map(t => [t.k, +t.dt.toFixed(3), t.corners]) }));
+"""
+        self.assertEqual(run_js(js)["t"], [["braking", 0.27, [4, 3]], ["mid-corner speed", 0.2, [2]], ["straights", 0.2, []],
+                                      ["line and steering", 0.1, [1]]])
