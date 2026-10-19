@@ -1865,6 +1865,13 @@ def test_team_race_driver_stints_from_the_session_info():
     drv = c["derived"]["drivers"]
     assert len(drv) >= 2 and sum(1 for x in drv if x["current"]) == 1
     assert sum(x["timeS"] for x in drv) > 600
+    # each driver's share of the time, adding up to the whole; the next driver is
+    # one who is not in the car, the one with the least time
+    assert abs(sum(x["sharePct"] for x in drv) - 100.0) < 0.5
+    assert all(x["evenPct"] == round(100 / len(drv), 1) for x in drv)
+    nxt = [x for x in drv if x["next"]]
+    assert len(nxt) == 1 and not nxt[0]["current"]
+    assert nxt[0]["timeS"] == min(x["timeS"] for x in drv if not x["current"])
     # outside a team race, a single driver is not listed
     src2, d2, _, cars2 = _spectate({"speed": 4.0}, minutes=2.0)
     assert all(x["derived"]["drivers"] is None for x in cars2["cars"])
@@ -1929,3 +1936,214 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+# --------------------------------------------------------------------------- #
+# Race strategy: rival stop forecasts, the caution call, options side by side,
+# driver targets. All derived; the fake reproduces iRacing's shapes (a stint
+# that started before we connected has no length; cautions are oval-only).
+# --------------------------------------------------------------------------- #
+
+from pitwall.normalize import race_laps_left  # noqa: E402
+
+
+def _with_pace(d, idxs, lap=100.0):
+    for i in idxs:
+        _laps(d, i, [lap - 0.1, lap + 0.1])
+
+
+def _stint(c, this, start, stints=(), longest=None):
+    c["derived"].update({"lapsThisStint": this, "stintStartLap": start, "stintsSeen": list(stints),
+                         "longestStintLaps": longest if longest is not None else (max(stints) if stints else None)})
+    return c
+
+
+def test_rival_stop_forecast_says_where_each_estimate_comes_from():
+    d = Deriver()
+    race = {"endsBy": "laps", "lapsToGo": 30, "lapsByTime": None}
+    me = _stint(_car(0, carId=7, lap=40), 5, 35)
+    a = _stint(_car(1, carId=9, lap=45), 15, 30, stints=[20, 21])          # its own stints
+    b = _stint(_car(2, carId=9, lap=40), 10, 30)                            # none of its own: the class
+    c = _stint(_car(3, carId=9, lap=40), 4, 36, stints=[18])
+    e = _stint(_car(4, carId=7, classId=20, lap=40), 3, 37)                 # your model, another class
+    f = _stint(_car(5, carId=9, lap=40), None, None, stints=[22])            # stint began before we connected
+    cars = [me, a, b, c, e, f]
+    d.stop_forecast(cars, race, own_idx=0, fpl=2.5, tank_l=50.0, fuel_l=30.0)
+    by = {x["idx"]: x["derived"]["stopDue"] for x in cars}
+    assert by[0] == {"lap": 52, "lapsLeft": 12, "rangeLaps": 17, "basis": "your_fuel", "stopsOwed": 1, "overdue": False}
+    assert by[1]["basis"] == "own_stints" and by[1]["lap"] == 51 and by[1]["lapsLeft"] == 6
+    assert by[1]["stopsOwed"] == 2                            # 24 laps after this stint, 21 a stint
+    assert by[2]["basis"] == "class_stints" and by[2]["rangeLaps"] == 20   # the middle of 18, 20, 21, 22
+    assert by[4]["basis"] == "your_tank" and by[4]["rangeLaps"] == 20      # 50 L / 2.5 L a lap
+    assert by[5] is None                                      # no start, no forecast
+    # a car past its longest stint is overdue, not "-3 laps"
+    late = _stint(_car(6, lap=60), 25, 35, stints=[22])
+    d.stop_forecast([late], race, None, None, None, None)
+    assert late["derived"]["stopDue"]["overdue"] and late["derived"]["stopDue"]["lapsLeft"] == 0
+    # already further than the class usually runs (the middle of 18 and 30 is 24):
+    # it can go at least as far as the longest seen, 30, before it is overdue
+    long_ = _stint(_car(7, carId=9, lap=40), 26, 14)
+    peer = _stint(_car(8, carId=9, lap=40), 2, 38, stints=[18])
+    other = _stint(_car(9, carId=9, lap=40), 1, 39, stints=[30])
+    d.stop_forecast([long_, peer, other], race, None, None, None, None)
+    sd = long_["derived"]["stopDue"]
+    assert sd["basis"] == "class_stints" and sd["rangeLaps"] == 30 and not sd["overdue"] and sd["lapsLeft"] == 4
+    # no race length: a due lap, but no count of stops owed
+    d.stop_forecast([a], None, None, None, None, None)
+    assert a["derived"]["stopDue"]["stopsOwed"] is None
+
+
+def _loss_sample(d, lane_s=50.0, box_s=20.0, loss_s=22.0, idx=1):
+    d._loss.append({"idx": idx, "laneLossS": loss_s, "boxS": box_s, "laneS": lane_s})
+
+
+def test_caution_call_rescales_the_stop_by_how_slow_the_field_is():
+    d = Deriver()
+    _with_pace(d, [1, 2, 3, 4])
+    _loss_sample(d)                       # 30 s driving the lane; the same stretch at pace takes 8 s
+    track = 5000.0                        # 50 m/s at a 100 s pace
+    slow = [_car(i, derived={"speedMs": 25.0}) for i in (1, 2, 3, 4)]     # half speed behind the pace car
+    c = d.caution(slow, ["caution", "caution_waving"], False, track, 10.0)
+    assert c["active"] and c["pitsOpen"] is False and c["fieldSlowdown"] == 2.0
+    assert c["lossGreenS"] == 42.0                           # 22 lane + 20 stationary
+    assert c["lossNowS"] == 34.0 and c["savingS"] == 8.0     # 30 - 2 x 8 + 20
+    assert c["since"] == 10.0
+    green = d.caution([_car(i, derived={"speedMs": 50.0}) for i in (1, 2, 3, 4)], ["green"], True, track, 20.0)
+    assert not green["active"] and green["lossNowS"] is None and green["fieldSlowdown"] == 1.0
+    assert green["since"] is None
+
+
+def _plan_race(d, fuel=30.0, fpl=2.5, laps_left=20, lap=31, pct=0.2, tank=50.0):
+    from pitwall.normalize import fuel_plan
+    plan = fuel_plan(fuel, fpl, laps_left, False, pct, lap, tank)
+    d._fuel_info = {"plan": plan, "fpl": fpl, "fuelL": fuel, "tankL": tank, "refuelLps": 2.5}
+    return plan
+
+
+def test_strategy_options_for_your_car_from_the_fuel_plan():
+    d = Deriver()
+    _with_pace(d, [0, 1, 2, 3])
+    _loss_sample(d)
+    race = {"endsBy": "laps", "lapsToGo": 20, "lapsByTime": None}
+    plan = _plan_race(d)                   # 30 L, 2.5 L a lap, 19.8 laps left: 49.5 L needed, one stop
+    assert plan["stops"] == 1
+    cars = [_car(1, f2TimeS=0.0), _car(0, f2TimeS=10.0), _car(2, f2TimeS=30.0), _car(3, f2TimeS=80.0)]
+    for c in cars:
+        c["derived"]["stopDue"] = {"stopsOwed": 1}
+    s = d.strategy(cars, 0, race, None, own_idx=0)
+    kinds = [o["kind"] for o in s["options"]]
+    assert s["basis"] == "fuel" and "box_now" in kinds and "box_latest" in kinds
+    now = next(o for o in s["options"] if o["kind"] == "box_now")
+    # one stop: 22 s lane + the 19.5 L it is short at 2.5 L/s
+    assert now["lossS"] == round(22.0 + 19.5 / 2.5, 1)
+    assert now["rejoin"] is not None and now["finishClassPos"] is not None
+    # a stretch would need 19.5 L saved over 20 laps: 39 % of the burn, so it is not offered
+    assert "stretch" not in kinds
+    # 2 L short instead: 0.1 L a lap, 4 %: offered, with the saving
+    _plan_race(d, fuel=47.5)
+    s = d.strategy(cars, 0, race, None, own_idx=0)
+    st = next(o for o in s["options"] if o["kind"] == "stretch")
+    assert st["stops"] == 0 and st["lossS"] == 0.0 and abs(st["saveLPerLap"] - 0.1) < 1e-3 and st["savePct"] == 4.0
+    assert s["best"] == "stretch"
+    # another car (a viewer following it): no fuel plan, its stints instead
+    cars[2]["derived"]["stopDue"] = {"stopsOwed": 1, "lap": 40}
+    other = d.strategy(cars, 2, race, None, own_idx=0)
+    assert other["basis"] == "stints" and other["options"][0]["kind"] == "as_forecast"
+    assert other["options"][0]["lossS"] == 42.0
+
+
+def test_strategy_projects_the_finish_from_stops_still_owed():
+    d = Deriver()
+    _with_pace(d, [0, 1, 2], 100.0)
+    _loss_sample(d)                                                  # 42 s a green stop
+    race = {"endsBy": "laps", "lapsToGo": 20, "lapsByTime": None}
+    _plan_race(d, fuel=60.0)                                         # you need no stop
+    cars = [_car(1, f2TimeS=0.0), _car(0, f2TimeS=20.0), _car(2, f2TimeS=35.0)]
+    cars[0]["derived"]["stopDue"] = {"stopsOwed": 1}                 # the leader still owes a stop
+    cars[2]["derived"]["stopDue"] = {"stopsOwed": 0}
+    s = d.strategy(cars, 0, race, None, own_idx=0)
+    o = s["options"][0]
+    assert o["kind"] == "no_stop" and o["finishClassPos"] == 1      # 20 s behind, but they owe 42 s
+    assert o["finishBehind"] == {"idx": 2, "s": 15.0, "guessed": False}   # the nearest behind; the leader ends 22 s back
+    # a rival whose stops are unknown is counted as owing none, and flagged as a guess
+    cars[0]["derived"]["stopDue"] = None
+    o = d.strategy(cars, 0, race, None, own_idx=0)["options"][0]
+    assert o["finishClassPos"] == 2 and o["finishAhead"]["guessed"] is True
+
+
+def test_caution_option_appears_and_wins_when_the_stop_is_cheaper():
+    d = Deriver()
+    _with_pace(d, [0, 1, 2, 3])
+    _loss_sample(d)
+    race = {"endsBy": "laps", "lapsToGo": 20, "lapsByTime": None}
+    _plan_race(d)
+    cars = [_car(1, f2TimeS=0.0), _car(0, f2TimeS=10.0), _car(2, f2TimeS=30.0)]
+    caution = {"active": True, "pitsOpen": True, "lossNowS": 20.0}
+    s = d.strategy(cars, 0, race, caution, own_idx=0)
+    c = next(o for o in s["options"] if o["kind"] == "caution_now")
+    assert c["stops"] == 1 and c["lossS"] == 20.0 and s["best"] == "caution_now"
+    # pits closed: no call to box
+    s = d.strategy(cars, 0, race, {**caution, "pitsOpen": False}, own_idx=0)
+    assert "caution_now" not in [o["kind"] for o in s["options"]]
+
+
+def test_targets_catch_the_car_ahead_and_hold_the_one_behind():
+    d = Deriver()
+    _with_pace(d, [0], 100.0)
+    me = _car(0)
+    ahead = _car(1, derived={"toPlayerS": -6.0, "youGainSPerLap": 0.4, "youCatchLaps": 15.0})
+    behind = _car(2, derived={"toPlayerS": 3.0, "youGainSPerLap": -0.5, "catchesYouLaps": 6.0})
+    far = _car(3, derived={"toPlayerS": -40.0})
+    t = d._targets([me, ahead, behind, far], me, 20)
+    assert t["catch"]["idx"] == 1 and t["catch"]["needSPerLap"] == 0.3 and t["catch"]["targetLapS"] == 99.7
+    assert t["catch"]["onCourse"] is True                     # gaining 0.4 a lap, 0.3 needed
+    assert t["hold"] == {"idx": 2, "gapS": 3.0, "closingSPerLap": 0.5, "catchesInLaps": 6.0, "beforeFlag": True}
+
+
+def test_race_laps_left_from_laps_or_the_clock():
+    assert race_laps_left({"endsBy": "laps", "lapsToGo": 12, "lapsByTime": 30}) == 12
+    assert race_laps_left({"endsBy": "time", "lapsToGo": None, "lapsByTime": 9}) == 9
+    assert race_laps_left(None) is None
+
+
+def test_caution_in_the_fake_race_end_to_end():
+    """An oval-style caution in the fake: the stream says so, the field slows to
+    about 0.45 of its pace (a 2.2x slowdown), and the stop gets cheaper."""
+    src = FakeSource(realtime=False, speed=4.0, caution=(600.0, 900.0), pits_closed_s=60.0)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    seen = {"before": None, "closed": None, "open": None}
+    for i in range(15 * 60 * 14):                          # 14 sim-minutes at 4x steps
+        src.tick()
+        if i % 4:
+            continue
+        build_state(src, d)
+        cars = build_cars(src, sess, d)
+        c = cars["derived"]["caution"]
+        if src.t < 600:
+            seen["before"] = c
+        elif src.t < 660:
+            seen["closed"] = c
+        elif src.t < 900:
+            seen["open"] = c
+    assert seen["before"]["active"] is False
+    assert seen["closed"]["active"] and seen["closed"]["pitsOpen"] is False
+    o = seen["open"]
+    assert o["active"] and o["pitsOpen"] is True
+    assert 1.8 < o["fieldSlowdown"] < 2.6, o
+    if o["lossGreenS"] is not None and o["lossNowS"] is not None:
+        assert o["lossNowS"] < o["lossGreenS"]
+
+
+def test_stint_trend_leaves_out_laps_that_are_not_racing_laps():
+    """A caution lap (or an out-lap, or a spin) in the middle of a stint says
+    nothing about the tyres. Counted, one lap at 2.5x pace made fresh tyres look
+    worth minutes in the fake race."""
+    d = Deriver()
+    laps = [100.0, 100.1, 100.2, 250.0, 240.0, 100.4, 100.5]      # two laps behind the pace car
+    out = None
+    for k, t in enumerate(laps, start=1):
+        out = d.stint(1, k, t, 0)
+    assert out["stintLaps"] == 7
+    assert 0.05 <= out["degSPerLap"] <= 0.12, out             # ~0.08 s a lap from the racing laps

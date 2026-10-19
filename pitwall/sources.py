@@ -190,6 +190,7 @@ _FAKE_HEADERS: list[tuple[str, int, int, str, str]] = [
     ("SessionNum", 2, 1, "", "Session number"),
     ("SessionState", 2, 1, "irsdk_SessionState", "Session state"),
     ("SessionFlags", 3, 1, "irsdk_Flags", "Session flags"),
+    ("PitsOpen", 1, 1, "", "True if pit stop is allowed for the current player"),
     ("SessionTimeRemain", 5, 1, "s", "Seconds left till session ends"),
     ("SessionLapsRemainEx", 2, 1, "", "New improved laps left till session ends"),
     ("SessionTimeOfDay", 4, 1, "s", "Time of day in seconds"),
@@ -383,7 +384,14 @@ class FakeSource(TelemetrySource):
                  speed: float = 1.0, player_pit_lap: int | None = None, spectator: bool = False,
                  incidents: bool | None = None, incident_every_s: float = 25.0,
                  hide_incident_counts: bool | None = None, parade_s: float = 0.0,
-                 grid_s: float = 0.0, team: bool = False):
+                 grid_s: float = 0.0, team: bool = False, caution: tuple | None = None,
+                 pits_closed_s: float = 0.0):
+        # caution=(start_s, end_s): a full-course caution, as on an oval (iRacing
+        # runs none in road racing). The field crawls behind the pace car, the
+        # flag reads caution (waving for the first seconds), and the pits stay
+        # closed for pits_closed_s after it comes out.
+        self.caution = caution
+        self.pits_closed_s = pits_closed_s
         # team=True: a team race. Each car's driver swaps at every stop, and the
         # session info names the new driver -- iRacing's shape (DriverInfo gives
         # the CURRENT driver per car, and the session info update count ticks).
@@ -460,6 +468,18 @@ class FakeSource(TelemetrySource):
                          for (n, t, c, u, d) in _FAKE_HEADERS]
         self._vars: dict[str, Any] = {}
         self._session = self._build_session_info()
+
+    def _in_caution(self) -> bool:
+        return bool(self.caution) and self.caution[0] <= self.t < self.caution[1]
+
+    def _flags(self) -> int:
+        if not self._in_caution():
+            return 0x0004                                    # green
+        waving = self.t - self.caution[0] < 5.0
+        return 0x4000 | (0x8000 if waving else 0)            # caution (waving at first)
+
+    def _pits_open(self) -> bool:
+        return not (self._in_caution() and self.t - self.caution[0] < self.pits_closed_s)
 
     # --- geometry helpers -------------------------------------------------
     def pos_at(self, pct: float) -> tuple[float, float]:
@@ -681,6 +701,8 @@ class FakeSource(TelemetrySource):
                     spd *= 0.96                 # the other compound: ~4 % off in the dry
                 if self.t < self.parade_s and self.grid_s:
                     spd *= 0.4                  # behind the pace car
+                if self._in_caution():
+                    spd *= 0.45                 # under caution, behind the pace car
                 eff = self.inc_effect.get(c.idx)
                 if eff and self.t < eff["until"]:
                     spd *= -0.25 if self.t < eff.get("back_until", 0) else eff["speed"]
@@ -802,7 +824,7 @@ class FakeSource(TelemetrySource):
         v.update({
             "SessionTime": self.t, "SessionNum": 1,
             "SessionState": 2 if self.t < self.grid_s else 3 if self.t < self.parade_s else 4,
-            "SessionFlags": 0x0004, "SessionTimeRemain": 604800.0,
+            "SessionFlags": self._flags(), "PitsOpen": self._pits_open(), "SessionTimeRemain": 604800.0,
             "SessionLapsRemainEx": max(0, 25 - player.laps_completed),
             "SessionTimeOfDay": 14 * 3600 + self.t, "PlayerCarIdx": 0,
             "IsReplayPlaying": False, "ReplayFrameNum": self.frame,
