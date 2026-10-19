@@ -36,10 +36,10 @@ body[data-view=setup] .drops{grid-template-columns:1fr}
 </div>
 <div class="m">Speed <select id="us"><option value="mph">mph</option><option value="kmh">km/h</option></select> &nbsp; Distance <select id="ud"><option value="m">meters</option><option value="ft">feet</option></select></div>
 <div id="err"></div>
-<script>(()=>{const q=new URLSearchParams(location.search),v=q.get('view'),V={coach:['Coaching','Your average lap against your best: where the time goes and what to change, in the driving and in the setup.'],setup:['Setup','The live setup, the engineer\'s plan against what is in the sim right now, and predicted changes.']};
+<script>try{(()=>{const q=new URLSearchParams(location.search),v=q.get('view'),V={coach:['Coaching','Your average lap against your best: where the time goes and what to change, in the driving and in the setup.'],setup:['Setup','The live setup, the engineer\'s plan against what is in the sim right now, and predicted changes.']};
 if(V[v]){document.body.dataset.view=v;document.getElementById('appTitle').textContent=V[v][0];document.title=V[v][0]+' · iRacing Suite';const p=document.querySelector('h1+nav+p.m')||document.querySelector('#views+p.m');if(p)p.textContent=V[v][1]}
 const link=x=>{const n=new URLSearchParams(location.search);if(x)n.set('view',x);else n.delete('view');const s=n.toString();return location.pathname+(s?'?'+s:'')};
-document.getElementById('views').innerHTML=[['coach','Coaching'],['setup','Setup'],['','Everything']].map(([x,l])=>'<a href="'+link(x)+'"'+((v||'')===x||(!V[v]&&!x)?' class="on"':'')+'>'+l+'</a>').join('')})()</script>
+document.getElementById('views').innerHTML=[['coach','Coaching'],['setup','Setup'],['','Everything']].map(([x,l])=>'<a href="'+link(x)+'"'+((v||'')===x||(!V[v]&&!x)?' class="on"':'')+'>'+l+'</a>').join('')})()}catch(e){}</script>
 <div class="card" id="live" hidden></div>
 <div class="card" id="coach" hidden></div>
 <div class="card" id="ghost" hidden></div>
