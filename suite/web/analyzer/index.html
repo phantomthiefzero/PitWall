@@ -21,8 +21,13 @@ details.fold{margin-bottom:14px}.pbar{height:8px;background:var(--ln);border-rad
 @media(max-width:640px){body{padding:12px}.drops{grid-template-columns:1fr}.dz{padding:14px}h1{font-size:20px}.card{padding:10px}table{font-size:13px}th,td{padding:5px 6px}}
 #setup a{color:var(--fg);text-decoration:underline;text-underline-offset:2px}#setup a[data-inf]{text-decoration:none;color:var(--mut);font-size:15px}#setup a[data-inf]:hover{color:var(--fg)}#setup input[type=number]{background:var(--bg);color:var(--fg);border:1px solid var(--ln);border-radius:4px;padding:3px 5px;font:inherit;font-size:14px}#setup button{font:inherit;font-size:12px}.stabs{display:flex;gap:2px;border-bottom:1px solid var(--ln);margin-top:12px;flex-wrap:wrap}#setup .stabs button{background:none;border:0;border-bottom:3px solid transparent;color:var(--mut);font-size:14px;font-weight:700;padding:8px 12px;cursor:pointer;text-transform:uppercase;letter-spacing:.03em}#setup .stabs button.on{color:var(--fg);border-bottom-color:#2f6fd6}.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-top:12px}.sfull{max-width:560px;margin:12px auto 0}.sx{min-width:0}.sxh{border-left:3px solid #d9a400;padding:5px 9px;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.04em;background:rgba(127,127,127,.12)}table.sxt{width:100%;margin-top:4px;border-collapse:collapse}table.sxt td{padding:4px 6px;border:0;vertical-align:middle}td.sxl{text-align:right;color:var(--mut);white-space:nowrap}tr.sxd td{background:rgba(184,120,0,.18)}@media(max-width:640px){.sgrid{grid-template-columns:1fr}td.sxl{white-space:normal}}
 .clr{display:block;margin:8px auto 0;font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--ln);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}.clr:hover{border-color:var(--fg)}
+body[data-view=coach] #setup,body[data-view=coach] #live{display:none!important}
+body[data-view=setup] #coach,body[data-view=setup] #ghost,body[data-view=setup] #pace,body[data-view=setup] #sess,body[data-view=setup] #own,body[data-view=setup] #lim,body[data-view=setup] #out,body[data-view=setup] #out~*,body[data-view=setup] #zb{display:none!important}
+body[data-view=setup] .drops{grid-template-columns:1fr}
+.views{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.views a{padding:3px 12px;border:1px solid var(--ln);border-radius:14px;color:var(--fg);text-decoration:none;font-size:14px}.views a.on{background:var(--fg);color:var(--bg)}
 </style></head><body>
-<h1>Lap Analyzer</h1>
+<h1 id="appTitle">Lap Analyzer</h1>
+<nav class="views" id="views"></nav>
 <p class="m">Drop one of your own iRacing .ibt files (from Documents\iRacing\telemetry) to analyze your laps and car setup. Add a reference on the right, a Garage 61 CSV or another .ibt file, to compare against another lap or driver. Everything runs in your browser; nothing is uploaded.</p>
 <div class="card" id="start"><b>Start here</b><ol style="margin:6px 0 0 18px;padding:0"><li>Drop your lap in the left box. A single .ibt file is enough: with no reference, it is compared with your own fastest lap.</li><li>Drop a reference lap on the right to compare against. Use a Garage61 CSV, or a second .ibt file.</li><li>Your own-laps view appears when you load an .ibt file. Name the turns there to get labelled coaching.</li></ol></div>
 <div class="drops">
@@ -31,6 +36,10 @@ details.fold{margin-bottom:14px}.pbar{height:8px;background:var(--ln);border-rad
 </div>
 <div class="m">Speed <select id="us"><option value="mph">mph</option><option value="kmh">km/h</option></select> &nbsp; Distance <select id="ud"><option value="m">meters</option><option value="ft">feet</option></select></div>
 <div id="err"></div>
+<script>(()=>{const q=new URLSearchParams(location.search),v=q.get('view'),V={coach:['Coaching','Your average lap against your best: where the time goes and what to change, in the driving and in the setup.'],setup:['Setup','The live setup, the engineer\'s plan against what is in the sim right now, and predicted changes.']};
+if(V[v]){document.body.dataset.view=v;document.getElementById('appTitle').textContent=V[v][0];document.title=V[v][0]+' · iRacing Suite';const p=document.querySelector('h1+nav+p.m')||document.querySelector('#views+p.m');if(p)p.textContent=V[v][1]}
+const link=x=>{const n=new URLSearchParams(location.search);if(x)n.set('view',x);else n.delete('view');const s=n.toString();return location.pathname+(s?'?'+s:'')};
+document.getElementById('views').innerHTML=[['coach','Coaching'],['setup','Setup'],['','Everything']].map(([x,l])=>'<a href="'+link(x)+'"'+((v||'')===x||(!V[v]&&!x)?' class="on"':'')+'>'+l+'</a>').join('')})()</script>
 <div class="card" id="live" hidden></div>
 <div class="card" id="coach" hidden></div>
 <div class="card" id="ghost" hidden></div>
