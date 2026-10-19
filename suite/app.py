@@ -279,7 +279,25 @@ def fallback_window(url):
             pass
 
 
+def close_with_app(engine):
+    """What must end with the app. The relay, PitWall's bridge, the iRacing reader and the
+    web servers are threads of this process and end with it (quit_now); the share tunnel
+    (cloudflared) is a separate program, so it is stopped and its link revoked first. If the
+    app is killed instead of closed, Windows ends the tunnel too (share._KillWithParent)."""
+    _on_quit.append(lambda: engine.pitwall.share and engine.pitwall.share.stop())
+
+
 def main():
+    try:
+        _main()
+    except SystemExit as e:
+        quit_now(e.code if isinstance(e.code, int) else 0)
+    except BaseException as e:   # noqa: BLE001 -- a windowed app has no console: never linger unseen
+        print("iRacing Suite stopped: %s: %s" % (type(e).__name__, e))
+        quit_now(1)
+
+
+def _main():
     redirect_output_when_windowed()
     ap = argparse.ArgumentParser(description="iRacing Suite")
     ap.add_argument("--port", type=int, default=8123)
@@ -319,7 +337,7 @@ def main():
                 time.sleep(6 * 3600)
         threading.Thread(target=auto_check, daemon=True).start()
     # A shared link must never outlive the app.
-    _on_quit.append(lambda: engine.pitwall.share and engine.pitwall.share.stop())
+    close_with_app(engine)
     print("iRacing Suite %s on %s" % (__version__, engine.url))
     if a.replay:
         engine.replay(a.replay, a.speed)
