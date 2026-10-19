@@ -970,20 +970,6 @@ def _alive(pid):
         return True
 
 
-def _port_free(port):
-    """Nothing is listening there any more (a closed connection may still be in TIME_WAIT,
-    which does not stop the app listening again: asyncio servers reuse the address)."""
-    s = socket.socket()
-    s.settimeout(1)
-    try:
-        s.connect(("127.0.0.1", port))
-        return False
-    except OSError:
-        return True
-    finally:
-        s.close()
-
-
 class AppClosesTest(unittest.TestCase):
     """Run the app's engine with PitWall and a share tunnel (a stand-in cloudflared, a real
     separate program), then close it: nothing it started may keep running."""
@@ -1012,9 +998,11 @@ class AppClosesTest(unittest.TestCase):
         return info, code
 
     def _gone(self, info):
+        # The app's own servers (relay, bridge, web) are threads of its process: once it has
+        # exited (checked by the caller) they are gone. Its ports are not checked here: other
+        # tests running alongside start their own PitWall and may take the same port straight
+        # away. The share tunnel is the one separate program, so that is what is checked.
         self.assertTrue(_wait(lambda: not _alive(info["tunnel"]), 10), "the tunnel outlived the app")
-        for port in info["ports"]:
-            self.assertTrue(_wait(lambda: _port_free(port), 10), "port %d still taken" % port)
 
     def test_closing_the_window_ends_everything(self):
         info, code = self._run("close")
