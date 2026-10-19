@@ -836,6 +836,10 @@ def test_bridge_survives_a_frame_the_normalizer_cannot_handle():
     real, calls = bridge_mod.build_state, {"n": 0}
 
     def flaky(s, d):
+        # Count only this test's source: another bridge running in the same test process (the
+        # suite tests keep one going) calls build_state too, and must not use up the bad frame.
+        if s is not src:
+            return real(s, d)
         calls["n"] += 1
         if calls["n"] == 3:
             raise KeyError("a variable this build has never seen")

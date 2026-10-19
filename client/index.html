@@ -263,7 +263,7 @@
   .uc + .uc { margin-top: 6px; }
   .note { color: var(--muted); font-size: 12px; }
   /* charts */
-  .tabs { display: flex; gap: 4px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .tabs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin-left: auto; text-transform: none; letter-spacing: 0; }
   .tabs button { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 5px;
                  padding: 1px 8px; font: inherit; font-size: 11px; cursor: pointer; }
   .tabs button.on { color: var(--text); border-color: var(--muted); background: #22304F; }
@@ -1820,6 +1820,9 @@
     // End-of-line labels: push apart any that would overlap, keeping the order.
     labels.sort((a, b) => a.y - b.y);
     for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 11) labels[i].y = labels[i - 1].y + 11;
+    // and keep them inside the plot, above the lap numbers along the bottom
+    let maxY = H - B - 4;
+    for (let i = labels.length - 1; i >= 0; i--) { if (labels[i].y > maxY) labels[i].y = maxY; maxY = labels[i].y - 11; }
     for (const l of labels) { g.fillStyle = l.col; g.textAlign = "left"; g.font = (l.mine ? "bold " : "") + "10px system-ui, sans-serif"; g.fillText(l.txt, l.x, l.y); }
     note.innerHTML = chartTab === "gap" ? `<span class="derived" title="Computed here: each car's time behind the leader minus the class leader's, at every lap crossing.">Gap to your class leader at each lap</span>, your class leader and the cars within four places of you. You are orange.`
       : chartTab === "you" ? `<span class="derived" title="Computed here: the moment each car crossed the line on that lap minus the moment the followed car did.">Gap to ${RW().obj} at each lap line</span>: above the middle line is ahead, below is behind. Orange is the followed car.`
@@ -2396,7 +2399,7 @@
       const summary = det.querySelector("summary"), note = $("mapNote"), trf = $("traffic");
       const cs = getComputedStyle(sec);
       const avail = sec.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
-        - (summary ? summary.offsetHeight + 8 : 0) - (note ? note.offsetHeight + 6 : 0)
+        - (summary ? summary.offsetHeight + 8 : 0) - (note ? note.offsetHeight + 14 : 0)   // +8: the note was clipped by 6 px
         - (trf && trf.offsetHeight ? trf.offsetHeight + 6 : 0);
       cv.style.height = Math.max(240, Math.floor(avail)) + "px";
     }

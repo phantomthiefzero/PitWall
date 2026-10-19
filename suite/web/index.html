@@ -6,13 +6,13 @@
 :root[data-theme="dark"]{color-scheme:dark;--bg:#16181b;--card:#1f2226;--fg:#e8e9eb;--mut:#9aa0a8;--ln:#30343a;--acc:#e6b422;--good:#2fb36a;--warn:#e0a325;--blue:#4b8bf0}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
 .wrap{max-width:1040px;margin:0 auto;padding:28px 24px 40px}
-header{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--ln);padding-bottom:14px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;border-bottom:1px solid var(--ln);padding-bottom:14px}
 .theme{margin-left:auto;font-size:13px;padding:4px 12px}
 h1{margin:0;font-size:26px;letter-spacing:.02em}h1 span{color:var(--acc)}.ver{color:var(--mut);font-size:13px}
 .status{margin-top:20px;background:var(--card);border:1px solid var(--ln);border-left:4px solid var(--mut);border-radius:10px;padding:16px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
 .status.live{border-left-color:var(--good)}.status.wait{border-left-color:var(--warn)}.status.replay{border-left-color:var(--blue)}
 .dot{width:12px;height:12px;border-radius:50%;background:var(--mut);flex:none}.live .dot{background:var(--good);box-shadow:0 0 0 4px rgba(47,179,106,.18)}.wait .dot{background:var(--warn)}.replay .dot{background:var(--blue)}
-.st-main{flex:1;min-width:220px}.st-title{font-weight:700;font-size:16px}.st-sub{color:var(--mut);font-size:13px}
+.st-main{flex:1;min-width:220px}.st-title{font-weight:700;font-size:16px;overflow-wrap:anywhere}.st-main{min-width:0}.st-sub{overflow-wrap:anywhere}.st-sub{color:var(--mut);font-size:13px}
 button{font:inherit;font-size:14px;padding:7px 14px;border-radius:7px;border:1px solid var(--ln);background:var(--bg);color:var(--fg);cursor:pointer}button:hover{border-color:var(--fg)}
 .apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:22px}
 .app{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
@@ -44,7 +44,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <p style="margin-top:6px">OBS Browser Source, 1920 × 1080:</p><code id="bcObs" style="display:block;font-size:12px;background:var(--bg);border:1px solid var(--ln);border-radius:6px;padding:6px 8px;word-break:break-all;user-select:all">–</code>
 <p style="margin-top:6px">Camera packs: free community cameras (BIG EVIL Racing, RedneckTeck, forum sets) give the director more angles. Their licences do not allow bundling, so download one, then install it here.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap" id="camBtns"></div>
-<div style="display:flex;gap:8px;margin-top:auto;padding-top:8px"><button type="button" id="bcCopy" style="white-space:nowrap">Copy OBS address</button><a class="open" id="bcOpen" style="align-self:center;margin-left:auto;text-decoration:none;white-space:nowrap">Open producer panel →</a></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:8px"><button type="button" id="bcCopy" style="white-space:nowrap">Copy OBS address</button><a class="open" id="bcOpen" style="align-self:center;margin-left:auto;text-decoration:none;white-space:nowrap">Open producer panel →</a></div></div>
 <a class="app" href="/pitwall/" id="pwTile"><span class="tag" id="pwTag">Starting</span><h2>PitWall</h2><p>Engineer and spotter dashboard: track map, standings, flags, weather and car systems. Runs on this PC through the built-in bridge.</p><span class="open">Open →</span></a>
 </div>
 <div class="share hidden" id="share"></div>
