@@ -663,7 +663,10 @@ def make_handler(hub):
                 await http_reply(writer, "204 No Content")
                 return
             if path.split("?")[0] in ("/analyzer", "/pitwall"):
-                writer.write(("HTTP/1.1 301 Moved\r\nLocation: %s/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n" % path.split("?")[0]).encode())
+                # keep the query: a dashboard link carries the relay address and token in it
+                base, _, query = path.partition("?")
+                writer.write(("HTTP/1.1 301 Moved\r\nLocation: %s/%s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                              % (base, "?" + query if query else "")).encode())
                 await writer.drain()
                 return
             ana = analyzer_reply(path) if path.split("?")[0] != "/analyzer" else None

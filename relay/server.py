@@ -130,6 +130,25 @@ def page_response(request, body: bytes) -> Response:
         headers += [("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")]
     return Response(200, "OK", Headers(headers + [("Content-Length", str(len(body)))]), body)
 CLIENT_PATHS = ("/pitwall/", "/pitwall", "/pitwall/index.html")
+# The dashboard's fonts (client/assets): served by exact name, nothing else in that folder.
+CLIENT_ASSETS = os.path.join(os.path.dirname(CLIENT_PAGE), "assets")
+CLIENT_ASSET_TYPES = {".woff2": "font/woff2"}
+
+
+def client_asset(path: str):
+    """(body, content type) for /pitwall/assets/<name>, or None. Only plain names
+    with an allowed extension, read from client/assets; never a path."""
+    if not path.startswith("/pitwall/assets/"):
+        return None
+    name = path[len("/pitwall/assets/"):]
+    ext = os.path.splitext(name)[1].lower()
+    if not name or ext not in CLIENT_ASSET_TYPES or not all(ch.isalnum() or ch in "-_." for ch in name) or name.startswith("."):
+        return None
+    try:
+        with open(os.path.join(CLIENT_ASSETS, name), "rb") as f:
+            return f.read(), CLIENT_ASSET_TYPES[ext]
+    except OSError:
+        return None
 BROADCAST_PAGES = {"/broadcast/overlay.html": "overlay.html", "/broadcast/producer.html": "producer.html",
                    "/broadcast/": "producer.html", "/broadcast": "producer.html"}
 
@@ -603,6 +622,14 @@ class Relay:
                                ("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"),
                                ("X-Content-Type-Options", "nosniff")])
             return Response(200, "OK", headers, body)
+        if path.startswith("/pitwall/assets/") and request.headers.get("Upgrade") is None:
+            got = client_asset(path)
+            if not got:
+                return connection.respond(http.HTTPStatus.NOT_FOUND, "not found\n")
+            body, ctype = got
+            # fonts are already compressed; they change only with the app, so a day's cache is fine
+            return Response(200, "OK", Headers([("Content-Type", ctype), ("Cache-Control", "max-age=86400"),
+                                                ("Content-Length", str(len(body)))]), body)
         if path in CLIENT_PATHS and request.headers.get("Upgrade") is None:
             try:
                 with open(CLIENT_PAGE, "rb") as f:

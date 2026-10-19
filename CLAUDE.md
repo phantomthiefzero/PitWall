@@ -21,7 +21,11 @@ Hard rules
   - Windows is slow where Linux is instant: a refused local connection takes a second or more. Nothing
     that may touch the network, a socket, a subprocess or a dialog runs on an event loop: use a thread
     or run_in_executor (suite.bridge.LiveSource looks for the sim on its own thread for this reason).
-- Do not add a build step to `client/`. One HTML file.
+- Do not add a build step to `client/`. One HTML file. Its only other files are the booth look's
+  fonts in `client/assets/` (licences in LICENSES.md), served by name by the relay
+  (`relay.server.client_asset`, .woff2 only) and the suite; without them the page falls back to
+  system fonts. The booth look (default) and the classic look are the same page: colours are tokens
+  on `:root`, booth overrides under `:root[data-skin="booth"]`, and canvases read them via `CV`.
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).
 
 Verification status
