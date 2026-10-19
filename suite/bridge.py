@@ -16,6 +16,7 @@ import mmap
 import os
 import struct
 import sys
+import threading
 import time
 
 IRSDK_ERROR = None
@@ -103,6 +104,7 @@ class LiveSource:
         self.ticks = 0
         self.last_update = None
         self.next_try = 0.0
+        self._starting = None
 
     def _reset(self):
         self.names = None
@@ -113,6 +115,10 @@ class LiveSource:
         ir = self.ir
         if ir is None:
             return False, None, None
+        if self._starting is not None:
+            if self._starting.is_alive():
+                return False, None, None
+            self._starting = None
         if not (ir.is_initialized and ir.is_connected):
             if ir.is_initialized:
                 ir.shutdown()
@@ -121,12 +127,18 @@ class LiveSource:
             if now < self.next_try:
                 return False, None, None
             self.next_try = now + 2.0
-            try:
-                ok = ir.startup()
-            except Exception:
-                ok = False
-            if not (ok and ir.is_connected):
-                return False, None, None
+            # Looking for the sim asks iRacing's local web port (pyirsdk's startup). With the sim
+            # closed, Windows takes a second or more to refuse that connection, and poll() runs on
+            # the event loop: every page, the relay and the share link froze for that long every
+            # 2 s. So the look happens on its own thread; the next poll after it picks it up.
+            def look():
+                try:
+                    ir.startup()
+                except Exception:
+                    pass
+            self._starting = threading.Thread(target=look, name="iracing-startup", daemon=True)
+            self._starting.start()
+            return False, None, None
         try:
             ir.freeze_var_buffer_latest()
             if self.names is None:

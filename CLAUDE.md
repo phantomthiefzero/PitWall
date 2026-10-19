@@ -13,6 +13,14 @@ Hard rules
   CI: a pull request runs only the tests for the files it changes (scripts/pick_tests.py); every push
   to master runs everything before the release build. Docs-only changes do not run CI.
   Add a test for every new derived value.
+- CI runs on Windows with tests in parallel (-n auto); a test hung for 300 s fails with a stack dump
+  (pytest-timeout). Failures there so far, and the rule each one taught:
+  - A test may share its process with servers other tests left running (SuiteTest's Engine and its
+    PitWall bridge). Never patch a module-level function others call without checking the caller
+    is yours, and never assume a port is free or stays free: ask the object you started for its port.
+  - Windows is slow where Linux is instant: a refused local connection takes a second or more. Nothing
+    that may touch the network, a socket, a subprocess or a dialog runs on an event loop: use a thread
+    or run_in_executor (suite.bridge.LiveSource looks for the sim on its own thread for this reason).
 - Do not add a build step to `client/`. One HTML file.
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).
 

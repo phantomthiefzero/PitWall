@@ -1186,3 +1186,54 @@ class AppClosesTest(unittest.TestCase):
     def test_killed_app_takes_the_tunnel_with_it(self):
         info, _ = self._run("kill")                         # Task Manager, a crash
         self._gone(info)
+
+
+class SimLookupTest(unittest.TestCase):
+    """With iRacing closed, looking for it is slow on Windows (refusing a local connection takes a
+    second or more there; Linux refuses at once, so this hid on every machine but Windows). poll()
+    runs on the event loop with every page, the relay and the share link, so it must never wait."""
+
+    class SlowIR:
+        """pyirsdk as seen with the sim closed on Windows: startup takes 1.5 s, then connects."""
+        def __init__(self):
+            self.is_initialized = self.is_connected = False
+            self.calls = 0
+            self._var_headers = []
+
+            class H:
+                session_info_update, session_info_offset, session_info_len = 1, 0, 0
+            self._header = H()
+            self._shared_mem = b""
+
+        def startup(self):
+            self.calls += 1
+            time.sleep(1.5)
+            self.is_initialized = self.is_connected = True
+            return True
+
+        def freeze_var_buffer_latest(self):
+            pass
+
+        def unfreeze_var_buffer_latest(self):
+            pass
+
+        def shutdown(self):
+            self.is_initialized = self.is_connected = False
+
+    def test_looking_for_the_sim_never_blocks(self):
+        from suite.bridge import LiveSource
+        src = LiveSource()
+        src.ir = self.SlowIR()
+        t0 = time.monotonic()
+        polls = 0
+        while time.monotonic() - t0 < 3:
+            a = time.monotonic()
+            ok, _y, _v = src.poll()
+            self.assertLess(time.monotonic() - a, 0.2, "poll() waited for the sim")
+            polls += 1
+            if ok:
+                break
+            time.sleep(1 / 60)
+        self.assertTrue(ok, "never connected once the sim answered")
+        self.assertEqual(src.ir.calls, 1)                    # one look at a time
+        self.assertGreater(polls, 30)                         # the loop kept running meanwhile
