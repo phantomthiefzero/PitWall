@@ -357,6 +357,15 @@
   .hidden { display: none !important; }
   .sof-line { font-size: 12.5px; color: var(--muted); margin: -2px 0 6px; display: flex; flex-wrap: wrap; gap: 2px 14px; }
   .sof-line:empty { display: none; }
+  .wxo { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .wxo h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .wxo-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+  .wxo-strip > div { background: var(--inset); border-radius: 4px; padding: 5px 4px; text-align: center; font-size: 12px; line-height: 1.35; }
+  .wxo-strip .h { color: var(--muted); font-size: 11px; }
+  .wxo-strip .now .h { color: var(--yellow); }
+  .wxo-line { font-size: 12.5px; margin-top: 5px; }
+  .held-note { font-size: 12.5px; margin: 0 0 6px; padding: 5px 8px; border-radius: 4px; border-left: 3px solid var(--blue);
+               background: var(--inset); color: var(--text); }
   .sof-line b { color: var(--text); font-weight: 600; }
   /* alarms: one strip under the header, per viewer */
   header .alarms { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
@@ -577,6 +586,7 @@
       </summary>
       <canvas id="map"></canvas>
       <div class="traffic" id="traffic"></div>
+      <div class="held-note hidden" id="heldMap" role="status"></div>
       <div class="mapnote" id="mapNote">Outline is built from your first clean lap and cached per track.</div>
     </details>
   </section>
@@ -595,6 +605,7 @@
   <section id="standings">
     <details class="panel" id="standingsPanel" open>
       <summary>Standings</summary>
+      <div id="heldNote" class="held-note hidden" role="status"></div>
       <div id="sofLine" class="sof-line"></div>
       <div class="tbl">
       <table>
@@ -735,6 +746,7 @@
       <details class="panel" id="weatherPanel" open>
         <summary>Weather</summary>
         <div class="wx" id="wx"></div>
+        <div id="wxOutlook"></div>
         <div class="trend" id="wxTrend"></div>
       </details>
     </section>
@@ -789,6 +801,7 @@
   function readColors() {
     const st = getComputedStyle(document.documentElement), v = k => st.getPropertyValue("--" + k).trim();
     Object.assign(CV, { line: v("line"), dim: v("dim"), muted: v("muted"), text: v("text"), trackline: v("trackline"),
+                        bgPanel: v("panel"),
                         font: v("canvas-font") || "system-ui, sans-serif" });
   }
   readColors();
@@ -1067,10 +1080,33 @@
     }).join("");
     if (el.innerHTML !== h) el.innerHTML = h;
   }
+  // A live gap (computed from where the cars are now), as laps once a lap or more;
+  // else iRacing's figure from the last timing line.
+  function liveOr(c, key, lapsKey, fallback) {
+    const d = c.derived || {};
+    if (S.cars.derived && S.cars.derived.liveTiming && d[key] != null)
+      return d[lapsKey] >= 1 ? `+${d[lapsKey]} lap${d[lapsKey] > 1 ? "s" : ""}` : fmt.gap(d[key]);
+    return fallback != null ? fmt.gap(fallback) : "–";
+  }
+  // Watching a replay behind live: the bridge holds the live picture (derived.held).
+  function renderHeld() {
+    const h = S.cars && S.cars.derived && S.cars.derived.held;
+    const a = $("heldNote"), b = $("heldMap");
+    a.classList.toggle("hidden", !h); b.classList.toggle("hidden", !h);
+    if (!h) return;
+    const behind = h.behindLiveS != null ? fmt.clock(h.behindLiveS) + " behind live" : "behind live";
+    a.innerHTML = `<b>Watching a replay</b> (${behind}). ` + (h.fromResults
+      ? "Positions, laps and lap times keep updating from iRacing's live results; gaps and trends are held at the moment the replay began."
+      : "Everything is held at the moment the replay began; iRacing's results will update positions as cars cross the line.");
+    b.innerHTML = `<b>Watching a replay</b>: car positions on the map are held at ${sessClock(h.sinceT)}, the moment the replay began.`;
+  }
   function renderStandings() {
     if (!S.cars) return;
-    renderSof();
-    const cars = Object.values(S.cars.cars || {}).filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
+    renderSof(); renderHeld();
+    // the running order now (derived.livePos) while the race runs; iRacing's otherwise
+    const P = c => (c.derived && c.derived.livePos) || c.pos, CP = c => (c.derived && c.derived.liveClassPos) || c.classPos;
+    const cars = Object.values(S.cars.cars || {}).filter(c => c.pos > 0).sort((a, b) => P(a) - P(b));
+    const live = !!(S.cars.derived && S.cars.derived.liveTiming);
     const me = refInfo().own;
     const focus = focusIdx();
     const cmpC = cmpCar(), cmpIdxNow = cmpC ? cmpC.idx : null;
@@ -1079,12 +1115,12 @@
       const flags = (c.flags || []).filter(f => ["black", "repair", "furled", "disqualify"].includes(f)).map(f => `<span class="badge ${f}">${f}</span>`).join("");
       const pit = c.onPitRoad ? "pit" : (c.surface === "in_pit_stall" ? "box" : "");
       return `<tr data-idx="${c.idx}" class="${c.idx === me ? "player" : ""} ${c.idx === focus ? "focus" : ""} ${c.idx === cmpIdxNow ? "cmp" : ""} ${pit ? "pit" : ""}">
-        <td class="r c-pos"${multi && c.classColor != null ? ` style="box-shadow: inset 3px 0 0 ${classCss(c.classColor)}"` : ""}>${c.pos}${multi && c.classPos ? `<span class="cpos">${c.classPos}</span>` : ""}</td>
+        <td class="r c-pos"${multi && c.classColor != null ? ` style="box-shadow: inset 3px 0 0 ${classCss(c.classColor)}"` : ""}${live && P(c) !== c.pos ? ` title="Running order now (computed here from where the cars are). iRacing's scored position, which changes at the timing lines: P${esc(c.pos)}"` : ""}>${P(c)}${multi && CP(c) ? `<span class="cpos">${CP(c)}</span>` : ""}</td>
         <td class="driver c-driver" title="${esc(c.name ?? "")}"><span class="num">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}${flags}</td>
         <td class="c-car"${multi && c.classColor != null ? ` style="color:${classCss(c.classColor)}"` : ""}>${esc(c.className ?? c.car)}</td>
-        <td class="r c-int">${c.derived && c.derived.intervalS != null ? fmt.gap(c.derived.intervalS) : "–"}</td>
+        <td class="r c-int">${liveOr(c, "runIntervalS", "runIntervalLaps", c.derived && c.derived.intervalS)}</td>
         <td class="r c-delta">${closingCell(c)}</td>
-        <td class="r c-gap">${c.pos === 1 ? "leader" : (c.gapValid ? fmt.gap(c.f2TimeS) : "–")}</td>
+        <td class="r c-gap">${P(c) === 1 ? "leader" : liveOr(c, "runGapS", "runGapLaps", c.gapValid ? c.f2TimeS : null)}</td>
         <td class="r c-last">${fmt.lap(c.lastLapS)}</td><td class="r c-best">${fmt.lap(c.bestLapS)}</td>
         <td class="r c-laps">${c.lapCompleted ?? "–"}</td><td class="r c-deg">${degCell(c)}</td>
         <td class="c-stops">${pitCell(c, pit)}</td><td class="r c-sec">${sectorCell(c)}</td></tr>`;
@@ -1299,13 +1335,41 @@
       trendRows(tr, METRICS);
   }
 
+  // Wind direction in compass words. iRacing's WindDir is in radians; shown as given.
+  const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  function renderOutlook(o) {
+    const el = $("wxOutlook");
+    if (!o || !o.steps || !o.steps.length) { el.innerHTML = ""; return; }
+    const w = S.state.weather, T = c => c == null ? "–" : U.temp(c);
+    const tip = "An estimate computed here, not iRacing's forecast (the sim's forecast and radar are not shared with apps). Air, humidity and rain carry on their trend from the last 15 minutes; the track temperature follows the air plus the sunlight reaching it, from the sun's path at this track and date and the cloud cover; the sun runs at the sim's clock speed.";
+    const tile = (h, air, trk, sun, rain, now) => `<div class="${now ? "now" : ""}"><div class="h">${h}</div>` +
+      `<div>${T(air)}</div><div class="note">track ${T(trk)}</div>` +
+      `<div class="note">${sun == null ? "" : sun > 0 ? "sun " + sun.toFixed(0) + "°" : "dark"}</div>` +
+      `<div class="note">rain ${rain == null ? "–" : Math.round(rain * 100) + "%"}</div></div>`;
+    let h = `<div class="wxo"><h3>${D("Next hour (estimate)", tip)}</h3><div class="wxo-strip">` +
+      tile("now", w.airTempC, w.trackTempC, w.solarAltitudeRad != null ? w.solarAltitudeRad * 180 / Math.PI : null, w.precipitationPct, true) +
+      o.steps.map(s => tile("+" + Math.round(s.inS / 60) + " min", s.airC, s.trackC, s.sunAltDeg, s.rainPct, false)).join("") + `</div>`;
+    const sun = o.sun;
+    if (sun) {
+      const t = sun.setsInS != null ? `Sunset in ${fmt.clock(sun.setsInS)}` : sun.risesInS != null ? `Sunrise in ${fmt.clock(sun.risesInS)}` : null;
+      if (t) h += `<div class="wxo-line">${D(t, "Computed here from the track's latitude, the session date and where the sun is now, run at the sim's clock speed (real time shown).")}</div>`;
+    }
+    const r = o.rain;
+    if (r && r.state) {
+      const nx = r.nextWetness ? `, ${["", "dry", "mostly dry", "very lightly wet", "lightly wet", "moderately wet", "very wet", "extremely wet"][r.nextWetness.level] || "level " + r.nextWetness.level} in about ${fmt.clock(r.nextWetness.inS)}` : "";
+      h += `<div class="wxo-line">${D(`Track ${r.state}${nx}`, "Computed here from how iRacing's track wetness has moved over the last 15 minutes.")}</div>`;
+    }
+    if (o.trackModel) h += `<div class="note" style="margin-top:4px">Sunlight on the track now ${D(o.trackModel.sunWm2 + " W/m²", "Computed here: clear-sky sunlight for the sun's height (Haurwitz), cut by the cloud cover (Kasten and Czeplak).")} · track heating ${o.trackModel.basis === "fitted" ? "fitted to this session" : "typical for asphalt until the sun has moved enough to fit it"}.</div>`;
+    el.innerHTML = h + `</div>`;
+  }
   function renderWeather() {
-    const w = S.state.weather;
+    const w = S.state.weather, st = S.state, o = st.derived && st.derived.weatherOutlook;
     const c2f = c => c == null ? "–" : U.temp(c);
     const wetCls = w.wetnessRaw > 1 ? "wet" : "";
     $("wx").innerHTML = [
       ["Air", c2f(w.airTempC)], ["Track", c2f(w.trackTempC)],
-      ["Wind", w.windMs != null ? U.wind(w.windMs) + (w.windDirRad != null ? " @ " + (((Math.round(w.windDirRad * 180 / Math.PI) % 360) + 360) % 360) + "°" : "") : "–"],
+      ["Wind", w.windMs != null ? U.wind(w.windMs) + (w.windDirRad != null ? (() => { const deg = (((w.windDirRad * 180 / Math.PI) % 360) + 360) % 360;
+        return " " + COMPASS[Math.round(deg / 22.5) % 16] + ` <span class="note">${Math.round(deg)}°</span>`; })() : "") : "–"],
       ["Humidity", w.humidity != null ? Math.round(w.humidity * 100) + "%" : "–"],
       ["Skies", w.skies ? esc(words(w.skies)) : "–"],
       ["Rain", w.precipitationPct != null ? Math.round(w.precipitationPct * 100) + "%" : "–"],
@@ -1320,8 +1384,16 @@
       })()],
       ["Rain tires", w.declaredWet ? `<span class="wet">allowed</span>` : "not declared"],
       ["Fog", w.fogPct != null ? Math.round(w.fogPct * 100) + "%" : "–"],
-      ["Air density", fmt.n(w.airDensity, 3)],
+      ["Air density", fmt.n(w.airDensity, 3) + (w.airDensity != null ? " kg/m³" : "")],
+      ["Air pressure", w.airPressurePa != null ? (w.airPressurePa / 100).toFixed(0) + " hPa" : "–"],
+      ["Dew point", o && o.dewPointC != null ? D(c2f(o.dewPointC), "Computed here from the air temperature and humidity (Magnus formula). Close to the air temperature means mist or condensation.") : "–"],
+      ["Sun", w.solarAltitudeRad != null ? (w.solarAltitudeRad * 180 / Math.PI).toFixed(0) + "° above the horizon" : "–"],
+      ["Time of day", st.session.timeOfDayS != null ? fmt.clock(st.session.timeOfDayS).replace(/:\d\d$/, "") +
+        (o && o.clockSpeed && o.clockSpeed > 1.05 ? ` <span class="note">(${D("×" + o.clockSpeed.toFixed(1), "Computed here: how fast the sim's clock runs against real time.")})</span>` : "") : "–"],
+      ["Weather", (() => { const op = S.session && S.session.options, ev = S.session && S.session.event;
+        const t = (op && op.WeatherType) || (ev && ev.TrackWeatherType); return t ? esc(t) : "–"; })()],
     ].map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join("");
+    renderOutlook(o);
     renderTrend();
   }
 
@@ -1718,7 +1790,7 @@
     const pit = c.onPitRoad ? ` <span class="badge" style="background:var(--orange);color:#2A1A00">in pit</span>` : "";
     return `<div class="bb-row"><span class="bb-side">${side}</span>` +
       `<span class="bb-who">${carLabel(c.idx)}${pit}</span>` +
-      `<span class="bb-gap">${tp == null ? "–" : D(Math.abs(tp).toFixed(2), "Computed here: the difference between the two cars' time behind the leader (CarIdxF2Time).")}</span>` +
+      `<span class="bb-gap">${tp == null ? "–" : D(Math.abs(tp).toFixed(2), S.cars.derived && S.cars.derived.liveTiming ? "Computed here, live: the time between the two cars from where they are now on track (iRacing's estimated time around the lap)." : "Computed here: the difference between the two cars' time behind the leader (CarIdxF2Time).")}</span>` +
       `<div class="bb-sub">${trend ? D(trend, TREND_TIP) : `<span class="note">trend needs ~20 s of gaps</span>`}` +
       `<span title="Their last lap / the followed car's">last <span class="mono">${fmt.lap(c.lastLapS)}</span> vs <span class="mono">${fmt.lap(me && me.lastLapS)}</span></span>` +
       (sp ? `<span title="Gap at each of their lap crossings">${sp}</span>` : "") + `</div></div>`;
@@ -1729,9 +1801,10 @@
     const me = meCar();
     if (!me) { el.innerHTML = `<div class="note">Pick a car to follow (the Following menu at the top, or double-click a row in the standings).</div>`; return; }
     if (S.cars.derived && S.cars.derived.isRace === false) { el.innerHTML = `<div class="note">Battles are measured in races, where iRacing reports each car's time behind the leader. In practice and qualifying that number is a best lap instead.</div>`; return; }
+    const CP = c => (c.derived && c.derived.liveClassPos) || c.classPos;
     const cars = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
-    const ahead = cars.find(c => c.classPos === me.classPos - 1);
-    const behind = cars.find(c => c.classPos === me.classPos + 1);
+    const ahead = cars.find(c => CP(c) === CP(me) - 1);
+    const behind = cars.find(c => CP(c) === CP(me) + 1);
     el.innerHTML = battleRow("ahead", ahead) + battleRow("behind", behind);
   }
 
@@ -2101,14 +2174,33 @@
   });
   // the canvases are drawn with the fonts' names: redraw once the fonts have arrived
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); chartDirty = true; });
-  $("reportBtn").addEventListener("click", () => {
+  // Where the report went, said plainly next to the button for a few seconds.
+  function reportSaid(text, bad) {
+    let el = $("reportMsg");
+    if (!el) { el = document.createElement("span"); el.id = "reportMsg"; el.setAttribute("role", "status"); $("reportBtn").after(el); }
+    el.textContent = text; el.style.color = bad ? "var(--red)" : "var(--text)"; el.style.marginLeft = "8px";
+    clearTimeout(reportSaid.t); reportSaid.t = setTimeout(() => { el.textContent = ""; }, 12000);
+  }
+  $("reportBtn").addEventListener("click", async () => {
     const html = buildReport();
     const t = (S.session && S.session.track && (S.session.track.TrackName || "")) || "session";
     const name = `race-report-${t.replace(/[^\w-]+/g, "-")}-${new Date().toISOString().slice(0, 10)}.html`;
+    // Inside the suite's app window downloads go nowhere: the app saves it instead.
+    const api = window.pywebview && window.pywebview.api;
+    if (api && api.save_report) {
+      try {
+        const r = await api.save_report(html, name);
+        if (r && r.ok) reportSaid("Saved to " + r.path + " and opened in your browser.");
+        else if (r && r.cancelled) reportSaid("Not saved.");
+        else reportSaid((r && r.error) || "Could not save the report.", true);
+      } catch (e) { reportSaid("Could not save the report: " + e, true); }
+      return;
+    }
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([html], { type: "text/html" }));
     a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    reportSaid("Downloaded as " + name + " (your browser's Downloads folder).");
   });
 
   // ---- traffic forecast (list under the map; markers are drawn by drawMap)
@@ -2118,16 +2210,40 @@
     sec.forEach((s, i) => { if (s.SectorStartPct != null && pct >= s.SectorStartPct) k = i; });
     return sec.length ? "S" + (k + 1) : "";
   }
+  // The meetings on the map: the next few cars met in traffic, plus the cars being
+  // watched against the followed one (the head-to-head car and the class
+  // neighbours in the Battle panel) whenever they will meet within ten minutes.
+  function shownMeetings() {
+    const d = S.cars && S.cars.derived; if (!d) return [];
+    const all = d.meetings || [], out = new Map();
+    for (const x of (d.traffic || []).slice(0, 4)) out.set(x.idx, { ...x, watched: false });
+    const me = meCar(), cmp = cmpCar();
+    const watch = new Set();
+    if (cmp) watch.add(cmp.idx);
+    if (me) {
+      const CP = c => (c.derived && c.derived.liveClassPos) || c.classPos;
+      for (const c of Object.values(S.cars.cars || {}))
+        if (c.classId === me.classId && CP(c) && Math.abs(CP(c) - CP(me)) === 1) watch.add(c.idx);
+    }
+    for (const x of all) if (watch.has(x.idx)) out.set(x.idx, { ...x, watched: true });
+    return [...out.values()].sort((a, b) => a.inS - b.inS);
+  }
+  const MEET_TIP = "Computed here from both cars' current lap pace, worked in lap time (iRacing's estimated time round the lap), so slow and fast parts of the track do not throw it off. The place is where the followed car will be at that moment.";
+  function inWords(x) {
+    const s = Math.round(x.inS);
+    return s < 90 ? s + " s" : fmt.clock(s) + (x.inLaps != null ? ` (${x.inLaps.toFixed(1)} laps)` : "");
+  }
   function renderTraffic() {
     const el = $("traffic");
-    const list = (S.cars && S.cars.derived && S.cars.derived.traffic) || [];
+    const list = shownMeetings();
     if (!list.length) { el.innerHTML = ""; return; }
     const w = RW();
-    el.innerHTML = list.slice(0, 4).map(x => {
+    el.innerHTML = list.slice(0, 6).map(x => {
       const c = carByIdx(x.idx), cls = c && isMulticlass() && c.className ? " " + esc(c.className) : "";
+      const tag = x.watched ? ` <span class="badge">watching</span>` : "";
       return x.kind === "you_catch"
-        ? `<div class="catch">${D(`${w.Sub} ${w.y ? "catch" : "catches"} ${shortCar(x.idx)}${cls} in ${Math.round(x.inS)} s`, "Computed here at both cars' current lap pace. Speeds vary around a lap, so the place is approximate.")} <span class="note">${sectorOf(x.atPct)}</span></div>`
-        : `<div class="caught">${D(`${shortCar(x.idx)}${cls} catches ${w.obj} in ${Math.round(x.inS)} s`, "Computed here at both cars' current lap pace. Speeds vary around a lap, so the place is approximate.")} <span class="note">${sectorOf(x.atPct)}</span></div>`;
+        ? `<div class="catch">${D(`${w.Sub} ${w.y ? "catch" : "catches"} ${shortCar(x.idx)}${cls} in ${inWords(x)}`, MEET_TIP)} <span class="note">${sectorOf(x.atPct)}</span>${tag}</div>`
+        : `<div class="caught">${D(`${shortCar(x.idx)}${cls} catches ${w.obj} in ${inWords(x)}`, MEET_TIP)} <span class="note">${sectorOf(x.atPct)}</span>${tag}</div>`;
     }).join("");
   }
 
@@ -2852,14 +2968,20 @@
       if (label) ctx.fillText(label, x, y + 0.5);
     }
     // Where you meet traffic, at current pace (derived; approximate place).
-    const traffic = (S.cars.derived && S.cars.derived.traffic) || [];
+    // where the followed car meets each car: a diamond, labelled with the car and
+    // the time; a filled one for a car being watched (head-to-head, Battle)
     ctx.textBaseline = "alphabetic";
-    for (const t of traffic.slice(0, 4)) {
+    for (const t of shownMeetings().slice(0, 6)) {
       const [x, y] = P(t.atPct);
       ctx.strokeStyle = t.kind === "you_catch" ? "#FF9A3D" : "#6FA8FF"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.stroke();
-      ctx.fillStyle = ctx.strokeStyle; ctx.font = "bold 10px " + CV.font; ctx.textAlign = "left";
-      ctx.fillText(Math.round(t.inS) + "s", x + 10, y - 6);
+      ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath();
+      if (t.watched) { ctx.globalAlpha = 0.35; ctx.fillStyle = ctx.strokeStyle; ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.stroke();
+      const c = carByIdx(t.idx), s = Math.round(t.inS);
+      const label = "#" + (c ? (c.num ?? c.idx) : t.idx) + " " + (s < 90 ? s + "s" : fmt.clock(s));
+      ctx.font = "bold 10px " + CV.font; ctx.textAlign = "left";
+      ctx.lineWidth = 3; ctx.strokeStyle = CV.bgPanel || "#000"; ctx.strokeText(label, x + 10, y - 6);
+      ctx.fillStyle = t.kind === "you_catch" ? "#FF9A3D" : "#6FA8FF"; ctx.fillText(label, x + 10, y - 6);
     }
   }
 

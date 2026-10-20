@@ -179,6 +179,7 @@ def build_session(src: TelemetrySource) -> dict:
         "track": {k: wk.get(k) for k in ("TrackName", "TrackID", "TrackDisplayName", "TrackDisplayShortName",
                                           "TrackConfigName", "TrackLength", "TrackNumTurns", "TrackPitSpeedLimit",
                                           "TrackType", "TrackLatitude", "TrackLongitude", "TrackNorthOffset",
+                                          "TrackAltitude", "TrackCity", "TrackCountry",
                                           "TrackDynamicTrack", "TrackCleanup")},
         "event": {k: wk.get(k) for k in ("EventType", "Category", "SeriesID", "SeasonID", "SessionID",
                                           "SubSessionID", "LeagueID", "Official", "TeamRacing", "NumCarClasses",
@@ -193,7 +194,11 @@ def build_session(src: TelemetrySource) -> dict:
         # Race rules the booth needs: the incident limit (a number, or
         # "unlimited") and the fast-repair allowance.
         "options": {k: (wk.get("WeekendOptions") or {}).get(k)
-                    for k in ("IncidentLimit", "FastRepairsLimit", "StandingStart", "NumStarters")},
+                    for k in ("IncidentLimit", "FastRepairsLimit", "StandingStart", "NumStarters",
+                              # the weather settings and the sim's calendar and clock (the sun's path)
+                              "WeatherType", "Skies", "WindDirection", "WindSpeed", "WeatherTemp",
+                              "RelativeHumidity", "FogLevel", "TimeOfDay", "Date",
+                              "EarthRotationSpeedupFactor")},
         "drivers": drivers,
         "sessions": sessions,
         "sectors": sp.get("Sectors", []) or [],
@@ -296,6 +301,8 @@ class Deriver:
         # it connected; here they cover the session, for everyone alike.
         self._trend: dict[str, list] = {"weather": [], "engine": []}
         self._trend_at: dict[str, float | None] = {"weather": None, "engine": None}
+        self._tod: list = []                    # (session time, time of day): the sim clock's speed
+        self._outlook = None                    # (t, last outlook)
         self.gg_peak = 0.0
         self._lap_finished: list[dict] = []
         self._loss: list[dict] = []
@@ -336,6 +343,9 @@ class Deriver:
         # False while a replay is being watched: per-car changes read from the past
         # are not news (field_events is skipped then; this covers the per-car ones)
         self.events_live = True
+        self._dist_prev: dict[int, float] = {}
+        self._prof: dict = {}                      # class -> lap profile bins (learn_lap_profile)
+        self._meet: dict = {}                      # smoothed meetings for the shared reference
         self._ev = {"pit": {}, "best": {}, "bestSeeded": False, "closing": {}, "stable": {}, "surf": {},
                     "flags": None, "flagAt": {}, "inc": None, "warn": None, "tow": None,
                     "wet": None, "rain": None, "declaredWet": None}
@@ -619,7 +629,8 @@ class Deriver:
     PACE_LAPS = 5
     CONSISTENCY_LAPS = 5
     # name: (sample every s, samples kept, keys, minimum samples to show a trend)
-    TRENDS = {"weather": (10.0, 90, ("airTempC", "trackTempC", "humidity", "precipitationPct", "windMs"), 2),
+    TRENDS = {"weather": (10.0, 90, ("airTempC", "trackTempC", "humidity", "precipitationPct", "windMs",
+                                      "wetnessRaw", "solarAltitudeRad", "skiesRaw"), 2),
               "engine": (5.0, 360, ("waterTempC", "oilTempC", "oilPressBar"), 3)}
     TREND_DRAW_POINTS = 60      # a sparkline is ~60 px: more points draw nothing more
 
@@ -662,6 +673,200 @@ class Deriver:
                         self.gg_peak = m
         out["ggPeakG"] = round(self.gg_peak, 2) if self.gg_peak > 0.01 else None
         return out
+    # ---- weather outlook ---------------------------------------------------
+    # iRacing's own forecast and radar come from its servers to the sim's UI; the
+    # SDK has none (docs/VARIABLES_TO_VERIFY.md). What can be worked out here, with
+    # physics and what this session has done so far, is labelled as an estimate:
+    #   * the sun's path, from the track's latitude, the date and where the sun is
+    #     now (SolarAltitude), run at the sim's own clock speed;
+    #   * the track temperature, from the air temperature plus a heating term in
+    #     the sunlight reaching the track (clear-sky irradiance from the sun's
+    #     height, cut by the cloud cover), fitted to this session's readings;
+    #   * the air temperature, humidity and rain, carried on from their trend over
+    #     the last 15 minutes (never more than an hour ahead);
+    #   * the dew point (Magnus formula) and how fast the track is drying or wetting.
+    OUTLOOK_STEPS_S = (900, 1800, 2700, 3600)
+    TRACK_HEAT_PRIOR = 0.025          # degC of track above air per W/m2 of sunlight (asphalt, typical)
+    SKY_COVER = {0: 0.0, 1: 0.375, 2: 0.75, 3: 1.0}      # okta fraction per Skies value
+    AIR_TREND_MAX_C_PER_H = 4.0
+
+    @staticmethod
+    def irradiance(alt_rad, sky_cover):
+        """Sunlight on level ground, W/m2: Haurwitz clear-sky model, then
+        Kasten & Czeplak's cloud factor. Zero with the sun down."""
+        if alt_rad is None or alt_rad <= 0:
+            return 0.0
+        sh = math.sin(alt_rad)
+        clear = 1098.0 * sh * math.exp(-0.057 / sh)
+        n = 0.0 if sky_cover is None else max(0.0, min(1.0, sky_cover))
+        return clear * (1.0 - 0.75 * n ** 3.4)
+
+    @staticmethod
+    def dew_point(air_c, rh):
+        """Magnus formula (Alduchov & Eskridge constants). rh as 0..1."""
+        if air_c is None or rh is None or rh <= 0:
+            return None
+        g = math.log(min(rh, 1.0)) + 17.625 * air_c / (243.04 + air_c)
+        return 243.04 * g / (17.625 - g)
+
+    @staticmethod
+    def _declination(day_of_year):
+        return math.radians(23.44) * math.sin(math.radians(360.0 / 365.0 * (284 + day_of_year)))
+
+    @staticmethod
+    def _slope(pts):
+        n = len(pts)
+        if n < 3:
+            return None
+        mx = sum(x for x, _ in pts) / n
+        my = sum(y for _, y in pts) / n
+        den = sum((x - mx) ** 2 for x, _ in pts)
+        return sum((x - mx) * (y - my) for x, y in pts) / den if den > 0 else None
+
+    OUTLOOK_EVERY_S = 5.0
+
+    def weather_outlook(self, t, weather: dict, session: dict, session_msg: dict | None) -> dict | None:
+        """Worked out every few seconds (the weather moves slowly; the sun's search
+        is a few thousand steps), the last answer kept in between."""
+        if t is None or weather.get("airTempC") is None:
+            return None
+        last = self._outlook
+        if last is not None and 0 <= t - last[0] < self.OUTLOOK_EVERY_S:
+            return last[1]
+        out = self._weather_outlook(t, weather, session, session_msg)
+        self._outlook = (t, out)
+        return out
+
+    def _weather_outlook(self, t, weather: dict, session: dict, session_msg: dict | None) -> dict | None:
+        hist = [(ht, h) for ht, h in self._trend["weather"]]
+        opts = (session_msg or {}).get("options") or {}
+        track = (session_msg or {}).get("track") or {}
+        out = {"dewPointC": None, "sun": None, "steps": [], "trackModel": None, "rain": None, "clockSpeed": None}
+        dp = self.dew_point(weather.get("airTempC"), weather.get("humidity"))
+        out["dewPointC"] = None if dp is None else round(dp, 1)
+        # the sim clock: how many sim seconds pass per real second (time of day can be sped up)
+        tod = session.get("timeOfDayS")
+        self._tod.append((t, tod))
+        del self._tod[:-60]
+        speed = None
+        pts = [(a, b) for a, b in self._tod if b is not None]
+        if len(pts) >= 2 and pts[-1][0] - pts[0][0] >= 20:
+            r = (pts[-1][1] - pts[0][1]) / (pts[-1][0] - pts[0][0])
+            if 0.5 < r < 200:
+                speed = r
+        if speed is None:
+            try:
+                f = float(str(opts.get("EarthRotationSpeedupFactor")).split()[0])
+            except (TypeError, ValueError, IndexError):
+                f = None
+            speed = f if f and f > 0 else 1.0
+        out["clockSpeed"] = round(speed, 2)
+        # the sun: hour angle now from where the sun is, then forward at the sim's clock
+        try:                                             # "37.161648 m": a number with a unit
+            lat = float(str(track.get("TrackLatitude")).split()[0])
+        except (TypeError, ValueError, IndexError):
+            lat = None
+        alt = weather.get("solarAltitudeRad")
+        date = str(opts.get("Date") or "")
+        sun = None
+        alt_fn = None
+        if lat is not None and alt is not None and re.match(r"^\d{4}-\d{2}-\d{2}", date):
+            y, mo, d = (int(x) for x in date[:10].split("-"))
+            doy = (mo - 1) * 30.4 + d
+            phi, dec = math.radians(lat), self._declination(doy)
+            c = math.cos(phi) * math.cos(dec)
+            if abs(c) > 1e-6:
+                cos_h = (math.sin(alt) - math.sin(phi) * math.sin(dec)) / c
+                cos_h = max(-1.0, min(1.0, cos_h))
+                h_abs = math.acos(cos_h)
+                alts = [a for _t, a in ((ht, hh.get("solarAltitudeRad")) for ht, hh in hist) if a is not None]
+                if len(alts) >= 2 and abs(alts[-1] - alts[0]) > 1e-4:
+                    rising = alts[-1] > alts[0]
+                else:
+                    rising = tod is not None and tod < 12.5 * 3600
+                h_now = -h_abs if rising else h_abs
+                w = 2 * math.pi / 86400.0 * speed               # hour angle per real second
+
+                def alt_at(dt):
+                    hh = h_now + w * dt
+                    return math.asin(max(-1.0, min(1.0, math.sin(phi) * math.sin(dec) + c * math.cos(hh))))
+
+                def crossing(target_rad, going_down):
+                    step = 120.0
+                    prev = alt_at(0.0)
+                    for k in range(1, int(86400 / speed / step) + 2):
+                        a = alt_at(k * step)
+                        if (going_down and prev >= target_rad > a) or (not going_down and prev < target_rad <= a):
+                            return round(k * step)
+                        prev = a
+                    return None
+                horizon = math.radians(-0.833)
+                sun = {"altDeg": round(math.degrees(alt), 1), "rising": rising,
+                       "setsInS": crossing(horizon, True) if alt > horizon else None,
+                       "risesInS": crossing(horizon, False) if alt <= horizon else None}
+                out["sun"] = sun
+                alt_fn = alt_at
+        # the track's heating in the sun, fitted to this session where the sun has moved enough
+        cover = self.SKY_COVER.get(weather.get("skiesRaw"))
+        samples = []
+        for _ht, hh in hist:
+            if None in (hh.get("trackTempC"), hh.get("airTempC")):
+                continue
+            samples.append((self.irradiance(hh.get("solarAltitudeRad"), self.SKY_COVER.get(hh.get("skiesRaw"))),
+                            hh["trackTempC"] - hh["airTempC"]))
+        b, basis = self.TRACK_HEAT_PRIOR, "typical"
+        if len(samples) >= 6 and max(x for x, _ in samples) - min(x for x, _ in samples) >= 150:
+            fit = self._slope(samples)
+            if fit is not None and 0.0 < fit < 0.08:
+                b, basis = fit, "fitted"
+        a = (sum(y - b * x for x, y in samples) / len(samples)) if samples else \
+            ((weather.get("trackTempC") or weather["airTempC"]) - weather["airTempC"]
+             - b * self.irradiance(alt, cover))
+        out["trackModel"] = {"basis": basis, "cPerWm2": round(b, 4), "offsetC": round(a, 2),
+                             "sunWm2": round(self.irradiance(alt, cover))}
+        # trends over the last 15 minutes
+        def trend(key):
+            p = [(ht, hh.get(key)) for ht, hh in hist if hh.get(key) is not None and t - ht <= 900]
+            if len(p) < 6 or p[-1][0] - p[0][0] < 120:
+                return None
+            return self._slope(p)
+        air_s = trend("airTempC")
+        if air_s is not None:
+            cap = self.AIR_TREND_MAX_C_PER_H / 3600
+            air_s = max(-cap, min(cap, air_s))
+        hum_s, rain_s, wet_s = trend("humidity"), trend("precipitationPct"), trend("wetnessRaw")
+        sun_now = self.irradiance(alt, cover)
+        for dt in self.OUTLOOK_STEPS_S:
+            air = weather["airTempC"] + (air_s or 0.0) * dt
+            sun_alt = alt_fn(dt) if alt_fn else alt
+            # anchored on the reading now: only the changes in air and sunlight move it
+            track_now = weather.get("trackTempC")
+            track_c = (track_now + (air - weather["airTempC"]) + b * (self.irradiance(sun_alt, cover) - sun_now)
+                       if track_now is not None else air + a + b * self.irradiance(sun_alt, cover))
+            hum = weather.get("humidity")
+            if hum is not None and hum_s is not None:
+                hum = max(0.0, min(1.0, hum + hum_s * dt))
+            rain = weather.get("precipitationPct")
+            if rain is not None and rain_s is not None:
+                rain = max(0.0, min(1.0, rain + rain_s * dt))
+            out["steps"].append({"inS": dt, "airC": round(air, 1), "trackC": round(track_c, 1),
+                                 "sunAltDeg": None if sun_alt is None else round(math.degrees(sun_alt), 1),
+                                 "humidity": None if hum is None else round(hum, 3),
+                                 "rainPct": None if rain is None else round(rain, 3)})
+        wet = weather.get("wetnessRaw")
+        if wet is not None or rain_s is not None:
+            per10 = None if wet_s is None else round(wet_s * 600, 2)
+            nxt = None
+            if wet_s and abs(wet_s) > 1e-5 and wet is not None and wet >= 1:
+                target = math.floor(wet) - 1 if wet_s < 0 else math.floor(wet) + 1
+                if 1 <= target <= 7:
+                    nxt = {"level": target, "inS": round(abs((target - wet) / wet_s))}
+            out["rain"] = {"rainTrendPer10Min": None if rain_s is None else round(rain_s * 600, 3),
+                           "wetnessTrendPer10Min": per10, "nextWetness": nxt,
+                           "state": None if wet_s is None or abs(wet_s * 600) < 0.05
+                           else ("drying" if wet_s < 0 else "getting wetter")}
+        return out
+
     FEED_MAX_LAPS = 6000
     FEED_MAX_EVENTS = 1500   # incidents for a whole field add up over a long race
 
@@ -1085,45 +1290,111 @@ class Deriver:
                 del self._near_hist[i]
         return sorted(out, key=lambda x: abs(x["meters"]))[:8]
 
-    # ---- traffic -----------------------------------------------------------
+    # ---- traffic: where and when the followed car meets another -----------
+    # Worked in lap TIME, not lap distance. In distance, two cars a second apart
+    # are 20 m apart in a hairpin and 80 m on a straight, so a constant-pace sum
+    # on lap fraction swung the catch time and threw the marker round the map.
+    # CarIdxEstTime / CarClassEstLapTime ("u") is how far round the lap a car is
+    # in time; at a steady pace it grows evenly, so the meeting time is stable,
+    # and the meeting place is turned back into a track position through each
+    # class's lap profile (u against lap fraction), learned as the cars run.
     TRAFFIC_HORIZON_S = 90.0
     TRAFFIC_MIN_DIFF_S = 0.5
+    MEET_HORIZON_S = 600.0
+    PROFILE_BINS = 200
+    MEET_SMOOTH_S = 2.0
 
-    def traffic(self, cars: list, player_idx) -> list:
-        """When you will meet slower cars ahead, and faster cars from behind,
-        at everyone's current pace. Constant-pace arithmetic on track position:
-        the gap in lap fraction closes at (1/your pace - 1/their pace) laps per
-        second. Speeds vary around a lap, so the place is approximate."""
+    def learn_lap_profile(self, cars: list) -> None:
+        """Per class: the average lap-time fraction at each part of the lap, from
+        cars on track (shared stream only; followed views read it)."""
+        for c in cars:
+            pct, est, lap = c.get("pct"), c.get("estTimeS"), c.get("classEstLapS")
+            if c.get("surface") != "on_track" or c.get("onPitRoad") or pct is None or not 0 <= pct < 1 \
+                    or est is None or est < 0 or not lap or lap <= 0:
+                continue
+            u = est / lap
+            if not 0 <= u <= 1.05:
+                continue
+            bins = self._prof.setdefault(c.get("classId"), {})
+            b = int(pct * self.PROFILE_BINS) % self.PROFILE_BINS
+            sp, su, n = bins.get(b, (0.0, 0.0, 0))
+            if n >= 50:                              # a running average over the latest ~50
+                sp, su, n = sp * 49 / 50, su * 49 / 50, 49
+            bins[b] = (sp + pct, su + u, n + 1)
+
+    def _u(self, c):
+        est, lap = c.get("estTimeS"), c.get("classEstLapS")
+        if est is not None and est >= 0 and lap and lap > 0 and 0 <= est / lap <= 1.05:
+            return min(est / lap, 0.99999)
+        pct = c.get("pct")
+        return pct if pct is not None and pct >= 0 else None
+
+    def _pct_of_u(self, class_id, u):
+        """Track position at lap-time fraction u, from the class's lap profile; the
+        lap-time fraction itself when too little of the lap has been seen."""
+        bins = self._prof.get(class_id) or {}
+        pts = sorted((sp / n, su / n) for sp, su, n in bins.values() if n)
+        if len(pts) < self.PROFILE_BINS // 4:
+            return u % 1.0
+        u = u % 1.0
+        pts = [(p - 1.0, uu - 1.0) for p, uu in pts[-3:]] + pts + [(p + 1.0, uu + 1.0) for p, uu in pts[:3]]
+        for (p0, u0), (p1, u1) in zip(pts, pts[1:]):
+            if u0 <= u <= u1 and u1 > u0:
+                return (p0 + (p1 - p0) * (u - u0) / (u1 - u0)) % 1.0
+        return u
+
+    def meetings(self, cars: list, player_idx, t=None, horizon=None) -> list:
+        """Every car the followed car will meet on track within `horizon` seconds at
+        both cars' current pace: slower cars it catches (you_catch) and faster ones
+        that catch it (catches_you), with when and where. Smoothed over ~2 s so the
+        marker settles instead of jittering with each update."""
+        horizon = self.MEET_HORIZON_S if horizon is None else horizon
         me = next((c for c in cars if c.get("idx") == player_idx), None)
-        if me is None or me.get("surface") != "on_track" or me.get("pct") is None or me["pct"] < 0:
+        if me is None or me.get("surface") != "on_track":
             return []
-        pp = self.pace(player_idx)
-        if not pp:
+        um, pp = self._u(me), self.pace(player_idx)
+        if um is None or not pp:
             return []
         out = []
+        seen = set()
         for c in cars:
-            if c.get("idx") == player_idx or c.get("surface") != "on_track":
+            if c.get("idx") == player_idx or c.get("surface") != "on_track" or c.get("onPitRoad"):
                 continue
-            if c.get("pct") is None or c["pct"] < 0:
+            uc, pc = self._u(c), self.pace(c["idx"])
+            if uc is None or not pc:
                 continue
-            pc = self.pace(c["idx"])
-            if not pc:
+            if pc > pp + self.TRAFFIC_MIN_DIFF_S:            # slower: the followed car catches it
+                kind, d, rate = "you_catch", (uc - um) % 1.0, 1.0 / pp - 1.0 / pc
+            elif pc < pp - self.TRAFFIC_MIN_DIFF_S:          # faster: it catches the followed car
+                kind, d, rate = "catches_you", (um - uc) % 1.0, 1.0 / pc - 1.0 / pp
+            else:
                 continue
-            if pc > pp + self.TRAFFIC_MIN_DIFF_S:            # slower car: you catch it
-                d = (c["pct"] - me["pct"]) % 1.0
-                rate = 1.0 / pp - 1.0 / pc
-                tm = d / rate
-                if tm <= self.TRAFFIC_HORIZON_S:
-                    out.append({"idx": c["idx"], "kind": "you_catch", "inS": round(tm, 1),
-                                "atPct": round((me["pct"] + tm / pp) % 1.0, 4)})
-            elif pc < pp - self.TRAFFIC_MIN_DIFF_S:          # faster car: it catches you
-                d = (me["pct"] - c["pct"]) % 1.0
-                rate = 1.0 / pc - 1.0 / pp
-                tm = d / rate
-                if tm <= self.TRAFFIC_HORIZON_S:
-                    out.append({"idx": c["idx"], "kind": "catches_you", "inS": round(tm, 1),
-                                "atPct": round((me["pct"] + tm / pp) % 1.0, 4)})
-        return sorted(out, key=lambda x: x["inS"])[:6]
+            tm = d / rate
+            if tm > horizon:
+                continue
+            at_u = um + tm / pp                               # where the followed car will be then
+            key = c["idx"]
+            seen.add(key)
+            prev = self._meet.get(key)
+            if prev is not None and t is not None and prev[0] is not None and prev[3] == kind:
+                k = 1.0 - math.exp(-max(0.0, t - prev[0]) / self.MEET_SMOOTH_S)
+                pred = prev[1] - (t - prev[0])                # the last estimate, counted down
+                tm_s = pred + k * (tm - pred) if abs(tm - pred) < 30 else tm
+                du = ((at_u - prev[2] + 0.5) % 1.0) - 0.5
+                at_u = prev[2] + k * du if abs(du) < 0.1 else at_u
+                tm = max(0.0, tm_s)
+            self._meet[key] = (t, tm, at_u % 1.0, kind)
+            out.append({"idx": key, "kind": kind, "inS": round(tm, 1),
+                        "inLaps": round(tm / pp, 1),
+                        "atPct": round(self._pct_of_u(me.get("classId"), at_u), 3)})
+        for k in list(self._meet):
+            if k not in seen:
+                del self._meet[k]
+        return sorted(out, key=lambda x: x["inS"])
+
+    def traffic(self, cars: list, player_idx, t=None) -> list:
+        """The next few meetings (within TRAFFIC_HORIZON_S): the traffic list."""
+        return [m for m in self.meetings(cars, player_idx, t) if m["inS"] <= self.TRAFFIC_HORIZON_S][:6]
 
     # ---- events from the field ---------------------------------------------
     CLOSING_EVENT_GAIN = 0.3
@@ -1202,6 +1473,8 @@ class Deriver:
             d = c.get("derived") or {}
             tp, gain = d.get("toPlayerS"), d.get("youGainSPerLap")
             key = None
+            if c.get("onPitRoad") or me.get("onPitRoad"):
+                tp = None                    # a pit stop is not someone closing in
             if tp is not None and gain is not None:
                 if 0 < tp < self.CLOSING_EVENT_GAP and gain <= -self.CLOSING_EVENT_GAIN:
                     key = "behind_closing"
@@ -2094,6 +2367,7 @@ class Deriver:
         self._uc.clear()
         self._uc_inpit = {}
         self._near_hist.clear()
+        self._meet.clear()
         self._ev["closing"] = {}
         self._ev["stable"].pop("pos", None)
 
@@ -2329,12 +2603,13 @@ class RefView:
     without moving the shared reference or anyone else's.
     """
     OWN = frozenset(("_tp_hist", "_tp_ref", "_tp_slope", "_uc", "_uc_inpit", "_near_hist", "ref_idx",
-                     "_gaps", "_gaps_seq"))
+                     "_gaps", "_gaps_seq", "_meet"))
 
     def __init__(self, base: "Deriver", ref_idx: int):
         object.__setattr__(self, "_base", base)
         self._tp_hist, self._tp_ref, self._tp_slope = {}, {}, {}
         self._uc, self._uc_inpit, self._near_hist = {}, {}, {}
+        self._meet = {}                           # smoothed meetings, per car met
         self.ref_idx = ref_idx
         self._gaps, self._gaps_seq = {}, None     # gap series, rebuilt only when a lap is added
 
@@ -2369,16 +2644,17 @@ def relative_to(view: RefView, cars_msg: dict, session_msg: dict | None, now) ->
     out = {"type": "refview", "ref": ref, "cars": {},
            "derived": {"ref": {"idx": ref if me is not None else None, "source": "chosen" if me is not None else None,
                                "own": shared_ref.get("own"), "camera": shared_ref.get("camera")},
-                       "rejoin": None, "undercut": [], "traffic": [], "nearby": [], "strategy": None},
+                       "rejoin": None, "undercut": [], "traffic": [], "meetings": [], "nearby": [], "strategy": None},
            "gaps": {}}
     if me is None:
         return out
     # toPlayerS, as build_cars computes it, but from this car
     per = {}
+    live = bool(shared.get("liveTiming"))
     for c in cars:
         tp = None
-        if is_race and c is not me and c.get("gapValid") and me.get("gapValid"):
-            tp = round(c["f2TimeS"] - me["f2TimeS"], 3)
+        if is_race and c is not me:
+            tp = ref_gap(c, me, live)
         per[c["idx"]] = {"toPlayerS": tp}
     my_lap = Deriver.pace(view, ref)
     if my_lap is None and me.get("lastLapS") and me["lastLapS"] > 0:
@@ -2398,11 +2674,13 @@ def relative_to(view: RefView, cars_msg: dict, session_msg: dict | None, now) ->
         if v is not vme:
             per[v["idx"]]["vsYou"] = v["derived"]["vsYou"] = vs_you(v, vme, Deriver.pace(view, v["idx"]), my_pace)
     track_len = track_length_m(session_msg)
+    meet = Deriver.meetings(view, vcars, ref, now)
     out["cars"] = {str(i): {k: e.get(k) for k in REF_CAR_FIELDS} for i, e in per.items()}
     out["derived"].update({
         "rejoin": Deriver.rejoin(view, vcars, ref) if is_race else None,
         "undercut": Deriver.undercut(view, vcars, ref, now) if is_race else [],
-        "traffic": Deriver.traffic(view, vcars, ref),
+        "traffic": [m for m in meet if m["inS"] <= Deriver.TRAFFIC_HORIZON_S][:6],
+        "meetings": meet,
         "nearby": Deriver.nearby(view, vcars, ref, track_len, now),
         "strategy": Deriver.strategy(view, vcars, ref, shared.get("race"), shared.get("caution"), shared_ref.get("own"))
         if is_race else None,
@@ -2437,7 +2715,7 @@ def _delta(g, var: str, key: str) -> dict:
     return {key + "S": _num(g(var)), key + "Rate": _num(g(var + "_DD"))}
 
 
-def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
+def build_state(src: TelemetrySource, deriver: Deriver, session_msg: dict | None = None) -> dict:
     g = src.get
     flags = g("SessionFlags")
     warnings = g("EngineWarnings")
@@ -2606,6 +2884,7 @@ def build_state(src: TelemetrySource, deriver: Deriver) -> dict:
     # "live" as the dashboard judges the player block: spectating leaves it zero.
     player_live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5 or (player["rpm"] or 0) > 500
     derived.update(deriver.trends(session["timeS"], weather, player, player_live))
+    derived["weatherOutlook"] = deriver.weather_outlook(session["timeS"], weather, session, session_msg)
     deriver.state_events(session["timeS"], session, player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
             "session": session, "weather": weather, "player": player, "camera": camera, "derived": derived}
@@ -2806,17 +3085,27 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     for c in ordered:
         if c["gapValid"] and c.get("classPos") == 1:
             class_leader[c.get("classId")] = c
+    # Live timing: while the race is running, the order and every gap come from
+    # where the cars are now, not from CarIdxPosition / CarIdxF2Time, which only
+    # change when a car crosses a timing line (the battle and the tower sat still
+    # for most of a lap). Before the start and after the flag, iRacing's own.
+    live = bool(is_race) and SESSION_STATE.get(g("SessionState")) == "racing"
+    running = live_order(ordered, live, deriver._dist_prev if deriver is not None else None)
+    live_gaps(ordered)                     # the broadcast tower: iRacing's order, live gaps
+    run_gaps(running)                      # PitWall: the running order, live gaps
     for c in cars:
         d = c["derived"]
         d["toPlayerS"] = None
         d["classGapS"] = None
-        if not is_race or not c["gapValid"]:
+        if not is_race:
+            continue
+        if me is not None and c is not me:
+            d["toPlayerS"] = ref_gap(c, me, live)
+        if not c["gapValid"]:
             continue
         lead = class_leader.get(c.get("classId"))
         if lead is not None:
             d["classGapS"] = round(c["f2TimeS"] - lead["f2TimeS"], 3)
-        if me is not None and me["gapValid"] and c is not me:
-            d["toPlayerS"] = round(c["f2TimeS"] - me["f2TimeS"], 3)
 
     if deriver is not None:
         now = _num(g("SessionTime"))
@@ -2847,6 +3136,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         sector_starts = [s.get("SectorStartPct") for s in ((session_msg or {}).get("sectors") or [])
                          if s.get("SectorStartPct") is not None]
         ahead_of = {}                      # carIdx -> idx of the car it is measured against
+        # The Δ/lap trend stays on iRacing's timing-line intervals: it is a per-lap
+        # figure, and a live interval to a car of another class swings within the lap
+        # with the two cars' different speed profiles (it read +-10 s/lap).
         prev_c = None
         for c in ordered:
             if prev_c is not None:
@@ -2878,7 +3170,6 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             if left is not None:
                 c["derived"]["bestLapLeftS"] = left
 
-    live_gaps(ordered)
     out = {"type": "cars", "schema": SCHEMA_VERSION, "t": _num(g("SessionTime")), "cars": cars}
     if deriver is not None:
         for c in cars:
@@ -2905,6 +3196,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                               fi.get("fpl"), deriver.tank_l, fi.get("fuelL"))
         caution = deriver.caution(cars, decode_bits(g("SessionFlags"), FLAG_BITS), g("PitsOpen"),
                                   track_length_m(session_msg), now)
+        deriver.learn_lap_profile(cars)
+        meet = deriver.meetings(cars, player_idx, now)
         out["derived"] = {
             "caution": caution,
             "strategy": deriver.strategy(cars, player_idx, race, caution, own_idx if own is not None else None)
@@ -2913,10 +3206,12 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                     "camera": cam_idx if cam_idx in by_idx else None},
             "sessionBestSectorS": deriver.session_best_sectors(),
             "isRace": is_race,
+            "liveTiming": live,
             "pitLoss": deriver.pit_loss(),
             "rejoin": deriver.rejoin(cars, player_idx) if is_race and me is not None else None,
             "undercut": deriver.undercut(cars, player_idx, now) if is_race and me is not None else [],
-            "traffic": deriver.traffic(cars, player_idx),
+            "traffic": [m for m in meet if m["inS"] <= deriver.TRAFFIC_HORIZON_S][:6],
+            "meetings": meet,
             "compoundPace": deriver.compound_pace(cars),
             "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
             "battles": deriver.battles(cars, ahead_of, is_race),
@@ -2986,6 +3281,84 @@ def gap_between(a: dict, b: dict):
         frac_t -= lap_b
         laps += 1
     return round(laps * lap_b + frac_t, 3), laps
+
+
+def live_order(ordered: list, live: bool, prev: dict | None = None) -> list:
+    """The running order. Live (a race under way): by distance covered, lap plus
+    lap fraction, so a pass shows when it happens. Cars without a position on
+    track (not in the world) keep their scored slot. Not live: iRacing's order.
+    Adds derived.livePos / liveClassPos either way.
+
+    CarIdxLap and CarIdxLapDistPct can step at the line one update apart, which
+    reads as a whole lap gained or lost for an instant; `prev` (per car, the last
+    distance) takes out a jump of about a lap that the lap fraction did not make."""
+    def dist(c):
+        d = _dist(c)
+        if d is None or c.get("surface") == "not_in_world":
+            return None
+        if prev is not None:
+            last = prev.get(c["idx"])
+            if last is not None:
+                step = d - last
+                if abs(step) > 0.5 and abs(step - round(step)) < 0.05:   # a whole lap, not a move
+                    d -= round(step)
+            prev[c["idx"]] = d
+        return d
+
+    if live:
+        slots = [dist(c) for c in ordered]
+        keyed = {c["idx"]: d for c, d in zip(ordered, slots)}
+        movers = sorted((c for c in ordered if keyed[c["idx"]] is not None), key=lambda c: -keyed[c["idx"]])
+        it = iter(movers)
+        running = [next(it) if keyed[c["idx"]] is not None else c for c in ordered]
+    else:
+        running = list(ordered)
+    cls = {}
+    for k, c in enumerate(running, start=1):
+        d = c.setdefault("derived", {})
+        n = cls[c.get("classId")] = cls.get(c.get("classId"), 0) + 1
+        d["livePos"], d["liveClassPos"] = k, n
+    return running
+
+
+def ref_gap(c: dict, me: dict, live: bool):
+    """Seconds from the reference car `me` to car `c`, + when c is behind. Live: from
+    where both are now (gap_between, whole laps included). Otherwise, or when either
+    has no position on track: the difference of their time behind the leader."""
+    if live:
+        dc, dm = _dist(c), _dist(me)
+        if dc is not None and dm is not None:
+            if dc <= dm:
+                g, _laps = gap_between(me, c)
+                if g is not None:
+                    return g
+            else:
+                g, _laps = gap_between(c, me)
+                if g is not None:
+                    return -g
+    if c.get("gapValid") and me.get("gapValid"):
+        return round(c["f2TimeS"] - me["f2TimeS"], 3)
+    return None
+
+
+def run_gaps(running: list):
+    """The same live gaps along the running order (live_order), for PitWall's
+    timing screen: derived.runIntervalS / runIntervalLaps (car ahead), runGapS /
+    runGapLaps (leader), runClassIntervalS (car ahead in the class)."""
+    leader = running[0] if running else None
+    class_prev = {}
+    prev = None
+    for c in running:
+        d = c.setdefault("derived", {})
+        cp = class_prev.get(c.get("classId"))
+        class_prev[c.get("classId")] = c
+        d["runClassIntervalS"] = gap_between(cp, c)[0] if cp is not None else None
+        if prev is None:
+            d.update(runIntervalS=None, runIntervalLaps=None, runGapS=None, runGapLaps=None)
+        else:
+            d["runIntervalS"], d["runIntervalLaps"] = gap_between(prev, c)
+            d["runGapS"], d["runGapLaps"] = gap_between(leader, c)
+        prev = c
 
 
 def live_gaps(ordered: list):
@@ -3098,6 +3471,57 @@ def strength_of_field(cars: list) -> dict | None:
             for k, v in classes.items()]
     rows.sort(key=lambda r: -(r["sof"] or 0))
     return {"overall": _sof([c["iRating"] for c in rated]), "cars": len(rated), "classes": rows}
+
+
+# --------------------------------------------------------------------------- #
+# Watching a replay: hold the live picture
+# --------------------------------------------------------------------------- #
+
+def results_positions(session_info: dict | None, session_num) -> list:
+    """SessionInfo/Sessions[session_num]/ResultsPositions: iRacing's scored results,
+    which the server keeps updating while a replay is being watched (the CarIdx*
+    telemetry then comes from the replay frame instead)."""
+    for s in (session_info or {}).get("Sessions") or []:
+        if s.get("SessionNum") == session_num:
+            return [r for r in (s.get("ResultsPositions") or []) if isinstance(r, dict)]
+    return []
+
+
+def hold_cars(last_live: dict, results: list, edge: dict, t) -> dict:
+    """The cars message while a replay is being watched behind live: the last live
+    message, with what iRacing's results say now laid over it (position, class
+    position, laps, last and best lap). Everything measured from track positions
+    (gaps, trends, the map) stays as it was at the moment the replay began, and
+    derived.held says so. The derived history is not fed from the replay at all."""
+    import copy
+    msg = copy.deepcopy(last_live)
+    msg["t"] = t
+    by = {c["idx"]: c for c in msg.get("cars") or []}
+    updated = 0
+    for r in results:
+        c = by.get(r.get("CarIdx"))
+        if c is None:
+            continue
+        pos, cpos = r.get("Position"), r.get("ClassPosition")
+        d = c.setdefault("derived", {})
+        if isinstance(pos, int) and pos > 0:
+            c["pos"] = d["livePos"] = pos
+            updated += 1
+        if isinstance(cpos, int) and cpos >= 0:
+            c["classPos"] = d["liveClassPos"] = cpos + 1         # 0-based in the results
+        if isinstance(r.get("LapsComplete"), int) and r["LapsComplete"] >= 0:
+            c["lapCompleted"] = r["LapsComplete"]
+        if isinstance(r.get("LastTime"), (int, float)) and r["LastTime"] > 0:
+            c["lastLapS"] = r["LastTime"]
+        if isinstance(r.get("FastestTime"), (int, float)) and r["FastestTime"] > 0:
+            c["bestLapS"] = r["FastestTime"]
+    held = (last_live.get("derived") or {}).get("held") or {}
+    msg.setdefault("derived", {})["held"] = {
+        "sinceT": held.get("sinceT", last_live.get("t")),     # the live moment the picture is from
+        "behindLiveS": edge.get("behindLiveS"),
+        "fromResults": updated > 0,
+    }
+    return msg
 
 
 def race_laps_left(race: dict | None):

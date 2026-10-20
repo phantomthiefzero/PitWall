@@ -340,9 +340,42 @@ class AppWindowApiTest(unittest.TestCase):
         self.assertEqual(public, {"version", "pick_replay", "use_live", "install_camera_pack", "open_cameras_folder", "library_pick_folder",
                                   "share_start", "share_stop", "share_info",
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
-                                  "update_open_key_page"})
+                                  "update_open_key_page", "save_report"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
+
+    def test_race_report_is_saved_where_the_save_dialog_says(self):
+        """The app window (WebView2) drops page downloads, so the Race report button
+        did nothing visible there. The page hands the report to the app instead."""
+        import sys
+        import tempfile
+        import types
+        from unittest import mock
+        from suite.app import Api
+        d = tempfile.mkdtemp()
+        target = os.path.join(d, "r.html")
+        asked = {}
+
+        class Win:
+            def create_file_dialog(self, kind, **kw):
+                asked.update(kw)
+                return target
+        fake_webview = types.SimpleNamespace(FileDialog=types.SimpleNamespace(SAVE="save"))
+        api = Api(engine=object())
+        api._window = Win()
+        with mock.patch.dict(sys.modules, {"webview": fake_webview}), \
+                mock.patch("suite.app.reports_dir", return_value=d), \
+                mock.patch("os.startfile", create=True) as opened:
+            r = api.save_report("<html>report</html>", "race report: Indy/../x.html")
+        self.assertEqual(r, {"ok": True, "path": target})
+        with open(target, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "<html>report</html>")
+        self.assertEqual(asked["directory"], d)
+        self.assertEqual(asked["save_filename"], "race report Indy..x.html")      # no path parts
+        opened.assert_called_once_with(target)
+        with mock.patch.dict(sys.modules, {"webview": fake_webview}):
+            api._window = types.SimpleNamespace(create_file_dialog=lambda *a, **k: None)
+            self.assertEqual(api.save_report("x", "y.html"), {"ok": False, "cancelled": True})
 
 
 # --------------------------------------------------------------------------- #
