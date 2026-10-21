@@ -2117,7 +2117,7 @@
     const strip = h => String(h).replace(/<[^>]+>/g, "");
     let b = `<h1>${esc(track)}</h1><p class="m">${esc(sType)} · saved ${esc(new Date().toLocaleString())}` +
             (me ? ` · followed car ${esc("#" + (me.num ?? me.idx))} ${esc(me.name || "")}` : "") + `</p>`;
-    b += `<h2>Result</h2><p class="m">As this screen last saw it${st && (st.session.flags || []).includes("checkered") ? " (chequered flag out)" : ""}.</p>` +
+    b += `<h2>Result</h2><p class="m">As this screen last saw it${st && (st.session.flags || []).includes("checkered") ? " (checkered flag out)" : ""}.</p>` +
          `<table><tr><th>Pos</th>${multi ? "<th>Class</th><th>In class</th>" : ""}<th>Car</th><th>Driver</th><th>Laps</th><th>Best</th><th>Last</th><th>Stops seen</th></tr>` +
          cars.map(c => `<tr${me && c.idx === me.idx ? ' class="me"' : ""}><td>P${c.pos}</td>${multi ? `<td>${esc(c.className || "")}</td><td>P${esc(c.classPos)}</td>` : ""}` +
            `<td>#${esc(c.num ?? c.idx)}</td><td>${esc(c.name || "")}</td><td>${esc(c.lap ?? "")}</td><td>${fmt.lap(c.bestLapS)}</td><td>${fmt.lap(c.lastLapS)}</td>` +

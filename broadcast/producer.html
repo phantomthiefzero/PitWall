@@ -179,7 +179,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
           <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
         <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button id="gwStop">Stop</button></div>
       </section>
-      <section><h2>Race control</h2><div id="tickerOpts"></div></section>
+      <section><h2>Race control ticker</h2><div id="tickerOpts"></div></section>
     </div>
 
     <div data-pane="look" class="hide">
@@ -285,7 +285,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       <div class="opts" id="replay"></div>
     </section>
     <section>
-      <h2>Field <small>tap a driver to cut to them</small></h2>
+      <h2>Field <small id="fieldHint">click a driver to cut to them</small></h2>
       <div class="field" id="field"></div>
     </section>
   </div>
@@ -300,7 +300,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       <p class="note">iRacing keeps other drivers' incident points hidden until the race ends, so these are <span class="d">predicted</span> from what every car's telemetry does: going off, spinning, losing its speed, two cars losing it together, tows and damage flags. The likely points follow iRacing's table. When the official counts appear after the finish, they are compared here car by car.</p>
     </section>
     <section><h2>Battles <small id="btMode"></small></h2><div id="battles"></div></section>
-    <section><h2>Race control</h2><div class="log" id="log"></div></section>
+    <section><h2>Log <small>race news and what changed</small></h2><div class="log" id="log"></div></section>
     <section class="urls">
       <h2>Overlay for OBS</h2>
       <p class="note" style="margin-top:0">Browser Source, 1920 × 1080. It uses the view token, not yours.</p>
@@ -331,7 +331,9 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     return into;
   }
   const lap = s => { if (s == null || !(s > 0)) return "–"; const m = Math.floor(s / 60), r = s - m * 60; return (m ? m + ":" + (r < 10 ? "0" : "") : "") + r.toFixed(3); };
-  const gap = s => s == null ? "–" : "+" + s.toFixed(s < 10 ? 3 : 1);
+  // as the overlay shows it: three decimals inside 10 s, one beyond, m:ss.s from a minute
+  const gap = s => { if (s == null) return "–"; if (s < 60) return "+" + s.toFixed(s < 10 ? 3 : 1);
+    const m = Math.floor(s / 60), r = s - m * 60; return "+" + m + ":" + (r < 10 ? "0" : "") + r.toFixed(1); };
   const clock = s => { if (s == null) return ""; s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
     return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
   const css = v => v == null ? "transparent" : "#" + (Number(v) & 0xFFFFFF).toString(16).padStart(6, "0");
@@ -429,8 +431,8 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
 
   // ------------------------------------------------------------- Show tab
   const LAYERS = [["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
-    ["battle", "Battle box", false], ["map", "Track map", false], ["ticker", "Race control", true],
-    ["board", "Standings board", false], ["replay", "Replay bug when behind live", true]];
+    ["battle", "Battle box", false], ["map", "Track map", false], ["ticker", "Race control ticker", true],
+    ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
     const prod = canProduce(), dis = prod ? "" : "disabled";
@@ -466,11 +468,11 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     const minInc = G("ticker.minIncident", "spin");
     $("tickerOpts").innerHTML = sw("sw-pits", G("ticker.pits", true), 'data-tk="pits"', "Pit stops") +
       sw("sw-incs", G("ticker.incidents", true), 'data-tk="incidents"', "Incidents") +
-      `<h3>Smallest incident to show</h3><div class="opts">${[["off_track", "Off track"], ["lost_speed", "Off the pace"], ["spin", "Spins"], ["contact", "Contact only"]]
+      `<h3>Smallest incident to show</h3><div class="opts">${[["off_track", "Off track"], ["lost_speed", "Lost speed"], ["spin", "Spins"], ["contact", "Contact only"]]
         .map(([k, l]) => `<button data-minc="${k}" class="${minInc === k ? "on" : ""}" ${dis}>${l}</button>`).join("")}</div>` +
       sw("sw-sting", G("stinger.enabled", true) !== false, 'data-sting="1"', "Transition stinger on replays");
     const bm = G("battle.mode", "auto");
-    $("btMode").innerHTML = `<button data-bmode="auto" class="${bm === "auto" ? "on" : ""}" style="min-height:24px;padding:1px 8px" ${dis}>Auto</button>`;
+    $("btMode").innerHTML = `<button data-bmode="auto" class="${bm === "auto" ? "on" : ""}" style="min-height:24px;padding:1px 8px" title="The battle box shows the closest battle on its own" ${dis}>Box picks the closest</button>`;
     renderCameraButtons(true);
   }
 
@@ -501,7 +503,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     const cg = groups.find(g => g.num === cur);
     $("camGroupName").textContent = cg ? "On " + cg.name : "";
     const dir = S.director || {}, dOn = directorOn();
-    $("dirCtl").innerHTML = `<button data-dir="toggle" class="big ${dOn ? "on" : ""}" ${camOk ? "" : "disabled"}>${dOn ? "Director on" : "Director off"}</button>` +
+    $("dirCtl").innerHTML = `<button data-dir="toggle" class="big ${dOn ? "on" : ""}" ${camOk ? "" : "disabled"} title="${dOn ? "The director is choosing the shots" : "The director is off"}">${dOn ? "Stop the director" : "Start the director"}</button>` +
       (dir.styles || ["cinematic", "onboard", "tv"]).map(st => `<button data-dstyle="${st}" class="${dir.style === st ? "on" : ""}" ${camOk ? "" : "disabled"}>${{ cinematic: "Cinematic", onboard: "Onboards", tv: "Classic TV" }[st] || st}</button>`).join("") +
       `<label class="note" style="align-self:center">hold <input type="number" id="dirHold" min="3" max="30" value="${dir.holdS || 8}" style="width:56px"> s</label>`;
     $("focus").innerHTML = [["exciting", "Most exciting"], ["leader", "Leader"], ["incident", "Incidents"]]
@@ -655,9 +657,10 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     const cam = S.state && S.state.camera ? S.state.camera.carIdx : null;
     const pin = G("card.follow", "camera") === "pinned" ? G("card.idx", null) : null;
     const m = multi(), race = isRace();
+    $("fieldHint").textContent = "click a driver to cut to them · " + (race ? "gap to the car ahead" : "best lap");
     const row = c => {
       const d = c.derived || {};
-      const g = race ? (c.pos === 1 ? "Leader" : d.intervalLaps >= 1 ? "+" + d.intervalLaps + "L" : d.liveIntervalS != null ? D(gap(d.liveIntervalS)) : "–") : lap(c.bestLapS);
+      const g = race ? (c.pos === 1 ? "Leader" : d.intervalLaps >= 1 ? D("+" + d.intervalLaps + (d.intervalLaps === 1 ? " lap" : " laps")) : d.liveIntervalS != null ? D(gap(d.liveIntervalS)) : "–") : lap(c.bestLapS);
       const has = S.liveries.has(liveryKey(c));
       return `<div class="car${c.idx === cam ? " cam" : ""}" data-idx="${c.idx}" tabindex="0" role="button" aria-label="Cut to ${esc(c.name)}">` +
         `<span class="p">${c.pos > 0 ? esc(c.pos) : ""}</span><span class="bar" style="background:${m ? css(c.classColor) : "transparent"}"></span>` +
@@ -687,12 +690,16 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       return `<div class="bt${live ? " live" : ""}${followed ? " follow" : ""}"><div class="t"><b>For ${m && lead && lead.className ? esc(lead.className) + " " : ""}P${esc(b.forClassPos)}</b><span>${b.cars.length} cars${trend}</span></div>` +
         `<div class="who">${parts.join(" ")}</div><div class="act">` +
         `<button data-btfollow="${b.cars.join(",")}" class="${followed ? "on" : ""}" ${canCamera() ? "" : "disabled"} title="Shows the battle box and keeps the camera on these cars until the battle ends">${followed ? "Following" : "Follow with camera"}</button>` +
-        `<button data-btshow="${b.cars.join(",")}" ${canProduce() ? "" : "disabled"}>${live ? "Box on air" : "Battle box only"}</button></div></div>`;
+        `<button data-btshow="${b.cars.join(",")}" class="${live ? "on" : ""}" ${canProduce() ? "" : "disabled"} title="Shows the battle box for these cars without moving the camera">${live ? "In the battle box" : "Show in the battle box"}</button></div></div>`;
     }).join("");
   }
 
   // ------------------------------------------------------------- incidents
-  const WHAT = { contact: "Contact", spin: "Spin", lost_speed: "Lost speed (loss of control or a wall)", off_track: "Off track", tow: "Towed or reset", damage: "Damage (repair flag)" };
+  const WHAT = { contact: "Contact", spin: "Spin", lost_speed: "Lost speed (loss of control or a wall)", off_track: "Off track",
+    tow: "Left the track (tow, reset or disconnect)", damage: "Damage (repair flag)" };
+  // the telemetry behind each prediction, in words
+  const SIGNAL = { off_track: "went off", slowed: "slowed sharply", stopped: "stopped", backwards: "went backwards",
+    tow: "left the track", damage: "repair flag", contact: "near another car" };
   let incFilter = "all", preroll = 5;
   try { preroll = Number(localStorage.getItem("pw.producer.preroll")) || 5; } catch (e) {}
   function carShort(i) { const c = carByIdx(i); return c ? "#" + esc(c.num) + " " + esc(c.name) : "car " + esc(i); }
@@ -713,7 +720,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
         const who = carShort(e.idx) + (e.contactWith && e.contactWith.length ? " with " + e.contactWith.map(carShort).join(", ") : "");
         return `<div class="ir"><span class="pts p${pts >= 4 ? 4 : pts >= 2 ? 2 : pts >= 1 ? 1 : 0}" title="Likely incident points">${D("~" + pts + "x")}</span>` +
           `<div class="when">${e.lap != null ? "Lap " + esc(e.lap) + "<br>" : ""}${clock(e.replayT ?? e.t)}</div>` +
-          `<div class="what"><b>${esc(WHAT[e.what] || e.what)}</b><br>${who}<div class="sub">${esc(e.confidence)} confidence · ${esc((e.signals || []).join(", ").replace(/_/g, " "))}</div></div>` +
+          `<div class="what"><b>${esc(WHAT[e.what] || e.what)}</b><br>${who}<div class="sub">${esc(e.confidence ? e.confidence[0].toUpperCase() + e.confidence.slice(1) : "")} confidence · ${esc((e.signals || []).map(x => SIGNAL[x] || String(x).replace(/_/g, " ")).join(", "))}</div></div>` +
           `<button data-jump="${e.seq}" ${camOk && e.replayT != null && e.sessionNum != null ? "" : "disabled"}>Replay</button></div>`;
       }).join("");
     }
@@ -734,14 +741,31 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     withStinger("toReplay", () => cmd({ cmd: "replay", action: "jump", session: e.sessionNum, timeS: e.replayT, preroll,
       car: c && c.num != null ? String(c.num) : undefined, group: currentGroup() }, "Replay: " + carShort(e.idx).replace(/<[^>]+>/g, "")));
   }
+  const FLAG_WORD = { green: "Green flag", yellow: "Yellow flag", caution: "Full course yellow", red: "Red flag",
+    white: "White flag: final lap", checkered: "Checkered flag", blue: "Blue flag", black: "Black flag",
+    repair: "Repair flag (meatball)", disqualify: "Disqualified", furled: "Furled black flag (warning)" };
+  const seenContact = {};
   function feedText(e) {
+    const c = carByIdx(e.idx), cls = multi() && c && c.className ? esc(c.className) + " " : "";
     switch (e.kind) {
-      case "fastest_lap": return `Fastest ${e.overall ? "" : "class "}lap: ${carShort(e.idx)} ${lap(e.lapS)}`;
-      case "class_lead": return `${carShort(e.idx)} takes the lead`;
-      case "pit_in": return `${carShort(e.idx)} into the pits`;
-      case "pit_out": return `${carShort(e.idx)} out of the pits`;
-      case "flag": return `${esc(String(e.flag).replace(/_/g, " "))} flag`;
-      case "race_incident": return e.what === "off_track" ? null : `${esc(WHAT[e.what] || e.what)}: ${carShort(e.idx)}`;
+      case "fastest_lap": return `Fastest ${e.overall ? "" : cls || "class "}lap: ${carShort(e.idx)} ${lap(e.lapS)}` +
+        (e.lapNum ? ` on lap ${esc(e.lapNum)}` : "");
+      case "class_lead": return `${carShort(e.idx)} takes the ${cls}lead`;
+      case "pit_in": return e.towed ? `${carShort(e.idx)} towed to the pits` : `${carShort(e.idx)} into the pits` +
+        (e.classPos ? ` from ${multi() ? cls : ""}P${esc(multi() ? e.classPos : e.pos)}` : "");
+      case "pit_out": return `${carShort(e.idx)} out of the pits` + (e.stationaryS != null ? ` after a ${e.stationaryS.toFixed(1)} s stop` : "") +
+        (e.classPos ? `, ${multi() ? cls : ""}P${esc(multi() ? e.classPos : e.pos)}` : "");
+      case "flag": return esc(FLAG_WORD[e.flag] || String(e.flag).replace(/_/g, " "));
+      case "race_incident": {
+        if (e.what === "off_track") return null;
+        if (e.what === "contact" && e.contactWith && e.contactWith.length) {   // each car reports the same contact: say it once
+          const key = [e.idx, ...e.contactWith].sort((a, b) => a - b).join("-");
+          if (seenContact[key] != null && Math.abs((e.t || 0) - seenContact[key]) < 5) return null;
+          seenContact[key] = e.t || 0;
+        }
+        return `${esc(WHAT[e.what] || e.what)}: ${carShort(e.idx)}` +
+        (e.contactWith && e.contactWith.length ? " with " + e.contactWith.map(carShort).join(", ") : "");
+      }
       case "official_incidents": return "Official incident points published";
     }
     return null;
