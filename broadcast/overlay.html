@@ -289,7 +289,9 @@ small{margin-right:4px}
   const fmt = {
     lap(s) { if (s == null || !(s > 0)) return "–"; const m = Math.floor(s / 60), r = s - m * 60;
       return (m ? m + ":" + (r < 10 ? "0" : "") : "") + r.toFixed(3); },
-    gap(s) { if (s == null) return "–"; return "+" + (s < 60 ? s.toFixed(s < 10 ? 3 : 1) : fmt.lap(s)); },
+    // three decimals inside 10 s, one beyond (a minute and over as m:ss.s), the way TV towers do
+    gap(s) { if (s == null) return "–"; if (s < 60) return "+" + s.toFixed(s < 10 ? 3 : 1);
+      const m = Math.floor(s / 60), r = s - m * 60; return "+" + m + ":" + (r < 10 ? "0" : "") + r.toFixed(1); },
     laps(n) { return "+" + n + (n === 1 ? " lap" : " laps"); },
     clock(s) { if (s == null || s < 0 || s > 86400 * 3) return ""; s = Math.floor(s);
       const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
@@ -571,7 +573,7 @@ small{margin-right:4px}
     $("bnEvent").textContent = t ? (t.TrackDisplayName || "") + (t.TrackConfigName ? " · " + t.TrackConfigName : "") : "";
     const rs = raceState(), f = racingFlag();
     $("bnMain").innerHTML = rs.main;
-    const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Chequered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
+    const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Checkered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
     $("bnSub").textContent = [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · ");
     $("bnFlag").style.background = f ? FLAG_BG[f] : "var(--muted)";
     // replay bug: behind live, paused, slow or fast
@@ -642,7 +644,8 @@ small{margin-right:4px}
     $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
     $("cdLv").innerHTML = liveryHtml(c);
     const d = c.derived || {};
-    const stats = [["Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];
+    // the class position is on the number; in a multi-class field this is the overall one
+    const stats = [[m ? "Overall" : "Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];
     if (isRace()) {
       if (d.stintLaps != null) stats.push(["Stint", d.stintLaps + (d.stintLaps === 1 ? " lap" : " laps")]);
       stats.push(["Pit stops", d.stopsSeen != null ? String(d.stopsSeen) : "–"]);
@@ -735,26 +738,33 @@ small{margin-right:4px}
   // ---------------------------------------------------------------- race control
   const queue = [];
   const nm = i => { const c = carByIdx(i); return c ? `<b>${nameHtml(c.name)}</b>` : "Car " + esc(i); };
-  const WHAT = { contact: "Contact", spin: "Spin", lost_speed: "Off the pace", off_track: "Off track", tow: "Towed", damage: "Damage" };
+  // the same words as the producer panel's incident list
+  const WHAT = { contact: "Contact", spin: "Spin", lost_speed: "Lost speed", off_track: "Off track", tow: "Left the track", damage: "Damage" };
+  const seenContact = {};
   function tickerItem(e) {
     const m = multi(), c = carByIdx(e.idx), cls = m && c && c.className ? esc(c.className) + " " : "";
     switch (e.kind) {
       case "fastest_lap":
         if (!e.overall && !m) return null;
-        return ["fl", "Fast lap", `${nm(e.idx)} ${e.overall ? "" : cls}fastest lap · <b>${fmt.lap(e.lapS)}</b>`];
+        return ["fl", "Fastest lap", `${nm(e.idx)} · ${e.overall ? "" : cls}fastest lap <b>${fmt.lap(e.lapS)}</b>`];
       case "class_lead": return ["lead", "Lead", `${nm(e.idx)} takes the ${m ? cls : ""}lead`];
       case "pit_in": return G("ticker.pits", true) && isRace() ? ["pit", "Pit", `${nm(e.idx)} pits`] : null;
-      case "pit_out": return G("ticker.pits", true) && isRace() ? ["pit", "Pit", `${nm(e.idx)} rejoins` + (e.stationaryS != null ? ` after ${e.stationaryS.toFixed(1)} s` : "")] : null;
+      case "pit_out": return G("ticker.pits", true) && isRace() ? ["pit", "Pit", `${nm(e.idx)} rejoins` + (e.stationaryS != null ? ` after a ${e.stationaryS.toFixed(1)} s stop` : "")] : null;
       case "race_incident": {
         if (!G("ticker.incidents", true)) return null;
         const min = G("ticker.minIncident", "spin");
         const order = ["off_track", "lost_speed", "spin", "contact"];
         if (order.indexOf(e.what) < order.indexOf(min) && !(e.what === "tow" || e.what === "damage")) return null;
+        if (e.what === "contact" && e.contactWith && e.contactWith.length) {   // each car reports the same contact: show it once
+          const key = [e.idx, ...e.contactWith].sort((a, b) => a - b).join("-");
+          if (seenContact[key] != null && Math.abs((e.t || 0) - seenContact[key]) < 5) return null;
+          seenContact[key] = e.t || 0;
+        }
         const who = e.what === "contact" && e.contactWith && e.contactWith.length ? `${nm(e.idx)} and ${nm(e.contactWith[0])}` : nm(e.idx);
         return ["inc", WHAT[e.what] || "Incident", who];
       }
       case "flag": {
-        const w = { green: "Green flag", yellow: "Yellow flag", caution: "Full course yellow", red: "Red flag", white: "Final lap", checkered: "Chequered flag" }[e.flag];
+        const w = { green: "Green flag", yellow: "Yellow flag", caution: "Full course yellow", red: "Red flag", white: "White flag: final lap", checkered: "Checkered flag" }[e.flag];
         return w ? ["flag", "Flag", `<b>${w}</b>`] : null;
       }
       case "rain_start": return ["wx", "Weather", "Rain is falling"];
