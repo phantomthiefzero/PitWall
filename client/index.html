@@ -308,7 +308,8 @@
   .spot-call { font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: .04em; margin: 2px 0 6px; }
   .spot-call.clear { color: var(--green); } .spot-call.busy { color: var(--red); } .spot-call.off { color: var(--muted); }
   .spot-list { font-size: 12px; display: grid; gap: 2px; }
-  .spot-list .row3 { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
+  .spot-list .row3 { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; min-height: 17px; }
+  .spot-list .row3.me { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 2px 0; font-weight: 600; color: var(--orange, #FFB23F); }
   /* fuel */
   .fp-big { font-family: var(--mono); font-size: 26px; font-weight: 700; line-height: 1.1; }
   .fp-line { font-size: 12.5px; margin-top: 4px; }
@@ -2816,13 +2817,23 @@
     const c = ownLive ? (CALL[p.carLeftRight] || ["–", "off"]) : alongside ? ["ALONGSIDE", "busy"] : ["CLEAR", "clear"];
     call.textContent = c[0]; call.className = "spot-call " + c[1];
     const near = (S.cars && S.cars.derived && S.cars.derived.nearby) || [];
-    list.innerHTML = near.length ? near.slice(0, 6).map(n => {
+    // Cars ahead ALWAYS above the followed car, cars behind ALWAYS below it, nearest next to it:
+    // three places each side, empty places kept so the followed car stays in the same spot.
+    const SIDE = 3;
+    const ahead = near.filter(n => n.meters > 0).sort((a, b) => a.meters - b.meters).slice(0, SIDE).reverse();
+    const behind = near.filter(n => n.meters <= 0).sort((a, b) => b.meters - a.meters).slice(0, SIDE);
+    const blank = k => Array.from({ length: SIDE - k }, () => `<div class="row3 empty"><span>&nbsp;</span></div>`).join("");
+    const me = meCar();
+    const mid = `<div class="row3 me"><span>${me ? shortCar(me.idx) : ""} <span class="muted">${isOwnRef() ? "you" : "followed"}</span></span><span></span><span></span></div>`;
+    const rowOf = n => {
       const car = carByIdx(n.idx);
       const cl = n.closingMs == null ? "" : Math.abs(n.closingMs) < 0.5 ? `<span class="flat">holding</span>`
         : n.closingMs > 0 ? `<span class="lose">closing ${U.speed(n.closingMs)}</span>` : `<span class="flat">dropping ${U.speed(-n.closingMs)}</span>`;
       return `<div class="row3"><span>${shortCar(n.idx)}${car && isMulticlass() && car.className ? " " + esc(car.className) : ""}${n.inPit ? ` <span class="muted">pit lane</span>` : ""}</span>` +
         `<span class="mono">${D(U.short(Math.abs(n.meters)) + (n.meters > 0 ? " ahead" : " behind"), "Computed here: the lap-distance gap times the track length from the session info.")}</span><span>${cl}</span></div>`;
-    }).join("") : `<div class="note">Nobody within ${U.short(150)}.</div>`;
+    };
+    list.innerHTML = blank(ahead.length) + ahead.map(rowOf).join("") + mid + behind.map(rowOf).join("") + blank(behind.length) +
+      (near.length ? "" : `<div class="note">Nobody within ${U.short(150)}.</div>`);
   }
   const radarEl = $("radar"), radarCtx = radarEl.getContext("2d"), spotterDet = $("spotterDetails");
   function drawRadar() {
