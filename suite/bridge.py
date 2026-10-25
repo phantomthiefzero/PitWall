@@ -252,8 +252,9 @@ WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 class Client:
     """One connected app, speaking the WebSocket protocol."""
 
-    def __init__(self, writer):
+    def __init__(self, writer, ticks=True):
         self.w = writer
+        self.wants_ticks = ticks    # False: status and session only (the home page needs no telemetry)
 
     async def send_text(self, text):
         data = text.encode("utf-8")
@@ -300,10 +301,14 @@ class Hub:
         if not self.clients:
             return
         text = json.dumps(obj, separators=(",", ":"))
-        for c in list(self.clients):
-            try:
-                await asyncio.wait_for(c.send_text(text), 1.0)
-            except Exception:
+        tick = obj.get("type") == "tick"
+        to = [c for c in self.clients if not tick or getattr(c, "wants_ticks", True)]
+        if not to:
+            return
+        # All at once: one slow client must not hold the others (or the pump) up.
+        results = await asyncio.gather(*(asyncio.wait_for(c.send_text(text), 1.0) for c in to), return_exceptions=True)
+        for c, r in zip(to, results):
+            if isinstance(r, BaseException):
                 self.clients.discard(c)
 
     def set_source(self, source):
@@ -370,12 +375,12 @@ async def http_reply(writer, status, body=b"", ctype="text/plain; charset=utf-8"
     await writer.drain()
 
 
-async def ws_session(hub, reader, writer, key):
+async def ws_session(hub, reader, writer, key, ticks=True):
     accept = base64.b64encode(hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
     writer.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                   "Sec-WebSocket-Accept: %s\r\n\r\n" % accept).encode())
     await writer.drain()
-    client = Client(writer)
+    client = Client(writer, ticks)
     await hub.send(client, {"type": "hello", "bridge": VERSION, "mode": hub.source.mode, "rate": hub.rate})
     await hub.send(client, {"type": "status", "connected": bool(hub.connected), "source": hub.source.mode})
     if hub.yaml:
@@ -647,7 +652,8 @@ def make_handler(hub):
                 await http_reply(writer, "403 Forbidden", b"Forbidden")
                 return
             if path.split("?")[0] == "/ws" and headers.get("upgrade", "").lower() == "websocket":
-                await ws_session(hub, reader, writer, headers.get("sec-websocket-key", ""))
+                await ws_session(hub, reader, writer, headers.get("sec-websocket-key", ""),
+                                 ticks="ticks=0" not in path.partition("?")[2].split("&"))
                 return
             if path.split("?")[0] == "/api/info":
                 await http_reply(writer, "200 OK", json.dumps(hub.info()).encode(), "application/json",
