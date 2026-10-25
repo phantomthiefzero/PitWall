@@ -217,6 +217,82 @@ console.log(JSON.stringify({ who: ib.who, team: ib.team, lapWho: ib.lapObj(ib.be
         self.assertEqual(r["named"], "Andrew Brooks")         # found by user id when the recorder is listed
         self.assertEqual(r["solo"], "Solo")
 
+def build_practice(path):
+    """Ten laps of about 21 s. Lap 3 goes off the track for a moment (no incident points);
+    lap 5 uses iRacing's active reset back from 60% to 30% (the clock runs on: a long lap);
+    lap 7 resets forward from 30% to 60% (a short lap that would look like your best);
+    lap 8 is 1 s slow (traffic); lap 10 is 0.4 s quick, a real good lap."""
+    rows, t, last = [], 0.0, 0.0
+    times = {1: 21.0, 2: 21.1, 3: 21.05, 4: 20.95, 5: 21.0, 6: 21.08, 7: 21.0, 8: 22.0, 9: 21.02, 10: 20.6}
+    for lap in range(1, 11):
+        T = times[lap]
+        n = int(round(T * HZ))
+        k, i, jumped = 0, 0, False
+        while True:
+            p = k / n
+            if lap == 5 and not jumped and p >= 0.6:
+                k, jumped = int(0.3 * n), True
+                p = k / n
+            if lap == 7 and not jumped and p >= 0.3:
+                k, jumped = int(0.6 * n), True
+                p = k / n
+            if p >= 1.0:
+                break
+            rows.append({"SessionTime": t, "Lap": lap, "LapDistPct": p, "Speed": 50.0, "Throttle": 1.0, "Gear": 4,
+                         "LapCurrentLapTime": i / HZ, "LapLastLapTime": last, "FuelLevel": 40 - 0.01 * len(rows) / 60,
+                         "PlayerTrackSurface": 0 if lap == 3 and 0.40 < p < 0.42 else 3, "TrackTempCrew": 30.0})
+            t += 1 / HZ
+            k += 1
+            i += 1
+        last = i / HZ
+    for j in range(120):                                   # into the pits after lap 10
+        rows.append({"SessionTime": t, "Lap": 11, "LapDistPct": 0.002 * j / 120, "Speed": 20.0, "OnPitRoad": 1,
+                     "LapLastLapTime": last, "PlayerTrackSurface": 1})
+        t += 1 / HZ
+    write_ibt(path, SESSION_YAML, CHANNELS + [("PlayerTrackSurface", 2, "")], rows)
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CleanLapsTest(unittest.TestCase):
+    """What counts as a clean lap: no incident, off-track moment or active reset, and a usual time."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.path = os.path.join(cls.tmp, "practice.ibt")
+        build_practice(cls.path)
+        cls.r = run_js("""
+const ib = ibt(readBytes(ARGS[0])), S = sessionStats(ib);
+const band = lapBand([84.9, 85.0, 85.1, 84.8, 85.2, 90.0, 80.0]);
+console.log(JSON.stringify({ rows: S.rows.map(r => [r.lap, r.ok, r.note]), clean: S.clean.map(r => r.lap),
+  cbest: S.cbest, best: ib.laps[ib.best].lap, band: [band.lo, band.hi], few: lapBand([80, 90, 100]).hi,
+  usual: usualLaps([{l: 85}, {l: 85.2}, {l: 84.9}, {l: 95}, {l: 85.1}], x => x.l).map(x => x.l) }));
+""", cls.path)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_resets_are_not_timed_laps(self):
+        notes = {lap: (ok, note) for lap, ok, note in self.r["rows"]}
+        self.assertEqual(notes[5], (False, "active reset"))
+        self.assertEqual(notes[7], (False, "active reset"))
+        self.assertNotEqual(self.r["best"], 7)               # the short, reset lap is never your best
+
+    def test_clean_laps_leave_out_offs_and_unusual_times(self):
+        notes = {lap: note for lap, ok, note in self.r["rows"]}
+        self.assertEqual(notes[3], "off track")
+        self.assertEqual(notes[8], "unusually slow, left out")
+        self.assertEqual(self.r["clean"], [1, 2, 4, 6, 9, 10])   # lap 10 is quick, but a real lap
+        self.assertAlmostEqual(self.r["cbest"], 20.6, places=1)
+
+    def test_band(self):
+        lo, hi = self.r["band"]
+        self.assertTrue(85.5 < hi < 86.5 and 80.0 < lo < 81.0)    # 90 is slow; 80 is more than 5% quick
+        self.assertIsNone(self.r["few"])                          # too few laps to call any unusual
+        self.assertEqual(self.r["usual"], [85, 85.2, 84.9, 85.1])
+
+
 @unittest.skipUnless(NODE, "Node.js is not installed")
 class SessionReviewTest(unittest.TestCase):
     @classmethod

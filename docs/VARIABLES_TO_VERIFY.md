@@ -188,6 +188,9 @@ connection's compression, so ~10 KB/s per engineer at 30 a second.
 | per-car directions (CAR_KB) | iRacing's user manuals, October 2026: reversed scales, TC/ABS meaning, positions out of number order, limits, aero targets, downforce trims; see docs/CAR_MANUALS.md | Matched by CarPath + CarScreenName; only the Ferrari 296 GT3's names are confirmed from a real file. **Check the matching on each new car** (Notes tab shows the car the analyzer found). McLaren 720S front ARB and Mercedes GT3 2020 ABS: manual unclear, the app says so. |
 | .sto setup files | -- | **Not readable**: iRacing encrypts them (Braking Lab's setup FAQ; the sample is high-entropy). Garage .htm exports are the readable route; waiting on a sample. |
 
+| active reset (lone practice) | the lap distance jumps mid-lap (back more than 0.2-0.3%, or on faster than the car can move) while the lap clock runs: .ibt laps get `reset` (note "active reset", not timed), live laps are not saved for Coaching, PitWall lap entries get `reset` (kept out of pace) | From iRacing's description (the car is put back at the saved point, the current lap time is invalidated). Tested on synthetic files only. **Check on a real .ibt with resets**: whether `Lap` / `LapCurrentLapTime` also change at a reset, and what `LapLastLapTime` says for that lap. |
+| clean laps | no pit, incident (`PlayerCarMyIncidentCount`), moment off track (`PlayerTrackSurface` = 0) or reset; time within the usual range (median, slow side max(3 robust sd, 1%), quick side max(4, 5%)) and 7% of the fastest such lap | `PlayerTrackSurface` 0 = off track per the SDK's enum; seen in the 296 Indy file only with incidents. |
+
 ## Group D — believed unavailable (do not fake)
 
 Other cars' fuel, tire state, damage, pedal inputs, setup. Player damage as a

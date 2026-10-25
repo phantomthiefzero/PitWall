@@ -150,7 +150,12 @@ const lc=Int32Array.from({length:rc},(_,r)=>rd(V.Lap,r)),laps=[];
 for(let s=0;s<rc;){let e=s;while(e<rc&&lc[e]===lc[s])e++;const l={lap:lc[s],s,e,time:0,ok:false},tick=I(8)||60,span=V.SessionTime?rd(V.SessionTime,e-1)-rd(V.SessionTime,s)+1/tick:(e-s)/tick;let tc=V.LapCurrentLapTime?rd(V.LapCurrentLapTime,e-1):span;if(e<rc&&V.LapLastLapTime)for(let r=e;r<Math.min(rc,e+900);r++){const v=rd(V.LapLastLapTime,r);if(v>0&&Math.abs(v-tc)<.05){tc=v;break}}if(e<rc)l.time=tc;l.span=span;
 const d0=rd(V.LapDistPct,s),d1=rd(V.LapDistPct,e-1);let pit=false;if(V.OnPitRoad)for(let r=s;r<e;r++)if(rd(V.OnPitRoad,r)){pit=true;break}
 let away=false;if(V.IsOnTrack&&!pit){let n0=0,n=0;for(let r=s;r<e;r+=10){n++;if(!rd(V.IsOnTrack,r))n0++}away=n>0&&n0/n>.2}l.away=away;
-l.ok=e<rc&&l.time>0&&Math.abs(l.time-span)<.25&&e-s>=100&&d0<.05&&d1>.95&&!pit&&!away;laps.push(l);s=e}
+// iRacing's active reset (lone practice) moves the car back (or on) to a saved point mid-lap while the clock runs:
+// the lap distance jumps. A car moves at most a few metres a sample, so a jump marks the lap; its time means nothing.
+let reset=false;if(!pit){let pp=d0;for(let r=s+1;r<e;r++){const p=rd(V.LapDistPct,r),dd=p-pp;if(!(pp>.9&&p<.1)&&(dd<-.002||dd>.006)){reset=true;break}pp=p}}l.reset=reset;
+// off the track (iRacing's PlayerTrackSurface: 0 = off track) at any moment of the lap
+let off=false;if(V.PlayerTrackSurface&&!pit)for(let r=s;r<e;r+=2)if(rd(V.PlayerTrackSurface,r)===0){off=true;break}l.off=off;
+l.ok=e<rc&&l.time>0&&Math.abs(l.time-span)<.25&&e-s>=100&&d0<.05&&d1>.95&&!pit&&!away&&!reset;laps.push(l);s=e}
 let best=-1;laps.forEach((l,i)=>{if(l.ok&&(best<0||l.time<laps[best].time))best=i});if(best<0)throw new Error('No complete, timed laps found in this file');
 const y=plain(new TextDecoder('latin1').decode(u8.subarray(so,so+sl))),di=+((/DriverCarIdx:\s*(\d+)/.exec(y)||[0,0])[1]),mm=new RegExp('CarIdx:\\s*'+di+'\\s*\\n\\s*UserName:\\s*(.+)').exec(y),team=/TeamRacing:\s*1/.test(y),who=ibtWho(y,mm?mm[1].trim():'',team);
 const blk=mm?y.slice(mm.index,mm.index+3000):'',gx=(re,s)=>{const q=re.exec(s);return q?q[1].trim():''},carPath=gx(/CarPath:\s*(\S+)/,blk),carName=gx(/CarScreenName:\s*([^\n]+)/,blk),track=gx(/TrackDisplayName:\s*([^\n]+)/,y),fuelKg=+gx(/DriverCarFuelKgPerLtr:\s*([\d.]+)/,y)||0;let top=0;if(V.Speed)laps.forEach(l=>{if(!l.ok)return;for(let r=l.s;r<l.e;r++){const v=rd(V.Speed,r);if(v>top)top=v}});
@@ -774,7 +779,7 @@ B[p+'_'+s]={n:xs.length,raw,ui:raw!=null?raw/uref:null,cs:xs.length?xs.filter(q=
 return{K,uref,vmed,B,n:cor.length}}
 function handlingStats(ib){if(!ib||!ib._rd)return null;if(ib._hand!==undefined)return ib._hand;const S=sessionStats(ib),rd=ib._rd,V=ib._V;
 const need=['Speed','SteeringWheelAngle','YawRate','LatAccel','Throttle','Brake'];if(!S||need.some(k=>!V[k]))return ib._hand=null;
-const laps=S.rows.filter(r=>r.ok&&!r.pit&&!r.inc&&r.time<=S.best*1.03).map(r=>ib.laps[r.i]);if(laps.length<2)return ib._hand={few:true,laps:laps.length};
+const laps=S.clean.filter(r=>r.time<=S.cbest*1.03).map(r=>ib.laps[r.i]);if(laps.length<2)return ib._hand={few:true,laps:laps.length};
 const ch=k=>V[k]?r=>rd(V[k],r):null,sp=ch('Speed'),sw=ch('SteeringWheelAngle'),yr=ch('YawRate'),ay=ch('LatAccel'),th=ch('Throttle'),bk=ch('Brake'),vx=ch('VelocityX'),vy=ch('VelocityY'),abs=ch('BrakeABSactive'),op=ch('OnPitRoad');
 const STEP=2,smp=[];for(const l of laps)for(let r=l.s;r<l.e;r+=STEP){if(op&&op(r))continue;const v=sp(r);if(v<12)continue;const k=yr(r)/v;smp.push({v,k,s:sw(r),y:yr(r),g:Math.abs(ay(r))/9.80665,t:th(r),b:bk(r),beta:vx&&vy?Math.atan2(vy(r),Math.max(1,vx(r)))*57.2958:null,abs:abs?abs(r):0})}
 const core=handlingCore(smp);if(!core)return ib._hand=null;if(core.few)return ib._hand={few:true,laps:laps.length};const{K,uref,vmed,B}=core,cor={length:core.n};
@@ -872,7 +877,7 @@ const TT=V.TrackTempCrew||V.TrackTemp,STEP=10;
 const rows=ib.laps.map((l,i)=>{const r={i,lap:l.lap,ok:l.ok,time:l.ok?l.time:null,span:l.span,sec:null,fuel:null,f0:V.FuelLevel?rd(V.FuelLevel,l.s):null,refuel:false,inc:null,tt:null,top:null,ty:{},note:''};
 const d0=rd(V.LapDistPct,l.s),end=l.e>=rc,pitS=V.OnPitRoad?rd(V.OnPitRoad,l.s):0,pitE=V.OnPitRoad?rd(V.OnPitRoad,l.e-1):0;let pit=false;
 if(V.OnPitRoad)for(let q=l.s;q<l.e;q+=STEP)if(rd(V.OnPitRoad,q)){pit=true;break}
-r.note=pitS&&pitE?'in the pits':pitS?'out lap':pitE?'in lap':pit?'pit stop':l.away?'not you driving':end?'not finished':d0>.05?'joined mid-lap':!l.ok?'not timed':'';r.pit=pit;
+r.note=pitS&&pitE?'in the pits':pitS?'out lap':pitE?'in lap':pit?'pit stop':l.away?'not you driving':l.reset?'active reset':end?'not finished':d0>.05?'joined mid-lap':!l.ok?'not timed':'';r.pit=pit;r.off=!!l.off;r.reset=!!l.reset;
 if(l.ok&&secs.length&&V.SessionTime){const t0=rd(V.SessionTime,l.s),span=rd(V.SessionTime,l.e-1)-t0,k=span>0?l.time/span:1,b=[];let si=0,pp=d0,pt=0;
 for(let q=l.s+1;q<l.e&&si<secs.length;q++){const p=rd(V.LapDistPct,q),t=(rd(V.SessionTime,q)-t0)*k;while(si<secs.length&&pp<secs[si]&&p>=secs[si]){b.push(pt+(secs[si]-pp)/((p-pp)||1)*(t-pt));si++}pp=p;pt=t}
 if(b.length===secs.length){const pts=[0,...b,l.time];r.sec=pts.slice(1).map((v,j)=>v-pts[j])}}
@@ -885,10 +890,20 @@ r.top=top;if(n)r.tt=tts/n;TYRES.forEach(t=>{const a=acc[t];r.ty[t]={p:a.pn?a.p/a
 const ok=rows.filter(r=>r.ok),best=ok.length?Math.min(...ok.map(r=>r.time)):null;
 const bestSec=secs.length?secs.concat([1]).map((_,j)=>{const v=ok.filter(r=>r.sec).map(r=>r.sec[j]);return v.length?Math.min(...v):null}):[];
 const tb=bestSec.length&&bestSec.every(v=>v!=null)?bestSec.reduce((s,v)=>s+v,0):null;
-const clean=ok.filter(r=>!r.pit&&!r.inc&&r.time<=best*1.07),mean=clean.length?clean.reduce((s,r)=>s+r.time,0)/clean.length:null;
+// Clean laps: no pit, incident, off-track moment or reset, and not an outlier among the rest (lapBand), within 7% of
+// the fastest of them. Each lap left out says why in the lap list.
+const cand=ok.filter(r=>!r.pit&&!r.inc&&!r.off),band=lapBand(cand.map(r=>r.time)),inBand=cand.filter(r=>r.time>=band.lo&&r.time<=band.hi),
+cbest=inBand.length?Math.min(...inBand.map(r=>r.time)):null,clean=inBand.filter(r=>r.time<=cbest*1.07),mean=clean.length?clean.reduce((s,r)=>s+r.time,0)/clean.length:null;
+ok.forEach(r=>{if(r.note)return;r.note=r.inc?'':r.off?'off track':r.time<band.lo?'unusually quick, left out':r.time>band.hi||(cbest&&r.time>cbest*1.07)?'unusually slow, left out':''});
 const sd=clean.length>2?Math.sqrt(clean.reduce((s,r)=>s+(r.time-mean)**2,0)/(clean.length-1)):null;
 const fl=rows.filter(r=>r.ok&&!r.pit&&r.fuel>0),fuel=fl.length?fl.reduce((s,r)=>s+r.fuel,0)/fl.length:null;
-return ib._sess={rows,secs,best,bestSec,tb,clean,mean,sd,fuel}}
+return ib._sess={rows,secs,best,bestSec,tb,clean,cbest,band,mean,sd,fuel}}
+// The usual range of a set of lap times: from the median, out by max(3 robust standard deviations, 1%) on the slow side
+// (a mistake, traffic) and max(4, 5%) on the quick side (a short or cut lap, which a fast lap almost never is).
+// Fewer than 4 laps: no range (too few to say what is usual).
+function lapBand(times){const t=times.filter(x=>x>0&&isFinite(x)).sort((a,b)=>a-b),n=t.length,med=a=>{const k=a.length;return k%2?a[k>>1]:(a[k/2-1]+a[k/2])/2};
+if(n<4)return{med:n?med(t):null,lo:-Infinity,hi:Infinity};const m=med(t),rsd=1.4826*med(t.map(x=>Math.abs(x-m)).sort((a,b)=>a-b));
+return{med:m,rsd,lo:m-Math.max(4*rsd,.05*m),hi:m+Math.max(3*rsd,.01*m)}}
 function trendSvg(title,series,fmt,laps){const W=330,H=160,pl=8,pr=8,pt=series.length>1?34:22,pb=8;const all=series.flatMap(s=>s.pts.map(p=>p[1])).filter(v=>v!=null&&isFinite(v));if(all.length<2)return '';
 let lo=Math.min(...all),hi=Math.max(...all);if(hi-lo<1e-9){lo-=1;hi+=1}const padv=(hi-lo)*.08;lo-=padv;hi+=padv;const nx=Math.max(2,laps);
 const X=i=>pl+i/(nx-1)*(W-pl-pr),Y=v=>pt+(hi-v)/(hi-lo)*(H-pt-pb);
@@ -1004,13 +1019,19 @@ if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFini
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
 const c=LIVE.cur,b=c.b;if(b.Speed.length<40000&&v.Speed!=null&&v.LapDistPct!=null&&v.LapDistPct>=0){b.Speed.push(v.Speed);b.Brake.push(v.Brake||0);b.LatG.push(v.LatAccel||0);b.gear.push(v.Gear||0);b.rpm.push(v.RPM||0);b.lon.push(v.LongAccel||0);b.yaw.push(v.YawRate||0);b.abs.push(v.BrakeABSactive?1:0);const rhv={};LIVE_TIRES.forEach(k=>rhv[k]=liveRh(v,k));LIVE_TIRES.forEach(k=>{b.rh[k].push(rhv[k]);const tc=[v[k+'tempCL'],v[k+'tempCM'],v[k+'tempCR']].filter(x=>x!=null);b.tc[k].push(tc.length?tc.reduce((s,x)=>s+x,0)/tc.length:null)});if(v.dcBrakeBias!=null)b.bb.push(v.dcBrakeBias);b.d.push(v.LapDistPct);b.t.push(v.LapCurrentLapTime);b.thr.push(v.Throttle);b.str.push(v.SteeringWheelAngle);b.rhLF.push(rhv.LF);b.rhRF.push(rhv.RF);b.rhLR.push(rhv.LR);b.rhRR.push(rhv.RR);const rf=liveRef(),rt=rf&&v.LapDistPct!=null?liveRefTime(rf,v.LapDistPct):null;const dd=rt==null||!(v.LapCurrentLapTime>0)||(v.LapDistPct>0.5&&v.LapCurrentLapTime<10)||(v.LapDistPct<0.1&&v.LapCurrentLapTime>30)?null:v.LapCurrentLapTime-rt;b.dlt.push(dd!=null&&Math.abs(dd)<15?dd:null)}
 if(v.Speed>12&&!v.OnPitRoad&&v.YawRate!=null&&v.SteeringWheelAngle!=null&&v.LatAccel!=null){c.tk=(c.tk||0)+1;if(c.tk%(LIVE.remote?1:2)===0){c.hs=c.hs||[];if(c.hs.length<20000)c.hs.push({v:v.Speed,k:v.YawRate/v.Speed,s:v.SteeringWheelAngle,y:v.YawRate,g:Math.abs(v.LatAccel)/9.80665,t:v.Throttle||0,b:v.Brake||0,beta:v.VelocityX!=null&&v.VelocityY!=null?Math.atan2(v.VelocityY,Math.max(1,v.VelocityX))*57.2958:null,abs:v.BrakeABSactive?1:0})}}
-if(v.OnPitRoad)c.pit=true;if(v.IsOnTrack===false||v.IsOnTrack===0)c.away=true;if(v.LapDistPct!=null&&v.LapDistPct>=0)c.lastD=v.LapDistPct;if(v.LapCurrentLapTime>0)c.lastT=v.LapCurrentLapTime;
+if(v.OnPitRoad)c.pit=true;if(v.IsOnTrack===false||v.IsOnTrack===0)c.away=true;
+// what keeps a live lap out of your clean laps: an incident, a moment off the track, an active reset (the distance jumps)
+if(v.PlayerCarMyIncidentCount!=null){if(c.ic0==null)c.ic0=v.PlayerCarMyIncidentCount;if(v.PlayerCarMyIncidentCount>c.ic0)c.inc=true}
+if(v.PlayerTrackSurface===0)c.off=true;
+if(v.LapDistPct!=null&&v.LapDistPct>=0){if(c.pd!=null&&!c.pit){const dd=v.LapDistPct-c.pd,dt=v.SessionTime!=null&&c.pst!=null?Math.max(0,v.SessionTime-c.pst):0.5;if(!(c.pd>.9&&v.LapDistPct<.1)&&(dd<-.003||dd>.01+dt*.05))c.reset=true}c.pd=v.LapDistPct;c.pst=v.SessionTime}
+if(v.LapDistPct!=null&&v.LapDistPct>=0)c.lastD=v.LapDistPct;if(v.LapCurrentLapTime>0)c.lastT=v.LapCurrentLapTime;
 liveFrame()}
 function liveFrame(){if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE.raf=0;const now=performance.now(),txt=!(now-(LIVE.lastTxt||0)<100);if(txt)LIVE.lastTxt=now;liveGauges(!txt);const box=$('liveCharts');if(box&&box.clientWidth)liveDrawCharts()})}
-function liveFinish(c,v){const b=c.b,n=b.Speed.length,valid=c.d0<0.05&&c.lastD>0.95&&!c.pit&&!c.away&&n>=50&&c.lastT>0;
+function liveFinish(c,v){const b=c.b,n=b.Speed.length,valid=c.d0<0.05&&c.lastD>0.95&&!c.pit&&!c.away&&!c.inc&&!c.off&&!c.reset&&n>=50&&c.lastT>0;
 const mean=a=>{const x=a.filter(y=>y!=null);return x.length?x.reduce((s,y)=>s+y,0)/x.length:null};let st=null;
 if(LIVE_TIRES.every(k=>b.rh[k].every(x=>x!=null))){const ext={};LIVE_TIRES.forEach(k=>ext[k+'rideHeight']=Float64Array.from(b.rh[k]));st=aeroRhStats({n,Speed:Float64Array.from(b.Speed),Brake:Float64Array.from(b.Brake),LatG:Float64Array.from(b.LatG),ext,lapNum:c.lap})}
-const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
+const why=valid?'':c.reset?'active reset':c.inc?'incident':c.off?'off track':c.pit?'pit lane':c.away?'not on track':'not a full lap';
+const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
 LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{renderCoach()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
@@ -1030,7 +1051,7 @@ const ch=s.n===1?'<span class="m">starting setup</span>':(s.diff.length?s.diff.m
 const tc=LIVE_TIRES.map(k=>liveTemp(liveMed(ok.map(l=>l.tc[k])))).join(' ');
 return '<tr><td><b>Run '+s.n+'</b>'+(s.n===LIVE.vers.length?' <span class="m">current</span>':'')+'</td><td style="min-width:200px">'+ch+'</td><td>'+ok.length+(laps.length>ok.length?' <span class="m">+'+(laps.length-ok.length)+' invalid</span>':'')+'</td><td>'+(best?ft(best):'—')+'</td><td>'+(avg?ft(avg):'—')+'</td><td>'+liveMm(S.f)+' / '+liveMm(S.r)+'</td><td>'+liveMm(C.f)+' / '+liveMm(C.r)+'</td><td>'+(rise==null?'—':(rise>=0?'+':'−')+liveMm(Math.abs(rise)))+'</td><td>'+(ok.length?liveSpd(Math.max(...ok.map(l=>l.top))):'—')+'</td><td style="white-space:nowrap">'+tc+'</td></tr>'}).join('');
 return '<div style="margin-top:10px"><b>Runs by setup</b> <small class="m">A new run starts each time the setup changes in the garage. Values are medians across the run\'s valid laps. Ride heights are front / rear.</small><div style="overflow-x:auto;margin-top:4px"><table><tr><th>Run</th><th>Changes from the run before</th><th>Valid laps</th><th>Best</th><th>Average</th><th>Ride height, straights</th><th>Ride height, fast corners</th><th>Rear rise braking</th><th>Top speed</th><th>Carcass temps LF RF LR RR</th></tr>'+rows+'</table></div></div>'}
-function liveLapsHtml(){const L=LIVE.laps.slice(-12).reverse();if(!L.length)return '';return '<details style="margin-top:8px"><summary><b>Recent laps</b> <span class="m">'+LIVE.laps.length+' recorded this session</span></summary><div style="overflow-x:auto"><table><tr><th>Lap</th><th>Time</th><th>Run</th><th>Ride height straights F / R</th><th>Top speed</th><th>Brake bias</th></tr>'+L.map(l=>{const q=l.st&&l.st.find(z=>z.id==='straight');return '<tr><td>'+l.lap+'</td><td>'+ft(l.time)+(l.valid?'':' <span class="m">invalid</span>')+'</td><td>'+l.ver+'</td><td>'+(q&&q.n?liveMm(q.f)+' / '+liveMm(q.r):'—')+'</td><td>'+liveSpd(l.top)+'</td><td>'+(l.bb!=null?l.bb.toFixed(1)+'%':'—')+'</td></tr>'}).join('')+'</table></div></details>'}
+function liveLapsHtml(){const L=LIVE.laps.slice(-12).reverse();if(!L.length)return '';return '<details style="margin-top:8px"><summary><b>Recent laps</b> <span class="m">'+LIVE.laps.length+' recorded this session</span></summary><div style="overflow-x:auto"><table><tr><th>Lap</th><th>Time</th><th>Run</th><th>Ride height straights F / R</th><th>Top speed</th><th>Brake bias</th></tr>'+L.map(l=>{const q=l.st&&l.st.find(z=>z.id==='straight');return '<tr><td>'+l.lap+'</td><td>'+ft(l.time)+(l.valid?'':' <span class="m">'+(l.why||'invalid')+'</span>')+'</td><td>'+l.ver+'</td><td>'+(q&&q.n?liveMm(q.f)+' / '+liveMm(q.r):'—')+'</td><td>'+liveSpd(l.top)+'</td><td>'+(l.bb!=null?l.bb.toFixed(1)+'%':'—')+'</td></tr>'}).join('')+'</table></div></details>'}
 /* ---- Live graphs: current lap against the best or last lap, by track position ---- */
 let LIVE_CMP=(()=>{try{return localStorage.getItem('liveCmp')||'best'}catch(e){return 'best'}})();
 function liveRef(){if(LIVE_CMP==='ghost'){const e=GH.sel&&ghLibLoad().find(x=>x.key===GH.sel);if(!e)return null;if(!GH.liveRef||GH.liveRef.key!==e.key||GH.liveRef.at!==e.at)GH.liveRef=Object.assign(ghLive(e),{key:e.key,at:e.at});return GH.liveRef}return LIVE_CMP==='last'?LIVE.lastRef:LIVE.bestRef}
@@ -1695,8 +1716,10 @@ for(let tries=0;tries<20;tries++){try{localStorage.setItem(COACH_LIVE_KEY,JSON.s
 // ---- Coach card ----
 let COACH={src:null,to:'best',grp:'',g61:[],set:null,live:null};
 function coachSources(){const out=[];const ib=IB.a;if(ib&&ib.laps){let S=null;try{S=sessionStats(ib)}catch(e){}const cl=S?S.clean:[];if(cl.length>=2)out.push({id:'ibt',lab:'Clean laps in your .ibt ('+cl.length+')',laps:()=>{const st={};let k=0;S.rows.forEach(r=>{k=r.pit||r.note==='out lap'?0:k+1;st[r.i]=k});return cl.map(r=>{const o=ib.lapObj(r.i),ts=TYRES.map(t=>r.ty[t]&&r.ty[t].s).filter(x=>x!=null);o.cond={f0:r.f0,tt:r.tt,stint:st[r.i],ts:ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:null};return o})},track:ghTrackOf(ib.yaml),car:ib.carPath})}
-const L=coachLiveLoad();Object.keys(L).filter(k=>L[k].length>=2).forEach(k=>{const[car,track]=k.split('|');out.push({id:'live|'+k,lab:'Saved live laps: '+(track||'?')+' · '+car+' ('+L[k].length+')',laps:()=>coachLiveLoad()[k].map(coachFromSaved),track,car,key:k})});
-if(COACH.g61.length>=2)out.push({id:'g61',lab:'Garage 61 laps added here ('+COACH.g61.length+')',laps:()=>COACH.g61.slice()});return out}
+const L=coachLiveLoad();Object.keys(L).forEach(k=>{const keep=usualLaps(L[k],x=>x.lap);if(keep.length<2)return;const[car,track]=k.split('|');out.push({id:'live|'+k,lab:'Saved live laps: '+(track||'?')+' · '+car+' ('+keep.length+')',laps:()=>usualLaps(coachLiveLoad()[k]||[],x=>x.lap).map(coachFromSaved),track,car,key:k})});
+if(COACH.g61.length>=2){const keep=usualLaps(COACH.g61,x=>x.lap);out.push({id:'g61',lab:'Garage 61 laps added here ('+keep.length+(keep.length<COACH.g61.length?' of '+COACH.g61.length+', unusual times left out':'')+')',laps:()=>usualLaps(COACH.g61,x=>x.lap)})}return out}
+// The laps whose times are usual among them (lapBand) and within 7% of the quickest of those.
+function usualLaps(list,time){const b=lapBand(list.map(time)),inB=list.filter(x=>{const t=time(x);return t>0&&t>=b.lo&&t<=b.hi});if(!inB.length)return [];const f=Math.min(...inB.map(time));return inB.filter(x=>time(x)<=f*1.07)}
 // ---- Conditions: group laps by fuel load, tyre state and track temperature ----
 // pure: conds [{f0, stint, tt, ts}] -> groups {id: {lab, why, idx[]}} with at least 2 laps each.
 // Heavy / light fuel: top / bottom third of the fuel range (when it spans at least 15% of the most);

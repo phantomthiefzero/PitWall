@@ -255,8 +255,9 @@ track length; iRacing does not give other cars' speed), `topSpeedBestMs`, `consi
 "sharePct" (share of the time driven since we connected),"evenPct" (100 / drivers),"next" (the driver
 not in the car with the least time: a suggestion for an even rotation, not the event's rule)}]),
 `stopDue` (below).
-Plain per car: `steerRad` (CarIdxSteer). Lap entries also carry `topSpeedMs` and `tx`
-(interpolated line crossing). `cars.derived.compoundPace`: per class and compound, the
+Plain per car: `steerRad` (CarIdxSteer). Lap entries also carry `topSpeedMs`, `tx`
+(interpolated line crossing) and `reset` (your car: an active reset moved the car mid-lap, so the
+time is kept out of pace and consistency). `cars.derived.compoundPace`: per class and compound, the
 middle of the cars' last racing laps, `fastest`, `vsFastestS`. Session: `driverTires`
 (compound names by index, for your car's class). State (your car): `player.tireSets`,
 `player.fastRepairs`, `derived.refuelLps` (measured at your stops), `derived.plan.fuelTimeS`.

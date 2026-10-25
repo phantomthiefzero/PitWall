@@ -76,8 +76,8 @@ iRacing Suite app (suite/)
 - Words in the Lap Analyzer (Coaching, Setup, Lap Analyzer views) and the home page mean one thing each:
   "your lap" (the left box), "the reference" / "reference lap" (the right box; which lap it is is said once,
   in its box), "your best lap" (fastest clean lap; never "fastest lap" for this), "your average lap"
-  (Coaching; never "typical"), "median lap" (a middle lap time), "clean laps" (no pit, incident or off,
-  within 7% of your best), "timed laps" (complete and timed), "Garage 61" (with the space), "Corner 4" in
+  (Coaching; never "typical"), "median lap" (a middle lap time), "clean laps" (no pit, incident, off
+  track or active reset, a usual time (lapBand/usualLaps), within 7% of the fastest of them), "timed laps" (complete and timed), "Garage 61" (with the space), "Corner 4" in
   sentences and tables, "C4" only on charts and the corner strip. Views: Coaching, Setup, Lap Analyzer.
 - The three views each do one job, and must stay that way: Coaching is the driving only (gap, 3 things, where
   the time goes, corners, consistency, track limits, progress, conditions, pace rating; one line points to Setup
