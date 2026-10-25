@@ -83,6 +83,11 @@ iRacing Suite app (suite/)
   the page (showView / viewShown, history.pushState): no reload, so nothing loaded is lost. The files in the
   two boxes, the lap picked from each and Coaching's Garage 61 laps are kept in IndexedDB (KEEP) and opened
   again when the page loads (after visiting PitWall or the home page); Clear forgets them.
+- Calm look (the "Calm" CSS block at the end of the analyzer's <style>): one header row (Suite, views, theme);
+  sections are separated by space and a hairline, not boxes; only things you act on get a surface (tiles, your
+  3 things). A long grey explanation right after a heading folds behind a small (i) button (hintTidy, plain text
+  only). Colour means something is off: "balanced" and good states stay plain or soft, never solid blocks.
+  Don't add "click to open" to a summary: the arrow says it.
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.

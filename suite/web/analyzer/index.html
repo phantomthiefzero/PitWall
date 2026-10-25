@@ -33,17 +33,43 @@ body[data-view=setup] #coach,body[data-view=setup] #ghost,body[data-view=setup] 
 .livebar{display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;padding:8px 14px}.livebar .lbn{display:flex;gap:6px 16px;flex-wrap:wrap;align-items:baseline}.livebar .lbn>span{white-space:nowrap}
 body[data-view=setup] .drops{grid-template-columns:1fr}
 .views{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.views a{padding:3px 12px;border:1px solid var(--ln);border-radius:14px;color:var(--fg);text-decoration:none;font-size:14px}.views a.on{background:var(--fg);color:var(--bg)}
+/* ---- Calm: one header row, sections without boxes, explanations behind a small (i), soft colours.
+   Sections are separated by space and a hairline; only things you act on (your 3 things, tiles) get a surface. */
+#appTitle{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.views{align-items:center;gap:6px;margin:0 0 14px}.views a{font-size:15px;padding:5px 14px}
+.views .home{border:0;padding:5px 10px 5px 0;opacity:.7}.views .home:hover{opacity:1}.views .theme{margin-left:auto;font:inherit;font-size:13px;padding:3px 10px;border-radius:6px;border:1px solid var(--ln);background:transparent;color:var(--mut);cursor:pointer}
+body:has(.dz .clr:not([hidden])) #views+p.m{display:none}
+.card{background:transparent;border:0;border-top:1px solid var(--ln);border-radius:0;padding:16px 0 4px;margin-bottom:18px}
+.card .card,#refOnly .card,#out>.card:first-child{border-top:0;padding-top:0}
+#start{border:1px solid var(--ln);border-radius:10px;padding:14px 16px;background:var(--card)}
+#ro{background:var(--bg)}
+.tile,.cothing{border-color:transparent;background:var(--card)}
+th,td{border-bottom-color:color-mix(in srgb,var(--ln) 65%,transparent)}
+.drops{gap:10px;margin-bottom:6px}.dz{padding:12px 14px}
+.dz:has(.clr:not([hidden])){border:1px solid var(--ln);text-align:left;display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:8px 12px}
+.dz:has(.clr:not([hidden])) b{display:inline}.dz:has(.clr:not([hidden])) select{order:3}.dz:has(.clr:not([hidden])) .clr{order:4;margin:0 0 0 auto;display:inline-block}
+#units{font-size:13px;margin:0 0 12px}#units select{font-size:13px}
+#files{border:0;padding:0;margin:0 0 6px;font-size:13px}#files>div:first-child{justify-content:flex-start!important;gap:4px 12px!important}#files>div:first-child b{font-weight:600}#files .m{margin:0}#files>div:first-child{display:inline-flex!important}#files .flfold{display:inline-block;margin:0 0 0 12px}#files .flfold[open]{display:block;margin:4px 0 0}#files .flrow{margin-top:4px}
+#liveBar{background:none;border:0;border-radius:0;padding:0;margin:0 0 16px;font-size:13px}
+body:not([data-view=setup]) #liveNow{display:none}
+.chip{color:inherit;font-weight:600}.chip.good{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}.chip.watch{background:color-mix(in srgb,#d99a1e 20%,transparent);color:#d99a1e}.chip.needs{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.hintq{font:inherit;font-size:12px;line-height:1;width:18px;height:18px;padding:0;margin:0 0 0 6px;border:1px solid var(--ln);border-radius:50%;background:transparent;color:var(--mut);cursor:pointer;vertical-align:1px;font-weight:600}
+.hintq:hover,.hintq[aria-expanded=true]{color:var(--fg);border-color:var(--mut)}
+.hint{display:none!important}.hint.open{display:block!important;margin:4px 0 8px;font-size:13px;font-weight:400;max-width:75ch}
+.clr[hidden]{display:none!important}#own tr.nt{opacity:.55}
+@media(hover:hover){#own .sjb{opacity:0;transition:opacity .1s}#own tr:hover .sjb,#own .sjb:focus{opacity:1}}
+.sjb{font:inherit;font-size:12px;padding:2px 8px;cursor:pointer}
 </style></head><body>
 <h1 id="appTitle">Lap Analyzer</h1>
 <nav class="views" id="views"></nav>
 <p class="m">Look back at laps you have driven: your lap against a reference lap, corner by corner and channel by channel. Drop one of your iRacing .ibt files (Documents\iRacing\telemetry) on the left and, to compare, a Garage 61 lap (.csv) or another .ibt file on the right. Everything runs on this PC; nothing is uploaded.</p>
 <div class="card" id="start"><b>Start here</b><ol style="margin:6px 0 0 18px;padding:0"><li>Drop your lap in the left box. A single .ibt file is enough: with no reference, it is compared with your own 2nd fastest lap.</li><li>Drop a reference lap on the right to compare against. Use a Garage 61 lap (.csv), or a second .ibt file.</li><li>An .ibt file also lists every lap in it. For what to work on in the driving, open Coaching; for the car, open Setup.</li></ol></div>
-<div class="card" id="files" hidden></div>
 <div class="drops">
 <label class="dz" id="za"><input type="file" accept=".csv" hidden><b>Your lap</b><span>Drop a CSV or .ibt file here, or click to choose</span><button class="clr" type="button" hidden>Clear</button></label>
 <label class="dz" id="zb"><input type="file" accept=".csv" hidden><b>Reference lap</b><span>Drop a CSV or .ibt file, or several CSVs for a group</span><button class="clr" type="button" hidden>Clear</button></label>
 </div>
-<div class="m">Speed <select id="us"><option value="mph">mph</option><option value="kmh">km/h</option></select> &nbsp; Distance <select id="ud"><option value="m">meters</option><option value="ft">feet</option></select></div>
+<div class="card" id="files" hidden></div>
+<div class="m" id="units">Speed <select id="us"><option value="mph">mph</option><option value="kmh">km/h</option></select> &nbsp; Distance <select id="ud"><option value="m">meters</option><option value="ft">feet</option></select></div>
 <div id="err"></div>
 <script>function boxNames(v){const a=document.querySelector('#za>b'),b=document.querySelector('#zb>b');if(a)a.textContent=v==='coach'?'Your laps (.ibt file)':'Your lap';if(b)b.textContent=v==='coach'?'Reference lap (optional)':'Reference lap'}
 try{(()=>{const q=new URLSearchParams(location.search),v=q.get('view'),V={coach:['Coaching','Your average lap against your best lap: where the time goes and what to change in your driving.'],setup:['Setup','Your car: how it handles on your laps, what to change, the live setup and the engineer\'s plan.']};
@@ -77,13 +103,13 @@ try{if(typeof viewShown==='function')viewShown(document.body.dataset.view)}catch
 <div class="card" id="score"></div>
 <div class="card" id="refs" hidden></div>
 </div>
-<div id="refOnly" hidden><details class="fold"><summary>Track map and g-g diagram <span class="m">click to open</span></summary><div class="row"><div class="card"><small class="m">Track map: red is where you lose time, green where you gain</small><canvas id="map" height="320" style="width:320px;height:320px;max-width:100%"></canvas></div>
+<div id="refOnly" hidden><details class="fold"><summary>Track map and g-g diagram</summary><div class="row"><div class="card"><small class="m">Track map: red is where you lose time, green where you gain</small><canvas id="map" height="320" style="width:320px;height:320px;max-width:100%"></canvas></div>
 <div class="card"><small class="m">g-g diagram: <span class="you">you</span> and <span class="ref">reference</span>, braking at the bottom, acceleration at the top, rings at 1, 2 and 3 g</small><canvas id="gg" height="320" style="width:320px;height:320px;max-width:100%"></canvas></div></div></details>
-<details class="fold" id="lineFold"><summary>Racing line, corner by corner <span class="m">click to open</span></summary><div class="card" id="lines"></div></details>
+<details class="fold" id="lineFold"><summary>Racing line, corner by corner</summary><div class="card" id="lines"></div></details>
 <div class="card" style="overflow-x:auto"><table id="tb"></table></div>
-<details class="fold"><summary>Lap table <span class="m">click to open</span></summary><div class="card" style="overflow-x:auto"><table id="lt"></table></div></details>
+<details class="fold"><summary>Lap table</summary><div class="card" style="overflow-x:auto"><table id="lt"></table></div></details>
 <div class="card" id="xc" hidden></div>
-<details class="fold"><summary>Every channel, lap against lap <span class="m">click to open</span></summary><div class="card"><div id="ro"></div><div id="charts"></div></div></details></div>
+<details class="fold"><summary>Every channel, lap against lap</summary><div class="card"><div id="ro"></div><div id="charts"></div></div></details></div>
 </div>
 <script>
 //CORE
@@ -247,7 +273,7 @@ if(!L.length)L.push(`Very close to ${n} here: no clear difference in braking, ap
 L.push(`<span class="m">This compares one lap each. Check several laps before changing your approach.</span>`);
 const E=(l,x,y,k,d,unit)=>`<tr><td>${l}</td><td>${x!=null?(x*k).toFixed(d)+' '+unit:'\u2014'}</td><td>${y!=null?(y*k).toFixed(d)+' '+unit:'\u2014'}</td><td>${x!=null&&y!=null?sgn((x-y)*k,d)+' '+unit:''}</td></tr>`,q=g=>g>=0?g*m:null,r=(z)=>z.br>=0?(z.br-z.mg)*m:null;
 const tb2=[E('Time in corner zone',a.t,b.t,1,3,'s'),E('Brake point (lap position)',q(a.ba),q(b.ba),u.d[0],0,D),E('Peak brake pressure',a.pb,b.pb,100,0,'%'),E('Peak braking G',a.dec,b.dec,1,2,'g'),E('ABS active (% of zone)',a.ab,b.ab,1,0,'%'),E('Brake release, relative to apex',r(a),r(b),u.d[0],0,D),E('Entry speed',a.es,b.es,u.s[0],0,S),E('Apex speed (minimum)',a.ms,b.ms,u.s[0],0,S),E('Exit speed',a.xs,b.xs,u.s[0],0,S),E('Gear at apex',a.gr,b.gr,1,0,''),E('RPM at apex',a.rpm,b.rpm,1,0,''),E('Throttle 60% (lap position)',q(a.ta),q(b.ta),u.d[0],0,D),E('Full throttle (lap position)',q(a.tf),q(b.tf),u.d[0],0,D),E('Coasting (% of zone)',a.co,b.co,1,0,'%'),E('Peak lateral G',a.lat,b.lat,1,2,'g'),E('Steering at apex',a.sa,b.sa,1,0,'\u00b0'),E('Peak steering angle',a.ps,b.ps,1,0,'\u00b0')].join('');
-return `${lineCornerHtml(c)}<p style="margin:0">${ph}</p>${planHtml(c)}<details style="margin-top:8px"><summary><b>All measurements for this corner</b> <span class="m">click to open</span></summary><table style="margin-top:6px"><tr><th>Measure</th><th>You</th><th>Reference</th><th>You \u2212 reference</th></tr>${tb2}</table></details>${ownT(c)}`}
+return `${lineCornerHtml(c)}<p style="margin:0">${ph}</p>${planHtml(c)}<details style="margin-top:8px"><summary><b>All measurements for this corner</b></summary><table style="margin-top:6px"><tr><th>Measure</th><th>You</th><th>Reference</th><th>You \u2212 reference</th></tr>${tb2}</table></details>${ownT(c)}`}
 const SL={good:'Good',watch:'Watch',needs:'Needs work'},SC={good:'#1a8f4c',watch:'#b87800',needs:'#d6333a'};
 function stat(c){return c.dt<=0.03?'good':c.dt<=0.12?'watch':'needs'}
 function scoreHtml(){const n=nm(),cs=R.cs,cnt={good:0,watch:0,needs:0};cs.forEach(c=>cnt[stat(c)]++);
@@ -346,7 +372,7 @@ const[k,o,un]=cu(x.u),cells=[];for(let b=0;b<BINS;b++){let sa=0,sb=0;for(let g=b
 rows.push(`<div style="display:flex;align-items:center;margin:1px 0"><div class="cr" data-n="${x.n}" title="${x.d||x.n}" style="width:210px;flex:none;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;padding-right:8px">${x.d||x.n}</div><div style="flex:1;display:grid;grid-template-columns:repeat(${BINS},1fr);height:16px">${cells.join('')}</div></div>`)});
 if(!rows.length)return '';
 const last=[-99,-99,-99];const marks=R.cs.map(c=>{const b=Math.min(BINS-1,Math.floor(c.ap/per));let row=last.findIndex(x=>b-x>=4);if(row<0)row=last.indexOf(Math.min(...last));last[row]=b;return `<div style="position:absolute;left:${b}%;top:${row*13}px;font-size:11px;line-height:13px;color:var(--mut)">${CS(c.n)}</div>`}).join('');
-return `<details style="margin:14px 0 4px"><summary><b>Where the differences are around the lap</b> <span class="m">${rows.length} channels, click to open</span></summary><p class="m" style="margin:6px 0">Red: you are higher than ${n}. Blue: you are lower. Darker means a bigger gap compared with that channel's normal variation. Click a name to chart it.</p><div style="display:flex"><div style="width:210px;flex:none"></div><div class="heatMarks" style="flex:1;position:relative;overflow:hidden;height:${13*(1+Math.max(0,...last.map((x,i)=>x>-99?i:0)))}px">${marks}</div></div>${rows.join('')}</details>`}
+return `<details style="margin:14px 0 4px"><summary><b>Where the differences are around the lap</b> <span class="m">${rows.length} channels</span></summary><p class="m" style="margin:6px 0">Red: you are higher than ${n}. Blue: you are lower. Darker means a bigger gap compared with that channel's normal variation. Click a name to chart it.</p><div style="display:flex"><div style="width:210px;flex:none"></div><div class="heatMarks" style="flex:1;position:relative;overflow:hidden;height:${13*(1+Math.max(0,...last.map((x,i)=>x>-99?i:0)))}px">${marks}</div></div>${rows.join('')}</details>`}
 const TGK={surf:{l:'Surface temp',cu:'C'},carc:{l:'Carcass temp',cu:'C'},press:{l:'Hot pressure',cu:'kPa'}};
 function tgGet(){try{return JSON.parse(localStorage.getItem('lapTargets'))||{}}catch(e){return{}}}
 function tgSet(t){try{localStorage.setItem('lapTargets',JSON.stringify(t))}catch(e){}}
@@ -521,7 +547,7 @@ return `<div style="margin-bottom:6px"><div class="pbar" title="Share of timed l
 ${newSec}
 ${scat?`<div style="margin-top:12px"><b>How each gap links to time</b> <small class="m">Each dot is one lap, colored by time lost (green near your best lap, red more). The red line is the trend and the dashed ring is your average. Hover a dot for its lap.</small><div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">${scat}</div></div>`:''}
 ${boxHtml(o)}${logHtml(o)}${traceHtml(o)}<button data-export="1" style="margin-top:10px">Export lap-by-corner table (CSV)</button> <small id="exportMsg" class="m"></small>
-<details style="margin-top:10px"><summary><b>Corner table</b> <span class="m">click to open</span></summary><table style="margin-top:6px"><tr><th>Corner</th><th>Average time lost</th><th>Brake point spread</th><th>Apex speed spread</th><th>Main link</th></tr>${cornerRows.join('')}</table></details>`}
+<details style="margin-top:10px"><summary><b>Corner table</b></summary><table style="margin-top:6px"><tr><th>Corner</th><th>Average time lost</th><th>Brake point spread</th><th>Apex speed spread</th><th>Main link</th></tr>${cornerRows.join('')}</table></details>`}
 function miniSvg(title,fast,med,lo,hi,apx,lenD,DU){const L=fast.length,W=340,H=120,pl=38,pr=8,pt=16,pb=18;let mn=Infinity,mx=-Infinity;[fast,med,lo,hi].forEach(a=>a.forEach(v=>{if(isFinite(v)){mn=Math.min(mn,v);mx=Math.max(mx,v)}}));if(!isFinite(mn)){mn=0;mx=1}const pad=(mx-mn)*.08||1;mn-=pad;mx+=pad;
 const X=i=>pl+i/((L-1)||1)*(W-pl-pr),Y=v=>pt+(mx-v)/(mx-mn)*(H-pt-pb);
 const P=a=>a.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)).join('');
@@ -834,7 +860,7 @@ h+=tabs.map(t=>'<div data-tabp="'+t.id+'"'+(t.id===SETUP_TAB?'':' hidden')+'>'+t
 return h}
 function wireTabs(el){el.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{SETUP_TAB=b.dataset.tab;try{localStorage.setItem('setupTab',SETUP_TAB)}catch(e){}el.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on',x===b));el.querySelectorAll('[data-tabp]').forEach(p=>p.hidden=p.dataset.tabp!==SETUP_TAB)})}
 function wireInfo(el){el.querySelectorAll('[data-inf]').forEach(a=>a.onclick=e=>{e.preventDefault();const id=a.dataset.inf,tr=el.querySelector('[data-infr="'+id+'"]');if(!tr)return;tr.hidden=!tr.hidden;if(tr.hidden)SETUP_OPEN.delete(id);else SETUP_OPEN.add(id)});SETUP_OPEN.forEach(id=>{const tr=el.querySelector('[data-infr="'+id+'"]');if(tr)tr.hidden=false})}
-function renderSetup(){const el=$('setup');if(!el)return;const prev=el.querySelector('details.setupWrap'),wasOpen=prev?prev.open:(()=>{try{return localStorage.getItem('setupOpen')!=='0'}catch(e){return true}})(),op=[...el.querySelectorAll('details')].map(d=>d.open),h=setupHtml();el.innerHTML=h?'<details class="setupWrap"'+(wasOpen?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Car setup</b> <span class="m">click to open or close this section</span></summary><div style="margin-top:8px">'+h.replace('<b>Car setup</b>','')+'</div></details>':'';el.hidden=!h;const sw=el.querySelector('details.setupWrap');if(sw)sw.addEventListener('toggle',()=>{try{localStorage.setItem('setupOpen',sw.open?'1':'0')}catch(e){}});el.querySelectorAll('details').forEach((d,i)=>{if(op[i])d.open=true});el.querySelectorAll('input[data-si]').forEach(x=>x.oninput=()=>setupInput(x));const su=$('setupUnits');if(su)su.onchange=()=>{SETUP_UNITS=su.value;try{localStorage.setItem('setupUnits',SETUP_UNITS)}catch(e){}renderSetup();renderSession()};wireRanges(el);wireInfo(el);wireTabs(el);wireSymptoms(el);wireBuild(el);const sc=$('setupCar');if(sc)sc.onchange=()=>{SETUP_PICK=sc.value;try{localStorage.setItem('setupCar',SETUP_PICK)}catch(e){}renderSetup()}}
+function renderSetup(){const el=$('setup');if(!el)return;const prev=el.querySelector('details.setupWrap'),wasOpen=prev?prev.open:(()=>{try{return localStorage.getItem('setupOpen')!=='0'}catch(e){return true}})(),op=[...el.querySelectorAll('details')].map(d=>d.open),h=setupHtml();el.innerHTML=h?'<details class="setupWrap"'+(wasOpen?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Car setup</b></summary><div style="margin-top:8px">'+h.replace('<b>Car setup</b>','')+'</div></details>':'';el.hidden=!h;const sw=el.querySelector('details.setupWrap');if(sw)sw.addEventListener('toggle',()=>{try{localStorage.setItem('setupOpen',sw.open?'1':'0')}catch(e){}});el.querySelectorAll('details').forEach((d,i)=>{if(op[i])d.open=true});el.querySelectorAll('input[data-si]').forEach(x=>x.oninput=()=>setupInput(x));const su=$('setupUnits');if(su)su.onchange=()=>{SETUP_UNITS=su.value;try{localStorage.setItem('setupUnits',SETUP_UNITS)}catch(e){}renderSetup();renderSession()};wireRanges(el);wireInfo(el);wireTabs(el);wireSymptoms(el);wireBuild(el);const sc=$('setupCar');if(sc)sc.onchange=()=>{SETUP_PICK=sc.value;try{localStorage.setItem('setupCar',SETUP_PICK)}catch(e){}renderSetup()}}
 // ---- Session review: every lap of the .ibt on the left, not just the clean ones ----
 // Sector splits are iRacing's own (SplitTimeInfo in the session info). Fuel, tyres and
 // track temperature come straight from the file; averages are over each lap's samples.
@@ -888,19 +914,19 @@ const ttP=[{n:'Track temperature',c:'var(--rear)',pts:R0.map((r,x)=>[x,r.tt,null
 const charts=[trendSvg('Lap time (clean laps; red = incident)',[{n:'Lap time',c:'var(--ref)',pts:lapPts}],v=>ft(v),L),
 trendSvg('Tyre pressure, hot, at speed',tyP,v=>uv(v,'kPa',1),L),trendSvg('Tyre surface temperature, at speed',tyS,v=>uv(v,'C',1),L),
 trendSvg('Fuel used per lap',fuelP,v=>uv(v,'L',2),L),trendSvg('Track temperature',ttP,v=>uv(v,'C',1),L)].filter(Boolean);
-const chartGrid=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin:6px 0 12px">${charts.map(c=>`<div style="border:1px solid var(--ln);border-radius:8px;padding:6px">${c}</div>`).join('')}</div>`;
+const chartGrid=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin:6px 0 12px">${charts.map(c=>`<div style="background:var(--card);border-radius:8px;padding:6px">${c}</div>`).join('')}</div>`;
 const head=`<tr><th>Lap</th><th>Time</th><th>vs fastest</th>${S.secs.length?Array.from({length:nS},(_,j)=>`<th>S${j+1}</th>`).join(''):''}<th>Fuel</th><th>Inc.</th><th>Top speed</th><th>Tyres (LF RF LR RR)</th><th></th></tr>`;
 const u=U(),body=R0.map(r=>{const isB=r.ok&&r.time===S.best,sel=r.i===cur;
 const secs=S.secs.length?Array.from({length:nS},(_,j)=>{const v=r.sec?r.sec[j]:null,b=v!=null&&S.bestSec[j]!=null&&Math.abs(v-S.bestSec[j])<1e-9;return `<td${b?' class="good" style="font-weight:700"':''}>${f3(v)}</td>`}).join(''):'';
 const ty=TYRES.map(t=>r.ty[t].p!=null?uv(r.ty[t].p,'kPa',1).split(' ')[0]:'–').join(' · ');
-return `<tr${sel?' style="background:rgba(128,128,128,.12)"':''}><td>${r.lap}${r.note?` <small class="m">${r.note}</small>`:''}</td><td${isB?' class="good" style="font-weight:700"':''}>${r.ok?ft(r.time):`<span class="m">${ft(r.span)}</span>`}</td>`+
+return `<tr${r.ok?'':' class="nt"'}${sel?' style="background:rgba(128,128,128,.12)"':''}><td>${r.lap}${r.note?` <small class="m">${r.note}</small>`:''}</td><td${isB?' class="good" style="font-weight:700"':''}>${r.ok?ft(r.time):`<span class="m">${ft(r.span)}</span>`}</td>`+
 `<td>${r.ok?(isB?'fastest':'+'+(r.time-S.best).toFixed(3)):''}</td>${secs}<td>${r.fuel>0?uv(r.fuel,'L',2):r.refuel?'<small class="m">refuel</small>':'–'}</td>`+
 `<td${r.inc?' class="bad"':''}>${r.inc?r.inc+'x':r.inc===0?'0':'–'}</td><td>${r.top?(r.top*3.6*u.s[0]).toFixed(0)+' '+u.s[1]:'–'}</td><td><small>${ty}</small></td>`+
-`<td>${r.ok?(sel?'<small class="m">analyzing</small>':`<button type="button" data-sj="${r.i}" style="font:inherit;font-size:12px;padding:2px 8px;cursor:pointer">Analyze</button>`):''}</td></tr>`}).join('');
+`<td>${r.ok?(sel?'<small class="m">analyzing</small>':`<button type="button" class="sjb" data-sj="${r.i}">Analyze</button>`):''}</td></tr>`}).join('');
 return `<p class="m" style="margin:0 0 8px">Every lap in this file, in order. Sector times use iRacing's own sector splits for this track. Theoretical best adds your best sectors together. Consistency is the spread of clean laps (no incident, no pit, within 107% of your fastest). Click <b>Analyze</b> to look at any lap in detail.</p>`+
 tiles+chartGrid+`<div style="overflow-x:auto"><table>${head}${body}</table></div><p class="m" style="margin:6px 0 0;font-size:12.5px">Tyre pressures in the table are hot averages at speed (${SETUP_UNITS==='imperial'?'psi':'kPa'}). Units follow the setup panel's Metric/Imperial choice.</p>`}
 function renderSession(){const el=$('sess');if(!el)return;const prev=el.querySelector('details'),open=prev?prev.open:true;const h=IB.a?sessionHtml():'';
-el.innerHTML=h?`<details ${open?'open':''} style="margin:0"><summary style="cursor:pointer;margin-bottom:8px"><b>Session</b> <span class="m">every lap in your file · click to open or close</span></summary>${h}</details>`:'';el.hidden=!h;
+el.innerHTML=h?`<details ${open?'open':''} style="margin:0"><summary style="cursor:pointer;margin-bottom:8px"><b>Session</b> <span class="m">every lap in your file</span></summary>${h}</details>`:'';el.hidden=!h;
 el.querySelectorAll('[data-sj]').forEach(b=>b.onclick=()=>{pick('a',$('za'),+b.dataset.sj);run();renderOwn()})}
 let OWN_CORNERS_OPEN=false;
 function renderOwn(){renderSession();try{renderFiles()}catch(e){}try{renderCoach()}catch(e){}const st=$('start');if(st)st.hidden=!!(IB.a||(F.a&&F.b));const el=$('own');const prev=el.querySelector('details.ownWrap'),open=prev?prev.open:true;// One list of your laps: the session table (every lap, sectors), then how they compare corner by corner.
@@ -1771,7 +1797,7 @@ const pedalF=(X,col,yy)=>{let r='';for(let g=s;g<=e;g++)if(X.Throttle[g]>.95)r+=
 return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:340px;height:auto;display:block" role="img" aria-label="Speed through the corner, your average against the best">'+line(B.Speed,'var(--ref)')+line(A.Speed,'var(--you)')+
 '<text x="2" y="'+(H-25)+'" style="fill:var(--mut);font-size:9px">brake</text>'+pedal(A,'Brake','var(--you)',H-22)+pedal(B,'Brake','var(--ref)',H-16)+'<text x="2" y="'+(H-3)+'" style="fill:var(--mut);font-size:9px">full throttle</text>'+pedalF(A,'var(--you)',H-9)+pedalF(B,'var(--ref)',H-5)+'<text x="'+W+'" y="14" text-anchor="end" style="fill:var(--mut);font-size:10px">'+(lo*3.6*u.s[0]).toFixed(0)+'-'+(hi*3.6*u.s[0]).toFixed(0)+' '+u.s[1]+'</text></svg>'}
 function coachBalanceGrid(H){const cell=x=>{if(!x||x.n<150)return '<td class="m" style="text-align:center">—</td>';const d=(x.ui-1)*100,os=x.cs>=1.5||(x.slip||0)>=3.5,bg=os?'var(--ref)':d>=12?'var(--bad)':d>=6?'#d99a1e':'var(--good)';
-return '<td style="text-align:center"><span style="display:inline-block;min-width:96px;padding:3px 6px;border-radius:5px;background:'+bg+';color:#fff;font-weight:600">'+(os?'oversteer':d>=6?'understeer +'+d.toFixed(0)+'%':'balanced')+'</span></td>'};
+const ok=!os&&d<6;return '<td style="text-align:center"><span style="display:inline-block;min-width:96px;padding:3px 6px;border-radius:5px;'+(ok?'color:var(--mut)':'background:color-mix(in srgb,'+bg+' 20%,transparent);color:'+bg)+';font-weight:600">'+(os?'oversteer':d>=6?'understeer +'+d.toFixed(0)+'%':'balanced')+'</span></td>'};
 return '<table style="width:auto"><tr><th></th><th>Slow corners</th><th>Fast corners</th></tr>'+HPH.map(([p,lab])=>'<tr><td><b>'+lab+'</b></td>'+cell(H.B[p+'_slow'])+cell(H.B[p+'_fast'])+'</tr>').join('')+'</table>'}
 // the corner seen from above: your typical line against the best, with where each brakes (B), turns in (T) and is slowest (S).
 // The gap between the lines is drawn 3x bigger so a metre shows.
@@ -1955,7 +1981,8 @@ const groups=(L,key)=>{const by={};L.forEach(f=>{const g=key(f)||'Other';(by[g]=
 const gSame=cur.car||cur.track?G.filter(f=>flSame(f,cur.car,cur.track)):[],canPick=!!(window.pywebview&&window.pywebview.api&&window.pywebview.api.library_pick_folder);
 const fo=FLIB.folders||[],sum=fo.length?fo.map(x=>plain(x.path.split(/[\\/]/).filter(Boolean).slice(-2).join('\\'))+(x.exists?'':' (not found)')).join(' · '):'none yet';
 el.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><b>Your files</b><span class="m" style="font-size:13px">'+FLIB.files.length+' in your folders · <a href="#" id="flRe">refresh</a>'+(cur.car||cur.track?' · <label><input type="checkbox" id="flSame"'+(FLIB.same?' checked':'')+'> only '+plain([cur.car,cur.track].filter(Boolean).join(', '))+'</label>':'')+'</span></div>'+
-(I.length?'<div class="flrow"><span class="m">iRacing</span><select id="flI">'+groups(I,f=>f.track)+'</select><span class="flbtn"><button type="button" data-fl="a">Open as your lap</button><button type="button" data-fl="b">Open as reference lap</button></span></div>':'<p class="m" style="margin:6px 0">No .ibt files '+(same?'for this car and track ':'')+'in your folders yet.</p>')+
+(I.length||!FLIB.files.length?'':'<p class="m" style="margin:4px 0">No .ibt files for this car and track in your folders yet.</p>')+
+(I.length?'<div class="flrow"><span class="m">iRacing</span><select id="flI">'+groups(I,f=>f.track)+'</select><span class="flbtn"><button type="button" data-fl="a">Open as your lap</button><button type="button" data-fl="b">Open as reference lap</button></span></div>':'')+
 (G.length?'<div class="flrow"><span class="m">Garage 61</span><select id="flG">'+groups(G,f=>[f.car,f.track].filter(Boolean).join(' · '))+'</select><span class="flbtn"><button type="button" data-fl="gb">Open as reference lap</button><button type="button" data-fl="gc">Add to Coaching</button>'+(gSame.length>1?'<button type="button" id="flGAll">Add all '+gSame.length+' to Coaching (this car and track)</button>':'')+'</span></div>':'')+
 '<details class="flfold"><summary class="m">Folders: '+sum+'</summary><div style="margin-top:4px">'+fo.map(x=>'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code style="overflow-wrap:anywhere">'+plain(x.path)+'</code>'+(x.auto?'<span class="m">(iRacing\'s telemetry folder)</span>':'<a href="#" data-flrm="'+plain(x.path)+'">remove</a>')+(x.exists?'':' <span class="bad">not found</span>')+'</div>').join('')+
 '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+(canPick?'<button type="button" id="flPick">Add a folder…</button>':'<input id="flPath" placeholder="D:\\Racing\\Telemetry" style="min-width:240px"><button type="button" id="flAdd">Add folder</button>')+'<span class="m" style="font-size:13px">Folders below it are searched too. .ibt files and Garage 61 laps (.csv) are listed.</span></div></div></details><div id="flMsg" class="m" style="font-size:13px"></div>';
@@ -2176,8 +2203,21 @@ catch(e){console.warn('keep restore',e)}finally{KEEP.restoring=false}}
 function viewShown(v){if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0)}
 try{renderSetup()}catch(e){}
 try{keepRestore()}catch(e){}
+// ---- Calm: a long grey explanation right after a heading folds behind a small (i) button.
+// Only plain text folds (nothing to click inside); what was opened stays open when the section redraws.
+const HINT_OPEN=new Set();
+function hintTidy(root){if(!root||!root.querySelectorAll)return;const L=[...root.querySelectorAll('.m')];if(root.classList&&root.classList.contains('m'))L.push(root);
+for(const e of L){if(e.dataset.h||e.classList.contains('hint'))continue;e.dataset.h='1';const p=e.previousElementSibling;if(!p||!/^(B|H3|SUMMARY)$/.test(p.tagName))continue;
+if(e.closest('td,th,label,select,#liveBar,.dz,.livebar'))continue;const t=e.textContent.trim();if(t.length<70||e.querySelector('a,button,select,input'))continue;
+const k=t.slice(0,60),q=document.createElement('button');q.type='button';q.className='hintq';q.textContent='i';q.title='What is this?';q.setAttribute('aria-label','What is this?');
+const open=HINT_OPEN.has(k);q.setAttribute('aria-expanded',open?'true':'false');e.classList.add('hint');if(open)e.classList.add('open');
+q.onclick=ev=>{ev.preventDefault();ev.stopPropagation();const o=!e.classList.contains('open');e.classList.toggle('open',o);q.setAttribute('aria-expanded',o?'true':'false');o?HINT_OPEN.add(k):HINT_OPEN.delete(k)};
+p.tagName==='SUMMARY'?p.appendChild(q):p.after(q)}}
+try{if(typeof MutationObserver!=='undefined'&&document.body){let pend=[],sched=false;hintTidy(document.body);
+new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes)if(n.nodeType===1)pend.push(n);if(pend.length&&!sched){sched=true;requestAnimationFrame(()=>{sched=false;const P=pend;pend=[];for(const n of P)if(n.isConnected)hintTidy(n)})}}).observe(document.body,{childList:true,subtree:true})}}catch(e){}
+
 try{liveRender();if(liveOnBridge()||LIVE_SHARE)liveConnect()}catch(e){}
 try{renderCoach()}catch(e){}
 try{if(liveOnBridge()&&!LIVE_SHARE)flLoad()}catch(e){}
-try{if(liveOnBridge()&&/^\/analyzer/.test(location.pathname)){const s=document.createElement('a');s.href='/';s.textContent='\u2190 Suite';s.style.cssText='display:inline-block;margin-bottom:6px;color:var(--fg);opacity:.75;text-decoration:none;font-size:14px';const b=document.createElement('button');b.type='button';b.style.cssText='margin:0 0 6px 14px;font:inherit;font-size:13px;padding:2px 10px;border-radius:6px;border:1px solid var(--ln);background:var(--card);color:var(--fg);cursor:pointer';const lab=()=>{b.textContent=document.documentElement.getAttribute('data-theme')==='light'?'\u263E Dark mode':'\u2600 Light mode'};lab();b.onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}lab();try{window.dispatchEvent(new Event('resize'))}catch(e){}try{if(typeof R!=='undefined'&&R)run()}catch(e){}try{renderSetup()}catch(e){}try{liveRender()}catch(e){}};document.body.insertBefore(b,document.body.firstChild);document.body.insertBefore(s,document.body.firstChild)}}catch(e){}
+try{if(liveOnBridge()&&/^\/analyzer/.test(location.pathname)){const s=document.createElement('a');s.href='/';s.textContent='\u2190 Suite';s.style.cssText='display:inline-block;margin-bottom:6px;color:var(--fg);opacity:.75;text-decoration:none;font-size:14px';const b=document.createElement('button');b.type='button';b.style.cssText='margin:0 0 6px 14px;font:inherit;font-size:13px;padding:2px 10px;border-radius:6px;border:1px solid var(--ln);background:var(--card);color:var(--fg);cursor:pointer';const lab=()=>{b.textContent=document.documentElement.getAttribute('data-theme')==='light'?'\u263E Dark mode':'\u2600 Light mode'};lab();b.onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}lab();try{window.dispatchEvent(new Event('resize'))}catch(e){}try{if(typeof R!=='undefined'&&R)run()}catch(e){}try{renderSetup()}catch(e){}try{liveRender()}catch(e){}};const nv=$('views');if(nv){s.className='home';s.style.cssText='';b.className='theme';b.style.cssText='';nv.insertBefore(s,nv.firstChild);nv.appendChild(b)}else{document.body.insertBefore(b,document.body.firstChild);document.body.insertBefore(s,document.body.firstChild)}}}catch(e){}
 </script></body></html>
