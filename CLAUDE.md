@@ -29,6 +29,8 @@ Hard rules
   Screen settings (units, look, alarm sound, the provenance legend) live in one header menu (#screenMenu).
   The header's laps come from `cars.derived.race` (the leader), as on the broadcast; a lap race with no
   time limit shows laps to go on the big display. Race control lists by event time, not arrival.
+  The spotter list is ordered by side, not distance: cars ahead always above the followed car, cars
+  behind always below, nearest next to it, three places each side (empty places kept).
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).
 
 Verification status
