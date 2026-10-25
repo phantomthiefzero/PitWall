@@ -32,14 +32,16 @@ a.app:hover{border-color:var(--acc);transform:translateY(-2px)}.app h2{margin:0;
 .upd ul{margin:4px 0 10px 18px;padding:0;color:var(--mut);font-size:13.5px}.upd input{font:inherit;font-size:13px;padding:7px 9px;border-radius:7px;border:1px solid var(--ln);background:var(--bg);color:var(--fg);min-width:320px;flex:1}
 .upd .acc{background:var(--acc);border-color:var(--acc);color:#1d1600;font-weight:600}.upd .note{color:var(--mut);font-size:13px}
 footer{margin-top:28px;color:var(--mut);font-size:13px}
+.bar.busy i{width:30%!important;animation:busy 1.1s ease-in-out infinite}@keyframes busy{0%{margin-left:0}50%{margin-left:70%}100%{margin-left:0}}
+.ok-msg{color:var(--good,#1a8f4c)}button:disabled{opacity:.6;cursor:progress}
 </style></head><body><div class="wrap">
 <header><h1>iRacing <span>Suite</span></h1><span class="ver"><span id="ver"></span><span id="verBuild"></span></span><button class="theme" id="themeBtn" type="button"></button></header>
 <div class="status wait" id="status"><div class="dot"></div><div class="st-main"><div class="st-title" id="stTitle">Starting...</div><div class="st-sub" id="stSub"></div></div><div id="stBtns"></div></div>
 <div class="share upd hidden" id="upd"></div>
 <div class="apps">
-<a class="app" href="/analyzer/?view=coach"><span class="tag ok">Ready</span><h2>Coaching</h2><p>Your average lap against your best lap (from an .ibt file, your saved live laps or Garage 61 laps): where the time goes, corner by corner, and what to change in the driving and the setup.</p><span class="open">Open →</span></a>
-<a class="app" href="/analyzer/?view=setup"><span class="tag ok">Ready</span><h2>Setup</h2><p>The live car setup, the engineer's 6-lap plan coloured against what is in the sim right now, predicted changes and the manual notes for your car.</p><span class="open">Open →</span></a>
-<a class="app" href="/analyzer/"><span class="tag ok">Ready</span><h2>Lap Analyzer</h2><p>Compare your lap with a reference lap (your 2nd fastest, another file or a Garage 61 lap), read your car setup the way the iRacing garage shows it, and watch setup changes take effect live, run by run.</p><span class="open">Open →</span></a>
+<a class="app" href="/analyzer/?view=coach"><span class="tag ok">Ready</span><h2>Coaching</h2><p>Your average lap against your best lap: where the time goes, corner by corner, and what to change in your driving. From an .ibt file, your saved live laps or Garage 61 laps.</p><span class="open">Open →</span></a>
+<a class="app" href="/analyzer/?view=setup"><span class="tag ok">Ready</span><h2>Setup</h2><p>Your car: how it handles on your laps and what to change, the live setup, and the engineer's 6-lap plan, with the manual notes for your car.</p><span class="open">Open →</span></a>
+<a class="app" href="/analyzer/"><span class="tag ok">Ready</span><h2>Lap Analyzer</h2><p>Laps you have driven: your lap against a reference lap (your 2nd fastest, another file or a Garage 61 lap), corner by corner and channel by channel.</p><span class="open">Open →</span></a>
 <div class="app" id="bcTile"><span class="tag" id="bcTag">Starting</span><h2>Broadcast</h2><p>TV-style graphics for streaming a race you spectate: timing tower, battles, driver card, track map, starting grid, race control ticker and replays, with an auto-director for the camera. You and a co-host run it from the producer panel.</p>
 <p style="margin-top:6px">OBS Browser Source, 1920 × 1080:</p><code id="bcObs" style="display:block;font-size:12px;background:var(--bg);border:1px solid var(--ln);border-radius:6px;padding:6px 8px;word-break:break-all;user-select:all">–</code>
 <p style="margin-top:6px">Camera packs: free community cameras (BIG EVIL Racing, RedneckTeck, forum sets) give the director more angles. Their licences do not allow bundling, so download one, then install it here.</p>
@@ -58,15 +60,18 @@ const hasApi=()=>!!(window.pywebview&&window.pywebview.api);
 function render(){const s=$('status'),rep=info.mode==='replay';s.className='status '+(rep?'replay':info.connected?'live':'wait');
 $('stTitle').textContent=rep?'Replaying '+(info.file||'a telemetry file'):info.connected?'Live from iRacing':(info.sdk===false?'iRacing reader unavailable':'Waiting for iRacing');
 $('stSub').textContent=(meta&&meta.car&&(info.connected||rep))?esc(meta.car)+' at '+esc(meta.track):rep?'Played back as if it were live.':info.sdk===false?String(info.sdk_error||''):'Start iRacing and get in the car. This updates by itself.';
-const b=$('stBtns');b.innerHTML='';if(hasApi()){const btn=(t,f)=>{const e=document.createElement('button');e.textContent=t;e.onclick=f;e.style.marginLeft='8px';b.appendChild(e)};
-btn('Replay a telemetry file…',async()=>{const r=await window.pywebview.api.pick_replay();if(r&&r.ok){info.mode='replay';info.file=r.file;meta=null;render()}else if(r&&r.error)alert(r.error)});
-if(rep)btn('Back to live',async()=>{await window.pywebview.api.use_live();info.mode='live';info.connected=false;meta=null;render()})}}
-function connect(){let ws;try{ws=new WebSocket('ws://'+location.host+'/ws')}catch(e){return setTimeout(connect,2000)}
+// The buttons are built when what they offer changes, not on every message: a button rebuilt
+// between the press and the release of a click lost that click.
+const b=$('stBtns'),bk=hasApi()+'|'+rep;if(b.dataset.k===bk)return;b.dataset.k=bk;b.innerHTML='';if(hasApi()){const btn=(t,f,busy)=>{const e=document.createElement('button');e.type='button';e.textContent=t;e.style.marginLeft='8px';
+e.onclick=async()=>{if(e.disabled)return;e.disabled=true;e.textContent=busy;try{await f()}catch(x){alert(String(x))}finally{e.disabled=false;e.textContent=t}};b.appendChild(e)};
+btn('Replay a telemetry file…',async()=>{const r=await window.pywebview.api.pick_replay();if(r&&r.ok){info.mode='replay';info.file=r.file;meta=null;b.dataset.k='';render()}else if(r&&r.error)alert(r.error)},'Choosing a file…');
+if(rep)btn('Back to live',async()=>{await window.pywebview.api.use_live();info.mode='live';info.connected=false;meta=null;b.dataset.k='';render()},'Switching…')}}
+function connect(){let ws;try{ws=new WebSocket('ws://'+location.host+'/ws?ticks=0')}catch(e){return setTimeout(connect,2000)}
 ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.type==='hello'){$('ver').textContent='version '+m.bridge;info.mode=m.mode}else if(m.type==='status'){info.connected=!!m.connected;info.mode=m.source||info.mode;render()}else if(m.type==='session'&&typeof m.yaml==='string'){meta=metaFrom(m.yaml);render()}};
 ws.onclose=()=>setTimeout(connect,2000)}
 function pitwallTile(){const p=info.pitwall,t=$('pwTag'),a=$('pwTile');if(!p)return;if(p.ok){t.textContent='Ready';t.className='tag ok';a.href='/pitwall/?relay='+encodeURIComponent(p.relay)+'&token='+encodeURIComponent(p.token);a.title=''}else{t.textContent='Unavailable';t.className='tag';a.removeAttribute('href');a.title=p.error||''}}
 function broadcastTile(){const p=info.pitwall,t=$('bcTag');if(!p)return;const b=p.broadcast;if(b){t.textContent='Ready';t.className='tag ok';$('bcObs').textContent=b.overlay;$('bcOpen').href=b.producer+'&home='+encodeURIComponent(location.origin+'/')}else{t.textContent='Unavailable';t.className='tag';$('bcObs').textContent=p.error||'–';$('bcOpen').removeAttribute('href')}}
-function camBtns(){const b=$('camBtns');if(!b||b.dataset.done||!hasApi())return;b.dataset.done=1;const mk=(t,f)=>{const e=document.createElement('button');e.type='button';e.textContent=t;e.onclick=f;b.appendChild(e)};
+function camBtns(){const b=$('camBtns');if(!b||b.dataset.done||!hasApi())return;b.dataset.done=1;const mk=(t,f)=>{const e=document.createElement('button');e.type='button';e.textContent=t;e.onclick=async()=>{if(e.disabled)return;e.disabled=true;e.textContent='Working…';try{await f()}finally{e.disabled=false;e.textContent=t}};b.appendChild(e)};
 mk('Install a camera pack…',async()=>{const r=await window.pywebview.api.install_camera_pack();if(r&&r.ok)alert('Installed '+r.installed.length+' camera files into '+r.dest+' ('+r.folders.join(', ')+'). In iRacing press Ctrl+F12 and Load track if they do not appear.');else if(r&&r.error)alert(r.error)});
 mk('Open the cameras folder',async()=>{const r=await window.pywebview.api.open_cameras_folder();if(r&&!r.ok)alert(r.error||'Could not open '+r.path)})}
 window.addEventListener('pywebviewready',camBtns);setTimeout(camBtns,1500);
@@ -114,14 +119,14 @@ async function shareStart(){try{sh=await window.pywebview.api.share_start()}catc
 async function shareStop(){try{sh=await window.pywebview.api.share_stop()}catch(e){}shareCard();sharePoll()}
 window.addEventListener('pywebviewready',sharePoll);setTimeout(sharePoll,1500);
 // ---- Updates: newest build from the repo's GitHub releases (suite/updater.py)
-let up={state:'idle'},upSetup=false,upTimer=null;
+let up={state:'idle'},upSetup=false,upTimer=null,upAsked=0;
 const ago=t=>{if(!t)return'';const d=new Date(t*1000);return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
 function updCard(){const el=$('upd');if(!hasApi()||!up.canApply){el.classList.add('hidden');return}el.classList.remove('hidden');
 $('verBuild').textContent=up.build!=null?' · build '+up.build:'';
 const st=up.state;let h='';el.classList.toggle('big',!!(up.available||upSetup||st==='downloading'||st==='applying'||st==='ready'));
-const key=JSON.stringify([st,up.available,up.hasKey,upSetup,up.progress,up.error,up.latest,up.checkedAt]);if(el.dataset.key===key)return;el.dataset.key=key;
-if(st==='downloading'||st==='ready'||st==='applying'){h='<div class="u-line"><b>Installing build '+(up.latest?up.latest.build:'')+'…</b> '+(st==='downloading'?'downloading'+(up.progress!=null?' ('+Math.round(up.progress*100)+'%)':''):'checking it and restarting')+
-'<div class="bar"><i style="width:'+Math.round((st==='downloading'?(up.progress||0):1)*100)+'%"></i></div><span class="note">The app closes and opens again by itself.</span></div>'}
+const key=JSON.stringify([st,up.available,up.hasKey,upSetup,up.progress,up.error,up.latest,up.checkedAt,upAsked&&Date.now()-upAsked<15000]);if(el.dataset.key===key)return;el.dataset.key=key;
+if(st==='downloading'||st==='ready'||st==='applying'){h='<div class="u-line"><b>Installing build '+(up.latest?up.latest.build:'')+'…</b> '+(st==='downloading'?(up.progress?'downloading ('+Math.round(up.progress*100)+'%)':'starting the download'):'checking it and restarting')+
+'<div class="bar'+(st==='downloading'&&!up.progress?' busy':'')+'"><i style="width:'+Math.round((st==='downloading'?(up.progress||0):1)*100)+'%"></i></div><span class="note">'+(st==='downloading'?'The app closes and opens again by itself when this is done.':'Closing now. The new version opens by itself in a few seconds.')+'</span></div>'}
 else if(!up.hasKey&&!upSetup){h='<div class="u-line"><b>Updates</b> · get each new version from GitHub with one click, instead of downloading it by hand.</div><button type="button" id="uSetup">Set up updates</button>'}
 else if(upSetup||!up.hasKey){h='<div class="sh-main"><h2>Set up updates</h2><p>Your PitWall repo is private, so the app needs a read-only GitHub key to see new versions. You make it once:</p><ol>'+
 '<li><button type="button" id="uOpen">Open GitHub\'s key page</button> (sign in if asked)</li>'+
@@ -134,9 +139,9 @@ else if(upSetup||!up.hasKey){h='<div class="sh-main"><h2>Set up updates</h2><p>Y
 else if(up.available&&up.latest){const ch=(up.changes||[]).slice(0,8);h='<div class="sh-main"><h2>Build '+up.latest.build+' is ready</h2><p>You have build '+(up.build??'?')+'. Download '+up.latest.sizeMB+' MB.</p>'+
 (ch.length?'<div class="note">What\'s new:</div><ul>'+ch.map(c=>'<li>'+esc(c)+'</li>').join('')+'</ul>':'')+
 '<div class="row"><button type="button" class="acc" id="uGo">Update and restart</button><button type="button" id="uCheck">Check again</button></div><p class="note" style="margin-top:8px">Restarting closes PitWall, Broadcast and any share link for a few seconds, so not mid-race.</p>'+(st==='error'?'<p class="err" style="margin-top:8px"></p>':'')+'</div>'}
-else if(st==='checking'){h='<div class="u-line">Checking for updates…</div>'}
+else if(st==='checking'){h='<div class="u-line"><b>Checking for updates…</b><div class="bar busy"><i></i></div></div>'}
 else if(st==='error'){h='<div class="u-line"><b>Updates</b> · <span class="err"></span></div><button type="button" id="uCheck">Try again</button>'}
-else{h='<div class="u-line"><b>Up to date</b> · build '+(up.build??'?')+(up.checkedAt?' · checked '+ago(up.checkedAt):'')+'</div><button type="button" id="uCheck">Check now</button>'}
+else{const just=upAsked&&up.checkedAt&&Date.now()-upAsked<15000;h='<div class="u-line"><b>Up to date</b> · build '+(up.build??'?')+(just?' · <span class="ok-msg">checked just now: you have the newest build</span>':up.checkedAt?' · checked '+ago(up.checkedAt):'')+'</div><button type="button" id="uCheck">Check now</button>'}
 el.innerHTML=h;const e=el.querySelector('.err');if(e&&st==='error')e.textContent=up.error||'Something went wrong.';
 const on=(id,f)=>{const b=$(id);if(b)b.onclick=f};
 on('uSetup',()=>{upSetup=true;updCard();setTimeout(()=>$('uKey')&&$('uKey').focus(),50)});
@@ -145,8 +150,8 @@ on('uCancel',()=>{upSetup=false;updCard()});
 on('uChange',()=>{upSetup=true;updCard()});
 on('uSave',async()=>{const b=$('uSave'),v=$('uKey').value;b.disabled=true;b.textContent='Checking the key…';$('uErr').textContent='';
 const r=await window.pywebview.api.update_set_key(v);b.disabled=false;b.textContent='Save key';if(r&&r.ok){upSetup=false;up=r;updCard()}else{$('uErr').textContent=(r&&r.error)||'That key did not work.'}});
-on('uCheck',async()=>{await window.pywebview.api.update_check();up.state='checking';updCard();updPoll()});
-on('uGo',async()=>{await window.pywebview.api.update_install();up.state='downloading';up.progress=0;updCard();updPoll()})}
+on('uCheck',async()=>{upAsked=Date.now();up.state='checking';updCard();try{const r=await window.pywebview.api.update_check();if(r&&r.state)up=r}catch(e){}updCard();updPoll()});
+on('uGo',async()=>{up.state='downloading';up.progress=0;updCard();try{const r=await window.pywebview.api.update_install();if(r&&r.state)up=r}catch(e){}updCard();updPoll()})}
 async function updPoll(){clearTimeout(upTimer);if(!hasApi()){upTimer=setTimeout(updPoll,1500);return}
 try{const r=await window.pywebview.api.update_info();if(r)up=r}catch(e){}updCard();
 upTimer=setTimeout(updPoll,['checking','downloading','ready','applying'].includes(up.state)?400:60000)}

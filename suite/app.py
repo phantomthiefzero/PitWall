@@ -216,18 +216,26 @@ class Api:
         return {"ok": True}
 
     def update_check(self):
-        _background(self._engine.updater.check)
-        return {"ok": True}
+        u = self._engine.updater
+        if u.state in ("checking", "downloading", "ready", "applying"):
+            return u.info()
+        # Say "checking" before the thread starts, so the page shows it from the click on.
+        u.state, u.error = "checking", None
+        _background(u.check)
+        return u.info()
 
     def update_install(self):
         """Download the newest build, check it, swap it in and restart."""
         u = self._engine.updater
+        if u.state in ("downloading", "ready", "applying"):
+            return u.info()                     # already on its way (a second click)
+        u.state, u.error, u.progress = "downloading", None, 0.0
 
         def run():
             u.download()
             u.apply(lambda: quit_now(0))
         _background(run)
-        return {"ok": True}
+        return u.info()
 
     def share_info(self):
         host = self._engine.pitwall
@@ -280,21 +288,30 @@ def selftest_rename(out):
     return result
 
 
-def quit_now(code=0):
+def quit_now(code=0, wait=3.0, exit_fn=None):
     """End the process. Background threads (iRacing reader, thread pools) must not
-    keep the app alive after its window is closed."""
+    keep the app alive after its window is closed. What must end with the app (the
+    share tunnel) gets a few seconds, side by side, and no more: closing never hangs."""
+    jobs = []
     for f in _on_quit:
-        try:
-            f()
-        except Exception:
-            pass
+        def run(f=f):
+            try:
+                f()
+            except Exception:
+                pass
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        jobs.append(t)
+    end = time.monotonic() + wait
+    for t in jobs:
+        t.join(max(0.0, end - time.monotonic()))
     try:
         print("iRacing Suite closed.")
         sys.stdout.flush()
         sys.stderr.flush()
     except Exception:
         pass
-    os._exit(code)
+    (exit_fn or os._exit)(code)
 
 
 def fallback_window(url):
@@ -388,6 +405,12 @@ def _main():
             window = webview.create_window("iRacing Suite", engine.url, js_api=api,
                                            width=1440, height=920, min_size=(900, 600))
             api._window = window
+            # Quit as the window starts closing: waiting for "closed" left the window
+            # hanging on screen while WebView2 shut itself down.
+            try:
+                window.events.closing += lambda *a: quit_now(0)
+            except Exception:
+                pass
             try:
                 window.events.closed += lambda *a: quit_now(0)
             except Exception:

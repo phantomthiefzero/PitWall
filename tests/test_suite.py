@@ -1013,6 +1013,58 @@ class CarArraysTest(unittest.TestCase):
             self.assertIn(name, CARIDX_SEND)
 
 
+class HubFanOutTest(unittest.TestCase):
+    """The home page asks for no telemetry (/ws?ticks=0), and one slow client holds nobody up."""
+
+    class _C:
+        def __init__(self, delay=0.0, wants=True):
+            self.got, self.delay, self.wants_ticks = [], delay, wants
+
+        async def send_text(self, text):
+            if self.delay:
+                await asyncio.sleep(self.delay)
+            self.got.append(json.loads(text)["type"])
+
+    def test_no_ticks_for_a_status_only_client_and_slow_one_dropped(self):
+        from suite.bridge import Hub
+        hub = Hub(source=None, rate=60)
+        home, fast, slow = self._C(wants=False), self._C(), self._C(delay=5.0)
+        hub.clients = {home, fast, slow}
+
+        async def go():
+            t0 = time.monotonic()
+            await hub.send_all({"type": "tick", "v": {}})
+            took = time.monotonic() - t0
+            await hub.send_all({"type": "status", "connected": True})
+            return took
+        took = asyncio.run(go())
+        self.assertEqual(home.got, ["status"])                 # no telemetry for the home page
+        self.assertEqual(fast.got, ["tick", "status"])
+        self.assertNotIn(slow, hub.clients)                    # timed out once, then left out
+        self.assertLess(took, 1.5)                             # waited once (1 s), not per client
+
+    def test_home_page_asks_for_no_ticks(self):
+        page = pathlib.Path(ROOT, "suite", "web", "index.html").read_text(encoding="utf-8")
+        self.assertIn("/ws?ticks=0", page)
+
+
+class QuitTest(unittest.TestCase):
+    def test_quit_waits_for_a_stuck_cleanup_only_so_long(self):
+        from suite import app
+        ran, exits = [], []
+        old_hooks = list(app._on_quit)
+        app._on_quit[:] = [lambda: time.sleep(30), lambda: ran.append(1)]
+        try:
+            t0 = time.monotonic()
+            app.quit_now(0, wait=0.5, exit_fn=exits.append)
+            took = time.monotonic() - t0
+        finally:
+            app._on_quit[:] = old_hooks
+        self.assertEqual(ran, [1])
+        self.assertEqual(exits, [0])
+        self.assertLess(took, 2.0)
+
+
 class PickTestsTest(unittest.TestCase):
     """Pull requests run the tests for what they change (scripts/pick_tests.py)."""
 

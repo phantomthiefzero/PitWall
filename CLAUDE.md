@@ -111,6 +111,11 @@ iRacing Suite app (suite/)
   named by what they are (read from the header and last sample, cached). Only the suite's own server serves
   them, by an id from the last listing, never a path from the page; over one WebSocket (/api/library/stream),
   with 96 KB pieces (/api/library/file) as the fallback. The relay never serves them.
+- Home page (`suite/web/index.html`): its /ws asks for no telemetry (`?ticks=0`); Hub.send_all sends to
+  every client at once, so one slow client cannot hold the pump. Buttons are built when what they offer
+  changes, never on every message (a rebuilt button lost the click), and answer a click at once (disabled,
+  "Working…"). The app quits as its window starts closing (events.closing); quit_now gives the share
+  tunnel a few seconds side by side and no more.
 - Updates (`suite/updater.py`): the release build stamps `suite/_build.py` (BUILD = run number +
   BUILD_OFFSET 100, since the repo moved to a new public home after build 100; COMMIT); the app compares it with the newest `build-N` release, downloads next to itself,
   verifies size + SHA-256, renames itself aside and restarts with `--after-update PIDS` (waits
