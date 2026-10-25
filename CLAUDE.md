@@ -78,12 +78,17 @@ iRacing Suite app (suite/)
   in its box), "your best lap" (fastest clean lap; never "fastest lap" for this), "your average lap"
   (Coaching; never "typical"), "median lap" (a middle lap time), "clean laps" (no pit, incident, off
   track or active reset, a usual time (lapBand/usualLaps), within 7% of the fastest of them), "timed laps" (complete and timed), "Garage 61" (with the space), "Corner 4" in
-  sentences and tables, "C4" only on charts and the corner strip. Views: Coaching, Setup, Lap Analyzer.
-- The three views each do one job, and must stay that way: Coaching is the driving only (gap, 3 things, where
+  sentences and tables, "C4" only on charts and the corner strip. Views: Live, Coaching, Setup, Lap Analyzer.
+- The four views each do one job, and must stay that way: Live telemetry (view=live, its own tile on the home
+  page) is what the car is doing right now, for an engineer watching: speed, gear, revs, pedals, steering, the
+  last 12 s of inputs, g, this lap against the picked lap (delta, speed, pedals, steering), the car's systems and
+  recent laps; nothing about files. Coaching is the driving only (gap, 3 things, where
   the time goes, corners, consistency, track limits, progress, conditions, pace rating; one line points to Setup
   when the car costs time); Setup is the car only (how it handles on your laps and what to change, tyres on your
   lap, the live engineer and runs, the setup sheet); the Lap Analyzer is laps already driven (your laps, your lap
-  against a reference, every channel, driver laps). The live connection is a one-line bar (#liveBar) on all three.
+  against a reference, every channel, driver laps). The live connection is a one-line bar (#liveBar) on all of them.
+  A live lap counts (valid) only when the car covered it (distance) and the lap clock agrees with the time it
+  took (a formation lap's clock starts at the green), with no pit, incident, off-track moment or reset.
   Which card shows where is the `body[data-view=...]` CSS at the top of the page. Switching views happens in
   the page (showView / viewShown, history.pushState): no reload, so nothing loaded is lost. The files in the
   two boxes, the lap picked from each and Coaching's Garage 61 laps are kept in IndexedDB (KEEP) and opened

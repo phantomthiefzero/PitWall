@@ -1023,6 +1023,58 @@ console.log(JSON.stringify({ v1: v1.call, v2: v2.call, v3: v3.call, v4: v4.call,
 """
 
 
+LIVE_LAPS_JS = r"""
+// live laps: a formation lap whose clock starts at the green, a clean lap, an off-track lap, an incident lap, a clean lap
+LIVE.ws = {}; LIVE.state = 'bridge';
+let T = 50, fuel = 40, inc = 0;
+function lap(no, secs, opt) {
+  const n = Math.round(secs * 60), clock0 = opt.clockFrom || 0;
+  for (let i = 0; i < n; i++) {
+    const d = i / n, ct = i / 60 >= clock0 ? i / 60 - clock0 : 0;
+    if (opt.inc && d > 0.5 && inc === opt.incBefore) inc++;
+    liveTick({ Lap: no, LapDistPct: d, LapCurrentLapTime: ct, LapLastLapTime: -1, Speed: 50, Brake: d % 0.25 < 0.03 ? 0.8 : 0, Throttle: d % 0.25 < 0.05 ? 0 : 1,
+               SteeringWheelAngle: 0.2, YawRate: 0.1, LatAccel: 9, LongAccel: -3, OnPitRoad: false, SessionTime: T, FuelLevel: fuel,
+               PlayerTrackSurface: opt.off && d > 0.4 && d < 0.41 ? 0 : 3, PlayerCarMyIncidentCount: inc, IsOnTrack: true });
+    T += 1 / 60; fuel -= opt.burn / n;
+  }
+}
+lap(0, 70, { clockFrom: 66, burn: 1.5 });       // formation: the clock runs only for the last 4 s
+lap(1, 60, { burn: 2.0 });
+lap(2, 60.5, { burn: 2.0, off: true });
+lap(3, 61, { burn: 2.0, inc: true, incBefore: 0 });
+lap(4, 60.2, { burn: 2.0 });
+liveTick({ Lap: 5, LapDistPct: 0.001, LapCurrentLapTime: 0.01, LapLastLapTime: 60.2, Speed: 50, Throttle: 1, OnPitRoad: false, SessionTime: T, FuelLevel: fuel, PlayerTrackSurface: 3, PlayerCarMyIncidentCount: inc });
+console.log(JSON.stringify({ laps: LIVE.laps.map(l => [l.lap, l.valid, l.why, l.fuel == null ? null : +l.fuel.toFixed(2)]),
+  roll: TELE.roll.length, rollSpan: +(TELE.roll[TELE.roll.length - 1].t - TELE.roll[0].t).toFixed(1), gg: TELE.gg.length }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class LiveLapsTest(unittest.TestCase):
+    """Live laps for the Live telemetry view, Coaching and the engineer: which count, and why not."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(LIVE_LAPS_JS)
+
+    def test_which_laps_count(self):
+        laps = {l[0]: (l[1], l[2]) for l in self.r["laps"]}
+        self.assertFalse(laps[0][0])                                  # formation: 4 s on the clock
+        self.assertEqual(laps[0][1], "lap clock off (start or formation lap)")
+        self.assertEqual(laps[1], (True, ""))
+        self.assertEqual(laps[2], (False, "off track"))
+        self.assertEqual(laps[3], (False, "incident"))
+        self.assertEqual(laps[4], (True, ""))
+
+    def test_fuel_per_full_lap_and_rolling_window(self):
+        fuel = {l[0]: l[3] for l in self.r["laps"]}
+        self.assertEqual(fuel[1], 2.0)
+        self.assertEqual(fuel[2], 2.0)                                # off track still burns a full lap of fuel
+        self.assertLessEqual(self.r["rollSpan"], 12.0)                # the inputs trace keeps 12 s
+        self.assertGreater(self.r["roll"], 600)
+        self.assertEqual(self.r["gg"], 120)
+
+
 @unittest.skipUnless(NODE, "Node.js is not installed")
 class LiveVerdictTest(unittest.TestCase):
     @classmethod
