@@ -340,7 +340,8 @@ class AppWindowApiTest(unittest.TestCase):
         self.assertEqual(public, {"version", "pick_replay", "use_live", "install_camera_pack", "open_cameras_folder", "library_pick_folder",
                                   "share_start", "share_stop", "share_info",
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
-                                  "update_open_key_page", "save_report"})
+                                  "update_open_key_page", "save_report",
+                                  "record_start", "record_stop", "record_info", "record_show"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
 
@@ -1046,6 +1047,56 @@ class HubFanOutTest(unittest.TestCase):
     def test_home_page_asks_for_no_ticks(self):
         page = pathlib.Path(ROOT, "suite", "web", "index.html").read_text(encoding="utf-8")
         self.assertIn("/ws?ticks=0", page)
+
+
+class RecordButtonTest(unittest.TestCase):
+    """Record this session: waits for the sim, records, stops cleanly, names the file by its track."""
+
+    def test_waits_records_stops_and_names_the_file(self):
+        import gzip as _gz
+        import shutil
+        from pitwall.sources import FakeSource
+        from suite.recording import SessionRecorder
+        d = tempfile.mkdtemp()
+        tries = {"n": 0}
+
+        class LateSim(FakeSource):
+            def connect(self):                       # iRacing is not up for the first look
+                tries["n"] += 1
+                return tries["n"] > 1 and super().connect()
+        rec = SessionRecorder(make_source=lambda: LateSim(realtime=True), folder=d, log=lambda *a: None)
+        rec.HZ = 20.0
+        try:
+            self.assertEqual(rec.start()["state"], "waiting")
+            self.assertTrue(_wait(lambda: rec.state == "recording", 10))
+            self.assertTrue(_wait(lambda: rec.ticks >= 10, 10))
+            self.assertEqual(rec.start()["state"], "recording")       # a second click changes nothing
+            info = rec.stop()
+            self.assertEqual(info["state"], "saved")
+            self.assertTrue(info["name"].startswith("Fake-International-Circuit"), info["name"])
+            with _gz.open(info["path"], "rt", encoding="utf-8") as f:
+                kinds = [json.loads(line)["type"] for line in f]
+            self.assertEqual(kinds[0], "header")
+            self.assertIn("session", kinds)
+            self.assertGreaterEqual(kinds.count("tick"), 10)
+        finally:
+            rec.stop()
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_cancel_while_waiting_leaves_no_file(self):
+        import shutil
+        from suite.recording import SessionRecorder
+
+        class NoSim:
+            def connect(self):
+                return False
+        d = tempfile.mkdtemp()
+        rec = SessionRecorder(make_source=NoSim, folder=d, log=lambda *a: None)
+        rec.start()
+        time.sleep(0.2)
+        self.assertEqual(rec.stop()["state"], "off")
+        self.assertEqual(os.listdir(d), [])
+        shutil.rmtree(d, ignore_errors=True)
 
 
 class QuitTest(unittest.TestCase):

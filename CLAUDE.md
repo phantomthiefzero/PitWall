@@ -116,6 +116,10 @@ iRacing Suite app (suite/)
   changes, never on every message (a rebuilt button lost the click), and answer a click at once (disabled,
   "Working…"). The app quits as its window starts closing (events.closing); quit_now gives the share
   tunnel a few seconds side by side and no more.
+- Record this session (`suite/recording.py`): the home page's Record button writes the same capture as
+  `pitwall record` (10 Hz, every raw variable) into Documents\iRacingSuite\Recordings, on its own thread;
+  waits for the sim, stops cleanly (also when the app closes, via _on_quit), and names the file by track
+  and session type. `pitwall.recorder.record` takes `stop` and `progress` for this.
 - Updates (`suite/updater.py`): the release build stamps `suite/_build.py` (BUILD = run number +
   BUILD_OFFSET 100, since the repo moved to a new public home after build 100; COMMIT); the app compares it with the newest `build-N` release, downloads next to itself,
   verifies size + SHA-256, renames itself aside and restarts with `--after-update PIDS` (waits

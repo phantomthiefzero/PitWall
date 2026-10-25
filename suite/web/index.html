@@ -34,9 +34,13 @@ a.app:hover{border-color:var(--acc);transform:translateY(-2px)}.app h2{margin:0;
 footer{margin-top:28px;color:var(--mut);font-size:13px}
 .bar.busy i{width:30%!important;animation:busy 1.1s ease-in-out infinite}@keyframes busy{0%{margin-left:0}50%{margin-left:70%}100%{margin-left:0}}
 .ok-msg{color:var(--good,#1a8f4c)}button:disabled{opacity:.6;cursor:progress}
+.rec{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:8px 14px;border:1px solid var(--ln);border-radius:10px;background:var(--card);font-size:14px}
+.rec .rdot{width:10px;height:10px;border-radius:50%;background:#d6333a;flex:none}.rec.on .rdot{animation:rpulse 1.2s ease-in-out infinite}.rec.idle .rdot{background:var(--mut)}
+@keyframes rpulse{50%{opacity:.25}}.rec .rmut{color:var(--mut)}.rec .rgo{margin-left:auto;display:flex;gap:8px}
 </style></head><body><div class="wrap">
 <header><h1>iRacing <span>Suite</span></h1><span class="ver"><span id="ver"></span><span id="verBuild"></span></span><button class="theme" id="themeBtn" type="button"></button></header>
 <div class="status wait" id="status"><div class="dot"></div><div class="st-main"><div class="st-title" id="stTitle">Starting...</div><div class="st-sub" id="stSub"></div></div><div id="stBtns"></div></div>
+<div class="rec hidden" id="rec"></div>
 <div class="share upd hidden" id="upd"></div>
 <div class="apps">
 <a class="app" href="/analyzer/?view=coach"><span class="tag ok">Ready</span><h2>Coaching</h2><p>Your average lap against your best lap: where the time goes, corner by corner, and what to change in your driving. From an .ibt file, your saved live laps or Garage 61 laps.</p><span class="open">Open →</span></a>
@@ -156,6 +160,34 @@ async function updPoll(){clearTimeout(upTimer);if(!hasApi()){upTimer=setTimeout(
 try{const r=await window.pywebview.api.update_info();if(r)up=r}catch(e){}updCard();
 upTimer=setTimeout(updPoll,['checking','downloading','ready','applying'].includes(up.state)?400:60000)}
 window.addEventListener('pywebviewready',updPoll);setTimeout(updPoll,1500);
+// ---- Record this session (suite/recording.py): the same capture as `pitwall record`, into Documents\iRacingSuite\Recordings
+let rec={state:'off'},recTimer=null;
+const mb=b=>b==null?'':(b/1048576).toFixed(b<10485760?1:0)+' MB',clk=s=>{s=s||0;const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
+function recCard(){const el=$('rec');if(!hasApi()){el.classList.add('hidden');return}el.classList.remove('hidden');const st=rec.state,busy=['waiting','recording','saving'].includes(st);
+el.className='rec '+(st==='recording'?'on':busy?'':'idle');
+// the buttons are built when the state changes; the clock and size are updated in place
+if(el.dataset.st!==st){el.dataset.st=st;let h='<div class="rdot"></div><div id="recTxt"></div><div class="rgo">';
+if(st==='waiting')h+='<button type="button" id="recStop">Cancel</button>';
+else if(st==='recording')h+='<button type="button" id="recStop">Stop and save</button>';
+else if(st==='saving')h+='';
+else h+=(st==='saved'?'<button type="button" id="recShow">Show the file</button>':'')+'<button type="button" id="recGo" title="Saves everything iRacing sends, 10 times a second, while you drive, spectate or watch a replay in iRacing. Send the file in to have a session looked at.">'+(st==='saved'?'Record another':'Record this session')+'</button>';
+el.innerHTML=h+'</div>';
+const go=$('recGo'),stp=$('recStop'),sh=$('recShow');
+if(go)go.onclick=async()=>{go.disabled=true;go.textContent='Starting…';try{rec=await window.pywebview.api.record_start()}catch(e){rec={state:'error',error:String(e)}}recCard();recPoll()};
+if(stp)stp.onclick=async()=>{stp.disabled=true;stp.textContent='Saving…';try{rec=await window.pywebview.api.record_stop()}catch(e){}recCard();recPoll()};
+if(sh)sh.onclick=()=>window.pywebview.api.record_show()}
+const t=$('recTxt');let x;
+if(st==='waiting')x='<b>Waiting for iRacing…</b> <span class="rmut">recording starts when you are in a session or watching a replay</span>';
+else if(st==='recording')x='<b>Recording</b> '+clk(rec.seconds)+' <span class="rmut">· '+mb(rec.bytes)+' · Documents\\iRacingSuite\\Recordings</span>';
+else if(st==='saving')x='<b>Saving…</b>';
+else if(st==='saved')x='<b>Saved</b> <span class="rmut">'+esc(rec.name)+' · '+mb(rec.bytes)+'</span>';
+else if(st==='error')x='<span style="color:#d6333a">'+esc(rec.error||'Recording stopped.')+'</span>';
+else x='<b>Record this session</b> <span class="rmut">for a race or replay you want looked at later</span>';
+if(t.innerHTML!==x)t.innerHTML=x}
+async function recPoll(){clearTimeout(recTimer);if(!hasApi()){recTimer=setTimeout(recPoll,1500);return}
+try{rec=await window.pywebview.api.record_info()||rec}catch(e){}recCard();
+recTimer=setTimeout(recPoll,['waiting','recording','saving'].includes(rec.state)?1000:5000)}
+window.addEventListener('pywebviewready',recPoll);setTimeout(recPoll,1500);
 window.addEventListener('pywebviewready',render);
 render();poll();setInterval(poll,3000);connect();
 </script></body></html>
