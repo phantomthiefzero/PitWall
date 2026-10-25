@@ -139,7 +139,12 @@ def ibt_info(path):
     }
 
 
-G61_RE = re.compile(r"^Garage_61_-_(.+?)_-_(.+?)_-_(.+?)_-_(\d+)_(\d\d)_(\d{3})_-_", re.I)
+# Garage 61 names its downloads "Garage 61 - driver - car - track - 01.22.716 - id.csv"; some
+# browsers and older downloads have underscores for the spaces, dots and parentheses instead.
+G61_RE = re.compile(r"^Garage[ _]61[ _]-[ _](.+?)[ _]-[ _](.+?)[ _]-[ _](.+?)[ _]-[ _](\d+)[._](\d\d)[._](\d{3})[ _]-[ _]", re.I)
+
+
+CACHE_V = 2      # bump when what is read from a file changes, so the cached names are read again
 
 
 def g61_info(path):
@@ -264,7 +269,7 @@ class Library:
         found = found[:MAX_FILES]
         out, changed, keep, ids = [], False, {}, {}
         for mtime, size, p in found:
-            key = "%s|%d|%d" % (p, size, int(mtime))
+            key = "%s|%d|%d|%d" % (p, size, int(mtime), CACHE_V)
             info = self.cache.get(key)
             if info is None:
                 try:

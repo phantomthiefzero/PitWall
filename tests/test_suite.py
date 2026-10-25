@@ -1127,6 +1127,17 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(g["sub"], os.path.join("FromRig", "Indy"))          # found one folder down
         self.assertEqual([x["auto"] for x in info["folders"]], [True, False])
 
+    def test_garage61_name_with_spaces_as_downloaded(self):
+        from suite.library import g61_info
+        p = os.path.join(self.rig, "Garage 61 - Mathijs Wijten - Ferrari 296 GT3 - Indianapolis Motor Speedway (Road Course)"
+                                   " - 01.22.716 - 01M2JB7ECHNABCDEFGHJKMNPQR.csv")
+        with open(p, "w") as f:
+            f.write("Speed,LapDistPct,Brake\n" + "50,0.5,0\n" * 100)
+        g = g61_info(p)
+        self.assertEqual((g["driver"], g["car"], g["track"], g["lap"]),
+                         ("Mathijs Wijten", "Ferrari 296 GT3", "Indianapolis Motor Speedway (Road Course)", 82.716))
+        self.assertNotIn("est", g)
+
     def test_renamed_garage61_lap_gets_its_time_from_its_length(self):
         from suite.library import g61_info
         p = os.path.join(self.rig, "my fast lap.csv")
