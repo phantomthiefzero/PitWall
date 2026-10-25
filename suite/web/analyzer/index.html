@@ -52,7 +52,15 @@ document.body.dataset.view=V[v]?v:'laps';
 if(V[v]){document.body.dataset.view=v;document.getElementById('appTitle').textContent=V[v][0];document.title=V[v][0]+' · iRacing Suite';const p=document.querySelector('h1+nav+p.m')||document.querySelector('#views+p.m');if(p)p.textContent=V[v][1]}
 window.VIEWS=V;try{boxNames(v)}catch(e){}
 const link=x=>{const n=new URLSearchParams(location.search);if(x)n.set('view',x);else n.delete('view');const s=n.toString();return location.pathname+(s?'?'+s:'')};
-document.getElementById('views').innerHTML=[['coach','Coaching'],['setup','Setup'],['','Lap Analyzer']].map(([x,l])=>'<a href="'+link(x)+'"'+((v||'')===x||(!V[v]&&!x)?' class="on"':'')+'>'+l+'</a>').join('')})()}catch(e){}</script>
+document.getElementById('views').innerHTML=[['coach','Coaching'],['setup','Setup'],['','Lap Analyzer']].map(([x,l])=>'<a href="'+link(x)+'" data-v="'+x+'"'+((v||'')===x||(!V[v]&&!x)?' class="on"':'')+'>'+l+'</a>').join('');
+// Coaching, Setup and the Lap Analyzer are one page: switching views keeps everything loaded (no reload).
+document.getElementById('views').addEventListener('click',e=>{const a=e.target.closest('a[data-v]');if(!a||e.ctrlKey||e.metaKey||e.shiftKey||e.button)return;e.preventDefault();
+const x=a.dataset.v;history.pushState(null,'',link(x));showView(x)});
+window.addEventListener('popstate',()=>showView(new URLSearchParams(location.search).get('view')||''));
+window.showView=function(x){const W=V[x];document.body.dataset.view=W?x:'laps';const t=W?W[0]:'Lap Analyzer';document.getElementById('appTitle').textContent=t;document.title=W?t+' · iRacing Suite':'Lap Analyzer';
+const p=document.querySelector('#views+p.m');if(p)p.textContent=W?W[1]:(window.INTRO0||p.textContent);try{boxNames(x)}catch(e){}
+document.querySelectorAll('#views a[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===(W?x:'')));
+try{if(typeof viewShown==='function')viewShown(document.body.dataset.view)}catch(e){console.error('view',e)}}})()}catch(e){}</script>
 <div class="card livebar" id="liveBar" hidden role="status"></div>
 <div class="card" id="balance" hidden></div>
 <div class="card" id="tyres" hidden></div>
@@ -281,14 +289,14 @@ const CH=[['Speed (km/h)','Speed',3.6],['Brake (%)','Brake',100],['Throttle (%)'
 const IB={};
 function dropSelf(){if(SELF!==null){delete F.b;SELF=null}}
 async function load(f,k,z){dropSelf();if(/\.ibt$/i.test(f.name)){IB[k]=ibt(await f.arrayBuffer());libRecord(IB[k],f.name+'|'+f.size);rbFromFile(IB[k],f.name+'|'+f.size);rhLearn(IB[k]);gbRecord(IB[k].carPath,IB[k].setup);pick(k,z,IB[k].best)}else{delete IB[k];F[k]=parse(await f.text(),f.name);z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap);const s=z.querySelector('select');if(s)s.hidden=true}}
-function pick(k,z,i){const ib=IB[k];F[k]=ib.lapObj(i);F[k].idx=i;z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap)+' (from your .ibt)';let s=z.querySelector('select');if(!s){s=document.createElement('select');s.onclick=e=>e.stopPropagation();z.appendChild(s)}s.hidden=false;s.innerHTML=ib.laps.map((l,j)=>l.ok?`<option value="${j}">Lap ${l.lap} · ${ft(l.time)}</option>`:'').join('');s.value=i;s.onchange=()=>{pick(k,z,+s.value);run()}}
-function setup(z,k){z.dataset.def=z.querySelector('span').textContent;z.querySelector('.clr').onclick=e=>{e.preventDefault();e.stopPropagation();clearFile(k)};const inp=z.querySelector('input');inp.accept='.csv,.ibt';const go=async f=>{if(!f)return;try{$('err').textContent='';await load(f,k,z);run();renderOwn()}catch(e){$('err').textContent=e.message}};z._go=go;
+function pick(k,z,i){const ib=IB[k];F[k]=ib.lapObj(i);F[k].idx=i;z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap)+' (from your .ibt)';let s=z.querySelector('select');if(!s){s=document.createElement('select');s.onclick=e=>e.stopPropagation();z.appendChild(s)}s.hidden=false;s.innerHTML=ib.laps.map((l,j)=>l.ok?`<option value="${j}">Lap ${l.lap} · ${ft(l.time)}</option>`:'').join('');s.value=i;s.onchange=()=>{pick(k,z,+s.value);keepIdx(k,+s.value);run()}}
+function setup(z,k){z.dataset.def=z.querySelector('span').textContent;z.querySelector('.clr').onclick=e=>{e.preventDefault();e.stopPropagation();clearFile(k)};const inp=z.querySelector('input');inp.accept='.csv,.ibt';const go=async f=>{if(!f)return;try{$('err').textContent='';await load(f,k,z);keepFiles(k,[f]);run();renderOwn()}catch(e){$('err').textContent=e.message}};z._go=go;
 inp.multiple=k==='b';inp.onchange=()=>k==='b'?goMany(Array.from(inp.files)):go(inp.files[0]);z.ondragover=e=>{e.preventDefault()};z.ondrop=e=>{e.preventDefault();k==='b'?goMany(Array.from(e.dataTransfer.files)):go(e.dataTransfer.files[0])}}
 setup($('za'),'a');setup($('zb'),'b');
 function selfRef(){const ib=IB.a;if(!ib||!F.a||F.a.idx==null)return null;const ok=ib.laps.map((l,j)=>({l,j})).filter(x=>x.l.ok).sort((p,q)=>p.l.time-q.l.time);if(ok.length<2)return null;const best=ib.best,j=F.a.idx===best?ok[1].j:best;return{o:ib.lapObj(j),name:j===best?'Fastest lap':'Lap '+ib.laps[j].lap+' (2nd fastest)'}}
 function ensureRef(){if(!F.a)return false;if(SELF!==null||!F.b){const sr=IB.a?selfRef():null;if(sr){F.b=sr.o;SELF=sr.name}else if(SELF!==null){delete F.b;SELF=null}}return !!F.b}
 function syncZones(){const za=$('za'),zb=$('zb');za.querySelector('.clr').hidden=!F.a;zb.querySelector('.clr').hidden=!(F.b&&SELF===null);if(SELF!==null)zb.querySelector('span').textContent='Automatic: '+SELF+' from this file';else if(!F.b)zb.querySelector('span').textContent=zb.dataset.def}
-function clearFile(k){if(k==='a'){dropSelf();delete IB.a;delete F.a}else{dropSelf();delete IB.b;delete F.b;F.refs=null;F.refInc=null;$('refs').innerHTML='';$('refs').hidden=true}
+function clearFile(k){keepPut(k,null);if(k==='a'){dropSelf();delete IB.a;delete F.a}else{dropSelf();delete IB.b;delete F.b;F.refs=null;F.refInc=null;$('refs').innerHTML='';$('refs').hidden=true}
 const z=$(k==='a'?'za':'zb');z.classList.remove('on');z.querySelector('span').textContent=z.dataset.def;const s=z.querySelector('select');if(s){s.hidden=true;s.innerHTML=''}z.querySelector('input').value='';$('err').textContent='';run();renderOwn()}
 function run(){ensureRef();syncZones();ghRender();if(F.a&&F.b&&F.b.limited){$('out').hidden=true;$('refOnly').hidden=true;R=null;$('lim').innerHTML=limHtml();$('lim').hidden=false;return}$('lim').hidden=true;if(!(F.a&&F.b)){$('out').hidden=true;$('refOnly').hidden=true;R=null;return}$('refOnly').hidden=false;turnsLoad(F.a);if(F.refs&&F.refs.length>1){const act=activeRefs();F.b=groupLap(act.length?act:F.refs)}R=analyze(F.a,F.b);$('out').hidden=false;const s=R.cs.reduce((x,c)=>x+c.dt,0),cl=s>0?'bad':'good';
 $('sum').innerHTML=`<b class="you">${lbl(F.a,1)}</b> ${ft(F.a.lap)} vs <b class="ref">${nm()}</b> ${ft(F.b.lap)}: <b>${R.pct.toFixed(2)}%</b> of the reference (${sg(R.total)} s).${R.total<0?' <span class="good"><b>You are ahead.</b></span>':''}<br><span class="m">In the corner zones: ${sg(s)} s. Between corners: ${sg(R.total-s)} s. If these laps come from different sessions, track temperature, grip and wind differ, so treat small gaps with care.</span>`;
@@ -389,7 +397,7 @@ async function loadRefs(files){const list=[];for(const f of files){if(/\.csv$/i.
 if(!list.length)return false;dropSelf();delete IB.b;F.refs=list;F.refInc=list.map(()=>true);F.b=list.length>1?groupLap(list):list[0];
 const z=$('zb');z.classList.add('on');z.querySelector('span').textContent=list.length>1?list.length+' reference laps (group)':list[0].who+' · '+ft(list[0].lap);
 $('refs').innerHTML=refsHtml();wireRefs();return true}
-async function goMany(files){try{$('err').textContent='';if(files.length>1||/\.csv$/i.test(files[0].name)){if(!await loadRefs(files))return}else{await load(files[0],'b',$('zb'));F.refs=null;$('refs').hidden=true}run();renderOwn()}catch(e){$('err').textContent=e.message}}
+async function goMany(files){try{$('err').textContent='';keepFiles('b',files);if(files.length>1||/\.csv$/i.test(files[0].name)){if(!await loadRefs(files))return}else{await load(files[0],'b',$('zb'));F.refs=null;$('refs').hidden=true}run();renderOwn()}catch(e){$('err').textContent=e.message}}
 function barHtml(){if(!R||!R.cs||!R.cs.length)return '';const cs=R.cs,vals=[];
 cs.forEach(c=>{vals.push(Math.abs(c.dt));if(c.gmin!=null)vals.push(Math.abs(c.gmin),Math.abs(c.gmax))});
 const m=Math.max(.05,...vals)*1.15,cx=380,half=250,rh=30,H=cs.length*rh+20,px=v=>cx+v/m*half;
@@ -1935,7 +1943,7 @@ const worker=async()=>{while(next<n){const off=next;next+=C;const r=await fetch(
 await Promise.all([0,1,2,3,4,5].map(worker));if(done<n)throw new Error('Only part of '+f.name+' arrived');return{name:f.name,size:n,arrayBuffer:async()=>buf.buffer,text:async()=>new TextDecoder().decode(buf)}}
 async function flOpen(id,k){const f=FLIB.files.find(x=>x.id===id);if(!f||FLIB.busy)return;const msg=$('flMsg');FLIB.busy=true;
 try{msg.textContent='Opening '+f.name+'…';const file=await flFetch(f,p=>{msg.textContent='Opening '+flLabel(f)+'… '+Math.round(p*100)+'%'});msg.textContent='Reading…';await new Promise(r=>setTimeout(r,0));
-if(k==='coach'||k==='coachq'){COACH.g61.push(parse(await file.text(),f.name));if(k==='coach')renderCoach();msg.textContent='Added to Coaching ('+COACH.g61.length+' Garage 61 lap'+(COACH.g61.length===1?'':'s')+' there now).'}
+if(k==='coach'||k==='coachq'){const tx=await file.text(),gl=parse(tx,f.name);gl._src={name:f.name,buf:new TextEncoder().encode(tx).buffer};COACH.g61.push(gl);if(k==='coach')renderCoach();msg.textContent='Added to Coaching ('+COACH.g61.length+' Garage 61 lap'+(COACH.g61.length===1?'':'s')+' there now).'}
 else if(k==='b'&&f.kind==='g61')await goMany([file]);else{await $(k==='a'?'za':'zb')._go(file)}if(k!=='coach'&&k!=='coachq')msg.textContent=''}
 catch(e){msg.textContent=e.message||String(e)}finally{FLIB.busy=false;renderFiles()}}
 async function flOpenAll(ids){for(const id of ids)await flOpen(id,'coachq');renderCoach();$('flMsg').textContent='Added to Coaching ('+COACH.g61.length+' Garage 61 laps there now).'}
@@ -1957,13 +1965,13 @@ const all=$('flGAll');if(all)all.onclick=()=>flOpenAll(gSame.map(f=>f.id));const
 const pk=$('flPick');if(pk)pk.onclick=()=>flFolder('pick');const ad=$('flAdd');if(ad)ad.onclick=()=>flFolder('add',$('flPath').value);el.querySelectorAll('[data-flrm]').forEach(a=>a.onclick=e=>{e.preventDefault();flFolder('remove',a.dataset.flrm)})}
 function viewGo(v){const T={coach:'Coaching',setup:'Setup','':'Lap Analyzer'};if(v)document.body.dataset.view=v;else delete document.body.dataset.view;try{const q=new URLSearchParams(location.search);if(v)q.set('view',v);else q.delete('view');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:''))}catch(e){}
 const t=$('appTitle');if(t)t.textContent=T[v]||T[''];const p=document.querySelector('h1+nav+p.m')||document.querySelector('#views+p.m');if(p)p.textContent=(window.VIEWS&&VIEWS[v]?VIEWS[v][1]:window.INTRO0)||p.textContent;boxNames(v);document.querySelectorAll('#views a').forEach(a=>{let x='';try{x=new URL(a.href).searchParams.get('view')||''}catch(e){}a.classList.toggle('on',x===v)})}
-function renderCoach(){const el=$('coach');if(!el)return;try{el.innerHTML=coachHtml2()}catch(e){console.error('coach',e);el.innerHTML=''}el.hidden=false;
+function renderCoach(){try{keepG61()}catch(e){}const el=$('coach');if(!el)return;try{el.innerHTML=coachHtml2()}catch(e){console.error('coach',e);el.innerHTML=''}el.hidden=false;
 const s=$('coSrc'),t=$('coTo'),d=$('coDrop'),cl=$('coClr'),op=$('coOpen');if(s)s.onchange=()=>{COACH.src=s.value;renderCoach()};if(t)t.onchange=()=>{COACH.to=t.value;renderCoach()};
 const cg=$('coGrp'),cv=$('coVs');if(cg)cg.onchange=()=>{COACH.grp=cg.value;renderCoach()};if(cv)cv.onchange=()=>{COACH.to=cv.value||'best';renderCoach()};
 el.querySelectorAll('[data-prac]').forEach(b=>b.onclick=()=>pracToggle(+b.dataset.prac));renderPractice();{const cd=$('coCorners');if(cd)cd.ontoggle=()=>{COACH.cornersOpen=cd.open}}
 el.querySelectorAll('[data-g61rm]').forEach(x=>x.onclick=ev=>{ev.preventDefault();COACH.g61.splice(+x.dataset.g61rm,1);if(COACH.g61.length<2&&COACH.src==='g61')COACH.src=null;if(!COACH.g61.length&&COACH.to==='g61best')COACH.to='best';renderCoach()});
 if(cl)cl.onclick=()=>{COACH.g61=[];if(COACH.to==='g61best')COACH.to='best';renderCoach()};
-if(d){const inp=d.querySelector('input'),add=async fs=>{for(const f of fs)if(/\.csv$/i.test(f.name))try{COACH.g61.push(parse(await f.text(),f.name))}catch(e){$('err').textContent=f.name+': '+e.message}if(COACH.g61.length>=2&&!COACH.src)COACH.src='g61';renderCoach()};
+if(d){const inp=d.querySelector('input'),add=async fs=>{for(const f of fs)if(/\.csv$/i.test(f.name))try{const tx=await f.text(),gl=parse(tx,f.name);gl._src={name:f.name,buf:new TextEncoder().encode(tx).buffer};COACH.g61.push(gl)}catch(e){$('err').textContent=f.name+': '+e.message}if(COACH.g61.length>=2&&!COACH.src)COACH.src='g61';renderCoach()};
 inp.onchange=()=>add(Array.from(inp.files));d.ondragover=e=>{e.preventDefault()};d.ondrop=e=>{e.preventDefault();add(Array.from(e.dataTransfer.files))}}
 if(op)op.onclick=()=>{const X=COACH.last;if(!X)return;F.a=X.avg;F.b=X.best;SELF=null;viewGo('');run();const o=$('out');if(o&&o.scrollIntoView)o.scrollIntoView({behavior:'smooth'})}}
 
@@ -2142,7 +2150,32 @@ h+='<table style="margin-top:4px;font-size:13px"><tr><th></th><th>Front: measure
 h+='<small class="m">Measured on '+m.src+' (middle value of each condition). How it\'s worked out: the car squats by the garage height minus the measured height. A stiffer spring squats less, in proportion to the stiffness ratio, and a garage height change moves everything by the same amount. Assumes the same downforce and load. Part of the squat is the tire itself, which springs don\'t change, so the real spring effect is a little smaller than shown. Ride height also changes downforce, so check it on track.</small></div>';
 return h}
 
+// ---- Keep what is loaded: going to PitWall, the home page or another view and back must not lose it.
+// The files in the two boxes (and the Garage 61 laps added to Coaching) are kept in this browser's
+// IndexedDB with the lap picked from each, and opened again when the page loads. Clear forgets them.
+const KEEP={db:null,restoring:false,g61sig:''};
+function keepDb(){if(KEEP.db)return KEEP.db;if(typeof indexedDB==='undefined')return Promise.resolve(null);
+KEEP.db=new Promise(res=>{try{const r=indexedDB.open('lapAnalyzerKeep',1);r.onupgradeneeded=()=>r.result.createObjectStore('k');r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});return KEEP.db}
+async function keepPut(key,val){if(KEEP.restoring)return;const db=await keepDb();if(!db)return;try{const t=db.transaction('k','readwrite');val==null?t.objectStore('k').delete(key):t.objectStore('k').put(val,key)}catch(e){console.warn('keep',e)}}
+async function keepGet(key){const db=await keepDb();if(!db)return null;return new Promise(res=>{try{const r=db.transaction('k').objectStore('k').get(key);r.onsuccess=()=>res(r.result||null);r.onerror=()=>res(null)}catch(e){res(null)}})}
+// a stand-in for a File, from kept bytes
+const keepFile=x=>({name:x.name,size:x.buf.byteLength,arrayBuffer:async()=>x.buf,text:async()=>new TextDecoder().decode(x.buf)});
+async function keepFiles(k,files){if(KEEP.restoring)return;try{const list=[];for(const f of files)list.push({name:f.name,buf:await f.arrayBuffer()});await keepPut(k,{files:list,idx:null})}catch(e){console.warn('keep',e)}}
+async function keepIdx(k,i){if(KEEP.restoring)return;const v=await keepGet(k);if(v){v.idx=i;await keepPut(k,v)}}
+function keepG61(){const src=(COACH.g61||[]).map(g=>g._src).filter(Boolean),sig=src.map(x=>x.name+'|'+x.buf.byteLength).join(',');if(sig===KEEP.g61sig)return;KEEP.g61sig=sig;keepPut('g61',src.length?src:null)}
+async function keepRestore(){const a=await keepGet('a'),b=await keepGet('b'),g=await keepGet('g61');if(!a&&!b&&!(g&&g.length))return;
+KEEP.restoring=true;try{
+if(a&&a.files&&a.files[0]){await load(keepFile(a.files[0]),'a',$('za'));if(a.idx!=null&&IB.a&&IB.a.laps[a.idx])pick('a',$('za'),a.idx)}
+if(b&&b.files&&b.files.length){await goMany(b.files.map(keepFile));if(b.idx!=null&&IB.b&&IB.b.laps[b.idx])pick('b',$('zb'),b.idx)}
+if(g&&g.length){COACH.g61=g.map(x=>{const l=parse(new TextDecoder().decode(x.buf),x.name);l._src=x;return l});KEEP.g61sig=g.map(x=>x.name+'|'+x.buf.byteLength).join(',')}
+run();renderOwn();try{renderCoach()}catch(e){}
+const n=$('err');if(n&&!n.textContent)n.innerHTML='<span class="m">Your files from earlier are open again. Clear a box to start over.</span>'}
+catch(e){console.warn('keep restore',e)}finally{KEEP.restoring=false}}
+
+// a view shown without a reload: draw what it shows (canvases sized while hidden draw at zero width)
+function viewShown(v){if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0)}
 try{renderSetup()}catch(e){}
+try{keepRestore()}catch(e){}
 try{liveRender();if(liveOnBridge()||LIVE_SHARE)liveConnect()}catch(e){}
 try{renderCoach()}catch(e){}
 try{if(liveOnBridge()&&!LIVE_SHARE)flLoad()}catch(e){}
