@@ -74,6 +74,12 @@ iRacing Suite app (suite/)
   (Coaching; never "typical"), "median lap" (a middle lap time), "clean laps" (no pit, incident or off,
   within 7% of your best), "timed laps" (complete and timed), "Garage 61" (with the space), "Corner 4" in
   sentences and tables, "C4" only on charts and the corner strip. Views: Coaching, Setup, Lap Analyzer.
+- The three views each do one job, and must stay that way: Coaching is the driving only (gap, 3 things, where
+  the time goes, corners, consistency, track limits, progress, conditions, pace rating; one line points to Setup
+  when the car costs time); Setup is the car only (how it handles on your laps and what to change, tyres on your
+  lap, the live engineer and runs, the setup sheet); the Lap Analyzer is laps already driven (your laps, your lap
+  against a reference, every channel, driver laps). The live connection is a one-line bar (#liveBar) on all three.
+  Which card shows where is the `body[data-view=...]` CSS at the top of the page.
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
