@@ -218,6 +218,23 @@ console.log(JSON.stringify({ who: ib.who, team: ib.team, lapWho: ib.lapObj(ib.be
         self.assertEqual(r["solo"], "Solo")
 
 @unittest.skipUnless(NODE, "Node.js is not installed")
+class Garage61NameTest(unittest.TestCase):
+    """Driver and lap time come from Garage 61's file name, with spaces (as downloaded) or underscores."""
+
+    def test_both_name_styles(self):
+        r = run_js("""
+const csv = 'Speed,LapDistPct,Brake,Throttle,SteeringWheelAngle,Gear\\n' + Array.from({length: 600}, (_, i) => '50,' + (i / 599) + ',0,1,0,4').join('\\n');
+const a = parse(csv, 'Garage 61 - Mathijs Wijten - Ferrari 296 GT3 - Indianapolis Motor Speedway (Road Course) - 01.22.716 - 01M2JB7ECHN.csv');
+const b = parse(csv, 'Garage_61_-_nick_kalra_-_Ferrari_296_GT3_-_Indianapolis_Motor_Speedway__Road_Course__-_01_23_750_-_01M4CSEAK52.csv');
+const c = parse(csv, 'my fast lap.csv');
+console.log(JSON.stringify({ a: [a.who, a.lap], b: [b.who, b.lap], c: [c.who, +c.lap.toFixed(2)] }));
+""")
+        self.assertEqual(r["a"], ["Mathijs Wijten", 82.716])
+        self.assertEqual(r["b"], ["nick kalra", 83.75])
+        self.assertEqual(r["c"], ["Lap", 9.98])               # renamed: the time from its length
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
 class SessionReviewTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
