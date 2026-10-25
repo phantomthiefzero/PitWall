@@ -45,6 +45,8 @@ class Engine:
         self.hub.extra = lambda: {"pitwall": self.pitwall.info()}
         self.pitwall.analyzer_hub = self.hub
         self.updater = None          # set by main(); suite.updater.Updater
+        from suite.recording import SessionRecorder
+        self.recorder = SessionRecorder()   # the home page's Record button
         self.port = None
         self.error = None
         self._ready = threading.Event()
@@ -237,6 +239,30 @@ class Api:
         _background(run)
         return u.info()
 
+    # ---- Record this session (suite/recording.py)
+    def record_start(self):
+        return self._engine.recorder.start()
+
+    def record_stop(self):
+        return self._engine.recorder.stop()
+
+    def record_info(self):
+        return self._engine.recorder.info()
+
+    def record_show(self):
+        """Open the recordings folder with the last capture selected."""
+        from suite.recording import recordings_dir
+        p = self._engine.recorder.path
+        try:
+            if p and os.path.isfile(p) and sys.platform == "win32":
+                import subprocess
+                subprocess.Popen(["explorer", "/select,", os.path.normpath(p)])
+            else:
+                os.startfile(recordings_dir())  # Windows
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True}
+
     def share_info(self):
         host = self._engine.pitwall
         s = host.share
@@ -341,6 +367,8 @@ def close_with_app(engine):
     (cloudflared) is a separate program, so it is stopped and its link revoked first. If the
     app is killed instead of closed, Windows ends the tunnel too (share._KillWithParent)."""
     _on_quit.append(lambda: engine.pitwall.share and engine.pitwall.share.stop())
+    # a recording in progress is closed properly, so the file is readable
+    _on_quit.append(lambda: engine.recorder.stop(wait=2.5))
 
 
 def main():

@@ -30,9 +30,10 @@ def _clean(v):
 
 
 def record(src: TelemetrySource, out_path: str, hz: float = 10.0, duration_s: float | None = None,
-           max_ticks: int | None = None, clock: str = "wall", log=print) -> int:
+           max_ticks: int | None = None, clock: str = "wall", log=print, stop=None, progress=None) -> int:
     """clock="wall" paces by wall time (live sim). clock="sim" paces by SessionTime,
-    for sources that run faster than real time (fake --fast)."""
+    for sources that run faster than real time (fake --fast). `stop`: a threading.Event that
+    ends the recording cleanly (the suite's Record button); `progress(ticks)` is told each tick."""
     if not src.connect():
         raise RuntimeError("could not connect to telemetry source (is iRacing running and are you in a session?)")
     headers = src.var_headers()
@@ -64,6 +65,8 @@ def record(src: TelemetrySource, out_path: str, hz: float = 10.0, duration_s: fl
                 break
             if max_ticks is not None and n >= max_ticks:
                 break
+            if stop is not None and stop.is_set():
+                break
             if not src.tick():
                 time.sleep(0.5)
                 if not src.is_connected:
@@ -73,6 +76,8 @@ def record(src: TelemetrySource, out_path: str, hz: float = 10.0, duration_s: fl
             if next_write is None:
                 next_write = now
             if now < next_write:
+                if clock == "wall":
+                    time.sleep(min(interval / 4, max(0.0, next_write - now)))   # do not spin a CPU core
                 continue
             next_write += interval
             if now - next_write > 5 * interval:  # clock jumped (replay seek, sim restart): resync
@@ -86,6 +91,8 @@ def record(src: TelemetrySource, out_path: str, hz: float = 10.0, duration_s: fl
             vars_ = {name: _clean(src.get(name)) for name in names}
             f.write(json.dumps({"type": "tick", "wall": now, "n": n, "vars": vars_}) + "\n")
             n += 1
+            if progress is not None:
+                progress(n)
             if n % int(hz * 30) == 0:
                 log(f"  {n} ticks, {time.time() - t0:.0f}s wall")
     src.close()
