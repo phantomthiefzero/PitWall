@@ -26,6 +26,9 @@ Hard rules
   (`relay.server.client_asset`, .woff2 only) and the suite; without them the page falls back to
   system fonts. The booth look (default) and the classic look are the same page: colours are tokens
   on `:root`, booth overrides under `:root[data-skin="booth"]`, and canvases read them via `CV`.
+  Screen settings (units, look, alarm sound, the provenance legend) live in one header menu (#screenMenu).
+  The header's laps come from `cars.derived.race` (the leader), as on the broadcast; a lap race with no
+  time limit shows laps to go on the big display. Race control lists by event time, not arrival.
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).
 
 Verification status

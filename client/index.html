@@ -557,6 +557,22 @@
   .ico { width: 1.05em; height: 1.05em; vertical-align: -0.16em; flex: none; }
   .alarm .ico { margin-right: -2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* ---- Calm: settings in one menu, one note where one will do, quiet panels while they wait */
+  .menu { position: relative; }
+  .menu > summary { list-style: none; white-space: nowrap; }
+  .menu > summary::-webkit-details-marker { display: none; }
+  .menu-body { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 250px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    display: grid; gap: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .mrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); }
+  .mlegend { display: grid; gap: 3px; font-size: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+  #tires .snapshot::after { content: none; }
+  #tires .snapshot { color: var(--muted); }
+  .tires-note { grid-column: 1 / -1; font-size: 11px; color: var(--dim); }
+  /* a panel that is only waiting says so quietly */
+  details.panel[open] > div > .note:only-child { font-size: 12px; color: var(--dim); }
+  .ev .tm { color: var(--dim); }
 </style>
 </head>
 <body>
@@ -568,9 +584,13 @@
       title="Search this session's field by driver, team or car number, then follow that car"><div id="findList" class="find-list hidden"></div></span>
     <label class="follow" title="The car every relative panel follows, on this screen only. Nobody else's view changes.">Following
       <select id="followSel"><option value="">Auto</option></select> <span id="followSrc" class="note"></span></label>
-    <button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button>
-    <button type="button" id="skinToggle" class="unittoggle" title="Switch between the pit-wall booth look and the classic look. On this screen only.">booth</button>
-    <button type="button" id="soundToggle" class="unittoggle" title="Play a tone when a new alarm appears. On this screen only.">sound off</button>
+    <details class="menu" id="screenMenu"><summary class="unittoggle" title="Units, look, alarm sound and what the text styles mean. On this screen only.">&#9881; Screen</summary>
+      <div class="menu-body">
+        <div class="mrow"><span>Units</span><button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button></div>
+        <div class="mrow"><span>Look</span><button type="button" id="skinToggle" class="unittoggle" title="Switch between the pit-wall booth look and the classic look. On this screen only.">booth</button></div>
+        <div class="mrow"><span>Alarm sound</span><button type="button" id="soundToggle" class="unittoggle" title="Play a tone when a new alarm appears. On this screen only.">sound off</button></div>
+        <div class="mlegend"><span>plain = reported by iRacing</span><span class="derived">dotted = computed here</span><span style="color:var(--muted)">grey = snapshot, not a live reading</span></div>
+      </div></details>
     <div class="clock"><span id="remain">–</span><small id="lapline">–</small></div>
   </div>
   <div class="alarms hidden" id="alarmBar" role="status" aria-live="polite"></div>
@@ -760,11 +780,6 @@
   <span id="rate"></span>
   <span id="rig" style="color:var(--muted)"></span>
   <button type="button" id="reportBtn" class="unittoggle mini" style="margin-left:0" title="Save a report of this session as a web page: result, stops, lap times, events and the alarms raised on this screen"></button>
-  <span class="legend" style="margin-left:auto">
-    <span>plain = reported by iRacing</span>
-    <span class="derived">dotted = computed here</span>
-    <span style="color:var(--muted)">grey = snapshot, not a live reading</span>
-  </span>
 </footer>
 
 <div id="connect">
@@ -1014,7 +1029,10 @@
     const stateTxt = words(st.session.state);
     el.textContent = f ? (f === "caution" ? "Full course yellow" : f[0].toUpperCase() + f.slice(1) + " flag")
       : (stateTxt ? stateTxt[0].toUpperCase() + stateTxt.slice(1) : "No flag");
-    const rem = st.session.timeRemainS != null ? fmt.clock(st.session.timeRemainS) : "–", remEl = $("remain");
+    // A lap race with no time limit: the big display counts laps to go (the clock would only say "no limit").
+    const r = S.cars && S.cars.derived && S.cars.derived.race;
+    const byLaps = !!(r && r.endsBy === "laps" && !r.timeLimited && r.totalLaps && r.lapsToGo != null);
+    const rem = byLaps ? String(r.lapsToGo) : st.session.timeRemainS != null ? fmt.clock(st.session.timeRemainS) : "–", remEl = $("remain");
     if (remEl.textContent !== rem) {
       remEl.textContent = rem;
       // digits go on the LED display, with its unlit segments behind; words do not
@@ -1022,8 +1040,23 @@
       remEl.classList.toggle("txt", !num);
       remEl.dataset.ghost = num ? rem.replace(/\d/g, "8") : "";
     }
-    const lr = st.session.lapsRemain;
-    $("lapline").textContent = "Lap " + (st.player.lap ?? "–") + (lr != null && lr < 32767 ? " · " + lr + " to go" : "");
+    // What the race has left, from the LEADER (normalize.race_length), as the broadcast says it.
+    // SessionLapsRemainEx is the player's own count: a spectator has none, a lapped car has fewer.
+    const ll = $("lapline");
+    let line;
+    if (byLaps) {
+      const lap = Math.min(r.totalLaps, Math.max(1, (r.leaderLapsDone ?? 0) + 1));
+      line = D(r.lapsToGo === 1 ? "final lap" : "laps to go", "Computed here: the race length minus the leader's completed laps.") + ` · lap ${lap} of ${r.totalLaps}`;
+    } else if (r && r.endsBy === "laps" && r.totalLaps && r.lapsToGo != null) {
+      const lap = Math.min(r.totalLaps, Math.max(1, (r.leaderLapsDone ?? 0) + 1));
+      line = `Lap ${lap} of ${r.totalLaps} · ` + D(r.lapsToGo === 1 ? "final lap" : `${r.lapsToGo} to go`, "Computed here: the race length minus the leader's completed laps.");
+    } else if (r && r.endsBy === "time" && r.lapsByTime != null) {
+      line = `Lap ${(r.leaderLapsDone ?? 0) + 1} · ` + D(`about ${r.lapsByTime} to go`, "Computed here: the time left at the leader's pace.");
+    } else {
+      const lr = st.session.lapsRemain;
+      line = "Lap " + (st.player.lap ?? "–") + (lr != null && lr < 32767 ? " · " + lr + " to go" : "");
+    }
+    if (ll.innerHTML !== line) ll.innerHTML = line;
   }
 
   // Closing rate on the car ahead. Positive is catching. Needs ~20 s of trustworthy
@@ -1133,6 +1166,24 @@
     // race it is the same string on every row, so it is dropped rather than
     // spending width on a constant.
     $("standings").classList.toggle("one-class", !multi);
+    keepRowInView();
+  }
+  // The followed car stays in view in a long field, unless you scrolled the table in the last 10 s.
+  const STAND = { userT: 0, progT: 0 };
+  (() => {
+    const tbl = $("rows").closest(".tbl");
+    if (tbl) tbl.addEventListener("scroll", () => { if (Date.now() - STAND.progT > 400) STAND.userT = Date.now(); }, { passive: true });
+  })();
+  function keepRowInView() {
+    const tbl = $("rows").closest(".tbl");
+    if (!tbl || Date.now() - STAND.userT < 10000 || tbl.scrollHeight <= tbl.clientHeight + 2) return;
+    const tr = $("rows").querySelector("tr.focus") || $("rows").querySelector("tr.player");
+    if (!tr) return;
+    const head = (tbl.querySelector("thead") || {}).offsetHeight || 0;
+    const top = tr.offsetTop - head, bottom = tr.offsetTop + tr.offsetHeight;
+    if (top >= tbl.scrollTop && bottom <= tbl.scrollTop + tbl.clientHeight) return;
+    STAND.progT = Date.now();
+    tbl.scrollTop = Math.max(0, tr.offsetTop - head - (tbl.clientHeight - head) / 2);
   }
 
   function renderMapNote(m) {
@@ -1241,7 +1292,7 @@
       const wear = t.wearPct.every(v => v == null) ? null : t.wearPct.map(v => v == null ? "–" : Math.round(v * 100) + "%");
       return `<div class="tire"><b>${c}</b><div class="temps snapval">${temps.map(v => `<span>${v}</span>`).join("")}</div>
         <div class="${wear ? "snapshot" : "na"}">${wear ? wear.join(" ") : "wear –"}</div></div>`;
-    }).join("");
+    }).join("") + `<div class="tires-note">Carcass temperatures and wear: snapshot, not a live reading.</div>`;
     const sv = p.pitService;
     $("pitsv").textContent = (sv.flags || []).length ? sv.flags.map(words).join(", ") + (sv.flags.includes("fuel") && sv.fuel != null ? " (" + U.fuel(sv.fuel, 0) + " " + U.fuelAbbr + ")" : "") : "nothing selected";
   }
@@ -1359,7 +1410,7 @@
       const nx = r.nextWetness ? `, ${["", "dry", "mostly dry", "very lightly wet", "lightly wet", "moderately wet", "very wet", "extremely wet"][r.nextWetness.level] || "level " + r.nextWetness.level} in about ${fmt.clock(r.nextWetness.inS)}` : "";
       h += `<div class="wxo-line">${D(`Track ${r.state}${nx}`, "Computed here from how iRacing's track wetness has moved over the last 15 minutes.")}</div>`;
     }
-    if (o.trackModel) h += `<div class="note" style="margin-top:4px">Sunlight on the track now ${D(o.trackModel.sunWm2 + " W/m²", "Computed here: clear-sky sunlight for the sun's height (Haurwitz), cut by the cloud cover (Kasten and Czeplak).")} · track heating ${o.trackModel.basis === "fitted" ? "fitted to this session" : "typical for asphalt until the sun has moved enough to fit it"}.</div>`;
+    if (o.trackModel) h += `<div class="note" style="margin-top:4px">Sunlight on the track now ${D(o.trackModel.sunWm2 + " W/m²", "Computed here: clear-sky sunlight for the sun's height (Haurwitz), cut by the cloud cover (Kasten and Czeplak).")} · track temperature model ${o.trackModel.basis === "fitted" ? "fitted to this session" : "uses typical asphalt for now, and fits this track once the sun has moved"}.</div>`;
     el.innerHTML = h + `</div>`;
   }
   function renderWeather() {
@@ -1625,7 +1676,7 @@
             d.nextStopLapEst != null ? "around lap " + d.nextStopLapEst : null) +
         row("Fast repairs used", c.fastRepairsUsed != null ? c.fastRepairsUsed + (d.fastRepairsLeft != null ? ` <span class="note">· ${d.fastRepairsLeft} left</span>` : "") : null)) +
       sec("Status",
-        row("On track", c.surface ? esc(words(c.surface)) : null) +
+        row("Where", c.surface ? esc(words(c.surface)) : null) +
         row("Pit road", c.onPitRoad ? "yes" : null) +
         row("Flags", c.flags && c.flags.length ? esc(c.flags.map(words).join(", ")) : null) +
         row("Gear / rpm", c.gear != null && c.gear >= 0 ? `${c.gear === 0 ? "N" : c.gear} · ${Math.round(c.rpm || 0)}` : null) +
@@ -1683,8 +1734,8 @@
       case "incident": t = `<b>Incident +${esc(e.delta)}x</b> · ${esc(e.total)}x` + (e.limit != null ? ` of ${esc(e.limit)}` : ""); break;
       case "behind_closing": t = `${carLabel(e.idx)} closing on ${evWho(e, false)}: ${secs(e.gapS, 2)} behind, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
       case "you_closing": t = `${evWho(e, true)} closing on ${carLabel(e.idx)}: ${secs(e.gapS, 2)} ahead, ${D("gaining " + e.rateSPerLap.toFixed(2) + " s/lap", "Computed here from the trend of the gap over the last 90 s.")}`; break;
-      case "position": { const better = e.toPos < e.fromPos;
-        t = `<span class="${better ? "gain" : "lose"}">${e.idx != null && e.idx !== refInfo().own ? carLabel(e.idx) : "You"} ${isMulticlass() ? "class " : ""}P${esc(e.fromPos)} → P${esc(e.toPos)}</span>`; break; }
+      case "position": { const better = e.toPos < e.fromPos, you = !(e.idx != null && e.idx !== refInfo().own), cl = isMulticlass() ? "class " : "";
+        t = `<span class="${better ? "gain" : "lose"}">${you ? "You" : carLabel(e.idx)} ${better ? (you ? "move up" : "moves up") : (you ? "drop" : "drops")} to ${cl}P${esc(e.toPos)}</span> <span class="note">from ${cl}P${esc(e.fromPos)}</span>`; break; }
       case "race_incident": t = `${carLabel(e.idx)} ${D(esc(e.what === "tow" ? "disappeared from the track (tow, reset to the pits or left the session)" : words(e.what || "incident")) + (e.likelyPoints ? ` (likely ${e.likelyPoints}x)` : ""), "Predicted here from telemetry (off track, a spin, slowing, contact). iRacing hides other cars' incident counts from a spectator until the finish.")}` +
         (e.contactWith && e.contactWith.length ? ` with ${e.contactWith.map(shortCar).join(", ")}` : ""); break;
       case "compound_change": t = `${carLabel(e.idx)} switched tyres: ${tyreName(e.fromCompound, e.idx)} → <b>${tyreName(e.toCompound, e.idx)}</b>`; break;
@@ -1737,6 +1788,12 @@
                             "pit_battle", "rain_start", "rain_stop", "track_wetness", "declared_wet"]);
       evs = evs.filter(e => mine.has(e.kind) || (e.idx != null && rs.has(e.idx)));
     }
+    // Newest first by when it happened: a prediction or an official count can arrive after later news.
+    evs = evs.map((e, i) => [e, i]).sort((a, b) => ((a[0].t ?? -1) - (b[0].t ?? -1)) || (a[1] - b[1])).map(x => x[0]);
+    // When iRacing's own count for a car arrives, its prediction from the same moment is not said twice.
+    const official = evs.filter(e => e.kind === "car_incident" && e.t != null);
+    if (official.length) evs = evs.filter(e => !(e.kind === "race_incident" && e.t != null &&
+      official.some(o => o.idx === e.idx && Math.abs(o.t - e.t) <= 20)));
     if (!evs.length) { el.innerHTML = `<div class="note">${S.feed.ready ? "Nothing yet. Pit stops, fastest laps, incidents, flags and weather changes appear here as they happen." : "Waiting for the bridge."}</div>`; return; }
     el.innerHTML = evs.slice(-150).reverse().map(eventHtml).join("");
   }
@@ -1764,16 +1821,18 @@
   // wording for the battle box and the compare card. youGainSPerLap is positive
   // when it is GOOD for the followed car, whichever side c is on (normalize:
   // to_player_trend); side is where c is: "ahead" or "behind".
+  // "in 3 laps", "in 1 lap", or "within a lap" (a count of 0 laps reads as nonsense)
+  const inLaps = n => n <= 0 ? "within a lap" : n === 1 ? "in 1 lap" : `in ${n} laps`;
   function gapTrend(side, d) {
     const w = RW(), gain = d.youGainSPerLap;
     if (gain == null) return "";
     if (gain === 0) return `<span class="flat">level</span>`;
     if (side === "ahead") return gain > 0
-      ? `<span class="gain">${w.sub} ${w.y ? "gain" : "gains"} ${gain.toFixed(2)} s/lap</span>` + (d.youCatchLaps != null ? ` · catch in ${d.youCatchLaps} laps` : "")
+      ? `<span class="gain">${w.sub} ${w.y ? "gain" : "gains"} ${gain.toFixed(2)} s/lap</span>` + (d.youCatchLaps != null ? ` · catch ${inLaps(d.youCatchLaps)}` : "")
       : `<span class="lose">pulling away ${(-gain).toFixed(2)} s/lap</span>`;
     return gain > 0
       ? `<span class="gain">${w.sub} ${w.y ? "pull" : "pulls"} away ${gain.toFixed(2)} s/lap</span>`
-      : `<span class="lose">closing ${(-gain).toFixed(2)} s/lap</span>` + (d.catchesYouLaps != null ? ` · on ${w.obj} in ${d.catchesYouLaps} laps` : "");
+      : `<span class="lose">closing ${(-gain).toFixed(2)} s/lap</span>` + (d.catchesYouLaps != null ? ` · on ${w.obj} ${inLaps(d.catchesYouLaps)}` : "");
   }
   const TREND_TIP = "Computed here: least-squares trend of the gap over the last 90 s, per lap of the followed car's pace.";
   // Their value minus the followed car's (normalize.vs_you). Negative = they are
@@ -1945,7 +2004,7 @@
         const cl = k.closingSPerLap == null ? `<span class="note">no trend yet</span>`
           : k.closingSPerLap > 0 ? `<span class="lose">closing ${k.closingSPerLap.toFixed(2)} s/lap</span>` : `<span class="gain">dropping back ${Math.abs(k.closingSPerLap).toFixed(2)} s/lap</span>`;
         h += `<div class="tgt">Hold <b>${shortCar(k.idx)}</b>: ${D(`${k.gapS.toFixed(k.gapS < 1 ? 2 : 1)} s behind`, "Computed here from both cars' time behind the leader.")} · ${cl}` +
-             (k.catchesInLaps != null ? ` · ${D(`catches ${w.obj} in ${k.catchesInLaps} laps`, "Computed here at the current closing rate.")}${k.beforeFlag ? ` <b class="warn">before the flag</b>` : ""}` : "") + `</div>`;
+             (k.catchesInLaps != null ? ` · ${D(`catches ${w.obj} ${inLaps(k.catchesInLaps)}`, "Computed here at the current closing rate.")}${k.beforeFlag ? ` <b class="warn">before the flag</b>` : ""}` : "") + `</div>`;
       }
     }
     // rivals' stops in the followed car's class
@@ -1958,8 +2017,9 @@
            `<table class="rivals"><tbody>` + rows.map(c => {
              const sd = c.derived.stopDue;
              return `<tr class="${me && c.idx === me.idx ? "me" : ""}" title="From ${esc(STOP_BASIS[sd.basis] || words(sd.basis))}"><td class="mono">P${c.classPos}</td><td>${carLabel(c.idx)}</td>` +
+               (sd.stopsOwed === 0 ? `<td class="mono">–</td><td class="note">no stop needed</td></tr>` :
                `<td class="mono">${sd.overdue ? `<b class="warn">overdue</b>` : `lap ${sd.lap}`}</td>` +
-               `<td class="note">${sd.overdue ? "" : sd.lapsLeft ? `in ${sd.lapsLeft}` : "this lap"}${sd.stopsOwed != null ? ` · ${sd.stopsOwed} to make` : ""}</td></tr>`;
+               `<td class="note">${sd.overdue ? "" : sd.lapsLeft ? `in ${sd.lapsLeft}` : "this lap"}${sd.stopsOwed != null ? ` · ${sd.stopsOwed} to make` : ""}</td></tr>`);
            }).join("") + `</tbody></table>`;
       const bases = {};
       rows.forEach(c => { const k = c.derived.stopDue.basis; bases[k] = (bases[k] || 0) + 1; });
@@ -2061,8 +2121,8 @@
     }
     const t = d && d.strategy && d.strategy.targets;
     if (t && t.hold) {
-      if (t.hold.gapS < 1.0) add("close:" + t.hold.idx, "warn", D(`${shortCar(t.hold.idx)} ${t.hold.gapS.toFixed(1)} s behind ${RW().obj}`, "Computed here from both cars' time behind the leader."));
-      else if (t.hold.beforeFlag) add("catch:" + t.hold.idx, "info", D(`${shortCar(t.hold.idx)} catches ${RW().obj} in ${t.hold.catchesInLaps} laps, before the flag`, "Computed here at the current closing rate."));
+      if (t.hold.gapS < 1.0) add("close:" + t.hold.idx, "warn", D(t.hold.gapS < 0.05 ? `${shortCar(t.hold.idx)} alongside ${RW().obj}` : `${shortCar(t.hold.idx)} ${t.hold.gapS.toFixed(t.hold.gapS < 0.95 ? 2 : 1)} s behind ${RW().obj}`, "Computed here from both cars' time behind the leader."));
+      else if (t.hold.beforeFlag) add("catch:" + t.hold.idx, "info", D(`${shortCar(t.hold.idx)} catches ${RW().obj} ${inLaps(t.hold.catchesInLaps)}, before the flag`, "Computed here at the current closing rate."));
     }
     const wx = st && st.weather;
     if (wx && ((wx.precipitationPct != null && wx.precipitationPct > 0) || (wx.wetnessRaw != null && wx.wetnessRaw > 1)))
@@ -3168,6 +3228,10 @@
   });
   $("cmpClose").addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setCompare(null); });
 
+  document.addEventListener("click", e => {
+    const m = $("screenMenu");
+    if (m && m.open && !m.contains(e.target)) m.open = false;
+  });
   $("unitToggle").addEventListener("click", () => {
     U = (U === UNITS.imperial) ? UNITS.metric : UNITS.imperial;
     try { localStorage.setItem("pitwall.units", U.label); } catch (e) { /* private mode */ }
