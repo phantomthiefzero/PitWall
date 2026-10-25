@@ -368,7 +368,7 @@ def _main():
         def auto_check():
             # Quietly see whether a newer build is out: at launch, then every 6 hours.
             while True:
-                if engine.updater.keys.load() and engine.updater.state in ("idle", "error"):
+                if engine.updater.state in ("idle", "error"):
                     try:
                         engine.updater.check()
                     except Exception:

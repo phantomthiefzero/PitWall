@@ -819,8 +819,9 @@ def _release(build=35, body=b"MZ" + b"x" * 3000, digest=True, commit="newsha"):
 
 class FakeGitHub:
     """Answers the three calls the updater makes, and records each request."""
-    def __init__(self, rel, exe_body, status=200, commits=None):
+    def __init__(self, rel, exe_body, status=200, commits=None, refuse_keys=False):
         self.rel, self.exe_body, self.status, self.reqs = rel, exe_body, status, []
+        self.refuse_keys = refuse_keys        # a public repo: a bad key is refused, no key is fine
         self.commits = commits if commits is not None else [
             {"commit": {"message": "Merge pull request #20 from x/y\n\nz"}},
             {"commit": {"message": "Older change\n\nbody"}},
@@ -829,6 +830,8 @@ class FakeGitHub:
     def __call__(self, req, timeout=None):
         import urllib.error
         self.reqs.append(req)
+        if self.refuse_keys and req.unredirected_hdrs.get("Authorization"):
+            raise urllib.error.HTTPError(req.full_url, 401, "Bad credentials", {}, None)
         if self.status != 200:
             raise urllib.error.HTTPError(req.full_url, self.status, "nope", {}, None)
         url = req.full_url
@@ -886,14 +889,25 @@ class UpdaterTest(unittest.TestCase):
         up = self._up(FakeGitHub(_release(35), b"", status=401), key=None)
         with self.assertRaises(UpdateError):
             up.set_key("hello")                               # not a GitHub key
-        with self.assertRaises(UpdateError) as cm:
+        with self.assertRaises(UpdateError):
             up.set_key("github_pat_" + "b" * 40)              # GitHub says no
-        self.assertIn("did not accept", str(cm.exception))
         self.assertIsNone(up.keys.load())
         up404 = self._up(FakeGitHub(_release(35), b"", status=404), key=None)
         with self.assertRaises(UpdateError) as cm:
-            up404.set_key("github_pat_" + "c" * 40)
-        self.assertIn("Only select", str(cm.exception))
+            up404.check()
+        self.assertIn("No builds are published yet", str(cm.exception))
+
+    def test_public_repo_needs_no_key_and_an_old_key_that_is_refused_is_dropped(self):
+        """The repo went public: updates work with no key, and a key made for the old
+        private repo (or expired) is retried without, instead of stopping updates."""
+        gh = FakeGitHub(_release(105), b"", refuse_keys=True)
+        up = self._up(gh, key=None)
+        info = up.check()
+        self.assertEqual(info["latest"]["build"], 105)
+        self.assertTrue(info["hasKey"])                       # the home page never asks for one
+        self.assertNotIn("Authorization", gh.reqs[-1].unredirected_hdrs)
+        old = self._up(FakeGitHub(_release(106), b"", refuse_keys=True), key="github_pat_" + "d" * 40)
+        self.assertEqual(old.check()["latest"]["build"], 106)
 
     def test_download_checks_size_and_fingerprint(self):
         from suite.updater import UpdateError

@@ -92,11 +92,11 @@ iRacing Suite app (suite/)
   named by what they are (read from the header and last sample, cached). Only the suite's own server serves
   them, by an id from the last listing, never a path from the page; over one WebSocket (/api/library/stream),
   with 96 KB pieces (/api/library/file) as the fallback. The relay never serves them.
-- Updates (`suite/updater.py`): the release build stamps `suite/_build.py` (BUILD = run number,
-  COMMIT); the app compares it with the newest `build-N` release, downloads next to itself,
+- Updates (`suite/updater.py`): the release build stamps `suite/_build.py` (BUILD = run number +
+  BUILD_OFFSET 100, since the repo moved to a new public home after build 100; COMMIT); the app compares it with the newest `build-N` release, downloads next to itself,
   verifies size + SHA-256, renames itself aside and restarts with `--after-update PIDS` (waits
-  for the old copy so the ports stay the same). The GitHub key goes only to api.github.com
-  (unredirected header). The build runs `--selftest-rename` on the real .exe.
+  for the old copy so the ports stay the same). The repo is public: no key is needed; an old
+  key is still sent if kept, only to api.github.com (unredirected header), and dropped if refused. The build runs `--selftest-rename` on the real .exe.
 
 Broadcast (broadcast/)
 - `overlay.html` (OBS source) and `producer.html` (you + co-host) are single files, no build

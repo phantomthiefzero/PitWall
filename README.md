@@ -23,10 +23,9 @@ press **Share online** (below). A log is written to `%LOCALAPPDATA%\iRacingSuite
 
 The home screen's **Updates** card installs the newest build from this repo's releases:
 **Update and restart** downloads it, checks it against the size and SHA-256 GitHub publishes,
-swaps it in beside the running app and restarts. The repo is private, so it needs a GitHub
-fine-grained key once (Only select repositories -> PitWall, Contents: Read-only), kept in
-`%LOCALAPPDATA%\iRacingSuite\update.json` encrypted for your Windows account (DPAPI). The app
-checks at launch and every 6 hours and shows what changed. Builds before the updater existed
+swaps it in beside the running app and restarts. No setup: the repo is public, so no GitHub
+key is needed (one pasted earlier is still used if GitHub accepts it). The app checks at launch
+and every 6 hours and shows what changed. Builds before the updater existed
 (build 32 and earlier) have to be downloaded by hand one last time.
 
 ### Share online (remote crew, no setup)

@@ -135,8 +135,8 @@ else if(up.available&&up.latest){const ch=(up.changes||[]).slice(0,8);h='<div cl
 (ch.length?'<div class="note">What\'s new:</div><ul>'+ch.map(c=>'<li>'+esc(c)+'</li>').join('')+'</ul>':'')+
 '<div class="row"><button type="button" class="acc" id="uGo">Update and restart</button><button type="button" id="uCheck">Check again</button></div><p class="note" style="margin-top:8px">Restarting closes PitWall, Broadcast and any share link for a few seconds, so not mid-race.</p>'+(st==='error'?'<p class="err" style="margin-top:8px"></p>':'')+'</div>'}
 else if(st==='checking'){h='<div class="u-line">Checking for updates…</div>'}
-else if(st==='error'){h='<div class="u-line"><b>Updates</b> · <span class="err"></span></div><button type="button" id="uCheck">Try again</button><button type="button" id="uChange">Change key</button>'}
-else{h='<div class="u-line"><b>Up to date</b> · build '+(up.build??'?')+(up.checkedAt?' · checked '+ago(up.checkedAt):'')+'</div><button type="button" id="uCheck">Check now</button><button type="button" id="uChange">Change key</button>'}
+else if(st==='error'){h='<div class="u-line"><b>Updates</b> · <span class="err"></span></div><button type="button" id="uCheck">Try again</button>'}
+else{h='<div class="u-line"><b>Up to date</b> · build '+(up.build??'?')+(up.checkedAt?' · checked '+ago(up.checkedAt):'')+'</div><button type="button" id="uCheck">Check now</button>'}
 el.innerHTML=h;const e=el.querySelector('.err');if(e&&st==='error')e.textContent=up.error||'Something went wrong.';
 const on=(id,f)=>{const b=$(id);if(b)b.onclick=f};
 on('uSetup',()=>{upSetup=true;updCard();setTimeout(()=>$('uKey')&&$('uKey').focus(),50)});

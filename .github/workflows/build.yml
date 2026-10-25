@@ -17,6 +17,11 @@ concurrency:
 permissions:
   contents: write
 
+# The repo moved to a new public home after build 100 (its run numbers start again
+# at 1). Builds go on from there so installed copies still see each one as newer.
+env:
+  BUILD_OFFSET: 100
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -54,7 +59,9 @@ jobs:
       - name: Stamp the build number into the app (the updater compares it)
         shell: pwsh
         run: |
-          "BUILD = $env:GITHUB_RUN_NUMBER`nCOMMIT = `"$env:GITHUB_SHA`"" | Out-File -Encoding utf8 suite/_build.py
+          $build = [int]$env:GITHUB_RUN_NUMBER + [int]$env:BUILD_OFFSET
+          "BUILD = $build`nCOMMIT = `"$env:GITHUB_SHA`"" | Out-File -Encoding utf8 suite/_build.py
+          "BUILD=$build" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           Get-Content suite/_build.py
 
       - name: Build the app
@@ -104,8 +111,8 @@ jobs:
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: iRacing Suite build ${{ github.run_number }}
+          tag_name: build-${{ env.BUILD }}
+          name: iRacing Suite build ${{ env.BUILD }}
           target_commitish: ${{ github.sha }}
           body: |
             Download **iRacing Suite.exe** below and double-click it.

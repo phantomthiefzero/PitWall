@@ -2,10 +2,10 @@
 Update the suite from the repo's GitHub releases.
 
 Every push to master builds "iRacing Suite.exe" and publishes it as release
-"build-<N>". The repo is private, so reading releases needs a GitHub key: a
-fine-grained personal access token limited to this repo with Contents:
-read-only. The user pastes it once; it is kept in %LOCALAPPDATA%\\iRacingSuite
-encrypted with Windows' DPAPI (only this Windows account on this PC can read it).
+"build-<N>". The repo is public, so no key is needed to read its releases. A key
+pasted while the repo was private (a fine-grained token, Contents: read-only) is
+still sent if there is one, kept in %LOCALAPPDATA%\\iRacingSuite encrypted with
+Windows' DPAPI; if GitHub refuses it, the request is made again without it.
 
 Updating:
 1. check()    -- the latest release, its build number, and the commits since ours
@@ -118,19 +118,24 @@ class UpdateError(Exception):
 
 
 def _api_get(path, token, opener=None, accept="application/vnd.github+json", timeout=20):
+    """A GitHub API read. The repo is public: no key is needed. An old key (kept from
+    when it was private) is sent if there is one, and if GitHub refuses it -- expired,
+    or made for the old private repo -- the same request goes again without it."""
     req = urllib.request.Request(API + path, headers={"Accept": accept, "User-Agent": "iRacingSuite-updater",
                                                       "X-GitHub-Api-Version": "2022-11-28"})
     # An unredirected header is not copied onto a redirect, so the key never
     # reaches the storage host a download is redirected to.
-    req.add_unredirected_header("Authorization", "Bearer " + token)
+    if token:
+        req.add_unredirected_header("Authorization", "Bearer " + token)
     try:
         return (opener or urllib.request.urlopen)(req, timeout=timeout)
     except urllib.error.HTTPError as e:
-        if e.code == 401:
-            raise UpdateError("GitHub did not accept the key. It may have expired: make a new one and paste it in.")
-        if e.code in (403, 404):
-            raise UpdateError("The key cannot see %s's releases. When making it, choose \"Only select "
-                              "repositories\" -> PitWall, and Contents: Read-only." % REPO)
+        if token and e.code in (401, 403, 404):
+            return _api_get(path, None, opener, accept, timeout)
+        if e.code == 404:
+            raise UpdateError("No builds are published yet.")
+        if e.code == 403:
+            raise UpdateError("GitHub is limiting requests from this connection for now. Try again in an hour.")
         raise UpdateError("GitHub answered %d %s." % (e.code, e.reason))
     except urllib.error.URLError as e:
         raise UpdateError("Could not reach GitHub (%s). Check the internet connection." % e.reason)
@@ -196,7 +201,8 @@ class Updater:
     # ---- check
     def info(self):
         lt = self.latest
-        return {"build": self.build, "commit": (self.commit or "")[:7] or None, "hasKey": bool(self.keys.load()),
+        # hasKey stays true: no key is needed any more (the home page asked for one when it was false)
+        return {"build": self.build, "commit": (self.commit or "")[:7] or None, "hasKey": True,
                 "canApply": bool(self.exe), "state": self.state, "error": self.error, "progress": self.progress,
                 "checkedAt": self.checked_at,
                 "latest": {"build": lt["build"], "published": lt["published"], "sizeMB": round(lt["size"] / 2**20, 1)}
@@ -205,10 +211,8 @@ class Updater:
                 "changes": self.changes}
 
     def _token(self):
-        t = self.keys.load()
-        if not t:
-            raise UpdateError("Paste a GitHub key first.")
-        return t
+        """An old key if one is kept, else None: the public repo needs none."""
+        return self.keys.load() or None
 
     def check(self):
         token = self._token()
