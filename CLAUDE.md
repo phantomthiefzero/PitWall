@@ -79,7 +79,10 @@ iRacing Suite app (suite/)
   when the car costs time); Setup is the car only (how it handles on your laps and what to change, tyres on your
   lap, the live engineer and runs, the setup sheet); the Lap Analyzer is laps already driven (your laps, your lap
   against a reference, every channel, driver laps). The live connection is a one-line bar (#liveBar) on all three.
-  Which card shows where is the `body[data-view=...]` CSS at the top of the page.
+  Which card shows where is the `body[data-view=...]` CSS at the top of the page. Switching views happens in
+  the page (showView / viewShown, history.pushState): no reload, so nothing loaded is lost. The files in the
+  two boxes, the lap picked from each and Coaching's Garage 61 laps are kept in IndexedDB (KEEP) and opened
+  again when the page loads (after visiting PitWall or the home page); Clear forgets them.
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
