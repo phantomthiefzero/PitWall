@@ -47,6 +47,13 @@ body[data-view=live] .card:not(#tele):not(#liveBar),body[data-view=live] .drops,
 .tl-box{background:var(--card);border-radius:10px;padding:8px 10px;min-width:0}.tl-box canvas{width:100%;display:block}
 .tl-car{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 16px;font-size:14px;margin:6px 0 10px}.tl-car div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--ln);padding:3px 0}.tl-car span{color:var(--mut)}
 .tl-h{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 6px}
+.tl-alerts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;min-height:0}.tl-alerts span{padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600}
+.tl-alerts .bad{background:color-mix(in srgb,var(--bad) 22%,transparent);color:var(--bad)}.tl-alerts .warn{background:color-mix(in srgb,#d99a1e 24%,transparent);color:#d99a1e}.tl-alerts .info{background:color-mix(in srgb,var(--ref) 20%,transparent);color:var(--ref)}
+.tl-sec{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px;font-size:13px;align-items:baseline}.tl-sec b{font-variant-numeric:tabular-nums}.tl-sec .sx{background:var(--card);border-radius:8px;padding:4px 10px}
+.tl-sec .p{color:#a766ff}.tl-sec .y{color:#d99a1e}
+.tl-corners{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.tl-corners>div{background:var(--card);border-radius:10px;padding:8px 10px;font-size:13px}
+.tl-corners .hb{height:6px;border-radius:3px;background:var(--ln);overflow:hidden;margin:3px 0 6px}.tl-corners .hb i{display:block;height:100%;width:0}
+@media(max-width:640px){.tl-corners{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .views{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.views a{padding:3px 12px;border:1px solid var(--ln);border-radius:14px;color:var(--fg);text-decoration:none;font-size:14px}.views a.on{background:var(--fg);color:var(--bg)}
 /* ---- Calm: one header row, sections without boxes, explanations behind a small (i), soft colours.
    Sections are separated by space and a hairline; only things you act on (your 3 things, tiles) get a surface. */
@@ -1025,13 +1032,13 @@ else if(was==='connecting')LIVE.err='No bridge answered at '+liveUrl()+'. Make s
 ws.onerror=()=>{}}
 function liveDisconnect(){LIVE.userOff=true;if(LIVE.ws)LIVE.ws.close()}
 function liveMsg(m){if(m.type==='hello'){LIVE.mode=m.mode;LIVE.remote=!!m.remote;liveRender()}else if(m.type==='status'){LIVE.sim=!!m.connected;liveRender()}else if(m.type==='session'&&typeof m.yaml==='string')liveSession(m.yaml);else if(m.type==='tick'&&m.v)liveTick(m.v)}
-function liveSession(y){if(!LIVE.startedAt)LIVE.startedAt=Date.now();try{ghSession(y)}catch(e){console.error('driver laps',e)}y=plain(y);LIVE.yaml=y;LIVE.meta=liveMeta(y);const t=setupTree(y);if(!t)return;const s=liveSig(t),first=!LIVE.setup;
+function liveSession(y){if(!LIVE.startedAt)LIVE.startedAt=Date.now();try{LIVE.secs=[...String(y).matchAll(/SectorStartPct:\s*([\d.]+)/g)].map(m=>+m[1]).filter(p=>p>0&&p<1).sort((a,b)=>a-b);const il=/IncidentLimit:\s*(\d+)/.exec(y);LIVE.incLimit=il?+il[1]:null}catch(e){}try{ghSession(y)}catch(e){console.error('driver laps',e)}y=plain(y);LIVE.yaml=y;LIVE.meta=liveMeta(y);const t=setupTree(y);if(!t)return;const s=liveSig(t),first=!LIVE.setup;
 if(s!==LIVE.sig){if(LIVE.setup&&LIVE.cur)LIVE.cur.pit=true;   /* a setup only changes in the garage: the lap in progress is not a clean lap of either run */
 const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tree:t,diff:prev?liveDiff(prev.tree,t):[],at:Date.now()});LIVE.sig=s;
 if(LIVE.meta.carPath)try{libRecord({carPath:LIVE.meta.carPath,carName:LIVE.meta.carName,setup:t},'live|'+(LIVE.meta.sid||'session')+'|'+LIVE.vers.length)}catch(e){}
 LIVE.setup=t;if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}else{LIVE.setup=t;if(first){if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}}}
 function liveNewLap(lap,v){if(v.OnPitRoad)LIVE.stint=0;return{lap,st0:v.SessionTime,f0:v.FuelLevel!=null?v.FuelLevel:null,tt:v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp!=null?v.TrackTemp:null,stint:(LIVE.stint=(LIVE.stint||0)+1),d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
-function liveTick(v){LIVE.v=v;try{teleRoll(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
+function liveTick(v){LIVE.v=v;try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
 const p=LIVE.pend;if(p&&v.LapLastLapTime>0&&v.LapLastLapTime!==p.stale){const d=v.LapLastLapTime-p.time;if(d>-0.1&&d<1)p.time=v.LapLastLapTime;LIVE.pend=null;liveRender()}
 if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFinish(LIVE.cur,v);LIVE.cur=liveNewLap(v.Lap,v)}
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
@@ -1042,6 +1049,7 @@ if(v.OnPitRoad)c.pit=true;if(v.IsOnTrack===false||v.IsOnTrack===0)c.away=true;
 if(v.PlayerCarMyIncidentCount!=null){if(c.ic0==null)c.ic0=v.PlayerCarMyIncidentCount;if(v.PlayerCarMyIncidentCount>c.ic0)c.inc=true}
 if(v.PlayerTrackSurface===0)c.off=true;
 if(v.LapDistPct!=null&&v.LapDistPct>=0){if(c.pd!=null&&!c.pit){const dd=v.LapDistPct-c.pd,dt=v.SessionTime!=null&&c.pst!=null?Math.max(0,v.SessionTime-c.pst):0.5;if(!(c.pd>.9&&v.LapDistPct<.1)&&(dd<-.003||dd>.01+dt*.05))c.reset=true;else if(dd>0&&dd<.05)c.cov=(c.cov||0)+dd}c.pd=v.LapDistPct;c.pst=v.SessionTime}
+try{teleLapStats(c,v)}catch(e){}
 if(v.LapDistPct!=null&&v.LapDistPct>=0)c.lastD=v.LapDistPct;if(v.LapCurrentLapTime>0)c.lastT=v.LapCurrentLapTime;
 liveFrame()}
 function liveFrame(){if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE.raf=0;const now=performance.now(),txt=!(now-(LIVE.lastTxt||0)<100);if(txt)LIVE.lastTxt=now;liveGauges(!txt);const box=$('liveCharts'),tb=$('teleCharts');if((box&&box.clientWidth)||(tb&&tb.clientWidth))liveDrawCharts();if(teleOn())teleFrame(txt)})}
@@ -1049,7 +1057,7 @@ function liveFinish(c,v){const b=c.b,n=b.Speed.length,span=v.SessionTime!=null&&
 const mean=a=>{const x=a.filter(y=>y!=null);return x.length?x.reduce((s,y)=>s+y,0)/x.length:null};let st=null;
 if(LIVE_TIRES.every(k=>b.rh[k].every(x=>x!=null))){const ext={};LIVE_TIRES.forEach(k=>ext[k+'rideHeight']=Float64Array.from(b.rh[k]));st=aeroRhStats({n,Speed:Float64Array.from(b.Speed),Brake:Float64Array.from(b.Brake),LatG:Float64Array.from(b.LatG),ext,lapNum:c.lap})}
 const why=valid?'':c.reset?'active reset':span!=null&&c.lastT>0&&Math.abs(c.lastT-span)>=1.5?'lap clock off (start or formation lap)':c.inc?'incident':c.off?'off track':c.pit?'pit lane':c.away?'not on track':'not a full lap';
-const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,fuel:c.f0!=null&&v.FuelLevel!=null&&!c.pit&&!c.reset&&full&&c.f0>v.FuelLevel?c.f0-v.FuelLevel:null,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
+const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,stats:teleStatsOut(c),sx:full&&c.sx&&LIVE.secs&&c.sx.length===LIVE.secs.length?c.sx.slice():null,fuel:c.f0!=null&&v.FuelLevel!=null&&!c.pit&&!c.reset&&full&&c.f0>v.FuelLevel?c.f0-v.FuelLevel:null,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
 LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{renderCoach()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
@@ -2226,6 +2234,38 @@ return h}
 // the delta and the lap traces are against the lap picked here (your best, your last or a recorded driver).
 const TELE={roll:[],gg:[],built:false,key:''};
 function teleOn(){return document.body.dataset.view==='live'}
+// ---- Live telemetry, more: per-lap input stats, sectors, fuel to the finish, warnings, the wheel's force,
+// brakes and shocks per corner, tyres and the pit menu, the cars around, the wind. All from your car's own
+// telemetry (iRacing sends it for the car you drive, not for one you watch).
+const TCORN=['LF','RF','LR','RR'];
+// iRacing's bit fields (irsdk_EngineWarnings, irsdk_Flags, irsdk_PitSvFlags) and enums
+const ENG_WARN=[[0x01,'water temp'],[0x02,'fuel pressure'],[0x04,'oil pressure'],[0x08,'engine stalled'],[0x10,'pit limiter on'],[0x40,'oil temp'],[0x80,'repairs needed']];
+const SESS_FLAGS=[[0x10000,'black flag','bad'],[0x100000,'meatball (repair)','bad'],[0x20000,'disqualified','bad'],[0x10,'red flag','bad'],[0x4000,'caution','warn'],[0x8000,'caution','warn'],[0x8,'yellow','warn'],[0x100,'yellow (waving)','warn'],[0x40,'debris','warn'],[0x20,'blue flag','info'],[0x2,'white flag','info'],[0x1,'chequered flag','info'],[0x200,'one lap to green','info'],[0x400,'green held','info']];
+const PIT_SV=[[0x01,'LF'],[0x02,'RF'],[0x04,'LR'],[0x08,'RR']];
+const LEFTRIGHT={2:'car on your left',3:'car on your right',4:'three wide: you are in the middle',5:'two cars on your left',6:'two cars on your right'};
+const WETNESS=['','dry','mostly dry','very lightly wet','lightly wet','moderately wet','very wet','extremely wet'];
+const PACE={0:'single-file start',1:'double-file start',2:'single-file restart',3:'double-file restart'};
+function teleLapStats(c,v){const st=c.ts||(c.ts={n:0,full:0,brk:0,coast:0,peak:0,clip:0,up:[],hits:{}});if(v.Speed==null||v.Speed<2)return;
+st.n++;const thr=v.Throttle||0,brk=v.Brake||0;if(thr>0.98)st.full++;if(brk>0.05)st.brk++;if(thr<0.05&&brk<0.05)st.coast++;if(brk>st.peak)st.peak=brk;
+const tq=v.SteeringWheelPctTorqueSign!=null?Math.abs(v.SteeringWheelPctTorqueSign):v.SteeringWheelPctTorque;if(tq!=null&&tq>=0.99)st.clip++;
+if(c.lg!=null&&v.Gear>c.lg&&c.lg>0&&c.lr)st.up.push(c.lr);c.lg=v.Gear;c.lr=v.RPM;
+// shocks: a corner sitting at the deepest travel seen this session (most likely the bump stop) counts once per visit
+LIVE.shMax=LIVE.shMax||{};LIVE.shMaxT=LIVE.shMaxT||{};const now=v.SessionTime!=null?v.SessionTime:performance.now()/1000;TCORN.forEach(k=>{const d=v[k+'shockDefl'];if(d==null)return;if(!(d<=LIVE.shMax[k]*1.02)){LIVE.shMaxT[k]=now}if(!(d<=LIVE.shMax[k]))LIVE.shMax[k]=d;const at=LIVE.shMax[k]>0.01&&d>=LIVE.shMax[k]*0.97&&now-LIVE.shMaxT[k]>30;if(at&&!(c['at'+k]))st.hits[k]=(st.hits[k]||0)+1;c['at'+k]=at});
+// sectors: the lap clock as the car crosses each sector line
+const B=LIVE.secs||[],d=v.LapDistPct;if(B.length&&d!=null&&c.pd2!=null&&d>c.pd2&&d-c.pd2<0.05){c.sx=c.sx||[];const k=c.sx.length;if(k<B.length&&c.pd2<B[k]&&d>=B[k]&&v.LapCurrentLapTime>0)c.sx.push(v.LapCurrentLapTime)}c.pd2=d}
+// a lap's sector times: the crossings, then the lap time (iRacing's, once it arrives) for the last one
+function teleSecs(l){if(!l||!l.sx||!(l.time>0))return null;const a=[...l.sx,l.time];return a.map((t,i)=>t-(i?a[i-1]:0))}
+function teleStatsOut(c){const st=c.ts;if(!st||!st.n)return null;const pc=x=>Math.round(x/st.n*1000)/10;
+return{full:pc(st.full),brk:pc(st.brk),coast:pc(st.coast),peak:Math.round(st.peak*100),clip:pc(st.clip),up:st.up.length?Math.round(st.up.reduce((a,b)=>a+b,0)/st.up.length):null,hits:Object.assign({},st.hits),top:c.b.Speed.length?Math.max(...c.b.Speed):null}}
+// the car ahead and behind in the race order, and how the gap is moving (from every car's place on track)
+function teleSide(v){const P=v.CarIdxPosition,L=v.CarIdxLap,D=v.CarIdxLapDistPct,E=v.CarIdxEstTime,me=v.PlayerCarIdx;if(!P||!L||!D||me==null||!(P[me]>0))return;
+const lapT=(()=>{const b=LIVE.laps.filter(l=>l.valid).map(l=>l.time);return b.length?Math.min(...b):LIVE.laps.length&&LIVE.laps[LIVE.laps.length-1].time>0?LIVE.laps[LIVE.laps.length-1].time:null})();if(!lapT)return;
+const pos=P[me],find=p=>P.findIndex(x=>x===p),gap=(a,b)=>{if(a<0||b<0||L[a]<0||L[b]<0||D[a]<0||D[b]<0)return null;const dl=(L[a]+D[a])-(L[b]+D[b]);if(dl<0)return null;
+if(dl<1&&E&&E[a]>=0&&E[b]>=0){const g=D[a]>=D[b]?E[a]-E[b]:(lapT-E[b])+E[a];if(g>=0&&g<lapT*1.5)return g}return dl*lapT};
+const t=v.SessionTime,S=LIVE.side||(LIVE.side={a:[],b:[]}),push=(H,g,idx)=>{if(g==null){H.length=0;return}if(H.length&&H[H.length-1].i!==idx)H.length=0;H.push({t,g,i:idx});while(H.length&&t-H[0].t>20)H.shift()};
+const ia=pos>1?find(pos-1):-1,ib=find(pos+1);push(S.a,ia>=0?gap(ia,me):null,ia);push(S.b,ib>=0?gap(me,ib):null,ib);S.lapT=lapT}
+function teleTrend(H,lapT){if(!H||H.length<10||H[H.length-1].t-H[0].t<6)return null;const n=H.length,mt=H.reduce((s,p)=>s+p.t,0)/n,mg=H.reduce((s,p)=>s+p.g,0)/n;let a=0,b=0;H.forEach(p=>{a+=(p.t-mt)*(p.g-mg);b+=(p.t-mt)**2});return b?a/b*lapT:null}
+
 function teleRoll(v){if(v.Throttle==null&&v.Brake==null)return;const t=v.SessionTime!=null?v.SessionTime:performance.now()/1000,R=TELE.roll;
 if(R.length&&(t<R[R.length-1].t||t-R[R.length-1].t>5))R.length=0;
 R.push({t,thr:v.Throttle||0,brk:v.Brake||0,clu:v.Clutch!=null?1-v.Clutch:null,str:v.SteeringWheelAngle||0,spd:v.Speed||0});while(R.length&&t-R[0].t>12)R.shift();
@@ -2237,15 +2277,21 @@ if(!on){el.innerHTML='<p class="m" style="margin:0">Live telemetry appears here 
 const tile=(id,lab,big,tm)=>'<div class="tl-t'+(big?' big':'')+(tm?' tm':'')+'"><span>'+lab+'</span><b id="'+id+'">–</b><small id="'+id+'s">&nbsp;</small></div>';
 const bar=(id,lab,c)=>'<div class="pv"><div class="pb"><i id="'+id+'" style="background:'+c+'"></i></div>'+lab+'</div>';
 const opt=(v,l)=>'<option value="'+v+'"'+(LIVE_CMP===v?' selected':'')+'>'+l+'</option>';
-el.innerHTML='<div class="tl-top">'+tile('tlSpd','Speed',1)+tile('tlGear','Gear',1)+'<div class="tl-t big"><span>RPM</span><b id="tlRpm">–</b><div class="tl-rpm" id="tlRpmBar"><i></i></div></div>'+
+el.innerHTML='<div id="tlAlerts" class="tl-alerts"></div><div class="tl-top">'+tile('tlSpd','Speed',1)+tile('tlGear','Gear',1)+'<div class="tl-t big"><span>RPM</span><b id="tlRpm">–</b><div class="tl-rpm" id="tlRpmBar"><i></i></div></div>'+
 tile('tlDelta','Delta',1)+'</div><div class="tl-top two">'+tile('tlCur','This lap',0,1)+tile('tlLast','Last lap',0,1)+tile('tlBest','Best lap',0,1)+tile('tlPos','Position')+tile('tlFuel','Fuel')+tile('tlInc','Incidents')+'</div>'+
 '<div class="tl-mid"><div class="tl-in" style="flex-direction:column;align-items:center"><div class="tl-wheel"><svg width="64" height="64" viewBox="-32 -32 64 64"><g id="tlWheel"><circle r="27" fill="none" stroke="currentColor" stroke-width="5" opacity=".55"/><rect x="-2" y="-30" width="4" height="10" fill="var(--bad)"/><line x1="-26" y1="0" x2="26" y2="0" stroke="currentColor" stroke-width="5" opacity=".55"/></g></svg><span id="tlStr">0°</span></div>'+
-'<div style="display:flex;gap:10px">'+bar('tlClu','clutch','var(--mut)')+bar('tlBrk','brake','var(--bad)')+bar('tlThr','throttle','var(--good)')+'</div></div>'+
+'<div style="display:flex;gap:10px">'+bar('tlClu','clutch','var(--mut)')+bar('tlBrk','brake','var(--bad)')+bar('tlThr','throttle','var(--good)')+bar('tlFfb','wheel force','var(--ref)')+'</div><div class="m" id="tlClip" style="font-size:12px;min-height:16px"></div></div>'+
 '<div class="tl-box"><small class="m">Last 12 s: <span style="color:var(--good)">throttle</span>, <span style="color:var(--bad)">brake</span>, <span style="color:var(--ref)">steering</span></small><canvas id="tlRoll" style="height:160px"></canvas></div>'+
 '<div class="tl-box"><small class="m">g now <span title="Sideways left and right; accelerating up, braking down. Rings at 1, 2 and 3 g.">(accelerating ↑ braking ↓)</span></small><canvas id="tlGG" style="height:160px"></canvas></div></div>'+
 '<div class="tl-h"><b>This lap</b><span class="m">by track position, against</span><select id="teleCmp">'+opt('best','your best lap')+opt('last','your last lap')+(GH.sel?opt('ghost',plain((liveRef()||{}).name||'a recorded driver')):'')+'</select></div>'+
-'<div id="teleCharts" style="display:grid;grid-template-columns:1fr;gap:4px">'+['dlt','spd','pedal','steer'].map(k=>'<canvas data-lc="'+k+'" style="width:100%;height:'+(k==='dlt'?90:110)+'px;display:block"></canvas>').join('')+'</div>'+
-'<div class="tl-h"><b>The car</b><span class="m">as iRacing reports it now</span></div><div class="tl-car" id="tlCarBox"></div><div id="tlLaps"></div>';
+'<div id="tlSec"></div><div id="teleCharts" style="display:grid;grid-template-columns:1fr;gap:4px">'+['dlt','spd','pedal','steer'].map(k=>'<canvas data-lc="'+k+'" style="width:100%;height:'+(k==='dlt'?90:110)+'px;display:block"></canvas>').join('')+'</div>'+
+'<div class="tl-h"><b>Lap by lap</b><span class="m">how each lap was driven</span></div><div id="tlStats"></div>'+
+'<div class="tl-h"><b>Fuel to the finish</b></div><div class="tl-car" id="tlFuelBox"></div>'+
+'<div class="tl-h"><b>Around the car</b></div><div class="tl-car" id="tlAround"></div>'+
+'<div class="tl-h"><b>The car</b><span class="m">as iRacing reports it now</span></div><div class="tl-car" id="tlCarBox"></div>'+
+'<div class="tl-h"><b>Brakes and shocks</b><span class="m">per corner, now</span></div><div id="tlCorners" class="tl-corners"></div>'+
+'<div class="tl-h"><b>Tyres and the next stop</b></div><div class="tl-car" id="tlPit"></div>'+
+'<div class="tl-h"><b>Conditions</b></div><div class="tl-car" id="tlWx"></div><div id="tlLaps"></div>';
 const cs=$('teleCmp');if(cs)cs.onchange=()=>{LIVE_CMP=cs.value;try{localStorage.setItem('liveCmp',LIVE_CMP)}catch(e){}const o=$('liveCmp');if(o)o.value=LIVE_CMP;liveDrawCharts()};
 teleLaps();teleFrame(true);liveDrawCharts()}
 function teleLaps(){const el=$('tlLaps');if(!el)return;const h=liveLapsHtml().replace('<details style="margin-top:8px">','<details open style="margin-top:8px">');if(el.dataset.h!==h){el.dataset.h=h;el.innerHTML=h}}
@@ -2253,7 +2299,10 @@ function teleFrame(txt){const v=LIVE.v;if(!v||!$('tlSpd'))return;const set=(id,t
 hgt('tlThr',v.Throttle);hgt('tlBrk',v.Brake);hgt('tlClu',v.Clutch!=null?1-v.Clutch:0);
 const deg=(v.SteeringWheelAngle||0)*57.2958,w=$('tlWheel');if(w)w.setAttribute('transform','rotate('+(-deg).toFixed(1)+')');
 const C=teleCar(),rb=$('tlRpmBar');if(rb&&v.RPM!=null){const top=C.red||C.shift*1.08||9000;rb.firstChild.style.width=pct(v.RPM/top);rb.classList.toggle('shift',!!(C.shift&&v.RPM>=C.shift))}
-teleDrawRoll();teleDrawGG();if(!txt)return;
+teleDrawRoll();teleDrawGG();
+{const tq=v.SteeringWheelPctTorqueSign!=null?Math.abs(v.SteeringWheelPctTorqueSign):v.SteeringWheelPctTorque,fe=$('tlFfb');if(fe&&tq!=null){fe.style.height=pct(tq);fe.style.background=tq>=0.99?'var(--bad)':'var(--ref)'}}
+TCORN.forEach(k=>{const b=$('tlBp'+k),sh=$('tlSh'+k);if(b){const pr=v[k+'brakeLinePress'],mx=LIVE.bpMax=Math.max(LIVE.bpMax||1,pr||0);b.style.width=pct((pr||0)/mx)}if(sh){const d=v[k+'shockDefl'],m=(LIVE.shMax||{})[k];sh.style.width=pct(d!=null&&m?d/m:0);sh.style.background=d!=null&&m&&d>=m*0.97?'var(--bad)':'var(--good)'}});
+if(!txt)return;try{teleMore(v)}catch(e){console.error('live more',e)}
 set('tlStr',Math.round(deg)+'°');set('tlSpd',v.Speed!=null?(v.Speed*3.6*U().s[0]).toFixed(0):'–');set('tlSpds',U().s[1]);set('tlGear',v.Gear==null?'–':v.Gear===0?'N':v.Gear<0?'R':String(v.Gear));
 set('tlRpm',v.RPM!=null?String(Math.round(v.RPM)):'–');
 const c=LIVE.cur,dl=c&&c.b.dlt.length?c.b.dlt[c.b.dlt.length-1]:null,de=$('tlDelta');set('tlDelta',dl==null?'–':(dl>0?'+':dl<0?'−':'')+Math.abs(dl).toFixed(2));if(de)de.style.color=dl==null?'':dl>0?'var(--bad)':'var(--good)';set('tlDeltas','against '+liveCmpLbl());
@@ -2269,8 +2318,71 @@ add('Water',v.WaterTemp!=null?liveTemp(v.WaterTemp):null);add('Oil',v.OilTemp!=n
 add('Brake bias',v.dcBrakeBias!=null?n(v.dcBrakeBias,1)+(v.dcBrakeBias>10?'%':''):null);add('TC',v.dcTractionControl!=null?n(v.dcTractionControl,0):null);add('TC 2',v.dcTractionControl2!=null?n(v.dcTractionControl2,0):null);add('ABS',v.dcABS!=null?n(v.dcABS,0):null);
 add('Engine map',v.dcEngineMap!=null?n(v.dcEngineMap,0):v.dcFuelMixture!=null?n(v.dcFuelMixture,0):null);add('ARB front',v.dcAntiRollFront!=null?n(v.dcAntiRollFront,0):null);add('ARB rear',v.dcAntiRollRear!=null?n(v.dcAntiRollRear,0):null);
 const q={};LIVE_TIRES.forEach(k=>q[k]=liveRh(v,k));const f=q.LF!=null&&q.RF!=null?(q.LF+q.RF)*500:null,r=q.LR!=null&&q.RR!=null?(q.LR+q.RR)*500:null;if(f!=null&&r!=null)add('Ride height','F '+liveMm(f)+' · R '+liveMm(r));
-add('Track temp',v.TrackTempCrew!=null?liveTemp(v.TrackTempCrew):v.TrackTemp!=null?liveTemp(v.TrackTemp):null);add('Air',v.AirTemp!=null?liveTemp(v.AirTemp):null);
+add('Boost',v.ManifoldPress!=null&&v.ManifoldPress>0.2?pr(v.ManifoldPress):null);add('Push to pass',v.P2P_Count>0||v.P2P_Status?v.P2P_Count+' left'+(v.P2P_Status?' · on':''):null);
+add('Oil level',v.OilLevel>0?n(v.OilLevel,1)+' L':null);add('Water level',v.WaterLevel>0?n(v.WaterLevel,1)+' L':null);
 const h=rows.join('')||'<span class="m">No car readings in this feed.</span>';if(box.dataset.h!==h){box.dataset.h=h;box.innerHTML=h}}}
+
+function teleMore(v){const set=(id,h)=>{const e=$(id);if(e&&e.dataset.h!==h){e.dataset.h=h;e.innerHTML=h}},row=(l,x,t)=>x==null||x===''?'':'<div'+(t?' title="'+t+'"':'')+'><span>'+l+'</span><b>'+x+'</b></div>',
+imp=SETUP_UNITS==='imperial',fu=x=>x==null?null:imp?(x*0.264172).toFixed(2)+' gal':x.toFixed(2)+' L',kmh=ms=>(ms*3.6*U().s[0]).toFixed(0)+' '+U().s[1],bar=x=>x==null?null:imp?(x*14.5038).toFixed(0)+' psi':(+x).toFixed(1)+' bar',kpa=x=>x==null?null:imp?(x*0.145038).toFixed(1)+' psi':(+x).toFixed(0)+' kPa';
+// warnings: the flag, the engine, the incident limit, the pace car
+const al=[],fl=v.SessionFlags||0,ew=v.EngineWarnings||0,seen=new Set();SESS_FLAGS.forEach(([b,t,c])=>{if(fl&b&&!seen.has(t)){seen.add(t);al.push('<span class="'+c+'">'+t+'</span>')}});
+ENG_WARN.forEach(([b,t])=>{if(ew&b)al.push('<span class="'+(b===0x10?'info':'bad')+'">'+t+'</span>')});
+const inc=v.PlayerCarMyIncidentCount,lim=LIVE.incLimit;if(lim&&inc!=null&&inc>=lim-6)al.push('<span class="'+(inc>=lim-2?'bad':'warn')+'">incidents '+inc+'x of '+lim+'</span>');
+if(v.PaceMode!=null&&PACE[v.PaceMode]&&(v.SessionState===3||(fl&(0x4000|0x8000|0x200))))al.push('<span class="warn">pacing: '+PACE[v.PaceMode]+'</span>');if(v.PitsOpen===false)al.push('<span class="warn">pits closed</span>');
+if(LEFTRIGHT[v.CarLeftRight])al.push('<span class="warn">'+LEFTRIGHT[v.CarLeftRight]+'</span>');
+set('tlAlerts',al.join(''));
+// the wheel's force: how much of this lap it has been at its limit (clipping)
+const cs=LIVE.cur&&LIVE.cur.ts;set('tlClip',cs&&cs.n?'force at its limit '+(cs.clip/cs.n*100).toFixed(1)+'% of this lap':'');
+// sectors: this lap so far, the last lap, your best of each; and a predicted lap
+const B=LIVE.secs||[];if(B.length){const c=LIVE.cur,cur=c&&c.sx?[0,...c.sx].slice(1).map((t,i,a)=>t-(i?a[i-1]:0)):[],ok=LIVE.laps.filter(l=>l.valid&&l.sx).map(teleSecs),bs=B.concat([1]).map((_,j)=>ok.length?Math.min(...ok.map(x=>x[j])):null),lastL=LIVE.laps.filter(l=>l.sx).slice(-1)[0],last=lastL?teleSecs(lastL):null;
+const cell=(x,j)=>x==null?'–':'<b class="'+(bs[j]!=null&&x<=bs[j]+0.0005?'p':bs[j]!=null?'y':'')+'">'+x.toFixed(2)+'</b>'+(bs[j]!=null&&x>bs[j]+0.0005?' <span class="m">+'+(x-bs[j]).toFixed(2)+'</span>':'');
+const best=LIVE.laps.filter(l=>l.valid).reduce((m,l)=>!m||l.time<m.time?l:m,null),dl=c&&c.b.dlt.length?c.b.dlt[c.b.dlt.length-1]:null,tb=bs.every(x=>x!=null)?bs.reduce((a,b)=>a+b,0):null;
+let h='<div class="tl-sec">'+B.concat([1]).map((_,j)=>'<span class="sx"><span class="m">S'+(j+1)+'</span> '+(j<cur.length?cell(cur[j],j):last?'<span class="m">last</span> '+cell(last[j],j):'–')+'</span>').join('')+
+(best&&dl!=null&&LIVE_CMP==='best'?'<span class="sx" title="Your best lap plus the delta now"><span class="m">predicted</span> <b>'+ft(best.time+dl)+'</b></span>':'')+(tb?'<span class="sx" title="Your best sectors added up"><span class="m">best possible</span> <b>'+ft(tb)+'</b></span>':'')+'</div>';
+const ird=(k,l)=>v[k+'_OK']&&v[k]!=null?'<span class="sx"><span class="m">'+l+'</span> <b style="color:'+(v[k]>0?'var(--bad)':'var(--good)')+'">'+(v[k]>0?'+':'−')+Math.abs(v[k]).toFixed(2)+'</b></span>':'';
+const ir=ird('LapDeltaToSessionBestLap','iRacing: to the session best')+ird('LapDeltaToOptimalLap','to your optimal')+ird('LapDeltaToSessionLastlLap','to your last');if(ir)h+='<div class="tl-sec">'+ir+'</div>';set('tlSec',h)}
+// lap by lap: how each lap was driven (this lap so far, then the last ones), against your best
+{const cur=LIVE.cur&&LIVE.cur.ts?teleStatsOut(LIVE.cur):null,L=LIVE.laps.filter(l=>l.stats&&l.time>0&&l.why!=='not a full lap').slice(-5).reverse(),best=LIVE.laps.filter(l=>l.valid&&l.stats).reduce((m,l)=>!m||l.time<m.time?l:m,null);
+const rows=(cur?[{lab:'This lap',s:cur}]:[]).concat(best?[{lab:'Best · lap '+best.lap,s:best.stats,t:best.time,b:1}]:[]).concat(L.map(l=>({lab:'Lap '+l.lap+(l.valid?'':' <span class="m">'+(l.why||'')+'</span>'),s:l.stats,t:l.time})));
+const hit=s=>{const k=Object.keys(s.hits||{});return k.length?k.map(x=>x+' '+s.hits[x]).join(' · '):'–'};
+set('tlStats',rows.length?'<div style="overflow-x:auto"><table><tr><th>Lap</th><th>Time</th><th title="Throttle over 98%">Full throttle</th><th title="Brake over 5%">Braking</th><th title="Neither pedal">Coasting</th><th>Peak brake</th><th>Top speed</th><th title="Average revs at each upshift">Upshift at</th><th title="The wheel\'s force at its limit (clipping)">Force at limit</th><th title="A corner at the deepest shock travel seen this session, most likely its bump stop">Shocks at the stop</th></tr>'+
+rows.map(r=>'<tr'+(r.b?' style="background:rgba(128,128,128,.10)"':'')+'><td>'+r.lab+'</td><td>'+(r.t>0?ft(r.t):'–')+'</td><td>'+r.s.full+'%</td><td>'+r.s.brk+'%</td><td>'+r.s.coast+'%</td><td>'+r.s.peak+'%</td><td>'+(r.s.top?kmh(r.s.top):'–')+'</td><td>'+(r.s.up||'–')+'</td><td>'+r.s.clip+'%</td><td>'+hit(r.s)+'</td></tr>').join('')+'</table></div>':'<p class="m">Appears as you drive.</p>')}
+// fuel to the finish
+{const used=LIVE.laps.filter(l=>l.fuel>0).slice(-3).map(l=>l.fuel),per=used.length?used.reduce((a,b)=>a+b,0)/used.length:null,kgL=(LIVE.meta&&LIVE.meta.fuelKg)||0.75,
+lapT=(LIVE.side&&LIVE.side.lapT)||(LIVE.laps.length?LIVE.laps[LIVE.laps.length-1].time:null),cc=LIVE.cur,now=cc&&cc.f0!=null&&v.FuelLevel!=null&&(cc.cov||0)>0.25&&!cc.pit&&cc.f0>v.FuelLevel?(cc.f0-v.FuelLevel)/cc.cov:null,
+lr=v.SessionLapsRemainEx!=null&&v.SessionLapsRemainEx<32767?v.SessionLapsRemainEx:v.SessionTimeRemain>0&&lapT?Math.ceil(v.SessionTimeRemain/lapT):null,
+frac=v.LapDistPct!=null&&v.LapDistPct>=0?1-v.LapDistPct:0,need=per&&lr!=null?per*(Math.max(0,lr-1)+frac):null,short=need!=null&&v.FuelLevel!=null?need-v.FuelLevel:null,
+pitAdd=v.PitSvFlags!=null&&(v.PitSvFlags&0x10)?v.PitSvFuel:null;
+set('tlFuelBox',row('Fuel aboard',fu(v.FuelLevel))+row('Per lap (last full laps)',fu(per))+row('This lap so far',now!=null?fu(now)+' a lap':null,'Fuel used since the line, over the share of the lap driven')+
+row('Laps to go',lr!=null?String(lr)+(v.SessionLapsRemainEx<32767?'':' (from the clock)'):null)+row('Needed to the finish',fu(need))+
+row(short!=null&&short>0?'Short by':'Spare at the flag',short!=null?fu(Math.abs(short)):null)+row('Save per lap to finish',short!=null&&short>0&&lr>0?fu(short/lr):null)+
+row('Pit menu adds',pitAdd!=null?fu(pitAdd):v.PitSvFlags!=null?'no fuel':null))}
+// around the car
+{const S=LIVE.side||{},ga=S.a&&S.a.length?S.a[S.a.length-1]:null,gb=S.b&&S.b.length?S.b[S.b.length-1]:null,ta=teleTrend(S.a,S.lapT),tb=teleTrend(S.b,S.lapT),
+tr=(t,ahead)=>t==null?'':Math.abs(t)<0.05?' <span class="m">holding</span>':ahead?(t<0?' <span style="color:var(--good)">catching '+(-t).toFixed(2)+' s/lap</span>':' <span style="color:var(--bad)">losing '+t.toFixed(2)+' s/lap</span>'):(t<0?' <span style="color:var(--bad)">closing '+(-t).toFixed(2)+' s/lap</span>':' <span style="color:var(--good)">dropping back '+t.toFixed(2)+' s/lap</span>');
+set('tlAround',row('Beside you',v.CarLeftRight!=null?(LEFTRIGHT[v.CarLeftRight]||'clear'):null)+row('Car ahead (race order)',ga?'≈ '+ga.g.toFixed(2)+' s'+tr(ta,1):null,'From where both cars are on track and their own timing; a lap or more is shown as laps × your lap time')+
+row('Car behind (race order)',gb?'≈ '+gb.g.toFixed(2)+' s'+tr(tb,0):null)+row('Nearest ahead on track',v.CarDistAhead>0?(v.CarDistAhead*U().d[0]).toFixed(0)+' '+U().d[1]:null)+row('Nearest behind on track',v.CarDistBehind>0?(v.CarDistBehind*U().d[0]).toFixed(0)+' '+U().d[1]:null))}
+// brakes and shocks per corner
+{const el=$('tlCorners');if(el&&!el.dataset.b){el.dataset.b=1;el.innerHTML=TCORN.map(k=>'<div><b>'+k+'</b><div class="m">brake <span id="tlBv'+k+'">–</span></div><div class="hb"><i id="tlBp'+k+'" style="background:var(--bad)"></i></div><div class="m">shock <span id="tlSv'+k+'">–</span></div><div class="hb"><i id="tlSh'+k+'"></i></div></div>').join('')+'<div id="tlBrkSplit" class="m" style="grid-column:1/-1;font-size:13px;background:none;padding:0"></div>'}
+const tx=(id,t)=>{const e=$(id);if(e&&e.textContent!==t)e.textContent=t};TCORN.forEach(k=>{tx('tlBv'+k,bar(v[k+'brakeLinePress'])||'–');const d=v[k+'shockDefl'];tx('tlSv'+k,d!=null?liveMm(d*1000):'–')});
+const F=(v.LFbrakeLinePress||0)+(v.RFbrakeLinePress||0),R=(v.LRbrakeLinePress||0)+(v.RRbrakeLinePress||0);if(v.Brake>0.3&&F+R>0)LIVE.split=F/(F+R)*100;
+tx('tlBrkSplit',(LIVE.split!=null?'Brake split under braking: '+LIVE.split.toFixed(1)+'% front'+(v.dcBrakeBias!=null?' (bias set '+(+v.dcBrakeBias).toFixed(1)+')':'')+' · ':'')+'ABS '+(v.BrakeABSactive?'working now':'off now')+' · a red shock bar is at the deepest travel seen this session')}
+// tyres and the next stop
+{const sv=v.PitSvFlags||0,tyres=PIT_SV.filter(([b])=>sv&b).map(([,t])=>t),cp=TCORN.map(k=>kpa(v['dp'+k+'TireColdPress'])),cold=cp.some(x=>x!=null)?(cp.every(x=>x===cp[0])?cp[0]+' all round':'LF '+cp[0]+' · RF '+cp[1]+' · LR '+cp[2]+' · RR '+cp[3]):null;
+const tn=i=>{if(i==null)return null;const m=new RegExp('TireIndex:\\s*'+i+'\\s*\\n\\s*TireCompoundType:\\s*"?([^"\\n]+)').exec(LIVE.yaml||'');return m?m[1].trim():'compound '+i};
+set('tlPit',row('Tyre compound now',tn(v.PlayerTireCompound))+row('Tyre sets left',v.TireSetsAvailable!=null&&v.TireSetsAvailable<255?String(v.TireSetsAvailable):null)+row('Tyre sets used',v.TireSetsUsed!=null?String(v.TireSetsUsed):null)+
+row('Fast repairs',v.FastRepairAvailable!=null?(v.FastRepairAvailable>=255?'unlimited':v.FastRepairAvailable+' left')+(v.FastRepairUsed?' · '+v.FastRepairUsed+' used':''):null)+
+row('Next stop: tyres',v.PitSvFlags!=null?(tyres.length===4?'all four':tyres.length?tyres.join(', '):'none'):null)+row('Next stop: compound',v.PitSvTireCompound!=null&&tyres.length?tn(v.PitSvTireCompound):null)+
+row('Next stop: pressures (cold)',tyres.length?cold:null)+row('Next stop: fast repair',sv&0x40?'yes':null)+row('Next stop: tear-off',sv&0x20?'yes':null))}
+// conditions: wind against the car's heading, track temperature over the last minutes, wetness and rain
+{const W=LIVE.wx||(LIVE.wx=[]),t=v.SessionTime;if(t!=null&&v.TrackTempCrew!=null&&(!W.length||t-W[W.length-1].t>10)){W.push({t,tt:v.TrackTempCrew});while(W.length&&t-W[0].t>600)W.shift()}
+const tt=W.length>1&&W[W.length-1].t-W[0].t>120?(W[W.length-1].tt-W[0].tt)/((W[W.length-1].t-W[0].t)/600):null;
+let wind=null;if(v.WindVel!=null&&v.WindDir!=null&&v.YawNorth!=null&&v.WindVel>0.3){const rel=Math.atan2(Math.sin(v.WindDir-v.YawNorth),Math.cos(v.WindDir-v.YawNorth)),head=Math.cos(rel)*v.WindVel,cross=Math.sin(rel)*v.WindVel;
+wind=(Math.abs(head)>=Math.abs(cross)?(head>0?'headwind ':'tailwind ')+kmh(Math.abs(head)):'crosswind from the '+(cross>0?'right ':'left ')+kmh(Math.abs(cross)))}
+const deg=x=>x==null?null:liveTemp(x);
+set('tlWx',row('Track',deg(v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp))+row('Track trend',tt!=null?(tt>=0?'+':'−')+(Math.abs(tt)*(imp?1.8:1)).toFixed(1)+(imp?'°F':'°C')+' per 10 min':null)+row('Air',deg(v.AirTemp))+
+row('Wind on the car now',wind,'iRacing\'s wind direction against the car\'s heading: what the car feels on this part of the track')+row('Wind',v.WindVel!=null?kmh(v.WindVel):null)+row('Surface',v.TrackWetness!=null?WETNESS[v.TrackWetness]||null:null)+
+row('Rain',v.Precipitation!=null?Math.round(v.Precipitation*100)+'%':null)+row('Wet declared',v.WeatherDeclaredWet?'yes':null))}}
 function teleCanvas(id){const cv=$(id);if(!cv||!cv.clientWidth)return null;const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);return{g,W,H}}
 function teleDrawRoll(){const c=teleCanvas('tlRoll'),R=TELE.roll;if(!c||R.length<2)return;const{g,W,H}=c,t1=R[R.length-1].t,X=t=>W-(t1-t)/12*W,ln=liveCss('--ln','#444');
 g.strokeStyle=ln;g.lineWidth=1;g.setLineDash([2,4]);[0.25,0.5,0.75].forEach(f=>{g.beginPath();g.moveTo(0,H*f);g.lineTo(W,H*f);g.stroke()});g.setLineDash([]);

@@ -1075,6 +1075,66 @@ class LiveLapsTest(unittest.TestCase):
         self.assertEqual(self.r["gg"], 120)
 
 
+LIVE_MORE_JS = r"""
+// three laps of 60 s with sectors at 30% and 60%; full throttle 60% of the lap, braking 20%, coasting 20%;
+// the wheel's force at its limit for 5% of the lap; one upshift at 7000 rpm each lap
+LIVE.ws = {}; LIVE.state = 'bridge';
+liveSession('WeekendInfo:\n TrackDisplayName: Test\nSplitTimeInfo:\n Sectors:\n - SectorNum: 0\n   SectorStartPct: 0.000000\n - SectorNum: 1\n   SectorStartPct: 0.300000\n - SectorNum: 2\n   SectorStartPct: 0.600000\nWeekendOptions:\n IncidentLimit: 17\n');
+let T = 10;
+for (let lap = 1; lap <= 3; lap++) {
+  const n = 3600;
+  for (let i = 0; i < n; i++) {
+    const d = i / n, ph = d % 0.1;
+    const thr = ph < 0.06 ? 1 : 0, brk = ph >= 0.06 && ph < 0.08 ? 0.9 : 0;
+    liveTick({ Lap: lap, LapDistPct: d, LapCurrentLapTime: i / 60, LapLastLapTime: lap > 1 ? (i > 30 ? 60 : 59.9) : -1, Speed: 50, Throttle: thr, Brake: brk,
+               SteeringWheelPctTorque: d > 0.5 && d < 0.55 ? 1 : 0.4, Gear: d < 0.5 ? 3 : 4, RPM: 7000, OnPitRoad: false, SessionTime: T,
+               PlayerTrackSurface: 3, PlayerCarMyIncidentCount: 0, LFshockDefl: 0.03, FuelLevel: 50 - (lap - 1) * 2 - 2 * d });
+    T += 1 / 60;
+  }
+}
+liveTick({ Lap: 4, LapDistPct: 0.001, LapCurrentLapTime: 0.01, LapLastLapTime: 60, Speed: 50, Throttle: 1, OnPitRoad: false, SessionTime: T, FuelLevel: 44 });
+const L = LIVE.laps.find(l => l.lap === 2);
+// gaps: me (idx 1) in P2 at 40% of lap 5; P1 (idx 0) at 45% of lap 5; P3 (idx 2) at 35% of lap 5
+const pos = [1, 2, 3], lapv = [5, 5, 5];
+let gapsA = [];
+for (let k = 0; k < 40; k++) {
+  const t = 1000 + k * 0.5;
+  teleSide({ PlayerCarIdx: 1, CarIdxPosition: pos, CarIdxLap: lapv, CarIdxLapDistPct: [0.45 + k * 0.0005, 0.40, 0.35], CarIdxEstTime: [27 + k * 0.03, 24, 21], SessionTime: t });
+}
+const S = LIVE.side;
+console.log(JSON.stringify({ secs: teleSecs(L).map(x => +x.toFixed(2)), stats: L.stats, secsN: LIVE.secs, lim: LIVE.incLimit,
+  ahead: +S.a[S.a.length - 1].g.toFixed(2), behind: +S.b[S.b.length - 1].g.toFixed(2), trend: +teleTrend(S.a, S.lapT).toFixed(2) }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class LiveMoreTest(unittest.TestCase):
+    """Live telemetry's per-lap stats, live sectors and the gaps to the cars ahead and behind."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(LIVE_MORE_JS)
+
+    def test_sectors_add_up_to_the_lap(self):
+        self.assertEqual(self.r["secsN"], [0.3, 0.6])
+        self.assertEqual(self.r["secs"], [18.0, 18.0, 24.0])
+        self.assertEqual(self.r["lim"], 17)
+
+    def test_how_the_lap_was_driven(self):
+        st = self.r["stats"]
+        self.assertAlmostEqual(st["full"], 60.0, delta=0.5)
+        self.assertAlmostEqual(st["brk"], 20.0, delta=0.5)
+        self.assertAlmostEqual(st["coast"], 20.0, delta=0.5)
+        self.assertEqual(st["peak"], 90)
+        self.assertAlmostEqual(st["clip"], 5.0, delta=0.2)
+        self.assertEqual(st["up"], 7000)
+
+    def test_gaps_ahead_and_behind_and_the_trend(self):
+        self.assertAlmostEqual(self.r["ahead"], 27 + 39 * 0.03 - 24, places=2)    # their own timing to that point
+        self.assertEqual(self.r["behind"], 3.0)
+        self.assertAlmostEqual(self.r["trend"], 0.06 * 60, delta=0.2)            # 0.03 s per 0.5 s, per 60 s lap: losing
+
+
 @unittest.skipUnless(NODE, "Node.js is not installed")
 class LiveVerdictTest(unittest.TestCase):
     @classmethod

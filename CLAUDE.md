@@ -81,8 +81,11 @@ iRacing Suite app (suite/)
   sentences and tables, "C4" only on charts and the corner strip. Views: Live, Coaching, Setup, Lap Analyzer.
 - The four views each do one job, and must stay that way: Live telemetry (view=live, its own tile on the home
   page) is what the car is doing right now, for an engineer watching: speed, gear, revs, pedals, steering, the
-  last 12 s of inputs, g, this lap against the picked lap (delta, speed, pedals, steering), the car's systems and
-  recent laps; nothing about files. Coaching is the driving only (gap, 3 things, where
+  last 12 s of inputs, g, the wheel's force, warnings (flags, engine, incident limit, pacing), live sectors and a
+  predicted lap, this lap against the picked lap (delta, speed, pedals, steering), lap-by-lap input stats, fuel to
+  the finish, the cars around (race-order gaps from CarIdxPosition/CarIdxEstTime), the car's systems, brakes and
+  shocks per corner, tyres and the next stop, conditions (wind against the car's heading) and recent laps; nothing
+  about files. All of it is your car's own telemetry. Coaching is the driving only (gap, 3 things, where
   the time goes, corners, consistency, track limits, progress, conditions, pace rating; one line points to Setup
   when the car costs time); Setup is the car only (how it handles on your laps and what to change, tyres on your
   lap, the live engineer and runs, the setup sheet); the Lap Analyzer is laps already driven (your laps, your lap
