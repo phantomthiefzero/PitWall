@@ -2636,7 +2636,7 @@
     if (!laps.length) return `<div class="note">${RW().Pos} laps appear here as the car crosses the line.</div>`;
     const ownRef = isOwnRef();
     const adj = ownRef ? S.feed.events.filter(e => e.kind === "adjust") : [];
-    const timed = laps.filter(e => e.lapS != null && !e.pit);
+    const timed = laps.filter(e => e.lapS != null && !e.pit && !e.reset);
     const best = timed.length ? Math.min(...timed.map(e => e.lapS)) : null;
     const sb = (S.cars && S.cars.derived && S.cars.derived.sessionBestSectorS) || [];
     const own = (me.derived && me.derived.bestSectorS) || [];
@@ -2654,7 +2654,7 @@
       const inc = e.incL ? `<span class="lose">+${e.incL}x</span>` : e.incL === 0 ? `<span class="muted">0</span>` : "–";
       // in-car changes made during this lap (your car only)
       const ch = adj.filter(a => a.onLap === e.lap).map(a => `${esc(words(a.control))} ${esc(a.fromValue)}→${esc(a.toValue)}`).join(", ");
-      const note = [e.pit ? "pit lane" : "", e.lapS == null ? "no time" : "", ch].filter(Boolean).join(" · ");
+      const note = [e.pit ? "pit lane" : "", e.reset ? "active reset: time not used" : "", e.lapS == null ? "no time" : "", ch].filter(Boolean).join(" · ");
       return `<tr class="${isBest ? "best" : ""}"><td class="r mono">${e.lap}</td>` +
         `<td class="r mono ${isBest ? "s-purple" : ""}">${fmt.lap(e.lapS)}</td>${sec}` +
         `<td class="r mono">${e.topSpeedMs != null ? U.speed(e.topSpeedMs) : "–"}</td>` +

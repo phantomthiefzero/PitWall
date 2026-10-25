@@ -925,6 +925,35 @@ def test_pace_ignores_pit_laps_and_wants_two_laps():
     assert d.pace(1) == 100.5, "pit laps leaked into the pace"
 
 
+def test_active_reset_lap_is_kept_out_of_the_pace():
+    """iRacing's active reset (lone practice) moves your car back to a saved point while the
+    lap clock runs on. The lap distance jumps; that lap's time is not a lap of the track."""
+    d = Deriver()
+    d._player_idx = 2
+    t = 0.0
+    d.record_lap(_car(2, lapCompleted=0, lastLapS=-1.0, pct=0.0), t)
+    lap_s = {1: 90.0, 2: 91.0, 3: 120.0, 4: 90.5}        # lap 3: reset from 70% back to 30%
+    for k in range(1, 5):
+        pcts = [i / 20 for i in range(1, 20)]
+        if k == 3:
+            pcts = [p for p in pcts if p <= 0.7] + [0.3] + [p for p in pcts if p > 0.3]
+        for p in pcts:
+            t += lap_s[k] / len(pcts)
+            d.record_lap(_car(2, lapCompleted=k - 1, lastLapS=lap_s.get(k - 1, -1.0), pct=p), t)
+        t += 0.1
+        d.record_lap(_car(2, lapCompleted=k, lastLapS=lap_s[k], pct=0.001), t)
+        d.record_lap(_car(2, lapCompleted=k, lastLapS=lap_s[k], pct=0.002), t + Deriver.LAP_EXTRAS_WAIT_S + 0.1)
+    flags = {e["lap"]: e.get("reset") for e in d._laps[2]}
+    assert flags == {1: False, 2: False, 3: True, 4: False}
+    assert d.pace(2) == 90.5, "the reset lap leaked into the pace"
+    # another car's position is never read this way (a reset exists for your car only)
+    d2 = Deriver()
+    d2._player_idx = 9
+    d2.record_lap(_car(2, lapCompleted=0, pct=0.6), 0.0)
+    d2.record_lap(_car(2, lapCompleted=0, pct=0.2), 1.0)
+    assert not d2._lapst[2].get("reset")
+
+
 def test_pit_lane_loss_is_lane_time_less_stationary_less_pace():
     """Lane loss = time between the pit-road lines - stationary - same stretch at pace."""
     d = Deriver()

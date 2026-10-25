@@ -903,6 +903,17 @@ class Deriver:
             return None
         if c.get("onPitRoad"):
             st["pit"] = True
+        # iRacing's active reset (lone practice, your car only) puts the car back (or on) to a
+        # saved point while the lap clock runs: the lap distance jumps. That lap's time means
+        # nothing, so it is kept out of pace, consistency and best laps.
+        pct = c.get("pct")
+        if idx == self._player_idx and pct is not None and pct >= 0:
+            pp, pt = st.get("pp"), st.get("pt")
+            if pp is not None and lc == st["lc"] and not c.get("onPitRoad"):
+                dd, dt = pct - pp, max(0.0, t - pt)
+                if not (pp > 0.9 and pct < 0.1) and (dd < -0.003 or dd > 0.01 + dt * 0.05):
+                    st["reset"] = True
+            st["pp"], st["pt"] = pct, t
         done = None
         if lc > st["lc"]:
             if st["pend"] is not None:          # the previous lap never got a time
@@ -914,6 +925,7 @@ class Deriver:
                           "classGapS": d.get("classGapS"), "toPlayerS": d.get("toPlayerS"),
                           "pit": st["pit"] or bool(c.get("onPitRoad")),
                           "jump": lc - st["lc"] != 1, "t": round(t, 2), "sectors": None,
+                          "reset": bool(st.pop("reset", False)),
                           "topSpeedMs": self._take_top_speed(idx)}
             if idx == self._player_idx:
                 st["pend"]["fuelL"] = None
@@ -971,7 +983,7 @@ class Deriver:
         lst.append(e)
         del lst[:-200]
         s = self._lapsum.setdefault(idx, {"racing": [], "top": None, "led": 0, "classLed": 0})
-        if e["lapS"] and not e["pit"]:
+        if e["lapS"] and not e["pit"] and not e.get("reset"):
             s["racing"].append(e["lapS"])
             del s["racing"][:-max(self.PACE_LAPS, self.CONSISTENCY_LAPS)]
         if e.get("topSpeedMs") and (s["top"] is None or e["topSpeedMs"] > s["top"]):
