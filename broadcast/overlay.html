@@ -198,9 +198,11 @@ small{margin-right:4px}
 
 #setup{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#111;color:#fff;padding:24px 28px;max-width:640px;font:500 20px/1.45 sans-serif}
 @media (prefers-reduced-motion: reduce){.row,.layer,.tk,.inner{transition:none!important;animation:none!important}}
+/* The broadcast's master switch is off (the producer panel's "Broadcast off"): nothing on air */
+body.bc-off>*:not(script){visibility:hidden!important}
 </style>
 </head>
-<body>
+<body class="bc-off">
 <div id="stage">
   <section class="layer" id="tower"><div class="inner">
     <div class="tw-head"><img class="logo hide" id="twLogo" alt=""><span class="ttl" id="twTitle">Race</span><span class="st" id="twState"></span></div>
@@ -941,7 +943,7 @@ small{margin-right:4px}
       case "feed": handleFeed(m); break;
       case "gfx": S.gfx = m.state || {}; applyTheme(); maybeStinger(); break;
       case "assets": S.assets = m.files || []; break;
-      case "director": S.director = m; break;
+      case "director": S.director = m; document.body.classList.toggle("bc-off", !m.live); break;
       case "livery": {
         if (!m.image) break;
         const car = m.car || String(m.key || "").split(":")[0], kind = m.kind || "photo";

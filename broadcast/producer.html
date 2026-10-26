@@ -130,12 +130,20 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
 #toast.show{opacity:1}
 #toast.bad{background:var(--bad);color:#fff}
 .hide{display:none!important}
+/* The master switch: off (every app start), nothing on air and nothing moves the camera */
+#bcLive{font:800 15px/1 var(--txt);padding:9px 16px;border-radius:8px;border:2px solid var(--line);background:var(--panel2);color:var(--mut);cursor:pointer;letter-spacing:.02em}
+#bcLive.on{background:var(--good);border-color:var(--good);color:var(--ink)}
+#bcLive:disabled{opacity:.5;cursor:default}
+#bcOff{margin:10px 14px 0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--mut);font-size:14px}
+#bcOff b{color:var(--fg,#fff)}
+body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4;pointer-events:none;user-select:none}
 </style>
 </head>
 <body>
 <header>
   <a id="home" class="hide" style="color:var(--mut);text-decoration:none;font-weight:600">&larr; Suite</a>
   <h1>Producer</h1>
+  <button type="button" id="bcLive" title="The broadcast's master switch. Off: no graphics on the overlay, and nothing moves the camera (no director, no grid walk, no battle following, no livery photos, no cuts or replays from this panel). It starts off every time the app starts.">Broadcast off</button>
   <span class="stat"><span class="dot" id="dRelay"></span>Relay</span>
   <span class="stat"><span class="dot" id="dBridge"></span>iRacing</span>
   <span class="stat" id="peers"></span>
@@ -156,6 +164,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
   <button id="cGo" style="margin-top:12px">Connect</button>
 </div>
 
+<div id="bcOff" class="hide"><b>The broadcast is off.</b> Nothing shows on the overlay and nothing here moves the camera: no director, no grid walk at the pace laps, no cuts or replays. Turn it on with <b>Broadcast off</b> at the top when you are ready to go on air. The Look and Liveries tabs can be set up meanwhile.</div>
 <main id="main" class="hide">
   <div id="colLeft">
     <div class="tabs"><button data-tab="show" class="on">Show</button><button data-tab="look">Look</button><button data-tab="liveries">Liveries</button></div>
@@ -390,7 +399,24 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
     debounced[key] = setTimeout(() => setGfx(patch), 250);
   }
   const pending = [];
+  // The master switch (pitwall/director.py: Director.live), shared by you and a co-host
+  function renderLive() {
+    const on = !!(S.director && S.director.live), b = $("bcLive");
+    document.body.classList.toggle("bc-off", !on);
+    $("bcOff").classList.toggle("hide", on || !S.director);
+    b.classList.toggle("on", on);
+    b.textContent = on ? "Broadcast ON" : "Broadcast off";
+    b.disabled = !canCamera();
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  $("bcLive").addEventListener("click", () => {
+    const on = !(S.director && S.director.live);
+    send({ type: "cmd", cmd: "director", action: "broadcast", on }) && pending.push(on ? "Broadcast on" : "Broadcast off");
+  });
   function cmd(obj, label) {
+    if (obj.cmd !== "director" || obj.action !== "broadcast") {
+      if (S.director && !S.director.live && !(obj.cmd === "livery" && obj.action === "setup")) { toast("The broadcast is off: turn it on at the top first", true); return false; }
+    }
     if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return false; }
     if (send({ type: "cmd", ...obj })) { pending.push(label); return true; }
     return false;
@@ -951,7 +977,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
         if (m.role) S.role = m.role;
         if (m.viewers != null) $("peers").textContent = m.viewers + (m.viewers === 1 ? " connection" : " connections");
         dirty.ctl = dirty.inc = true; break;
-      case "hello": S.hello = m; $("dBridge").classList.add("on"); dirty.ctl = dirty.inc = dirty.field = true; break;
+      case "hello": S.hello = m; $("dBridge").classList.add("on"); dirty.ctl = dirty.inc = dirty.field = true; renderLive(); break;
       case "session": S.session = m; dirty.ctl = true; break;
       case "state": if (!m.full && !S.state) return; S.state = m.full ? m : merge(S.state, m); dirty.cam = true; break;
       case "cars": if (!m.full && !S.cars) return; if (m.full && !S.cars) dirty.inc = dirty.ctl = true; S.cars = m.full ? m : merge(S.cars, m); dirty.field = true; break;
@@ -959,6 +985,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
       case "director": {
         const was = owner();
         S.director = m;
+        renderLive();
         const now = owner();
         if (was !== now && now === "you" && m.note) log(esc("Camera back to you: " + m.note));
         else if (was !== now && m.note) log(esc(m.note));

@@ -34,6 +34,9 @@ from .normalize import (Deriver, RefView, build_cars, build_session, build_state
 from .sources import TelemetrySource
 
 
+BROADCAST_OFF = "the broadcast is off: turn it on at the top of the producer panel"
+
+
 class Bridge:
     def __init__(self, src: TelemetrySource, relay_url: str, token: str,
                  state_hz: float = 30.0, cars_hz: float = 15.0, allow_commands: bool = False,
@@ -339,7 +342,7 @@ class Bridge:
         if not self._cam_hold or self._cam_hold[:2] != (car_idx, group):
             self._cam_hold = (car_idx, group, now)
         cfg = self.livery_store.cfg
-        if cfg.get("auto") and cfg.get("source") and not self.capture.status["sweeping"] \
+        if self.director.live and cfg.get("auto") and cfg.get("source") and not self.capture.status["sweeping"] \
                 and now - self._cam_hold[2] > 2.5 and edge.get("atLive", True):
             gname = next((g.get("name") for g in (self.session_msg or {}).get("cameras") or [] if g.get("num") == group), "")
             car = self._cars_by_idx().get(car_idx)
@@ -356,6 +359,16 @@ class Bridge:
             return res
         kind, action = msg.get("cmd"), msg.get("action")
         cars = (self._last_cars or {}).get("cars") or []
+        if kind == "director" and action == "broadcast":
+            self.director.set_live(bool(msg.get("on")))
+            if not self.director.live:
+                self.capture.stop()                     # a livery photo sweep moves the camera too
+            res.update(ok=True, data=self.director.status())
+            return res
+        if not self.director.live and not (kind == "director" and action in ("stop", "set") and not msg.get("on")) \
+                and not (kind == "livery" and action in ("setup", "stop")):
+            res["error"] = BROADCAST_OFF
+            return res
         if kind == "director":
             if action == "set":
                 self.director.configure(on=msg.get("on"), style=msg.get("style"), hold_s=msg.get("holdS"),
@@ -376,7 +389,9 @@ class Bridge:
                 def on_car(car):
                     if snap:
                         threading.Timer(LiveryCapture.SETTLE_S, self.capture.snap, args=(dict(car),)).start()
-                self.director.start_grid_walk(order, hold_s=msg.get("holdS"), on_car=on_car)
+                if not self.director.start_grid_walk(order, hold_s=msg.get("holdS"), on_car=on_car):
+                    res["error"] = BROADCAST_OFF
+                    return res
             elif action == "stop":
                 self.director.stop()
             else:
@@ -512,6 +527,8 @@ class Bridge:
                 res = await asyncio.get_running_loop().run_in_executor(None, self._broadcast_cmd, msg)
             self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} -> {'ok' if res['ok'] else res['error']}")
             await ws.send(json.dumps(res))
+        elif msg.get("type") == "cmd" and msg.get("cmd") in ("camera", "replay") and not self.director.live:
+            await ws.send(json.dumps({"type": "cmd_result", "ok": False, "echo": msg, "error": BROADCAST_OFF}))
         elif msg.get("type") == "cmd":
             # A cut by hand takes the camera from the director, the grid walk
             # or a followed battle: one owner at a time (pitwall/director.py).

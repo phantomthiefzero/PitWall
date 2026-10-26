@@ -148,6 +148,10 @@ Broadcast (broadcast/)
   are compared with the prediction when they appear.
 - Director (pitwall/director.py) and livery photos (pitwall/liveries.py, pitwall/obs.py) only
   move the camera through CommandGate, under --allow-camera.
+- Master switch (Director.live, the producer panel's "Broadcast off/ON" at the top): off at every start.
+  Off, nothing moves the camera (director, the pace-lap grid walk, battle following, livery photos, the
+  producer's cuts and replays are refused by the bridge) and the overlay shows nothing. Anything new that
+  moves the camera or puts something on air must respect it.
 - One owner of the camera at a time (director.py): you / director / grid walk / followed battle.
   A producer `camera` command always takes it back (bridge._consumer calls Director.manual()).
   Anything new that moves the camera must go through the Director's owner, not around it.

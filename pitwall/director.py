@@ -75,6 +75,11 @@ class Director:
         self.log = log
         self.rng = rng or random.Random()
         self.clock = clock
+        # The broadcast's master switch (the producer panel's "Broadcast on"). Off, which is how every
+        # app start begins, nothing here moves the camera: no director, no automatic grid walk at the
+        # pace laps, no followed battle, and the bridge refuses the producer's camera, replay and
+        # photo commands too. Only the person running the show turns it on.
+        self.live = False
         # owner: on=False is "you"; on=True with mode race / grid / battle
         self.on = False
         self.mode = "race"
@@ -122,7 +127,18 @@ class Director:
         back, self.resume = self.resume, None
         self._set_owner(back, note)
 
+    def set_live(self, on: bool):
+        """The master switch. Off stops whatever owns the camera and leaves it where it is."""
+        self.live = bool(on)
+        self.resume = None
+        self._set_owner(None, "broadcast on" if self.live else "broadcast off")
+        if not self.live:
+            self.current = None
+        self.changed = True
+
     def configure(self, on=None, style=None, hold_s=None, auto_grid=None):
+        if on and not self.live:
+            on = None                                 # the director runs only with the broadcast on
         if on is not None:
             self.resume = None
             self._set_owner("race" if on else None, "director on" if on else "director off")
@@ -143,6 +159,8 @@ class Director:
         return True
 
     def start_grid_walk(self, cars: list[dict], hold_s: float | None = None, on_car=None):
+        if not self.live:
+            return False
         self.grid = [c for c in cars if c.get("num") is not None]
         self.grid_total = len(self.grid)
         if hold_s is not None:
@@ -155,10 +173,11 @@ class Director:
         self.note = "walking the grid"
         self._next_at = 0.0
         self.changed = True
+        return True
 
     def follow_battle(self, car_idxs: list[int]):
         cars = [int(i) for i in car_idxs if i is not None]
-        if len(cars) < 2:
+        if len(cars) < 2 or not self.live:
             return False
         if self.owner not in ("grid", "battle"):
             self.resume = "race" if self.owner == "race" else None
@@ -176,7 +195,7 @@ class Director:
         self._set_owner(None, "stopped")
 
     def status(self) -> dict:
-        return {"type": "director", "on": self.on, "mode": self.mode, "owner": self.owner,
+        return {"type": "director", "live": self.live, "on": self.on, "mode": self.mode, "owner": self.owner,
                 "resume": self.resume, "style": self.style, "holdS": self.hold_s,
                 "autoGrid": self.auto_grid, "gridHoldS": self.grid_hold_s,
                 "gridLeft": len(self.grid) if self.owner == "grid" else None,
@@ -230,8 +249,8 @@ class Director:
     # ------------------------------------------------------------------ tick
     def tick(self, session: dict | None, cars_msg: dict | None, state: dict | None,
              recent_incidents: list, busy: bool = False):
-        if not session or not cars_msg:
-            return
+        if not self.live or not session or not cars_msg:
+            return                                   # broadcast off: nothing runs, not even the grid walk
         race_state = ((state or {}).get("session") or {}).get("state")
         self._watch_session(session, cars_msg, state, race_state)
         if not self.on:
