@@ -437,7 +437,12 @@ class RemoteClient:
         tick = text.startswith('{"type":"tick"')
         if tick:
             self.n += 1
-            if self.n % self.TICK_EVERY:
+            # Every car's arrays ride on every other tick (CARIDX_EVERY). Halving by count alone could keep
+            # only the ticks without them, for good, depending on when the viewer joined: so the ticks with
+            # the arrays are the ones kept, and plain halving is only for a feed that has none.
+            if '"CarIdxLapDistPct"' in text:
+                self.arr_n = self.n
+            elif self.n - getattr(self, "arr_n", -100) <= CARIDX_EVERY + 1 or self.n % self.TICK_EVERY:
                 return
             if self.ticks >= self.MAX_TICKS:
                 for i, (is_tick, _) in enumerate(self.q):
