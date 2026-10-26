@@ -211,8 +211,9 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
 
 Every relative value (`toPlayerS`, `youGainSPerLap`, `vsYou`, `rejoin`, `undercut`, `traffic`,
 `nearby`, battle, gap chart) is measured from a reference car. In the SHARED stream that
-is reported as `cars.derived.ref = {"idx", "source": "your_car"|"camera", "own", "camera"}`:
-your own car when driving, else the camera car while spectating. No viewer can move it.
+is reported as `cars.derived.ref = {"idx", "source": "your_car"|"camera"|"camera_last", "own", "camera"}`:
+your own car when driving, else the camera car while spectating. When the camera is on no racing
+car (the pace car, idx 62 at Talladega), `camera_last` keeps the last car it showed. No viewer can move it.
 The "player"/"you" key names are kept for compatibility; they mean the reference car.
 Fuel, tyre sets, in-car settings and iRacing's left/right spotter exist for your own car
 only (`ref.own`).
@@ -325,9 +326,14 @@ the car is already past the middle), `your_tank` (a car of the same model as you
 your burn). `stopsOwed` needs the race length (`race_laps_left`: `lapsToGo` for a lap race,
 else `lapsByTime`).
 
-`derived.caution = {"active","since","pitsOpen","fieldSlowdown","lossGreenS","lossNowS","savingS"}`:
+`derived.caution = {"active","inferred","since","pitsOpen","fieldSlowdown","lossGreenS","lossNowS","savingS"}`:
 `active` from SessionFlags caution / caution_waving (iRacing runs full-course cautions on
 ovals; road races have none). `pitsOpen` is iRacing's `PitsOpen` (null when absent).
+A replay carries no flags at all (SessionFlags 0), so with no flags `active` is read from the
+field instead and `inferred` is true: while racing, the middle over at least 5 cars on track of
+(track length / best lap) / speed now stays at 1.7 or more for 15 s; it ends below 1.3 for 8 s.
+`pitsOpen` is then null (a replay's PitsOpen is always true). Each inferred change also puts a
+`flag` event on the feed (`"flag": "caution"|"green", "inferred": true`).
 `fieldSlowdown`: the middle, over cars on track (at least 3), of (track length / the car's lap
 pace) / its speed now. `lossNowS` re-scales the stops watched this session: the lane takes as
 long as ever, the field covers `fieldSlowdown` times less track meanwhile, so the loss is the

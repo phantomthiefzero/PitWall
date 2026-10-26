@@ -681,3 +681,25 @@ def test_replay_jump_leaves_the_live_edge_and_back_to_live_returns():
     gate.execute(src, {"cmd": "replay", "action": "search", "mode": "to_end"})
     src.tick()
     assert live_edge(src.get)["atLive"]
+
+
+def test_a_car_blinking_out_of_the_world_is_not_a_tow_but_a_real_tow_is():
+    """Seen in a Talladega replay: cars vanish (not_in_world) for a second or two
+    and come back where they were -- a connection blink, a dozen times in ten
+    minutes for one driver. Only a car that comes back in the pits, or stays gone,
+    was towed (or reset, or left)."""
+    def surf_blink(t):
+        return "not_in_world" if 12.0 <= t < 13.5 or 20.0 <= t < 22.0 else "on_track"
+    d = Deriver()
+    _settle(d, lambda t: [_icar(5, None, surface=surf_blink(t))], 10, 40)
+    assert not [e for e in _races(d) if e["what"] == "tow"], "a blink is not a tow"
+    # gone, then back in its pit stall: a tow, dated when it left
+    d = Deriver()
+    _settle(d, lambda t: [_icar(5, None, surface="on_track" if t < 15 else "not_in_world" if t < 19
+                                else "in_pit_stall", pit=t >= 19)], 10, 40)
+    tows = [e for e in _races(d) if e["what"] == "tow"]
+    assert len(tows) == 1 and abs(tows[0]["replayT"] - 15.0) < 0.3
+    # gone and not back: a tow too, once it has been gone long enough
+    d = Deriver()
+    _settle(d, lambda t: [_icar(5, None, surface="on_track" if t < 15 else "not_in_world")], 10, 40)
+    assert len([e for e in _races(d) if e["what"] == "tow"]) == 1

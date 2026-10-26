@@ -354,7 +354,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const FLAG_PRIO = ["red", "checkered", "white", "caution", "yellow", "blue", "green"];
   function racingFlag() {
     const f = (S.state && S.state.session.flags) || [];
-    return FLAG_PRIO.find(x => f.includes(x) || f.includes(x + "_waving")) || null;
+    const hit = FLAG_PRIO.find(x => f.includes(x) || f.includes(x + "_waving"));
+    if (hit) return hit;
+    // a replay carries no flags: normalize.py reads the caution from the field's speed
+    const cau = S.cars && S.cars.derived && S.cars.derived.caution;
+    return !f.length && cau && cau.active && cau.inferred ? "caution" : null;
   }
   const FLAG_BG = { red: "var(--flag-red)", checkered: "repeating-linear-gradient(90deg,#fff 0 8px,#111 8px 16px)",
     white: "var(--flag-white)", caution: "var(--flag-yellow)", yellow: "var(--flag-yellow)", blue: "var(--flag-blue)", green: "var(--flag-green)" };

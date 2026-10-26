@@ -2488,3 +2488,136 @@ def test_weather_outlook_drying_rate_and_next_level():
     assert o["rain"]["state"] == "drying" and abs(o["rain"]["wetnessTrendPer10Min"] + 1.0) < 0.05
     assert o["rain"]["nextWetness"]["level"] == 3 and 0 < o["rain"]["nextWetness"]["inS"] < 700
     assert o["sun"] is None                                    # no latitude or date: no sun path
+
+
+# ---- what iRacing sends while a REPLAY plays (Talladega, 2026-10) -------------
+# SessionFlags 0 throughout, PitsOpen always True, CarIdxEstTime 0.0 for every
+# car, CarClassEstLapTime 1.0; the camera spends long stretches on the pace car;
+# cars blink out of the world; the field spawns into its pit boxes at the start.
+
+def test_a_replay_shaped_race_still_has_gaps_and_its_caution():
+    """With no flags and no EstTime, gaps came out 0.000 and the caution was never
+    seen. Gaps now fall back to the cars' own best laps, and a caution is read
+    from how slowly the field is going (marked inferred, with pits unknown)."""
+    src = FakeSource(realtime=False, speed=4.0, caution=(600.0, 900.0), replay_shape=True)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    seen = {"before": None, "during": [], "after": None, "gaps": None}
+    for i in range(15 * 60 * 18):                          # 18 sim-minutes at 4x steps
+        src.tick()
+        if i % 4:
+            continue
+        build_state(src, d)
+        cars = build_cars(src, sess, d)
+        c = cars["derived"]["caution"]
+        if src.t < 600:
+            seen["before"] = c
+            if src.t > 400:
+                seen["gaps"] = cars["cars"]
+        elif 660 < src.t < 900:
+            seen["during"].append(c)
+        elif src.t > 1000:
+            seen["after"] = c
+    assert all(c.get("classEstLapS") is None for c in seen["gaps"]), "a 1.0 s class lap is not a lap time"
+    gaps = sorted(g for g in ((c.get("derived") or {}).get("liveGapS") for c in seen["gaps"]) if g)
+    assert len(gaps) >= 10 and gaps[-1] > 5.0, gaps          # a spread field, not 0.000 everywhere
+    assert seen["before"]["active"] is False
+    late = seen["during"][len(seen["during"]) // 3:]          # it takes a few seconds to call
+    assert late and all(c["active"] and c["inferred"] for c in late)
+    assert all(c["pitsOpen"] is None for c in late), "a replay's PitsOpen says nothing"
+    assert seen["after"]["active"] is False
+    flags = [e for e in d.feed_events if e["kind"] == "flag"]
+    assert [(e["flag"], e.get("inferred")) for e in flags] == [("caution", True), ("green", True)]
+    assert 600 <= flags[0]["t"] <= 640 and 900 <= flags[1]["t"] <= 940
+
+
+def test_a_live_race_with_flags_never_infers_a_caution():
+    src = FakeSource(realtime=False, speed=4.0, caution=(600.0, 900.0))
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    for i in range(15 * 60 * 12):
+        src.tick()
+        if i % 8:
+            continue
+        build_state(src, d)
+        c = build_cars(src, sess, d)["derived"]["caution"]
+        assert c["inferred"] is False
+        if 660 < src.t < 900:
+            assert c["active"]
+
+
+def test_a_car_appearing_in_its_box_is_not_a_stop():
+    """At a replay's start the field spawns into its pit boxes from out of the world,
+    then drives out: no lane entry was watched, so no stop."""
+    d = Deriver()
+    d.pit(4, 0.0, False, False, 0, pct=-1.0)                  # not in the world yet
+    d.pit(4, 1.0, True, True, 0, pct=0.98)                    # appears in its box
+    for t in range(2, 30):
+        d.pit(4, float(t), True, t < 20, 0, pct=0.98)
+    out = d.pit(4, 31.0, False, False, 1, pct=0.02)
+    assert out["stopsSeen"] == 0
+    # rejoining after a disconnect is the same
+    d.pit(4, 200.0, False, False, 3, pct=-1.0)
+    d.pit(4, 201.0, True, True, 3, pct=0.98)
+    out = d.pit(4, 230.0, False, False, 3, pct=0.02)
+    assert out["stopsSeen"] == 0
+    # a stop driven down the lane still counts
+    d.pit(4, 400.0, False, False, 6, pct=0.90)
+    d.pit(4, 401.0, True, False, 6, pct=0.95)
+    d.pit(4, 405.0, True, True, 6, pct=0.98)
+    d.pit(4, 420.0, True, False, 6, pct=0.98)
+    out = d.pit(4, 425.0, False, False, 7, pct=0.03)
+    assert out["stopsSeen"] == 1
+
+
+def test_caution_laps_are_not_racing_pace():
+    """A lap behind the pace car took 137 s at Talladega against 52 s green:
+    counted, it made every car's pace and consistency nonsense."""
+    d = Deriver()
+    _laps(d, 2, [52.1, 52.0, 52.3, 137.0, 136.5, 52.2, 52.1])
+    assert d.pace(2) is not None and d.pace(2) < 53.0
+    s = d._lapsum[2]
+    assert 137.0 not in s["racing"] and 52.3 in s["racing"]
+
+
+def test_the_camera_on_the_pace_car_keeps_the_last_car_it_showed():
+    """Spectating, the camera spent 40% of a Talladega caution on the pace car (not
+    a racing car). Every relative panel went blank; now the reference stays on the
+    last car the camera showed, and says so."""
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    d = Deriver()
+    sess = build_session(src)
+    for _ in range(60):
+        src.tick()
+    src.cam["car"] = 5
+    src.tick()
+    ref = build_cars(src, sess, d)["derived"]["ref"]
+    assert ref["idx"] == 5 and ref["source"] == "camera"
+    src._vars["CamCarIdx"] = 62                               # the pace car: not in the field
+    ref = build_cars(src, sess, d)["derived"]["ref"]
+    assert ref["idx"] == 5 and ref["source"] == "camera_last"
+    src.cam["car"] = 7
+    src.tick()
+    ref = build_cars(src, sess, d)["derived"]["ref"]
+    assert ref["idx"] == 7 and ref["source"] == "camera"
+
+
+def test_an_inferred_caution_holds_through_a_tick_without_speeds():
+    """A tick where too few cars have a speed (a gap in the samples) says nothing
+    about the caution. Ending it there made the flag flicker on and off."""
+    d = Deriver()
+
+    def field(speed):
+        return [_car(i, bestLapS=50.0, derived={"speedMs": speed}) for i in range(8)]
+    t = 0.0
+    while t < 30.0:                                           # 4000 m in 50 s is 80 m/s; 35 m/s is a crawl
+        c = d.caution(field(35.0), [], True, 4000.0, t, state="racing")
+        t += 0.5
+    assert c["active"] and c["inferred"]
+    c = d.caution(field(None), [], True, 4000.0, t, state="racing")
+    assert c["active"], "no speeds this tick: no change"
+    c = d.caution(field(35.0), [], True, 4000.0, t + 0.5, state="racing")
+    assert c["active"]

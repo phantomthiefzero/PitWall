@@ -446,13 +446,17 @@ class Deriver:
             # what put a bogus 204 s "stop" on 13 of 16 cars in the VIR race.
             self._pit[idx] = {"stops": 0, "lastStopS": None, "lastStopLap": None,
                               "enterT": None, "enterLap": None, "boxT": None, "boxS": None,
-                              "onRoad": on_pit_road, "inBox": in_box,
+                              "onRoad": on_pit_road, "inBox": in_box, "away": pct is not None and pct < 0,
                               # a stint's length is only known if we saw it start:
                               # at the start of the race, or at a stop we watched
                               "stints": [], "stintStart": lap if lap is not None and 0 <= lap <= 1 else None}
             out["inPit"] = on_pit_road
             return out
-        if on_pit_road and not st["onRoad"]:                 # entered the lane
+        was_away = st.get("away", False)
+        st["away"] = pct is not None and pct < 0     # out of the world (LapDistPct -1)
+        if on_pit_road and not st["onRoad"] and was_away:
+            pass        # it appeared in its box (joined, rejoined or spawned for the start): not a lane entry
+        elif on_pit_road and not st["onRoad"]:               # entered the lane
             st["enterT"], st["enterLap"], st["boxS"] = t, lap, None
             st["enterPct"], st["bad"] = pct, False
         elif on_pit_road and pct is not None and pct >= 0 and st.get("lastPct") is not None:
@@ -976,7 +980,11 @@ class Deriver:
         lst.append(e)
         del lst[:-200]
         s = self._lapsum.setdefault(idx, {"racing": [], "top": None, "led": 0, "classLed": 0})
-        if e["lapS"] and not e["pit"] and not e.get("reset"):
+        if e["lapS"] and not e["pit"] and not e.get("reset") and (s.get("best") is None or e["lapS"] < s["best"]):
+            s["best"] = e["lapS"]
+        # a lap behind the pace car (well over this car's best) is not a racing lap either
+        slow = s.get("best") is not None and e["lapS"] and e["lapS"] > s["best"] * self.PACE_SLOW_LAP
+        if e["lapS"] and not e["pit"] and not e.get("reset") and not slow:
             s["racing"].append(e["lapS"])
             del s["racing"][:-max(self.PACE_LAPS, self.CONSISTENCY_LAPS)]
         if e.get("topSpeedMs") and (s["top"] is None or e["topSpeedMs"] > s["top"]):
@@ -986,6 +994,8 @@ class Deriver:
         self._feed_add("lap", e)
         self._lap_finished.append(e)
         return e
+
+    PACE_SLOW_LAP = 1.5         # a lap this much over the car's best: a caution lap, not racing pace
 
     def pace(self, idx) -> float | None:
         """Median of this car's recent racing laps: no in- or out-laps, no
@@ -1663,6 +1673,7 @@ class Deriver:
     # race, and are then compared with the prediction, car by car.
     INC_ANCHOR_WINDOW_S = 30.0
     INC_FALLBACK_S = 10.0
+    TOW_GONE_S = 8.0                # out of the world this long, and not back on track: a tow or a reset
     INC_SETTLE_S = 3.0              # quiet this long after the last signal -> incident is complete
     INC_PREROLL_S = 0.0
     SLOW_RATIO = 0.35
@@ -1706,6 +1717,8 @@ class Deriver:
                     laps[i] = v - 1
         if state not in self.INC_STATES or self.INC_QUIET_FLAGS & set(flags or ()):
             return False
+        if self._caut.get("inf"):              # a caution read from the field (a replay has no flags)
+            return False
         return True
 
     def incidents(self, cars: list, edge: dict, session_num, surface: str = "paved",
@@ -1730,11 +1743,20 @@ class Deriver:
             i, pct, surf = c["idx"], c.get("pct"), c.get("surface")
             was = st["surf"].get(i)
             st["surf"][i] = surf
-            # tow / reset: out of the world mid-session, or in the box without the lane
+            # tow / reset: in the box without the lane, or out of the world and back in the pits (or
+            # gone for good). A car that vanishes for a second or two and comes back where it was is a
+            # connection blink, not a tow: one Talladega driver blinked a dozen times in 10 minutes.
+            gone = st.setdefault("gone", {})
             if was in ("on_track", "off_track") and surf == "not_in_world":
-                self._signal(st, c, t_play, "tow", session_num)
+                gone[i] = t_play
             elif was in ("on_track", "off_track") and surf == "in_pit_stall":
                 self._signal(st, c, t_play, "tow", session_num)
+            if i in gone and surf != "not_in_world":
+                t_gone = gone.pop(i)
+                if surf == "in_pit_stall" or c.get("onPitRoad"):
+                    self._signal(st, c, t_gone, "tow", session_num)
+            elif i in gone and t_play - gone[i] >= self.TOW_GONE_S:
+                self._signal(st, c, gone.pop(i), "tow", session_num)
             if was == "on_track" and surf == "off_track":
                 self._signal(st, c, t_play, "off_track", session_num)
             # race control flags on the car
@@ -2132,7 +2154,14 @@ class Deriver:
             d["stopDue"] = {"lap": start + rng, "lapsLeft": max(0, left), "rangeLaps": rng, "basis": basis,
                             "stopsOwed": owed, "overdue": left < 0}
 
-    def caution(self, cars: list, flags, pits_open, track_len, t) -> dict:
+    # A replay carries no flags (SessionFlags 0, no pace or per-car flags: a Talladega replay and a
+    # Daytona one). Then a full-course caution is read from the field: most cars on track going at well
+    # under their best lap's average speed, together, for a while. Green running in a superspeedway
+    # pack sat at 0.9-1.3x; the caution laps at 2.3-2.8x.
+    CAUTION_IN_RATIO, CAUTION_IN_S = 1.7, 15.0
+    CAUTION_OUT_RATIO, CAUTION_OUT_S = 1.3, 8.0
+
+    def caution(self, cars: list, flags, pits_open, track_len, t, state=None) -> dict:
         """Under a full-course caution the field crawls behind the pace car, so a
         stop costs far less than under green: the lane takes as long as ever, but
         the field covers much less track meanwhile. The loss is re-scaled from the
@@ -2140,11 +2169,38 @@ class Deriver:
         flags = flags or []
         active = "caution" in flags or "caution_waving" in flags
         st = self._caut
+        inferred = False
+        if not flags:                         # no flags at all: a replay (live always carries some bits)
+            slow = []
+            for c in cars:
+                v = (c.get("derived") or {}).get("speedMs")
+                b = c.get("bestLapS")
+                if c.get("onPitRoad") or c.get("surface") != "on_track" or not v or v < 2 or not b or b <= 0 or not track_len:
+                    continue
+                slow.append((track_len / b) / v)
+            r_best = self._median(slow) if len(slow) >= 5 else None
+            was = st.get("inf", False)
+            if state != "racing" or t is None:
+                st["inf"], st["infT"] = False, None
+            elif r_best is None:
+                pass                          # too few speeds this tick (a gap in the data): no change
+            else:
+                cond = r_best >= self.CAUTION_IN_RATIO if not was else r_best < self.CAUTION_OUT_RATIO
+                if cond:
+                    st["infT"] = st.get("infT") if st.get("infT") is not None else t
+                    if t - st["infT"] >= (self.CAUTION_IN_S if not was else self.CAUTION_OUT_S):
+                        st["inf"], st["infT"] = not was, None
+                        # race control has no flag to report here, so say what the field did
+                        self.event(t, "flag", flag="green" if was else "caution", inferred=True)
+                else:
+                    st["infT"] = None
+            inferred = active = bool(st.get("inf"))
         if active and st["t0"] is None:
             st["t0"] = t
         elif not active:
             st["t0"] = None
-        out = {"active": active, "since": st["t0"], "pitsOpen": None if pits_open is None else bool(pits_open),
+        out = {"active": active, "inferred": inferred, "since": st["t0"],
+               "pitsOpen": None if pits_open is None or inferred else bool(pits_open),
                "fieldSlowdown": None, "lossGreenS": None, "lossNowS": None, "savingS": None}
         green = self.typical_loss()
         out["lossGreenS"] = None if green is None else round(green, 1)
@@ -2991,7 +3047,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "compound": _compound(_arr(comp, i)),
             # The class's reference lap from the session info: what CarIdxEstTime
             # is measured against (its value at the line).
-            "classEstLapS": d.get("CarClassEstLapTime") if d else None,
+            # A replay's session info gave 1.0 for every car (Talladega): no lap is that short, so
+            # under 5 s it is taken as not known, and gaps fall back to the car's best lap.
+            "classEstLapS": d.get("CarClassEstLapTime") if d and (d.get("CarClassEstLapTime") or 0) >= 5 else None,
             # iRacing's paint scheme for the car and helmet ("pattern,col1,col2,col3").
             # Not the Trading Paints livery, which only exists as a texture.
             "carDesign": d.get("CarDesignStr") if d else None,
@@ -3079,6 +3137,10 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         player_idx, ref_source = own_idx, "your_car"
     elif cam_idx in by_idx:
         player_idx, ref_source = cam_idx, "camera"
+    elif deriver is not None and deriver.ref_idx in by_idx and getattr(deriver, "ref_source", None) in ("camera", "camera_last"):
+        # The camera on the pace car (or on no car): keep following the last car it showed, rather
+        # than every relative panel going blank. Under a caution that was 40% of a Talladega replay.
+        player_idx, ref_source = deriver.ref_idx, "camera_last"
     else:
         player_idx, ref_source = None, None
     me = by_idx.get(player_idx)
@@ -3200,7 +3262,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         deriver.stop_forecast(cars, race if is_race else None, own_idx if own is not None else None,
                               fi.get("fpl"), deriver.tank_l, fi.get("fuelL"))
         caution = deriver.caution(cars, decode_bits(g("SessionFlags"), FLAG_BITS), g("PitsOpen"),
-                                  track_length_m(session_msg), now)
+                                  track_length_m(session_msg), now, state=SESSION_STATE.get(g("SessionState")))
         deriver.learn_lap_profile(cars)
         meet = deriver.meetings(cars, player_idx, now)
         out["derived"] = {
@@ -3264,7 +3326,7 @@ def gap_between(a: dict, b: dict):
     """Live time from car `b` back to car `a` (a ahead). Returns (seconds incl.
     whole laps, whole laps) or (None, None) when it cannot be worked out."""
     da, db = _dist(a), _dist(b)
-    lap_b = b.get("classEstLapS")
+    lap_b = b.get("classEstLapS") or ((b.get("bestLapS") or 0) > 0 and b.get("bestLapS")) or None
     if da is None or db is None or not lap_b or lap_b <= 0:
         return None, None
     d = da - db
@@ -3274,7 +3336,9 @@ def gap_between(a: dict, b: dict):
     laps = int(d + 1e-6)
     ea, eb = a.get("estTimeS"), b.get("estTimeS")
     same = a.get("classId") is not None and a.get("classId") == b.get("classId")
-    if same and ea is not None and eb is not None and ea >= 0 and eb >= 0:
+    # iRacing's CarIdxEstTime is 0.0 for every car while a replay plays (seen in a Talladega replay):
+    # an estimate of exactly 0 is taken as missing, and the gap comes from the distance instead.
+    if same and ea is not None and eb is not None and ea > 0 and eb > 0:
         frac_t = ea - eb if a["pct"] >= b["pct"] else (lap_b - eb) + ea
         if frac_t < 0 or frac_t > lap_b * 1.5:
             frac_t = (d - laps) * lap_b
