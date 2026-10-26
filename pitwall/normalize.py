@@ -2180,8 +2180,10 @@ class Deriver:
                 slow.append((track_len / b) / v)
             r_best = self._median(slow) if len(slow) >= 5 else None
             was = st.get("inf", False)
-            if state != "racing" or r_best is None or t is None:
+            if state != "racing" or t is None:
                 st["inf"], st["infT"] = False, None
+            elif r_best is None:
+                pass                          # too few speeds this tick (a gap in the data): no change
             else:
                 cond = r_best >= self.CAUTION_IN_RATIO if not was else r_best < self.CAUTION_OUT_RATIO
                 if cond:

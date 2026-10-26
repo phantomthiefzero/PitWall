@@ -2603,3 +2603,21 @@ def test_the_camera_on_the_pace_car_keeps_the_last_car_it_showed():
     src.tick()
     ref = build_cars(src, sess, d)["derived"]["ref"]
     assert ref["idx"] == 7 and ref["source"] == "camera"
+
+
+def test_an_inferred_caution_holds_through_a_tick_without_speeds():
+    """A tick where too few cars have a speed (a gap in the samples) says nothing
+    about the caution. Ending it there made the flag flicker on and off."""
+    d = Deriver()
+
+    def field(speed):
+        return [_car(i, bestLapS=50.0, derived={"speedMs": speed}) for i in range(8)]
+    t = 0.0
+    while t < 30.0:                                           # 4000 m in 50 s is 80 m/s; 35 m/s is a crawl
+        c = d.caution(field(35.0), [], True, 4000.0, t, state="racing")
+        t += 0.5
+    assert c["active"] and c["inferred"]
+    c = d.caution(field(None), [], True, 4000.0, t, state="racing")
+    assert c["active"], "no speeds this tick: no change"
+    c = d.caution(field(35.0), [], True, 4000.0, t + 0.5, state="racing")
+    assert c["active"]
