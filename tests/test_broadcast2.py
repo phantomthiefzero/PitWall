@@ -76,6 +76,7 @@ def _director_rig(style="cinematic"):
         return r
     clock = [0.0]
     d = Director(cut, rng=random.Random(3), clock=lambda: clock[0])
+    d.set_live(True)                                  # the producer turned the broadcast on
     d.configure(on=True, style=style, hold_s=6)
     return src, d, cuts, clock
 
@@ -243,6 +244,7 @@ def test_the_pace_laps_start_a_grid_walk_in_order_that_ends_at_the_green():
         return r
     t = [0.0]
     d = Director(cut, rng=random.Random(1), clock=lambda: t[0])
+    d.set_live(True)                                  # the producer turned the broadcast on
     d.configure(on=True)                              # the director was running
     d.grid_hold_s = 4
     deriver, sess = Deriver(), build_session(src)
@@ -274,6 +276,7 @@ def test_the_green_flag_ends_a_walk_that_has_not_finished_and_it_runs_once():
     t = [0.0]
     d = Director(lambda n, g: gate.execute(src, {"cmd": "camera", "action": "car", "car": n, "group": g}),
                  rng=random.Random(1), clock=lambda: t[0])
+    d.set_live(True)                                  # the producer turned the broadcast on
     d.grid_hold_s = 5                                   # 24 cars x 5 s will not fit in 25 s
     deriver, sess = Deriver(), build_session(src)
     owners = []
@@ -311,6 +314,7 @@ def test_a_producer_cut_through_the_bridge_takes_the_camera_back():
     src.connect()
     b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False,
                livery_dir=tempfile.mkdtemp())
+    b.director.set_live(True)
     b.director.configure(on=True)
     ws = WS([{"type": "cmd", "cmd": "replay", "action": "speed", "speed": 1},
              {"type": "cmd", "cmd": "camera", "action": "car", "car": "13", "group": 1, "camera": 0}])
@@ -348,6 +352,7 @@ def test_a_malformed_producer_command_is_answered_and_the_bridge_carries_on():
     src.connect()
     b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False,
                livery_dir=tempfile.mkdtemp())
+    b.director.set_live(True)
     ws = WS([{"type": "cmd", "cmd": "director", "action": "set", "holdS": "abc"},
              {"type": "cmd", "cmd": "director", "action": "follow_battle", "cars": ["x", "y"]},
              {"type": "cmd", "cmd": "director", "action": "set", "gridHoldS": "x"},
@@ -873,3 +878,64 @@ def test_the_bridge_reports_camera_packs_with_the_session():
         assert len(packs) == 1 and packs[0]["track"]["folder"] is None
         src.tick()
         assert not [m for m in b._build(1.0) if m.get("type") == "camera_packs"], "only when something changed"
+
+
+def test_with_the_broadcast_off_nothing_moves_the_camera():
+    """The broadcast's master switch starts off. Off: no automatic grid walk at the pace laps, no
+    director, no battle, and the bridge refuses the producer's camera and replay commands."""
+    from pitwall.bridge import Bridge, BROADCAST_OFF
+    src = FakeSource(realtime=False, spectator=True, grid_s=5, parade_s=30, incidents=False)
+    src.connect()
+    gate = CommandGate(camera=True)
+    cuts = []
+    t = [0.0]
+    d = Director(lambda n, g: cuts.append((n, g)) or gate.execute(src, {"cmd": "camera", "action": "car", "car": n, "group": g}),
+                 rng=random.Random(1), clock=lambda: t[0])
+    assert d.live is False and d.status()["live"] is False
+    d.configure(on=True)
+    assert d.owner == "you", "the director does not start with the broadcast off"
+    assert d.follow_battle([1, 2]) is False and d.start_grid_walk([{"num": "1"}]) is False
+    deriver, sess = Deriver(), build_session(src)
+    for k in range(60 * 40):                           # through the pace laps into the race
+        src.tick()
+        if k % 8:
+            continue
+        t[0] = src.t
+        d.tick(sess, build_cars(src, sess, deriver), build_state(src, deriver), [])
+    assert cuts == [] and d.owner == "you" and not d._grid_walked
+    # on: the director runs; off again: it stops at once
+    d.set_live(True)
+    d.configure(on=True)
+    assert d.owner == "race"
+    d.set_live(False)
+    assert d.owner == "you" and d.status()["live"] is False
+
+    class WS:
+        def __init__(self, msgs):
+            self.msgs, self.sent = [json.dumps(m) for m in msgs], []
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.msgs:
+                raise StopAsyncIteration
+            return self.msgs.pop(0)
+
+        async def send(self, raw):
+            self.sent.append(json.loads(raw))
+    b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False,
+               livery_dir=tempfile.mkdtemp())
+    ws = WS([{"type": "cmd", "cmd": "camera", "action": "car", "car": "13", "group": 1, "camera": 0},
+             {"type": "cmd", "cmd": "replay", "action": "speed", "speed": 1},
+             {"type": "cmd", "cmd": "director", "action": "follow_battle", "cars": [1, 2]},
+             {"type": "cmd", "cmd": "director", "action": "grid_walk"},
+             {"type": "cmd", "cmd": "livery", "action": "sweep"},
+             {"type": "cmd", "cmd": "director", "action": "set", "style": "classic"},       # settings are fine
+             {"type": "cmd", "cmd": "director", "action": "broadcast", "on": True},
+             {"type": "cmd", "cmd": "director", "action": "follow_battle", "cars": [1, 2]}])
+    asyncio.run(b._consumer(ws))
+    res = [m for m in ws.sent if m.get("type") == "cmd_result"]
+    assert [r["ok"] for r in res] == [False, False, False, False, False, True, True, True], res
+    assert all(r["error"] == BROADCAST_OFF for r in res[:5])
+    assert b.director.live and b.director.owner == "battle"

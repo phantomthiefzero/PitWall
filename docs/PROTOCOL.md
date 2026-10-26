@@ -387,6 +387,7 @@ Broadcast commands (producer token only; the bridge refuses them unless started 
 ```
 Director and liveries (producer token, `--allow-camera`):
 ```json
+{"type":"cmd","cmd":"director","action":"broadcast","on":true}
 {"type":"cmd","cmd":"director","action":"set","on":true,"style":"cinematic"|"onboard"|"tv","holdS":8,"autoGrid":true,"gridHoldS":5}
 {"type":"cmd","cmd":"director","action":"grid_walk","holdS":5,"capture":true}
 {"type":"cmd","cmd":"director","action":"follow_battle","cars":[12,7]}
@@ -396,6 +397,11 @@ Director and liveries (producer token, `--allow-camera`):
 {"type":"cmd","cmd":"livery","action":"snap","idx":12}
 {"type":"cmd","cmd":"livery","action":"stop"}
 ```
+`broadcast` is the master switch (`director` status `live`). It starts off every time the bridge
+starts. Off: the overlay shows nothing, the director, the automatic grid walk at the pace laps, battle
+following and automatic livery photos do not run, and the bridge answers `camera`, `replay`,
+`director` (grid_walk, follow_battle, set on) and `livery` (sweep, snap) with `ok: false` and
+"the broadcast is off…". Director settings (style, hold, autoGrid) and livery `setup`/`stop` still work.
 `jump` cuts to the car (when given), seeks to `timeS - preroll` with
 `irsdk_BroadcastReplaySearchSessionTime`, waits 0.4 s for the seek to settle, then plays at
 speed 1. It runs on a worker thread so the stream does not stall.
