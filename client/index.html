@@ -1025,8 +1025,13 @@
     $("sessionType").textContent = sess ? sess.SessionType : words(st.session.state);
     const flags = st.session.flags || [];
     const prio = ["red", "checkered", "white", "caution", "yellow", "blue", "green"];
-    const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || "";
+    // A replay carries no flags at all: normalize.py then reads a caution from the field's speed.
+    const cau = S.cars && S.cars.derived && S.cars.derived.caution;
+    const inferred = !flags.length && !!(cau && cau.active && cau.inferred);
+    const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || (inferred ? "caution" : "");
     const el = $("flag"); el.dataset.flag = f; document.body.dataset.flag = f;
+    el.title = inferred ? "Computed here: the replay carries no flags, so the caution is read from how slowly the field is going." : "";
+    el.classList.toggle("derived", inferred);
     const stateTxt = words(st.session.state);
     el.textContent = f ? (f === "caution" ? "Full course yellow" : f[0].toUpperCase() + f.slice(1) + " flag")
       : (stateTxt ? stateTxt[0].toUpperCase() + stateTxt.slice(1) : "No flag");
@@ -1530,7 +1535,7 @@
         `<option value="${c.idx}">#${esc(c.num ?? c.idx)} ${esc(c.name ?? "")}${isMulticlass() ? " · " + esc(c.className ?? "") : ""}</option>`).join("");
     }
     if (document.activeElement !== sel) sel.value = myRef != null ? String(myRef) : "";
-    const src = { chosen: "chosen", your_car: "your car", camera: "camera" }[r.source] || "nobody";
+    const src = { chosen: "chosen", your_car: "your car", camera: "camera", camera_last: "last car the camera showed" }[r.source] || "nobody";
     $("followSrc").textContent = followNote || (r.idx == null ? "nobody yet" : "(" + src + ")");
   }
   // ---- find a driver in this session by name, team, team-mate or number.
@@ -1751,7 +1756,8 @@
         const c = carByIdx(e.idx);
         t = `${carLabel(e.idx)} leads ${isMulticlass() && c && c.className ? esc(c.className) : "the race"}`; break;
       }
-      case "flag": t = `<b>${esc(words(e.flag)).replace(/^./, x => x.toUpperCase())} flag</b>`; break;
+      case "flag": t = `<b>${esc(words(e.flag)).replace(/^./, x => x.toUpperCase())} flag</b>` +
+        (e.inferred ? ` ${D("(read from the field's speed)", "Computed here: a replay carries no flags.")}` : ""); break;
       case "engine": t = `<b>Engine warning:</b> ${esc((e.warnings || []).map(words).join(", "))}`; break;
       case "tow": t = `<b>Towed to the pits</b> · ${esc(e.towS)} s tow`; break;
       case "rain_start": t = "Rain started"; break;

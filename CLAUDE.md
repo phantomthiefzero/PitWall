@@ -59,6 +59,9 @@ It has now been corrected five times -- the F2Time placeholder, gap monotonicity
 the mirrored yaw convention, impossible best laps, and single-class-only fields.
 When adding a derived value, make the fake reproduce the sim's awkward shape
 (placeholders, "carry over", mixed classes), not the convenient one.
+Replays are their own awkward shape (Talladega, VARIABLES_TO_VERIFY.md): no flags at all,
+CarIdxEstTime 0, CarClassEstLapTime 1.0, the camera on the pace car. `FakeSource(replay_shape=True)`
+reproduces it; anything that reads flags, EstTime or the class lap must still work there.
 
 iRacing Suite app (suite/)
 - The suite hosts PitWall without changing it: `suite/pitwall_host.py` runs

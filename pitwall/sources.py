@@ -385,7 +385,12 @@ class FakeSource(TelemetrySource):
                  incidents: bool | None = None, incident_every_s: float = 25.0,
                  hide_incident_counts: bool | None = None, parade_s: float = 0.0,
                  grid_s: float = 0.0, team: bool = False, caution: tuple | None = None,
-                 pits_closed_s: float = 0.0):
+                 pits_closed_s: float = 0.0, replay_shape: bool = False):
+        # replay_shape=True: what iRacing sends while a REPLAY plays (seen at
+        # Talladega, 2026-10): SessionFlags 0 throughout (no green, no caution,
+        # no per-car flags), PitsOpen always True, CarIdxEstTime 0.0 for every
+        # car and CarClassEstLapTime 1.0. The field still crawls under a caution.
+        self.replay_shape = replay_shape
         # caution=(start_s, end_s): a full-course caution, as on an oval (iRacing
         # runs none in road racing). The field crawls behind the pace car, the
         # flag reads caution (waving for the first seconds), and the pits stay
@@ -580,7 +585,7 @@ class FakeSource(TelemetrySource):
                 "CarScreenNameShort": c.cls["name"],
                 "CarClassColor": c.cls["color"],
                 "CarClassRelSpeed": c.cls["rel"],
-                "CarClassEstLapTime": c.cls["lap"],
+                "CarClassEstLapTime": 1.0 if getattr(self, "replay_shape", False) else c.cls["lap"],
                 "CarDesignStr": ["0,ff3b30,ffffff,111111", "3,1c6dd0,f2c200,ffffff", "7,0b8f4d,ffffff,000000"][c.idx % 3],
                 "HelmetDesignStr": "1,ffffff,ff3b30,111111",
                 "CarID": 100 + c.cls["id"], "UserID": 300000 + c.idx + (500 if second else 0),
@@ -893,6 +898,9 @@ class FakeSource(TelemetrySource):
             "ReplayPlaySpeed": self.replay_speed, "ReplayPlaySlowMotion": self.replay_slow,
             "ReplaySessionNum": 1, "ReplaySessionTime": self.t - self.replay_behind, "ReplayFrameNumEnd": 1,
         })
+        if self.replay_shape:
+            v.update({"SessionFlags": 0, "PitsOpen": True, "IsReplayPlaying": True,
+                      "CarIdxEstTime": [0.0] * 64, "CarIdxSessionFlags": [0] * 64})
         if self.spectator:
             v.update({"PlayerCarIdx": 63, "IsReplayPlaying": True, "IsInGarage": False})
             for k in ("FuelLevel", "FuelLevelPct", "FuelUsePerHour", "PlayerCarPosition",

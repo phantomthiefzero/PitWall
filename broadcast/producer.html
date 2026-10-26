@@ -781,7 +781,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         (e.classPos ? ` from ${multi() ? cls : ""}P${esc(multi() ? e.classPos : e.pos)}` : "");
       case "pit_out": return `${carShort(e.idx)} out of the pits` + (e.stationaryS != null ? ` after a ${e.stationaryS.toFixed(1)} s stop` : "") +
         (e.classPos ? `, ${multi() ? cls : ""}P${esc(multi() ? e.classPos : e.pos)}` : "");
-      case "flag": return esc(FLAG_WORD[e.flag] || String(e.flag).replace(/_/g, " "));
+      case "flag": return esc(FLAG_WORD[e.flag] || String(e.flag).replace(/_/g, " ")) +
+        (e.inferred ? ` ${D("(read from the field's speed)")}` : "");
       case "race_incident": {
         if (e.what === "off_track") return null;
         if (e.what === "contact" && e.contactWith && e.contactWith.length) {   // each car reports the same contact: say it once

@@ -273,7 +273,32 @@ spectator join. Fuel, tyre and `dc*` behaviour is now covered by the test drive.
 
 Add a seventh that the README does not list: **an oval race**. It is the only
 way to exercise the caution and pace-car path (see below), and no amount of road
-running substitutes for it.
+running substitutes for it. A REPLAY of one now exists (below); a live oval race,
+driven or spectated, is still needed for the flags.
+
+### Talladega replay (NASCAR trucks, Oct 2026)
+
+`Talladega-Super-Speedway-Race_2026-10-25_192220.jsonl.gz` (not in the repo; 2490 s, 26
+trucks, start, three cautions, green-flag stops), recorded while a replay played
+(IsReplayPlaying True, PlayerCarIdx 63, pace car idx 62). What a replay does NOT carry:
+
+- **SessionFlags is 0 throughout** -- no green, no caution, no per-car flags
+  (CarIdxSessionFlags 0, CarIdxPaceFlags 0). PitsOpen is True throughout. So the
+  caution is read from the field's speed instead (`caution.inferred`, PROTOCOL.md);
+  it found the three cautions to within ~20 s of the field slowing. Whether LIVE
+  ovals send the caution bits is still unverified.
+- **CarIdxEstTime is 0.0 for every car** and **CarClassEstLapTime is 1.0**. Gaps
+  were all 0.000. Now: an EstTime of 0 is unknown, a class lap under 5 s is
+  unknown, and the gap falls back to the car's best lap.
+- **The camera is on the pace car ~40% of the time** under caution: the reference
+  stays on the last car the camera showed (`ref.source = "camera_last"`).
+- **Cars blink out of the world** (not_in_world for 1-3 s, then back where they
+  were): one driver a dozen times in 10 minutes. Not a tow: a tow now needs the car
+  back in its stall / on pit road, or gone 8 s.
+- **The field spawns into its pit boxes** at the start (not_in_world -> in_pit_stall)
+  and drives out: not a stop (no lane entry was watched).
+- A lap behind the pace car took ~137 s against ~52 s green: laps over 1.5x the
+  car's best are kept out of pace.
 
 ## Findings that are not about a single variable
 
