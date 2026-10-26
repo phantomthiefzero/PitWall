@@ -72,7 +72,9 @@ def clean(x):
 # reference. iRacing gives other cars' position, lap, gear, rpm and steering, but
 # not their pedals, speed, g-forces or GPS.
 CARIDX_SEND = {"CarIdxLapDistPct": 6, "CarIdxLap": None, "CarIdxGear": None, "CarIdxRPM": 0,
-               "CarIdxSteer": 3, "CarIdxOnPitRoad": None, "CarIdxTrackSurface": None, "CarIdxLastLapTime": 3}
+               "CarIdxSteer": 3, "CarIdxOnPitRoad": None, "CarIdxTrackSurface": None, "CarIdxLastLapTime": 3,
+               # the race order and each car's own timing: Live telemetry's gaps to the car ahead and behind
+               "CarIdxPosition": None, "CarIdxEstTime": 2}
 CARIDX_EVERY = 2
 
 
