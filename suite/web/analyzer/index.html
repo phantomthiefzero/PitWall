@@ -32,6 +32,21 @@ body[data-view=coach] #setup,body[data-view=coach] #live,body[data-view=coach] #
 body[data-view=setup] #coach,body[data-view=setup] #ghost,body[data-view=setup] #pace,body[data-view=setup] #own,body[data-view=setup] #lim,body[data-view=setup] #out,body[data-view=setup] #out~*,body[data-view=setup] #zb,body[data-view=setup] #start{display:none!important}
 .livebar{display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;padding:8px 14px}.livebar .lbn{display:flex;gap:6px 16px;flex-wrap:wrap;align-items:baseline}.livebar .lbn>span{white-space:nowrap}
 body[data-view=setup] .drops{grid-template-columns:1fr}
+/* Live: what the car is doing right now. Only the live bar and the telemetry card (#tele). */
+#tele{display:none}body[data-view=live] #tele{display:block}
+body[data-view=live] .card:not(#tele):not(#liveBar),body[data-view=live] .drops,body[data-view=live] #files,body[data-view=live] #out,body[data-view=live] #out~*,body[data-view=live] #refOnly,body[data-view=live] #err{display:none!important}
+.tl-top{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px}.tl-top.two{grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-bottom:12px}
+.tl-t{background:var(--card);border-radius:10px;padding:8px 12px;min-width:0}.tl-t span{display:block;font-size:12px;color:var(--mut)}.tl-t b{display:block;font-size:26px;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-t.tm b{font-size:21px;line-height:1.55}.tl-t small{display:block;font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tl-t.big b{font-size:34px}
+.tl-rpm{height:6px;border-radius:3px;background:var(--ln);overflow:hidden;margin-top:4px}.tl-rpm i{display:block;height:100%;width:0;background:var(--good)}.tl-rpm.shift i{background:var(--bad)}
+.tl-mid{display:grid;grid-template-columns:150px 1fr 190px;gap:12px;margin-bottom:12px;align-items:stretch}
+@media(max-width:760px){.tl-mid{grid-template-columns:1fr}}
+.tl-in{background:var(--card);border-radius:10px;padding:10px;display:flex;gap:10px;justify-content:center;align-items:flex-end}
+.tl-in .pv{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--mut)}.tl-in .pb{width:22px;height:120px;background:var(--ln);border-radius:4px;position:relative;overflow:hidden}.tl-in .pb i{position:absolute;left:0;right:0;bottom:0;height:0}
+.tl-wheel{width:120px;margin:0 auto 6px;text-align:center;font-size:12px;color:var(--mut)}.tl-wheel svg{display:block;margin:0 auto}
+.tl-box{background:var(--card);border-radius:10px;padding:8px 10px;min-width:0}.tl-box canvas{width:100%;display:block}
+.tl-car{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 16px;font-size:14px;margin:6px 0 10px}.tl-car div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--ln);padding:3px 0}.tl-car span{color:var(--mut)}
+.tl-h{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 6px}
 .views{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.views a{padding:3px 12px;border:1px solid var(--ln);border-radius:14px;color:var(--fg);text-decoration:none;font-size:14px}.views a.on{background:var(--fg);color:var(--bg)}
 /* ---- Calm: one header row, sections without boxes, explanations behind a small (i), soft colours.
    Sections are separated by space and a hairline; only things you act on (your 3 things, tiles) get a surface. */
@@ -73,13 +88,13 @@ body:not([data-view=setup]) #liveNow{display:none}
 <div class="m" id="units">Speed <select id="us"><option value="mph">mph</option><option value="kmh">km/h</option></select> &nbsp; Distance <select id="ud"><option value="m">meters</option><option value="ft">feet</option></select></div>
 <div id="err"></div>
 <script>function boxNames(v){const a=document.querySelector('#za>b'),b=document.querySelector('#zb>b');if(a)a.textContent=v==='coach'?'Your laps (.ibt file)':'Your lap';if(b)b.textContent=v==='coach'?'Reference lap (optional)':'Reference lap'}
-try{(()=>{const q=new URLSearchParams(location.search),v=q.get('view'),V={coach:['Coaching','Your average lap against your best lap: where the time goes and what to change in your driving.'],setup:['Setup','Your car: how it handles on your laps, what to change, the live setup and the engineer\'s plan.']};
+try{(()=>{const q=new URLSearchParams(location.search),v=q.get('view'),V={live:['Live telemetry','What the car is doing right now: speed, inputs, this lap against your best, the car\'s systems. For an engineer watching, on this PC or through a share link.'],coach:['Coaching','Your average lap against your best lap: where the time goes and what to change in your driving.'],setup:['Setup','Your car: how it handles on your laps, what to change, the live setup and the engineer\'s plan.']};
 {const p=document.querySelector('h1+nav+p.m')||document.querySelector('#views+p.m');if(p)window.INTRO0=p.textContent}
 document.body.dataset.view=V[v]?v:'laps';
 if(V[v]){document.body.dataset.view=v;document.getElementById('appTitle').textContent=V[v][0];document.title=V[v][0]+' · iRacing Suite';const p=document.querySelector('h1+nav+p.m')||document.querySelector('#views+p.m');if(p)p.textContent=V[v][1]}
 window.VIEWS=V;try{boxNames(v)}catch(e){}
 const link=x=>{const n=new URLSearchParams(location.search);if(x)n.set('view',x);else n.delete('view');const s=n.toString();return location.pathname+(s?'?'+s:'')};
-document.getElementById('views').innerHTML=[['coach','Coaching'],['setup','Setup'],['','Lap Analyzer']].map(([x,l])=>'<a href="'+link(x)+'" data-v="'+x+'"'+((v||'')===x||(!V[v]&&!x)?' class="on"':'')+'>'+l+'</a>').join('');
+document.getElementById('views').innerHTML=[['live','Live'],['coach','Coaching'],['setup','Setup'],['','Lap Analyzer']].map(([x,l])=>'<a href="'+link(x)+'" data-v="'+x+'"'+((v||'')===x||(!V[v]&&!x)?' class="on"':'')+'>'+l+'</a>').join('');
 // Coaching, Setup and the Lap Analyzer are one page: switching views keeps everything loaded (no reload).
 document.getElementById('views').addEventListener('click',e=>{const a=e.target.closest('a[data-v]');if(!a||e.ctrlKey||e.metaKey||e.shiftKey||e.button)return;e.preventDefault();
 const x=a.dataset.v;history.pushState(null,'',link(x));showView(x)});
@@ -91,6 +106,7 @@ try{if(typeof viewShown==='function')viewShown(document.body.dataset.view)}catch
 <div class="card livebar" id="liveBar" hidden role="status"></div>
 <div class="card" id="balance" hidden></div>
 <div class="card" id="tyres" hidden></div>
+<div class="card" id="tele"></div>
 <div class="card" id="live" hidden></div>
 <div class="card" id="coach" hidden></div>
 <div class="card" id="ghost" hidden></div>
@@ -1014,8 +1030,8 @@ if(s!==LIVE.sig){if(LIVE.setup&&LIVE.cur)LIVE.cur.pit=true;   /* a setup only ch
 const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tree:t,diff:prev?liveDiff(prev.tree,t):[],at:Date.now()});LIVE.sig=s;
 if(LIVE.meta.carPath)try{libRecord({carPath:LIVE.meta.carPath,carName:LIVE.meta.carName,setup:t},'live|'+(LIVE.meta.sid||'session')+'|'+LIVE.vers.length)}catch(e){}
 LIVE.setup=t;if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}else{LIVE.setup=t;if(first){if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}}}
-function liveNewLap(lap,v){if(v.OnPitRoad)LIVE.stint=0;return{lap,f0:v.FuelLevel!=null?v.FuelLevel:null,tt:v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp!=null?v.TrackTemp:null,stint:(LIVE.stint=(LIVE.stint||0)+1),d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
-function liveTick(v){LIVE.v=v;try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
+function liveNewLap(lap,v){if(v.OnPitRoad)LIVE.stint=0;return{lap,st0:v.SessionTime,f0:v.FuelLevel!=null?v.FuelLevel:null,tt:v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp!=null?v.TrackTemp:null,stint:(LIVE.stint=(LIVE.stint||0)+1),d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
+function liveTick(v){LIVE.v=v;try{teleRoll(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
 const p=LIVE.pend;if(p&&v.LapLastLapTime>0&&v.LapLastLapTime!==p.stale){const d=v.LapLastLapTime-p.time;if(d>-0.1&&d<1)p.time=v.LapLastLapTime;LIVE.pend=null;liveRender()}
 if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFinish(LIVE.cur,v);LIVE.cur=liveNewLap(v.Lap,v)}
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
@@ -1025,15 +1041,15 @@ if(v.OnPitRoad)c.pit=true;if(v.IsOnTrack===false||v.IsOnTrack===0)c.away=true;
 // what keeps a live lap out of your clean laps: an incident, a moment off the track, an active reset (the distance jumps)
 if(v.PlayerCarMyIncidentCount!=null){if(c.ic0==null)c.ic0=v.PlayerCarMyIncidentCount;if(v.PlayerCarMyIncidentCount>c.ic0)c.inc=true}
 if(v.PlayerTrackSurface===0)c.off=true;
-if(v.LapDistPct!=null&&v.LapDistPct>=0){if(c.pd!=null&&!c.pit){const dd=v.LapDistPct-c.pd,dt=v.SessionTime!=null&&c.pst!=null?Math.max(0,v.SessionTime-c.pst):0.5;if(!(c.pd>.9&&v.LapDistPct<.1)&&(dd<-.003||dd>.01+dt*.05))c.reset=true}c.pd=v.LapDistPct;c.pst=v.SessionTime}
+if(v.LapDistPct!=null&&v.LapDistPct>=0){if(c.pd!=null&&!c.pit){const dd=v.LapDistPct-c.pd,dt=v.SessionTime!=null&&c.pst!=null?Math.max(0,v.SessionTime-c.pst):0.5;if(!(c.pd>.9&&v.LapDistPct<.1)&&(dd<-.003||dd>.01+dt*.05))c.reset=true;else if(dd>0&&dd<.05)c.cov=(c.cov||0)+dd}c.pd=v.LapDistPct;c.pst=v.SessionTime}
 if(v.LapDistPct!=null&&v.LapDistPct>=0)c.lastD=v.LapDistPct;if(v.LapCurrentLapTime>0)c.lastT=v.LapCurrentLapTime;
 liveFrame()}
-function liveFrame(){if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE.raf=0;const now=performance.now(),txt=!(now-(LIVE.lastTxt||0)<100);if(txt)LIVE.lastTxt=now;liveGauges(!txt);const box=$('liveCharts');if(box&&box.clientWidth)liveDrawCharts()})}
-function liveFinish(c,v){const b=c.b,n=b.Speed.length,valid=c.d0<0.05&&c.lastD>0.95&&!c.pit&&!c.away&&!c.inc&&!c.off&&!c.reset&&n>=50&&c.lastT>0;
+function liveFrame(){if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE.raf=0;const now=performance.now(),txt=!(now-(LIVE.lastTxt||0)<100);if(txt)LIVE.lastTxt=now;liveGauges(!txt);const box=$('liveCharts'),tb=$('teleCharts');if((box&&box.clientWidth)||(tb&&tb.clientWidth))liveDrawCharts();if(teleOn())teleFrame(txt)})}
+function liveFinish(c,v){const b=c.b,n=b.Speed.length,span=v.SessionTime!=null&&c.st0!=null?v.SessionTime-c.st0:null,full=c.d0<0.05&&c.lastD>0.95&&(c.cov||0)>0.9&&(span==null||Math.abs(c.lastT-span)<1.5),valid=full&&!c.pit&&!c.away&&!c.inc&&!c.off&&!c.reset&&n>=50&&c.lastT>0;
 const mean=a=>{const x=a.filter(y=>y!=null);return x.length?x.reduce((s,y)=>s+y,0)/x.length:null};let st=null;
 if(LIVE_TIRES.every(k=>b.rh[k].every(x=>x!=null))){const ext={};LIVE_TIRES.forEach(k=>ext[k+'rideHeight']=Float64Array.from(b.rh[k]));st=aeroRhStats({n,Speed:Float64Array.from(b.Speed),Brake:Float64Array.from(b.Brake),LatG:Float64Array.from(b.LatG),ext,lapNum:c.lap})}
-const why=valid?'':c.reset?'active reset':c.inc?'incident':c.off?'off track':c.pit?'pit lane':c.away?'not on track':'not a full lap';
-const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
+const why=valid?'':c.reset?'active reset':span!=null&&c.lastT>0&&Math.abs(c.lastT-span)>=1.5?'lap clock off (start or formation lap)':c.inc?'incident':c.off?'off track':c.pit?'pit lane':c.away?'not on track':'not a full lap';
+const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,fuel:c.f0!=null&&v.FuelLevel!=null&&!c.pit&&!c.reset&&full&&c.f0>v.FuelLevel?c.f0-v.FuelLevel:null,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb)};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
 LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{renderCoach()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
@@ -1053,7 +1069,7 @@ const ch=s.n===1?'<span class="m">starting setup</span>':(s.diff.length?s.diff.m
 const tc=LIVE_TIRES.map(k=>liveTemp(liveMed(ok.map(l=>l.tc[k])))).join(' ');
 return '<tr><td><b>Run '+s.n+'</b>'+(s.n===LIVE.vers.length?' <span class="m">current</span>':'')+'</td><td style="min-width:200px">'+ch+'</td><td>'+ok.length+(laps.length>ok.length?' <span class="m">+'+(laps.length-ok.length)+' invalid</span>':'')+'</td><td>'+(best?ft(best):'—')+'</td><td>'+(avg?ft(avg):'—')+'</td><td>'+liveMm(S.f)+' / '+liveMm(S.r)+'</td><td>'+liveMm(C.f)+' / '+liveMm(C.r)+'</td><td>'+(rise==null?'—':(rise>=0?'+':'−')+liveMm(Math.abs(rise)))+'</td><td>'+(ok.length?liveSpd(Math.max(...ok.map(l=>l.top))):'—')+'</td><td style="white-space:nowrap">'+tc+'</td></tr>'}).join('');
 return '<div style="margin-top:10px"><b>Runs by setup</b> <small class="m">A new run starts each time the setup changes in the garage. Values are medians across the run\'s valid laps. Ride heights are front / rear.</small><div style="overflow-x:auto;margin-top:4px"><table><tr><th>Run</th><th>Changes from the run before</th><th>Valid laps</th><th>Best</th><th>Average</th><th>Ride height, straights</th><th>Ride height, fast corners</th><th>Rear rise braking</th><th>Top speed</th><th>Carcass temps LF RF LR RR</th></tr>'+rows+'</table></div></div>'}
-function liveLapsHtml(){const L=LIVE.laps.slice(-12).reverse();if(!L.length)return '';return '<details style="margin-top:8px"><summary><b>Recent laps</b> <span class="m">'+LIVE.laps.length+' recorded this session</span></summary><div style="overflow-x:auto"><table><tr><th>Lap</th><th>Time</th><th>Run</th><th>Ride height straights F / R</th><th>Top speed</th><th>Brake bias</th></tr>'+L.map(l=>{const q=l.st&&l.st.find(z=>z.id==='straight');return '<tr><td>'+l.lap+'</td><td>'+ft(l.time)+(l.valid?'':' <span class="m">'+(l.why||'invalid')+'</span>')+'</td><td>'+l.ver+'</td><td>'+(q&&q.n?liveMm(q.f)+' / '+liveMm(q.r):'—')+'</td><td>'+liveSpd(l.top)+'</td><td>'+(l.bb!=null?l.bb.toFixed(1)+'%':'—')+'</td></tr>'}).join('')+'</table></div></details>'}
+function liveLapsHtml(){const L=LIVE.laps.slice(-12).reverse();if(!L.length)return '';return '<details style="margin-top:8px"><summary><b>Recent laps</b> <span class="m">'+LIVE.laps.length+' recorded this session</span></summary><div style="overflow-x:auto"><table><tr><th>Lap</th><th>Time</th><th>Run</th><th>Ride height straights F / R</th><th>Top speed</th><th>Brake bias</th></tr>'+L.map(l=>{const q=l.st&&l.st.find(z=>z.id==='straight');return '<tr><td>'+l.lap+'</td><td>'+(l.time>0?ft(l.time):'–')+(l.valid?'':' <span class="m">'+(l.why||'invalid')+'</span>')+'</td><td>'+l.ver+'</td><td>'+(q&&q.n?liveMm(q.f)+' / '+liveMm(q.r):'—')+'</td><td>'+liveSpd(l.top)+'</td><td>'+(l.bb!=null?l.bb.toFixed(1)+'%':'—')+'</td></tr>'}).join('')+'</table></div></details>'}
 /* ---- Live graphs: current lap against the best or last lap, by track position ---- */
 let LIVE_CMP=(()=>{try{return localStorage.getItem('liveCmp')||'best'}catch(e){return 'best'}})();
 function liveRef(){if(LIVE_CMP==='ghost'){const e=GH.sel&&ghLibLoad().find(x=>x.key===GH.sel);if(!e)return null;if(!GH.liveRef||GH.liveRef.key!==e.key||GH.liveRef.at!==e.at)GH.liveRef=Object.assign(ghLive(e),{key:e.key,at:e.at});return GH.liveRef}return LIVE_CMP==='last'?LIVE.lastRef:LIVE.bestRef}
@@ -1073,8 +1089,8 @@ g.textAlign='left';g.fillStyle=fg;g.font='bold '+Math.round(11*BG)+'px system-ui
 o.series.forEach(s=>{if(!s.x.length)return;g.strokeStyle=s.color;g.lineWidth=s.w||1.6;g.globalAlpha=s.a||1;g.setLineDash(s.dash||[]);g.beginPath();let pen=false,pd=-1;for(let i=0;i<s.x.length;i++){const v=s.y[i];if(v==null||!isFinite(v)||s.x[i]<pd-0.5){pen=false;pd=s.x[i];continue}pd=s.x[i];const px=X(s.x[i]),py=Y(Math.max(lo,Math.min(hi,v)));if(pen)g.lineTo(px,py);else{g.moveTo(px,py);pen=true}}g.stroke();g.globalAlpha=1;g.setLineDash([])});
 if(o.legend){g.textAlign='right';g.font=Math.round(10*BG)+'px system-ui,sans-serif';let xx=W-pr;o.legend.slice().reverse().forEach(([t,c])=>{g.fillStyle=c;g.fillText(t,xx,Math.round(11*BG));xx-=g.measureText(t).width+12})}}
 function liveChartsHtml(){return '<div style="margin-top:10px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Live ride height</b> <span class="m">by track position, this lap against</span><select id="liveCmp"><option value="best"'+(LIVE_CMP==='best'?' selected':'')+'>your best lap</option><option value="last"'+(LIVE_CMP==='last'?' selected':'')+'>your last lap</option>'+(GH.sel?'<option value="ghost"'+(LIVE_CMP==='ghost'?' selected':'')+'>'+plain((liveRef()||{}).name||'a recorded driver')+'</option>':'')+'</select></div><div id="liveCharts" style="display:grid;grid-template-columns:1fr;gap:4px;margin-top:6px">'+['rh'].map(k=>'<canvas data-lc="'+k+'" style="width:100%;height:'+(k==='dlt'?90:110)+'px;display:block"></canvas>').join('')+'</div></div>'}
-function liveDrawCharts(){const box=$('liveCharts');if(!box||!LIVE.cur)return;const c=LIVE.cur.b,ref=liveRef(),you=liveCss('--you','#e8792b'),rc=liveCss('--ref','#2f6fd6'),k=3.6*U().s[0],su=U().s[1],mmF=SETUP_UNITS==='imperial'?1/25.4:1,mmU=SETUP_UNITS==='imperial'?'in':'mm';
-const map=(a,f)=>a.map(v=>v==null?null:f(v)),cv0=n=>box.querySelector('[data-lc="'+n+'"]'),LC=(n,o)=>{const e=cv0(n);if(e)liveChart(e,o);if(ZOOM&&ZOOM.live===n&&ZOOM.cv.isConnected)liveChart(ZOOM.cv,Object.assign({},o,{big:true}))},R=ref?ref:null,leg=[['this lap',you]].concat(R?[[liveCmpLbl(),rc]]:[]);
+function liveDrawCharts(){const box=$('liveCharts')||$('teleCharts');if(!box||!LIVE.cur)return;const c=LIVE.cur.b,ref=liveRef(),you=liveCss('--you','#e8792b'),rc=liveCss('--ref','#2f6fd6'),k=3.6*U().s[0],su=U().s[1],mmF=SETUP_UNITS==='imperial'?1/25.4:1,mmU=SETUP_UNITS==='imperial'?'in':'mm';
+const map=(a,f)=>a.map(v=>v==null?null:f(v)),LC=(n,o)=>{document.querySelectorAll('[data-lc="'+n+'"]').forEach(e=>{if(e.clientWidth)liveChart(e,o)});if(ZOOM&&ZOOM.live===n&&ZOOM.cv.isConnected)liveChart(ZOOM.cv,Object.assign({},o,{big:true}))},R=ref?ref:null,leg=[['this lap',you]].concat(R?[[liveCmpLbl(),rc]]:[]);
 LC('spd',{title:'Speed ('+su+')',min:0,legend:leg,series:[R&&{x:R.d,y:map(R.Speed,v=>v*k),color:rc},{x:c.d,y:map(c.Speed,v=>v*k),color:you,w:2}].filter(Boolean)});
 LC('pedal',{title:'Throttle and brake (%)',min:0,max:100,legend:[['throttle',liveCss('--good','#1a8f4c')],['brake','#d6333a']],series:[R&&{x:R.d,y:map(R.thr,v=>v*100),color:liveCss('--good','#1a8f4c'),a:.35},R&&{x:R.d,y:map(R.Brake,v=>v*100),color:'#d6333a',a:.35},{x:c.d,y:map(c.thr,v=>v*100),color:liveCss('--good','#1a8f4c'),w:2},{x:c.d,y:map(c.Brake,v=>v*100),color:'#d6333a',w:2}].filter(Boolean)});
 LC('steer',{title:'Steering (degrees)',zero:true,legend:leg,series:[R&&{x:R.d,y:map(R.str,v=>v*57.2958),color:rc},{x:c.d,y:map(c.str,v=>v*57.2958),color:you,w:2}].filter(Boolean)});
@@ -1097,7 +1113,7 @@ const lb=$('liveBar');if(lb){lb.innerHTML=bar;lb.hidden=false}
 let body='';
 if(on)body='<div class="m" style="margin:0 0 6px">'+(LIVE_SHARE?'The setup below is the driver\'s live setup and updates when they change it in the garage.':'The setup below is the live setup and updates when you change it in the garage.')+'</div>'+(()=>{try{return engHtml()}catch(e){console.error('engineer',e);return ''}})()+liveChartsHtml()+liveRunsHtml()+(()=>{try{return liveVerdictHtml()}catch(e){console.error('verdict',e);return ''}})()+liveLapsHtml();
 el.innerHTML=body?'<details class="liveWrap"'+(open?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Live engineer</b> <span class="m">runs by setup, verdicts and ride height while you drive</span></summary><div style="margin-top:8px">'+body+'</div></details>':'';el.hidden=!body;
-const w=el.querySelector('details.liveWrap');if(w)w.addEventListener('toggle',()=>{try{localStorage.setItem('liveOpen',w.open?'1':'0')}catch(e){}});
+try{if(teleOn())teleBuild()}catch(e){}const w=el.querySelector('details.liveWrap');if(w)w.addEventListener('toggle',()=>{try{localStorage.setItem('liveOpen',w.open?'1':'0')}catch(e){}});
 const bOn=$('liveOn'),bOff=$('liveOff'),pi=$('livePort');if(bOn)bOn.onclick=()=>{if(pi){const p=+pi.value;if(p>0&&p<65536){LIVE.port=p;try{localStorage.setItem('livePort',String(p))}catch(e){}}}liveConnect()};if(bOff)bOff.onclick=liveDisconnect;
 ghRender();if(on){wireEng();liveGauges();liveDrawCharts()}const cmp=$('liveCmp');if(cmp)cmp.onchange=()=>{LIVE_CMP=cmp.value;try{localStorage.setItem('liveCmp',LIVE_CMP)}catch(e){}liveDrawCharts()}}
 
@@ -2204,6 +2220,66 @@ h+='<table style="margin-top:4px;font-size:13px"><tr><th></th><th>Front: measure
 h+='<small class="m">Measured on '+m.src+' (middle value of each condition). How it\'s worked out: the car squats by the garage height minus the measured height. A stiffer spring squats less, in proportion to the stiffness ratio, and a garage height change moves everything by the same amount. Assumes the same downforce and load. Part of the squat is the tire itself, which springs don\'t change, so the real spring effect is a little smaller than shown. Ride height also changes downforce, so check it on track.</small></div>';
 return h}
 
+
+// ---- Live telemetry (view=live): what the car is doing right now, for an engineer watching, on this PC or
+// through a share link (the same live feed as the rest of the page). Numbers are iRacing's own variables;
+// the delta and the lap traces are against the lap picked here (your best, your last or a recorded driver).
+const TELE={roll:[],gg:[],built:false,key:''};
+function teleOn(){return document.body.dataset.view==='live'}
+function teleRoll(v){if(v.Throttle==null&&v.Brake==null)return;const t=v.SessionTime!=null?v.SessionTime:performance.now()/1000,R=TELE.roll;
+if(R.length&&(t<R[R.length-1].t||t-R[R.length-1].t>5))R.length=0;
+R.push({t,thr:v.Throttle||0,brk:v.Brake||0,clu:v.Clutch!=null?1-v.Clutch:null,str:v.SteeringWheelAngle||0,spd:v.Speed||0});while(R.length&&t-R[0].t>12)R.shift();
+if(v.LatAccel!=null&&v.LongAccel!=null){TELE.gg.push([v.LatAccel/9.80665,v.LongAccel/9.80665]);if(TELE.gg.length>120)TELE.gg.shift()}}
+function teleCar(){const y=LIVE.yaml||'',g=re=>{const m=re.exec(y);return m?+m[1]:null};return{shift:g(/DriverCarSLShiftRPM:\s*([\d.]+)/),red:g(/DriverCarRedLine:\s*([\d.]+)/),first:g(/DriverCarSLFirstRPM:\s*([\d.]+)/)}}
+function teleBuild(force){const el=$('tele');if(!el)return;const on=!!LIVE.ws&&LIVE.state==='bridge'&&LIVE.sim,key=String(on)+(LIVE.meta&&LIVE.meta.carName||'');
+if(!force&&TELE.built&&TELE.key===key){teleLaps();return}TELE.built=true;TELE.key=key;
+if(!on){el.innerHTML='<p class="m" style="margin:0">Live telemetry appears here as soon as '+(LIVE_SHARE?'the driver is':'you are')+' on track in iRacing (the bar above shows the connection). Everything updates as it happens: speed, gear and revs, the pedals and steering, this lap against '+(LIVE_SHARE?'their':'your')+' best, and the car\'s temperatures and settings.</p>';return}
+const tile=(id,lab,big,tm)=>'<div class="tl-t'+(big?' big':'')+(tm?' tm':'')+'"><span>'+lab+'</span><b id="'+id+'">–</b><small id="'+id+'s">&nbsp;</small></div>';
+const bar=(id,lab,c)=>'<div class="pv"><div class="pb"><i id="'+id+'" style="background:'+c+'"></i></div>'+lab+'</div>';
+const opt=(v,l)=>'<option value="'+v+'"'+(LIVE_CMP===v?' selected':'')+'>'+l+'</option>';
+el.innerHTML='<div class="tl-top">'+tile('tlSpd','Speed',1)+tile('tlGear','Gear',1)+'<div class="tl-t big"><span>RPM</span><b id="tlRpm">–</b><div class="tl-rpm" id="tlRpmBar"><i></i></div></div>'+
+tile('tlDelta','Delta',1)+'</div><div class="tl-top two">'+tile('tlCur','This lap',0,1)+tile('tlLast','Last lap',0,1)+tile('tlBest','Best lap',0,1)+tile('tlPos','Position')+tile('tlFuel','Fuel')+tile('tlInc','Incidents')+'</div>'+
+'<div class="tl-mid"><div class="tl-in" style="flex-direction:column;align-items:center"><div class="tl-wheel"><svg width="64" height="64" viewBox="-32 -32 64 64"><g id="tlWheel"><circle r="27" fill="none" stroke="currentColor" stroke-width="5" opacity=".55"/><rect x="-2" y="-30" width="4" height="10" fill="var(--bad)"/><line x1="-26" y1="0" x2="26" y2="0" stroke="currentColor" stroke-width="5" opacity=".55"/></g></svg><span id="tlStr">0°</span></div>'+
+'<div style="display:flex;gap:10px">'+bar('tlClu','clutch','var(--mut)')+bar('tlBrk','brake','var(--bad)')+bar('tlThr','throttle','var(--good)')+'</div></div>'+
+'<div class="tl-box"><small class="m">Last 12 s: <span style="color:var(--good)">throttle</span>, <span style="color:var(--bad)">brake</span>, <span style="color:var(--ref)">steering</span></small><canvas id="tlRoll" style="height:160px"></canvas></div>'+
+'<div class="tl-box"><small class="m">g now <span title="Sideways left and right; accelerating up, braking down. Rings at 1, 2 and 3 g.">(accelerating ↑ braking ↓)</span></small><canvas id="tlGG" style="height:160px"></canvas></div></div>'+
+'<div class="tl-h"><b>This lap</b><span class="m">by track position, against</span><select id="teleCmp">'+opt('best','your best lap')+opt('last','your last lap')+(GH.sel?opt('ghost',plain((liveRef()||{}).name||'a recorded driver')):'')+'</select></div>'+
+'<div id="teleCharts" style="display:grid;grid-template-columns:1fr;gap:4px">'+['dlt','spd','pedal','steer'].map(k=>'<canvas data-lc="'+k+'" style="width:100%;height:'+(k==='dlt'?90:110)+'px;display:block"></canvas>').join('')+'</div>'+
+'<div class="tl-h"><b>The car</b><span class="m">as iRacing reports it now</span></div><div class="tl-car" id="tlCarBox"></div><div id="tlLaps"></div>';
+const cs=$('teleCmp');if(cs)cs.onchange=()=>{LIVE_CMP=cs.value;try{localStorage.setItem('liveCmp',LIVE_CMP)}catch(e){}const o=$('liveCmp');if(o)o.value=LIVE_CMP;liveDrawCharts()};
+teleLaps();teleFrame(true);liveDrawCharts()}
+function teleLaps(){const el=$('tlLaps');if(!el)return;const h=liveLapsHtml().replace('<details style="margin-top:8px">','<details open style="margin-top:8px">');if(el.dataset.h!==h){el.dataset.h=h;el.innerHTML=h}}
+function teleFrame(txt){const v=LIVE.v;if(!v||!$('tlSpd'))return;const set=(id,t)=>{const e=$(id);if(e&&e.textContent!==t)e.textContent=t},pct=x=>Math.round(Math.max(0,Math.min(1,x||0))*100)+'%',hgt=(id,x)=>{const e=$(id);if(e)e.style.height=pct(x)};
+hgt('tlThr',v.Throttle);hgt('tlBrk',v.Brake);hgt('tlClu',v.Clutch!=null?1-v.Clutch:0);
+const deg=(v.SteeringWheelAngle||0)*57.2958,w=$('tlWheel');if(w)w.setAttribute('transform','rotate('+(-deg).toFixed(1)+')');
+const C=teleCar(),rb=$('tlRpmBar');if(rb&&v.RPM!=null){const top=C.red||C.shift*1.08||9000;rb.firstChild.style.width=pct(v.RPM/top);rb.classList.toggle('shift',!!(C.shift&&v.RPM>=C.shift))}
+teleDrawRoll();teleDrawGG();if(!txt)return;
+set('tlStr',Math.round(deg)+'°');set('tlSpd',v.Speed!=null?(v.Speed*3.6*U().s[0]).toFixed(0):'–');set('tlSpds',U().s[1]);set('tlGear',v.Gear==null?'–':v.Gear===0?'N':v.Gear<0?'R':String(v.Gear));
+set('tlRpm',v.RPM!=null?String(Math.round(v.RPM)):'–');
+const c=LIVE.cur,dl=c&&c.b.dlt.length?c.b.dlt[c.b.dlt.length-1]:null,de=$('tlDelta');set('tlDelta',dl==null?'–':(dl>0?'+':dl<0?'−':'')+Math.abs(dl).toFixed(2));if(de)de.style.color=dl==null?'':dl>0?'var(--bad)':'var(--good)';set('tlDeltas','against '+liveCmpLbl());
+set('tlCur',v.LapCurrentLapTime>0?ft(v.LapCurrentLapTime):'–');set('tlCurs','lap '+(v.Lap??'–')+(v.OnPitRoad?' · pit lane':''));
+const last=LIVE.laps[LIVE.laps.length-1],best=LIVE.laps.filter(l=>l.valid).reduce((m,l)=>!m||l.time<m.time?l:m,null);
+set('tlLast',last&&last.time>0?ft(last.time):'–');set('tlLasts',last?(last.valid?'lap '+last.lap:(last.why||'not clean')):' ');set('tlBest',best?ft(best.time):'–');set('tlBests',best?'lap '+best.lap+' (clean)':'no clean lap yet');
+set('tlPos',v.PlayerCarPosition>0?'P'+v.PlayerCarPosition:'–');set('tlPoss',v.PlayerCarClassPosition>0?'class P'+v.PlayerCarClassPosition:' ');
+const imp=SETUP_UNITS==='imperial',fu=x=>x==null?'–':imp?(x*0.264172).toFixed(1)+' gal':x.toFixed(1)+' L',used=LIVE.laps.filter(l=>l.fuel>0).slice(-3).map(l=>l.fuel),per=used.length?used.reduce((a,b)=>a+b,0)/used.length:null;
+set('tlFuel',fu(v.FuelLevel));set('tlFuels',per&&v.FuelLevel!=null?(v.FuelLevel/per).toFixed(1)+' laps left':'laps left after a lap');const fe=$('tlFuels');if(fe)fe.title=per?'Using '+fu(per)+' a lap (last '+used.length+' full laps)':'';
+set('tlInc',v.PlayerCarMyIncidentCount!=null?v.PlayerCarMyIncidentCount+'x':'–');
+const box=$('tlCarBox');if(box){const rows=[],add=(l,x)=>{if(x!=null&&x!=='')rows.push('<div><span>'+l+'</span><b>'+x+'</b></div>')},n=(x,d)=>x==null?null:(+x).toFixed(d),pr=x=>x==null?null:imp?(x*14.5038).toFixed(1)+' psi':(+x).toFixed(2)+' bar';
+add('Water',v.WaterTemp!=null?liveTemp(v.WaterTemp):null);add('Oil',v.OilTemp!=null?liveTemp(v.OilTemp):null);add('Oil pressure',pr(v.OilPress));add('Fuel pressure',pr(v.FuelPress));add('Voltage',v.Voltage!=null?n(v.Voltage,1)+' V':null);
+add('Brake bias',v.dcBrakeBias!=null?n(v.dcBrakeBias,1)+(v.dcBrakeBias>10?'%':''):null);add('TC',v.dcTractionControl!=null?n(v.dcTractionControl,0):null);add('TC 2',v.dcTractionControl2!=null?n(v.dcTractionControl2,0):null);add('ABS',v.dcABS!=null?n(v.dcABS,0):null);
+add('Engine map',v.dcEngineMap!=null?n(v.dcEngineMap,0):v.dcFuelMixture!=null?n(v.dcFuelMixture,0):null);add('ARB front',v.dcAntiRollFront!=null?n(v.dcAntiRollFront,0):null);add('ARB rear',v.dcAntiRollRear!=null?n(v.dcAntiRollRear,0):null);
+const q={};LIVE_TIRES.forEach(k=>q[k]=liveRh(v,k));const f=q.LF!=null&&q.RF!=null?(q.LF+q.RF)*500:null,r=q.LR!=null&&q.RR!=null?(q.LR+q.RR)*500:null;if(f!=null&&r!=null)add('Ride height','F '+liveMm(f)+' · R '+liveMm(r));
+add('Track temp',v.TrackTempCrew!=null?liveTemp(v.TrackTempCrew):v.TrackTemp!=null?liveTemp(v.TrackTemp):null);add('Air',v.AirTemp!=null?liveTemp(v.AirTemp):null);
+const h=rows.join('')||'<span class="m">No car readings in this feed.</span>';if(box.dataset.h!==h){box.dataset.h=h;box.innerHTML=h}}}
+function teleCanvas(id){const cv=$(id);if(!cv||!cv.clientWidth)return null;const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);return{g,W,H}}
+function teleDrawRoll(){const c=teleCanvas('tlRoll'),R=TELE.roll;if(!c||R.length<2)return;const{g,W,H}=c,t1=R[R.length-1].t,X=t=>W-(t1-t)/12*W,ln=liveCss('--ln','#444');
+g.strokeStyle=ln;g.lineWidth=1;g.setLineDash([2,4]);[0.25,0.5,0.75].forEach(f=>{g.beginPath();g.moveTo(0,H*f);g.lineTo(W,H*f);g.stroke()});g.setLineDash([]);
+const line=(f,col,w)=>{g.strokeStyle=col;g.lineWidth=w;g.beginPath();R.forEach((p,i)=>{const y=f(p);i?g.lineTo(X(p.t),y):g.moveTo(X(p.t),y)});g.stroke()};
+line(p=>H/2-Math.max(-1,Math.min(1,p.str/3.1416))*(H/2-4),liveCss('--ref','#2f6fd6'),1.5);line(p=>H-4-p.thr*(H-8),liveCss('--good','#1a8f4c'),2);line(p=>H-4-p.brk*(H-8),liveCss('--bad','#d6333a'),2)}
+function teleDrawGG(){const c=teleCanvas('tlGG'),P=TELE.gg;if(!c)return;const{g,W,H}=c,cx=W/2,cy=H/2,sc=Math.min(W,H)/2/3.2,ln=liveCss('--ln','#444');
+g.strokeStyle=ln;g.lineWidth=1;[1,2,3].forEach(r=>{g.beginPath();g.arc(cx,cy,r*sc,0,7);g.stroke()});g.beginPath();g.moveTo(cx-3.2*sc,cy);g.lineTo(cx+3.2*sc,cy);g.moveTo(cx,cy-3.2*sc);g.lineTo(cx,cy+3.2*sc);g.stroke();
+const you=liveCss('--you','#e8792b');P.forEach((p,i)=>{g.globalAlpha=0.15+0.85*i/P.length;g.fillStyle=you;g.beginPath();g.arc(cx+p[0]*sc,cy-p[1]*sc,i===P.length-1?5:2.2,0,7);g.fill()});g.globalAlpha=1;
+g.fillStyle=liveCss('--mut','#888');g.font='10px system-ui,sans-serif';g.fillText('1g',cx+sc+2,cy-2);if(P.length){const p=P[P.length-1];g.fillText(Math.hypot(p[0],p[1]).toFixed(2)+' g',4,12)}}
 // ---- Keep what is loaded: going to PitWall, the home page or another view and back must not lose it.
 // The files in the two boxes (and the Garage 61 laps added to Coaching) are kept in this browser's
 // IndexedDB with the lap picked from each, and opened again when the page loads. Clear forgets them.
@@ -2227,7 +2303,7 @@ const n=$('err');if(n&&!n.textContent)n.innerHTML='<span class="m">Your files fr
 catch(e){console.warn('keep restore',e)}finally{KEEP.restoring=false}}
 
 // a view shown without a reload: draw what it shows (canvases sized while hidden draw at zero width)
-function viewShown(v){if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0)}
+function viewShown(v){if(v==='live'){try{teleBuild(true)}catch(e){console.error('live view',e)}}else if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0)}
 try{renderSetup()}catch(e){}
 try{keepRestore()}catch(e){}
 // ---- Calm: a long grey explanation right after a heading folds behind a small (i) button.
