@@ -285,8 +285,10 @@ trucks, start, three cautions, green-flag stops), recorded while a replay played
 - **SessionFlags is 0 throughout** -- no green, no caution, no per-car flags
   (CarIdxSessionFlags 0, CarIdxPaceFlags 0). PitsOpen is True throughout. So the
   caution is read from the field's speed instead (`caution.inferred`, PROTOCOL.md);
-  it found the three cautions to within ~20 s of the field slowing. Whether LIVE
-  ovals send the caution bits is still unverified.
+  it found the three cautions to within ~20 s of the field slowing. iRacing's own
+  replay screen shows no yellow either (observed by Andrew), so the replay file
+  simply does not hold flags. Whether LIVE ovals send the caution bits is still
+  unverified.
 - **CarIdxEstTime is 0.0 for every car** and **CarClassEstLapTime is 1.0**. Gaps
   were all 0.000. Now: an EstTime of 0 is unknown, a class lap under 5 s is
   unknown, and the gap falls back to the car's best lap.
