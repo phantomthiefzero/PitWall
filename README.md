@@ -4,7 +4,10 @@ One Windows app for the iRacing tools, fed by a built-in telemetry bridge:
 
 | App | What it does |
 |---|---|
-| **Lap Analyzer** | Compare laps against your best or a reference, read the car setup in the iRacing garage layout, watch live graphs, and see each setup change's effect run by run |
+| **Live telemetry** | What the car is doing right now, for an engineer watching here or through a share link: inputs, sectors, fuel to the finish, brakes, shocks, tyres, the cars around |
+| **Coaching** | Your average lap against your best lap: where the time goes, corner by corner, and what to change in your driving |
+| **Setup** | How the car handles on your laps, what to change, the live setup and the engineer's plan |
+| **Lap Analyzer** | Laps already driven: your lap against a reference lap, corner by corner and channel by channel |
 | **PitWall** | Engineer and spotter dashboard: track map, standings, flags, weather, car systems (everything below this section) |
 | **Broadcast** | TV-style overlay for OBS when you spectate a race, run from a producer panel by you and a co-host (see [Broadcast](#broadcast)) |
 
@@ -14,6 +17,8 @@ One Windows app for the iRacing tools, fed by a built-in telemetry bridge:
 2. Double-click it. The first time, Windows may say "Windows protected your PC" because the app isn't code-signed: click **More info**, then **Run anyway**.
 3. The suite opens in its own window. Start iRacing and get in the car; the home screen turns green when it's live.
 4. No iRacing handy? **Replay a telemetry file…** plays any `.ibt` back as if live (Lap Analyzer).
+5. **Record this session** saves a capture of the session (every raw variable, 10 a second) to
+   `Documents\iRacingSuite\Recordings`, to look at again later or send in with a bug.
 
 Everything runs on this PC and only reads iRacing's telemetry. PitWall's relay runs inside the app on
 127.0.0.1 with fresh tokens each launch, so it is not reachable from other machines until you

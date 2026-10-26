@@ -369,15 +369,8 @@ class Deriver:
     # only recomputed when a sample is added.
     GAP_SAMPLE_S = 0.5
 
-    @staticmethod
-    def _slope(hist):
-        n = len(hist)
-        mt = sum(h[0] for h in hist) / n
-        mg = sum(h[1] for h in hist) / n
-        denom = sum((h[0] - mt) ** 2 for h in hist)
-        if denom <= 0:
-            return None
-        return sum((h[0] - mt) * (h[1] - mg) for h in hist) / denom
+    # _slope (least squares, None under 3 points) is defined once, further down: a second
+    # definition here was silently replaced by that one.
 
     def closing(self, idx, t, interval_s, lap_time_s, ahead_idx=None) -> dict:
         out = {"closingSPerLap": None, "catchLaps": None}

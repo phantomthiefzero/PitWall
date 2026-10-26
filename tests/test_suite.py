@@ -1049,6 +1049,57 @@ class HubFanOutTest(unittest.TestCase):
         self.assertIn("/ws?ticks=0", page)
 
 
+class RemoteHalfRateTest(unittest.TestCase):
+    """A share-link viewer gets half the ticks, and always the ones carrying every car's arrays: halving by
+    count alone kept only the plain ones for good when the viewer joined on the wrong tick."""
+
+    def test_arrays_survive_halving_whatever_the_phase(self):
+        from suite.bridge import RemoteClient
+
+        class WS:
+            async def send(self, t):
+                pass
+
+        async def feed(first_has_arrays, arrays=True):
+            c = RemoteClient(WS())
+            c.MAX_TICKS = 100
+            for i in range(40):
+                v = {"Speed": 1.0}
+                if arrays and (i % 2 == 0) == first_has_arrays:
+                    v["CarIdxLapDistPct"] = [0.1]
+                await c.send_text(json.dumps({"type": "tick", "v": v}, separators=(",", ":")))
+            kept = [json.loads(t) for _, t in c.q]
+            return len(kept), sum("CarIdxLapDistPct" in k["v"] for k in kept)
+        self.assertEqual(asyncio.run(feed(True)), (20, 20))
+        self.assertEqual(asyncio.run(feed(False)), (20, 20))
+        self.assertEqual(asyncio.run(feed(True, arrays=False)), (20, 0))       # no arrays: plain halving
+
+
+class PageScriptsCompileTest(unittest.TestCase):
+    """Every page's own scripts must at least parse. A stray brace in the Lap Analyzer once stopped the whole
+    page (its loader joins the pieces into one script), and nothing else would have said so before the build."""
+
+    PAGES = ["suite/web/index.html", "suite/web/analyzer/index.html", "client/index.html",
+             "broadcast/overlay.html", "broadcast/producer.html"]
+
+    def test_inline_scripts_parse(self):
+        import re
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is not installed")
+        js = ("const fs=require('fs');let bad=[],n=0;for(const f of process.argv.slice(1)){const h=fs.readFileSync(f,'utf8');"
+              "[...h.matchAll(/<script(?![^>]*src)[^>]*>([\\s\\S]*?)<\\/script>/g)].forEach((m,i)=>{n++;try{new Function(m[1])}catch(e){bad.push(f+' script '+i+': '+e.message)}})}"
+              "console.log(JSON.stringify({bad,n}))")
+        out = subprocess.run([node, "-e", js] + [os.path.join(ROOT, p) for p in self.PAGES],
+                             capture_output=True, text=True, encoding="utf-8", timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr[-2000:])
+        r = json.loads(out.stdout.strip().splitlines()[-1])
+        self.assertEqual(r["bad"], [])
+        self.assertGreaterEqual(r["n"], len(self.PAGES))           # the pages' scripts were found at all
+
+
 class RecordButtonTest(unittest.TestCase):
     """Record this session: waits for the sim, records, stops cleanly, names the file by its track."""
 

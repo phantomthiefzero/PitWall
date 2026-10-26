@@ -73,7 +73,7 @@ iRacing Suite app (suite/)
   The analyzer passed that, so `suite/pagesplit.py` serves it as a small page plus script pieces
   that a loader joins and runs as one script; the file on disk stays one HTML file. Both the suite
   server and the relay (`relay.analyzer_serve`) use it. test_suite checks every reply's size.
-- Words in the Lap Analyzer (Coaching, Setup, Lap Analyzer views) and the home page mean one thing each:
+- Words in the Lap Analyzer (Live, Coaching, Setup, Lap Analyzer views) and the home page mean one thing each:
   "your lap" (the left box), "the reference" / "reference lap" (the right box; which lap it is is said once,
   in its box), "your best lap" (fastest clean lap; never "fastest lap" for this), "your average lap"
   (Coaching; never "typical"), "median lap" (a middle lap time), "clean laps" (no pit, incident, off
@@ -112,7 +112,7 @@ iRacing Suite app (suite/)
   producer link is shown separately, folded away). The relay serves the dashboard at /pitwall/.
   It also serves the Lap Analyzer at /analyzer/ with a read-only feed at /analyzer/ws (any viewer
   token): `suite.bridge.relay_feed` puts the suite Hub's messages through a RemoteClient that never
-  blocks the pump (half-rate ticks, oldest ticks dropped when slow). The local /ws stays loopback-only.
+  blocks the pump (half-rate ticks, always the ones carrying every car's arrays; oldest ticks dropped when slow). The local /ws stays loopback-only.
 
 - Your files (`suite/library.py`): the Lap Analyzer's "Your files" menus list the .ibt and Garage61 .csv
   files in iRacing's telemetry folder and folders you add (kept in %LOCALAPPDATA%\iRacingSuite\library.json),
