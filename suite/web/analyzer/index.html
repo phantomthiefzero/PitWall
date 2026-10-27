@@ -314,7 +314,22 @@ return `<div style="margin-bottom:6px"><b>Lap scorecard</b> <span class="m">Each
 // ---- Turn naming: corners you add or name, saved per track in this browser ----
 let TURNS_KEY='';
 const fr=g=>(g/(N-1)).toFixed(4);
-const CN=n=>'Corner '+n,CS=n=>'C'+n;   // CN in sentences and tables, CS on charts and the corner strip
+// ---- Corner names, yours, per track. iRacing gives no corner names, so the corners are numbered as they are
+// found; name one (Coaching's map: click its number) and that name is used wherever the corner is, for that
+// track, matched by where its apex is on the lap (within 1.2%). Kept in this browser.
+const CNAMES_KEY='cornerNames';
+function cnTrackKey(t){return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,'')}
+function cnLoad(){try{return JSON.parse(localStorage.getItem(CNAMES_KEY)||'{}')||{}}catch(e){return {}}}
+function cnSaveAll(o){try{localStorage.setItem(CNAMES_KEY,JSON.stringify(o))}catch(e){}}
+function cnSet(track,p,name){const k=cnTrackKey(track);if(!k)return;const o=cnLoad(),L=(o[k]||[]).filter(e=>Math.abs(((p-e.p+1.5)%1)-.5)>=.012);name=String(name||'').trim().slice(0,24);if(name)L.push({p:+p.toFixed(4),name});o[k]=L;if(!L.length)delete o[k];cnSaveAll(o)}
+// pure: put the names on found corners (c.label), nearest apex first; each name used once
+function nameCorners(cs,track,names){if(!cs)return cs;cs.forEach(c=>{c.label=null});const L=((names||cnLoad())[cnTrackKey(track)]||[]).slice();
+const pairs=[];cs.forEach(c=>L.forEach((e,i)=>{const d=Math.abs(((c.ap/(N-1)-e.p+1.5)%1)-.5);if(d<.012)pairs.push({c,i,d})}));pairs.sort((a,b)=>a.d-b.d);const usedC=new Set(),usedL=new Set();
+pairs.forEach(q=>{if(usedC.has(q.c)||usedL.has(q.i))return;usedC.add(q.c);usedL.add(q.i);q.c.label=L[q.i].name});return cs}
+const cnShort=s=>{const t=String(s).replace(/^(turn|corner)\s*/i,'');return t.length>10?t.slice(0,9)+'…':t};
+// CN in sentences and tables ("Corner 4", or its name), CS on charts and the corner strip ("C4", or its short name)
+function cnFind(n){const c=typeof R!=='undefined'&&R&&R.cs&&R.cs.find(q=>q.n===+n);return c&&c.label?c:null}
+const CN=n=>{const c=cnFind(n);return c?c.label:'Corner '+n},CS=n=>{const c=cnFind(n);return c?cnShort(c.label):'C'+n};
 // a key for this track (from its length), for what is kept per track (the test log)
 function turnsLoad(o){TURNS_KEY="turns:"+Math.round(o.Speed.reduce((s,v)=>s+v,0)*o.lap/(o.n-1))}
 // a corner zone too narrow for its label shows no label (the name is in the tooltip), never a cut-off one
@@ -354,7 +369,7 @@ function ensureRef(){if(!F.a)return false;if(SELF!==null||!F.b){const sr=IB.a?se
 function syncZones(){const za=$('za'),zb=$('zb');za.querySelector('.clr').hidden=!F.a;zb.querySelector('.clr').hidden=!(F.b&&SELF===null);if(SELF!==null)zb.querySelector('span').textContent='Automatic: '+SELF+' from this file';else if(!F.b)zb.querySelector('span').textContent=zb.dataset.def}
 function clearFile(k){keepPut(k,null);if(k==='a'){dropSelf();delete IB.a;delete F.a}else{dropSelf();delete IB.b;delete F.b;F.refs=null;F.refInc=null;$('refs').innerHTML='';$('refs').hidden=true}
 const z=$(k==='a'?'za':'zb');z.classList.remove('on');z.querySelector('span').textContent=z.dataset.def;const s=z.querySelector('select');if(s){s.hidden=true;s.innerHTML=''}z.querySelector('input').value='';$('err').textContent='';run();renderOwn()}
-function run(){ensureRef();syncZones();ghRender();if(F.a&&F.b&&F.b.limited){$('out').hidden=true;$('refOnly').hidden=true;R=null;$('lim').innerHTML=limHtml();$('lim').hidden=false;return}$('lim').hidden=true;if(!(F.a&&F.b)){$('out').hidden=true;$('refOnly').hidden=true;R=null;return}$('refOnly').hidden=false;turnsLoad(F.a);if(F.refs&&F.refs.length>1){const act=activeRefs();F.b=groupLap(act.length?act:F.refs)}R=analyze(F.a,F.b);$('out').hidden=false;const s=R.cs.reduce((x,c)=>x+c.dt,0),cl=s>0?'bad':'good';
+function run(){ensureRef();syncZones();ghRender();if(F.a&&F.b&&F.b.limited){$('out').hidden=true;$('refOnly').hidden=true;R=null;$('lim').innerHTML=limHtml();$('lim').hidden=false;return}$('lim').hidden=true;if(!(F.a&&F.b)){$('out').hidden=true;$('refOnly').hidden=true;R=null;return}$('refOnly').hidden=false;turnsLoad(F.a);if(F.refs&&F.refs.length>1){const act=activeRefs();F.b=groupLap(act.length?act:F.refs)}R=analyze(F.a,F.b);nameCorners(R.cs,IB.a?ghTrackOf(IB.a.yaml):(F.a.track||''));$('out').hidden=false;const s=R.cs.reduce((x,c)=>x+c.dt,0),cl=s>0?'bad':'good';
 $('sum').innerHTML=`<b class="you">${lbl(F.a,1)}</b> ${ft(F.a.lap)} vs <b class="ref">${nm()}</b> ${ft(F.b.lap)}: <b>${R.pct.toFixed(2)}%</b> of the reference (${sg(R.total)} s).${R.total<0?' <span class="good"><b>You are ahead.</b></span>':''}<br><span class="m">In the corner zones: ${sg(s)} s. Between corners: ${sg(R.total-s)} s. If these laps come from different sessions, track temperature, grip and wind differ, so treat small gaps with care.</span>`;
 groupStats();if(F.refs&&F.refs.length>1){$('refs').innerHTML=refsHtml();wireRefs()}tbl();{const lh=linesHtml();$('lines').innerHTML=lh;$('lineFold').hidden=!lh}lapTbl();xTbl();try{renderTyres()}catch(e){console.error('tyres',e)}$('score').innerHTML=scoreHtml();wireStrip();
 const host=$('charts');host.innerHTML='';charts=[];
@@ -373,7 +388,7 @@ const mp=$('map'),W=mp.width=mp.clientWidth*dpr,H=mp.height=mp.clientHeight*dpr,
 const P=g=>[A.Lon[g]*kx,A.Lat[g]];for(let g=0;g<N;g++){const[x,y]=P(g);x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}
 const sc=Math.min((W-30*dpr)/(x1-x0),(H-30*dpr)/(y1-y0)),T=g=>{const[x,y]=P(g);return[15*dpr+(x-x0)*sc,H-15*dpr-(y-y0)*sc]};
 m.lineWidth=5*dpr;m.lineCap='round';for(let g=0;g<N-12;g++){const s=Math.max(-1,Math.min(1,(R.dl[g+12]-R.dl[g])/.05)),[a,b]=T(g),[c2,d]=T(g+1);m.strokeStyle=(s>0?'rgba(214,51,58,':'rgba(26,143,76,')+(.25+.75*Math.abs(s))+')';m.beginPath();m.moveTo(a,b);m.lineTo(c2,d);m.stroke()}
-m.fillStyle=col('--fg');m.font=11*dpr+'px system-ui';R.cs.forEach(q=>{const[a,b]=T(q.ap);m.fillText('C'+q.n,a+6*dpr,b-6*dpr)});
+m.fillStyle=col('--fg');m.font=11*dpr+'px system-ui';R.cs.forEach(q=>{const[a,b]=T(q.ap);m.fillText(CS(q.n),a+6*dpr,b-6*dpr)});
 if(hov>=0){const[a,b]=T(hov);m.fillStyle=col('--fg');m.beginPath();m.arc(a,b,5*dpr,0,7);m.fill()}ggDraw(dpr,col)}
 function cu(u){const imp=U().s[1]==='mph';if(u==='C')return imp?[1.8,32,'°F']:[1,0,'°C'];if(u==='kPa')return imp?[0.145038,0,'psi']:[1,0,'kPa'];if(u==='m/s')return imp?[2.23694,0,'mph']:[3.6,0,'km/h'];if(u==='m')return U().d[1]==='ft'?[3.28084,0,'ft']:[1,0,'m'];if(u==='rad')return[57.2958,0,'°'];if(u==='rad/s')return[57.2958,0,'°/s'];if(u==='m/s^2')return[1/9.80665,0,'g'];return[1,0,u]}
 const fx=v=>Math.abs(v)>=100?v.toFixed(0):Math.abs(v)>=10?v.toFixed(1):v.toFixed(2);
@@ -1764,11 +1779,18 @@ if(Object.keys(G).length)add('optimal','Optimal conditions','warm tyres, not hea
 function coachRun(){const srcs=coachSources(),S=srcs.find(x=>x.id===COACH.src)||srcs[0];if(!S)return null;COACH.src=S.id;const laps=S.laps();if(laps.length<2)return null;
 const G=coachConditions(laps.map(l=>l.cond)),pick=id=>id&&G[id]?G[id].idx.map(i=>laps[i]):null;COACH.groups=G;if(COACH.grp&&!G[COACH.grp])COACH.grp='';
 const mine=pick(COACH.grp)||laps,own=mine.slice().sort((p,q)=>p.lap-q.lap);let best=own[0],bestLab='your best lap ('+ft(best.lap)+')';
-if(COACH.to.startsWith('grp:')){const g=G[COACH.to.slice(4)],L=pick(COACH.to.slice(4));if(g&&L&&COACH.to.slice(4)!==COACH.grp){const A=avgLap(L,'Average of '+g.lab.toLowerCase()+' laps ('+L.length+')');const C=coachCompare(avgLap(own),A,own);return{S,laps:own,avg:avgLap(own),best:A,bestLab:'your average on '+g.lab.toLowerCase()+' laps ('+L.length+' laps, '+ft(A.lap)+')',C,n:own.length,G}}COACH.to='best'}
+if(COACH.to.startsWith('grp:')){const g=G[COACH.to.slice(4)],L=pick(COACH.to.slice(4));if(g&&L&&COACH.to.slice(4)!==COACH.grp){const A=avgLap(L,'Average of '+g.lab.toLowerCase()+' laps ('+L.length+')');const C=coachCompare(avgLap(own),A,own);nameCorners(C.R.cs,coTrack(S));return{S,laps:own,avg:avgLap(own),best:A,bestLab:'your average on '+g.lab.toLowerCase()+' laps ('+L.length+' laps, '+ft(A.lap)+')',C,n:own.length,G}}COACH.to='best'}
 if(COACH.to==='g61best'&&COACH.g61.length){const g=COACH.g61.slice().sort((p,q)=>p.lap-q.lap)[0];best=g;bestLab='the fastest Garage 61 lap here ('+(g.who||'')+', '+ft(g.lap)+')'}
 else if(COACH.to==='ref'&&F.b&&!SELF){best=F.b;bestLab='the reference lap in the right box ('+(F.b.who||'')+', '+ft(F.b.lap)+')'}
 else COACH.to='best';
-const use=COACH.to==='best'?own.slice(1):own,avg=avgLap(use),C=coachCompare(avg,best,use);return{S,laps:use,avg,best,bestLab,C,n:use.length,G}}
+const use=COACH.to==='best'?own.slice(1):own,avg=avgLap(use),C=coachCompare(avg,best,use);nameCorners(C.R.cs,coTrack(S));return{S,laps:use,avg,best,bestLab,C,n:use.length,G}}
+// Coaching's map: click a corner to name it for this track
+function wireCornerNames(el){const box=el.querySelector('#coName'),X=COACH.last;if(!box||!X)return;const track=coTrack(X.S);
+el.querySelectorAll('.comap g[data-cn]').forEach(g=>g.onclick=()=>{const n=+g.dataset.cn,p=+g.dataset.p,c=X.C.R.cs.find(q=>q.n===n),cur=c&&c.label||'';
+box.innerHTML='<label>'+(cur?plain(cur):'Corner '+n)+' is called <input id="coNameIn" maxlength="24" style="width:9em" value="'+plain(cur)+'" placeholder="Turn '+n+'"></label> <button type="button" id="coNameOk" style="margin:0">Save</button>'+(cur?' <button type="button" id="coNameDel" class="clr" style="display:inline-block;margin:0">Forget the name</button>':'');
+const inp=box.querySelector('#coNameIn'),save=v=>{cnSet(track,p,v);renderCoach();if(typeof run==='function'&&F.a&&F.b)run()};inp.focus();inp.select();
+box.querySelector('#coNameOk').onclick=()=>save(inp.value);inp.onkeydown=e=>{if(e.key==='Enter')save(inp.value)};const del=box.querySelector('#coNameDel');if(del)del.onclick=()=>save('')})}
+function coTrack(S){return(S&&S.track)||(IB.a?ghTrackOf(IB.a.yaml):'')||(LIVE.yaml?ghTrackOf(LIVE.yaml):'')}
 // pure: where the gap goes, by kind of mistake. Each corner's time goes to its biggest cause.
 const COACH_THEME={brake_later:'braking',over_brake:'braking',brake_harder:'braking',apex_speed:'mid-corner speed',throttle_earlier:'corner exits',coast:'coasting',consistency:'consistency'};
 const COACH_THEME2={brake_later:'braking',brake_earlier:'braking',no_brake:'braking',brake_harder:'braking',lock:'braking',trail:'braking',turn_later:'turn-in and line',turn_sooner:'turn-in and line',wide_entry:'turn-in and line',early_apex:'turn-in and line',miss_apex:'turn-in and line',kerb_apex:'turn-in and line',use_exit:'turn-in and line',kerb_exit:'turn-in and line',gear:'gear choice',throttle_sooner:'corner exits',spin:'corner exits',coast:'coasting',apex_speed:'mid-corner speed'};
@@ -1790,7 +1812,7 @@ return h+coachBody(X)}
 // ---- Coaching page: what the data says, in reading order ----
 // 1 summary, 2 where the time goes (delta trace, map, causes), 3 priorities (driving and setup merged,
 // ranked by time at stake, each with its evidence), 4 corner by corner, 5 setup (balance grid), 6 more.
-const coName=c=>'Corner '+c.n;
+const coName=c=>{if(c.label)return c.label;const q=COACH.last&&COACH.last.C.R.cs.find(x=>x.n===c.n);return q&&q.label?q.label:'Corner '+c.n};
 // pure: how the best lap's technique differs from the laps that make the average, per corner
 function coachStyleDiff(R,laps){const out={};if(!R||!R.cs||!laps||laps.length<2)return out;let RS=null;try{RS=laps.map(l=>rs(l))}catch(e){return out}
 R.cs.forEach((c,k)=>{const prevE=k?R.cs[k-1].e:null;let sb=null,L=[];try{sb=styleCorner(R.B,c,prevE);L=RS.map(X=>styleCorner(X,c,prevE))}catch(e){return}
@@ -1832,7 +1854,7 @@ while(d.length||s.length){const nx=!s.length?d.shift():!d.length?s.shift():(s[0]
 function coachDeltaSvg(R,C){const W=640,H=160,P=24,dl=R.dl,lo=Math.min(0,...dl),hi=Math.max(0.05,...dl),x=g=>P+g/(N-1)*(W-2*P),y=v=>8+(hi-v)/(hi-lo||1)*(H-34);
 let pts='';for(let g=0;g<N;g+=2)pts+=(g?'L':'M')+x(g).toFixed(1)+' '+y(dl[g]).toFixed(1);
 const band=R.cs.map((c,i)=>{const cc=C.corners.find(q=>q.n===c.n),lose=cc&&cc.dt>0.02;return '<rect x="'+x(c.s).toFixed(1)+'" y="8" width="'+(x(c.e)-x(c.s)).toFixed(1)+'" height="'+(H-34)+'" style="fill:'+(lose?'var(--bad)':'var(--ln)')+';opacity:'+(lose?.12:.35)+'"/>'+
-'<text x="'+x(c.ap).toFixed(1)+'" y="'+(H-(i%2?3:15))+'" text-anchor="middle" style="fill:'+(lose?'var(--bad)':'var(--mut)')+';font-size:11px;font-weight:'+(lose?700:400)+'">'+c.n+'<title>'+plain(coName(c))+(cc?': '+sg(cc.dt)+' s':'')+'</title></text>'}).join('');
+'<text x="'+x(c.ap).toFixed(1)+'" y="'+(H-(i%2?3:15))+'" text-anchor="middle" style="fill:'+(lose?'var(--bad)':'var(--mut)')+';font-size:11px;font-weight:'+(lose?700:400)+'">'+plain(c.label?cnShort(c.label):String(c.n))+'<title>'+plain(coName(c))+(cc?': '+sg(cc.dt)+' s':'')+'</title></text>'}).join('');
 return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Time lost along the lap">'+band+'<line x1="'+P+'" x2="'+(W-P)+'" y1="'+y(0).toFixed(1)+'" y2="'+y(0).toFixed(1)+'" style="stroke:var(--mut);stroke-dasharray:3 3"/>'+
 '<path d="'+pts+'" style="fill:none;stroke:var(--bad);stroke-width:2"/><text x="'+P+'" y="18" style="fill:var(--mut);font-size:11px">time behind your best lap, building up around the lap (end: '+sg(dl[N-1])+' s)</text></svg>'}
 // The track's shape for a map, as N points. GPS (Lat/Lon, .ibt and Garage 61 laps) when any lap has it, north up;
@@ -1853,8 +1875,8 @@ const avgR=Math.max(.002,Math.abs(R.dl[N-1]-R.dl[0])/(N/5));let seg='';for(let g
 const cxm=(x0+x1)/2,cym=(y0+y1)/2;
 const lab=R.cs.map(c=>{const cc=C.corners.find(q=>q.n===c.n),lose=cc&&cc.dt>0.02,hi=hs.has(c.n),a=Math.max(0,c.ap-4),b=Math.min(N-1,c.ap+4),dx=px(b)-px(a),dy=py(b)-py(a),L=Math.hypot(dx,dy)||1;
 let nx=-dy/L,ny=dx/L;if(nx*(px(c.ap)-28-(cxm-x0)*sc)+ny*(py(c.ap)-28-(cym-y0)*sc)<0){nx=-nx;ny=-ny}// numbers sit outside the track
-const r=hi?10:8,cx=px(c.ap)+nx*(r+9),cy=py(c.ap)+ny*(r+9);
-return '<g data-cn="'+c.n+'"><title>Corner '+c.n+(cc?': '+(cc.dt>0?'you lose ':'you gain ')+Math.abs(cc.dt).toFixed(2)+' s':'')+'</title><line x1="'+px(c.ap).toFixed(1)+'" y1="'+py(c.ap).toFixed(1)+'" x2="'+cx.toFixed(1)+'" y2="'+cy.toFixed(1)+'" style="stroke:var(--mut);stroke-width:1"/><circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="'+r+'" style="fill:'+(hi?'var(--bad)':'var(--card)')+';stroke:'+(lose||hi?'var(--bad)':'var(--mut)')+'"/><text x="'+cx.toFixed(1)+'" y="'+(cy+(hi?4:3.5)).toFixed(1)+'" text-anchor="middle" style="fill:'+(hi?'#fff':'var(--fg)')+';font-size:'+(hi?11:9)+'px;font-weight:700">'+c.n+'</text></g>'}).join('');
+const t=c.label?cnShort(c.label):String(c.n),fs=hi?11:9,r=hi?10:8,hw=Math.max(r,t.length*fs*.32+5),off=Math.max(r,hw*.8)+9,cx=px(c.ap)+nx*off,cy=py(c.ap)+ny*off;
+return '<g data-cn="'+c.n+'" data-p="'+(c.ap/(N-1)).toFixed(4)+'" style="cursor:pointer"><title>'+plain(c.label||'Corner '+c.n)+(cc?': '+(cc.dt>0?'you lose ':'you gain ')+Math.abs(cc.dt).toFixed(2)+' s':'')+' · click to name it</title><line x1="'+px(c.ap).toFixed(1)+'" y1="'+py(c.ap).toFixed(1)+'" x2="'+cx.toFixed(1)+'" y2="'+cy.toFixed(1)+'" style="stroke:var(--mut);stroke-width:1"/><rect x="'+(cx-hw).toFixed(1)+'" y="'+(cy-r).toFixed(1)+'" width="'+(2*hw).toFixed(1)+'" height="'+(2*r)+'" rx="'+r+'" style="fill:'+(hi?'var(--bad)':'var(--card)')+';stroke:'+(lose||hi?'var(--bad)':'var(--mut)')+'"/><text x="'+cx.toFixed(1)+'" y="'+(cy+(hi?4:3.5)).toFixed(1)+'" text-anchor="middle" style="fill:'+(hi?'#fff':'var(--fg)')+';font-size:'+fs+'px;font-weight:700">'+plain(t)+'</text></g>'}).join('');
 const sf=g=>{const a=Math.max(0,g-3),b=Math.min(N-1,g+3),dx=px(b)-px(a),dy=py(b)-py(a),L=Math.hypot(dx,dy)||1;return '<line x1="'+(px(g)-dy/L*7).toFixed(1)+'" y1="'+(py(g)+dx/L*7).toFixed(1)+'" x2="'+(px(g)+dy/L*7).toFixed(1)+'" y2="'+(py(g)-dx/L*7).toFixed(1)+'" style="stroke:var(--fg);stroke-width:3"/>'};
 const dir=(()=>{const g=Math.round(N*.04),a=g-6,dx=px(g)-px(a),dy=py(g)-py(a),L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L,tx=px(g),ty=py(g);return '<path d="M'+(tx+ux*7).toFixed(1)+' '+(ty+uy*7).toFixed(1)+' L'+(tx-uy*5).toFixed(1)+' '+(ty+ux*5).toFixed(1)+' L'+(tx+uy*5).toFixed(1)+' '+(ty-ux*5).toFixed(1)+' Z" style="fill:var(--fg)"/>'})();
 return '<svg viewBox="0 0 '+W.toFixed(0)+' '+Hh.toFixed(0)+'" style="width:100%;height:auto;display:block" role="img" aria-label="Track map with every corner numbered">'+seg+sf(0)+dir+lab+'</svg><small class="m">Bar: start/finish, arrow: direction. <span class="bad">■</span> losing time fastest · <span class="good">■</span> gaining'+(hs.size?' · filled: your next session\'s corners':'')+(T.gps?'':' · traced from the car (no GPS on these laps), so north is not up')+'</small>'}
@@ -2005,7 +2027,7 @@ h+=coachCondHtml(X);
 h+='<div style="margin-top:12px"><button type="button" id="coOpen" style="margin:0">Open your average lap against your best lap in the Lap Analyzer</button> <span class="m">every trace, the racing line and every channel</span></div>';
 // the track map stays beside everything that names a corner (above it on a narrow screen)
 let map='';try{map=coachMapSvg(R,C,PR.filter(p=>p.kind==='setup'?p.gain>0:true).slice(0,3).map(p=>p.cn).filter(n=>n!=null))}catch(e){console.error('coach map',e)}
-return map?'<div class="cogrid"><div class="comain">'+h+'</div><aside class="comap"><b>Track map</b>'+map+'</aside></div>':h}
+return map?'<div class="cogrid"><div class="comain">'+h+'</div><aside class="comap"><b>Track map</b>'+map+'<div id="coName" class="m" style="font-size:13px;margin-top:6px">Click a corner\'s number to give it its name (Turn 10a, the Esses): it is used everywhere for this track.</div></aside></div>':h}
 // the conditions: each group's laps, and buttons to average one group or set it against another
 function coachCondHtml(X){const G=X.G||{},ids=Object.keys(G);let h='<details style="margin-top:10px"'+(COACH.grp||COACH.to.startsWith('grp:')?' open':'')+'><summary><b>Compare by conditions</b> <span class="m">'+(ids.length?ids.map(i=>G[i].lab.toLowerCase()).join(', '):'needs fuel, stint and track temperature on the laps (.ibt files and live laps have them; Garage 61 laps do not)')+'</span></summary>';
 if(!ids.length)return h+'</details>';const laps=X.S.laps(),row=i=>{const L=G[i].idx.map(j=>laps[j]),t=L.map(l=>l.lap),m=t.reduce((a,b)=>a+b,0)/t.length,sd=t.length>1?Math.sqrt(t.reduce((a,b)=>a+(b-m)**2,0)/(t.length-1)):0;return{i,n:t.length,m,best:Math.min(...t),sd}};
@@ -2063,7 +2085,7 @@ const all=$('flGAll');if(all)all.onclick=()=>flOpenAll(gSame.map(f=>f.id));const
 const pk=$('flPick');if(pk)pk.onclick=()=>flFolder('pick');const ad=$('flAdd');if(ad)ad.onclick=()=>flFolder('add',$('flPath').value);el.querySelectorAll('[data-flrm]').forEach(a=>a.onclick=e=>{e.preventDefault();flFolder('remove',a.dataset.flrm)})}
 // Switch view from inside the page (e.g. Coaching's 'open these laps in the Lap Analyzer'): the same path as the tabs.
 function viewGo(v){try{const q=new URLSearchParams(location.search);if(v)q.set('view',v);else q.delete('view');history.pushState(null,'',location.pathname+(q.toString()?'?'+q:''))}catch(e){}if(window.showView)window.showView(v||'')}
-function renderCoach(){try{keepG61()}catch(e){}const el=$('coach');if(!el)return;try{el.innerHTML=coachHtml2()}catch(e){console.error('coach',e);el.innerHTML=''}el.hidden=false;
+function renderCoach(){try{keepG61()}catch(e){}const el=$('coach');if(!el)return;try{el.innerHTML=coachHtml2()}catch(e){console.error('coach',e);el.innerHTML=''}el.hidden=false;try{wireCornerNames(el)}catch(e){console.error('corner names',e)}
 const s=$('coSrc'),t=$('coTo'),d=$('coDrop'),cl=$('coClr'),op=$('coOpen');if(s)s.onchange=()=>{COACH.src=s.value;renderCoach()};if(t)t.onchange=()=>{COACH.to=t.value;renderCoach()};
 const cg=$('coGrp'),cv=$('coVs');if(cg)cg.onchange=()=>{COACH.grp=cg.value;renderCoach()};if(cv)cv.onchange=()=>{COACH.to=cv.value||'best';renderCoach()};
 el.querySelectorAll('[data-prac]').forEach(b=>b.onclick=()=>pracToggle(+b.dataset.prac));renderPractice();{const cd=$('coCorners');if(cd)cd.ontoggle=()=>{COACH.cornersOpen=cd.open}}
