@@ -36,6 +36,15 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 .ok-msg{color:var(--good,#1a8f4c)}button:disabled{opacity:.6;cursor:progress}
 .rec{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:8px 14px;border:1px solid var(--ln);border-radius:10px;background:var(--card);font-size:14px}
 .rec .rdot{width:10px;height:10px;border-radius:50%;background:#d6333a;flex:none}.rec.on .rdot{animation:rpulse 1.2s ease-in-out infinite}.rec.idle .rdot{background:var(--mut)}
+.recs{margin-top:22px}.recs h2{font-size:19px;margin:0 0 2px}.recs .sub{color:var(--mut);font-size:13px;margin:0 0 12px}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.rcard{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.rcard .rt{font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rcard .rc{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rcard .rb{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.01em;margin-top:4px}.rcard .rm{font-size:12px;color:var(--mut)}
+.rcard svg{display:block;width:100%;height:34px;margin-top:6px}.rcard svg path{fill:none;stroke:var(--acc);stroke-width:2}.rcard svg circle{fill:var(--acc)}
+.miles{margin:16px 0 0;padding:0;list-style:none;display:grid;gap:6px}.miles li{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:8px 12px;font-size:14px;display:flex;gap:10px;align-items:baseline}
+.miles .mi{flex:none;font-size:12px;font-weight:700;padding:1px 8px;border-radius:9px;background:rgba(230,180,34,.16);color:var(--acc)}.miles .mi.first{background:rgba(75,139,240,.15);color:var(--blue)}.miles .mi.barrier{background:rgba(47,179,106,.16);color:var(--good)}
+.miles .md{margin-left:auto;color:var(--mut);font-size:12px;white-space:nowrap}.recs .more{margin-top:10px}
 @keyframes rpulse{50%{opacity:.25}}.rec .rmut{color:var(--mut)}.rec .rgo{margin-left:auto;display:flex;gap:8px}
 </style></head><body><div class="wrap">
 <header><h1>iRacing <span>Suite</span></h1><span class="ver"><span id="ver"></span><span id="verBuild"></span></span><button class="theme" id="themeBtn" type="button"></button></header>
@@ -55,6 +64,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <a class="app" href="/pitwall/" id="pwTile"><span class="tag" id="pwTag">Starting</span><h2>PitWall</h2><p>Engineer and spotter dashboard: track map, standings, flags, weather and car systems. Runs on this PC through the built-in bridge.</p><span class="open">Open →</span></a>
 </div>
 <div class="share hidden" id="share"></div>
+<section class="recs hidden" id="recs"></section>
 <footer>The suite reads iRacing's telemetry. The only thing it ever changes in the sim is the replay camera, and only when you use the Broadcast producer panel. Everything stays on this PC unless you choose to share it.</footer>
 </div>
 <script>
@@ -85,6 +95,23 @@ mk('Install a camera pack…',async()=>{const r=await window.pywebview.api.insta
 mk('Open the cameras folder',async()=>{const r=await window.pywebview.api.open_cameras_folder();if(r&&!r.ok)alert(r.error||'Could not open '+r.path)})}
 window.addEventListener('pywebviewready',camBtns);setTimeout(camBtns,1500);
 $('bcCopy').onclick=async()=>{const v=$('bcObs').textContent;try{await navigator.clipboard.writeText(v);$('bcCopy').textContent='Copied'}catch(e){const r=document.createRange();r.selectNodeContents($('bcObs'));const s=getSelection();s.removeAllRanges();s.addRange(r);$('bcCopy').textContent='Press Ctrl+C'}setTimeout(()=>{$('bcCopy').textContent='Copy OBS address'},2000)};
+// ---- Your records: best lap per car and track from your .ibt files and Garage 61 laps (suite/library.records)
+const lapT=t=>{if(t==null)return'–';const m=Math.floor(t/60),s=t-m*60;return(m?m+':'+(s<10?'0':''):'')+s.toFixed(3)};
+const dayOf=w=>w?new Date(w*1000).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'';
+function spark(h){const v=h.filter(x=>x[1]!=null);if(v.length<2)return'';let best=1e9;const pts=v.map(x=>(best=Math.min(best,x[1])));const lo=Math.min(...pts),hi=Math.max(...pts),W=200,H=30,X=i=>4+i/(pts.length-1)*(W-8),Y=t=>hi===lo?H/2:4+(t-lo)/(hi-lo)*(H-8);
+return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-label="Your best lap over time"><path d="'+pts.map((t,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(t).toFixed(1)).join('')+'"/><circle cx="'+X(pts.length-1).toFixed(1)+'" cy="'+Y(pts[pts.length-1]).toFixed(1)+'" r="3"/></svg>'}
+let recAll=false,recData=null;
+function renderRecords(){const el=$('recs'),d=recData;if(!d||!d.records||!d.records.length){el.classList.add('hidden');return}el.classList.remove('hidden');
+const rows=recAll?d.records:d.records.slice(0,6),M=d.milestones||[];
+let h='<h2>Your records</h2><p class="sub">Your best lap in each car at each track, from your iRacing telemetry files and Garage 61 laps. The line under each is your best getting better over time.</p><div class="rgrid">'+
+rows.map(r=>'<div class="rcard"><span class="rt">'+esc(r.track)+'</span><span class="rc">'+esc(r.car)+'</span><span class="rb">'+lapT(r.best)+'</span><span class="rm">'+dayOf(r.bestWhen)+' · '+r.sessions+' session'+(r.sessions===1?'':'s')+(r.bestKind==='g61'?' · Garage 61':'')+'</span>'+spark(r.history)+'</div>').join('')+'</div>';
+if(d.records.length>6)h+='<button type="button" class="more" id="recMore">'+(recAll?'Show fewer':'Show all '+d.records.length)+'</button>';
+if(M.length){const w={first:'First time',best:'New best',barrier:'Broke through'};h+='<ul class="miles">'+M.slice(0,6).map(m=>'<li><span class="mi '+m.kind+'">'+w[m.kind]+'</span><span>'+
+(m.kind==='first'?esc(m.car)+' at '+esc(m.track)+': '+lapT(m.t):m.kind==='best'?esc(m.car)+' at '+esc(m.track)+': <b>'+lapT(m.t)+'</b>, '+m.by.toFixed(3)+' s quicker':'Under '+lapT(m.under).replace(/\.000$/,'')+' in the '+esc(m.car)+' at '+esc(m.track)+': <b>'+lapT(m.t)+'</b>, '+m.by.toFixed(3)+' s quicker')+
+'</span><span class="md">'+dayOf(m.when)+'</span></li>').join('')+'</ul>'}
+el.innerHTML=h;const mb=$('recMore');if(mb)mb.onclick=()=>{recAll=!recAll;renderRecords()}}
+async function loadRecords(){try{const r=await fetch('/api/library/records',{cache:'no-store'});const d=await r.json();if(d&&d.records){recData=d;renderRecords()}}catch(e){}}
+loadRecords();setInterval(loadRecords,5*60*1000);
 async function poll(){try{const r=await fetch('/api/info',{cache:'no-store'});Object.assign(info,await r.json());render();pitwallTile();broadcastTile();shareCard()}catch(e){}}
 function themeLabel(){$('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'\u263E Dark mode':'\u2600 Light mode'}
 $('themeBtn').onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}themeLabel()};themeLabel();

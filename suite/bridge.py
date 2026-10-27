@@ -603,6 +603,12 @@ async def library_reply(writer, path, headers):
                 out = {"ok": True, "folders": lib.folders()}
         elif u.path == "/api/library":
             out = await loop.run_in_executor(None, lib.info, max(0, int(q.get("page", "0") or 0)))
+        elif u.path == "/api/library/records":
+            def recs():
+                from suite.library import records
+                lib.scan_ids()
+                return records(lib._last or [])
+            out = await loop.run_in_executor(None, recs)
         else:
             await http_reply(writer, "404 Not Found", b"Not found")
             return
