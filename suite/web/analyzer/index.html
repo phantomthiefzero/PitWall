@@ -57,6 +57,13 @@ body[data-view=live] .card:not(#tele):not(#liveBar),body[data-view=live] .drops,
 .views{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.views a{padding:3px 12px;border:1px solid var(--ln);border-radius:14px;color:var(--fg);text-decoration:none;font-size:14px}.views a.on{background:var(--fg);color:var(--bg)}
 /* ---- Calm: one header row, sections without boxes, explanations behind a small (i), soft colours.
    Sections are separated by space and a hairline; only things you act on (your 3 things, tiles) get a surface. */
+/* the suite's one look: the booth's condensed type for titles, tabs and the big numbers (fonts from PitWall's assets) */
+@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:url("/pitwall/assets/barlow-condensed-latin-600-normal.woff2") format("woff2")}
+@font-face{font-family:"Barlow Semi Condensed";font-weight:600 700;font-display:swap;src:url("/pitwall/assets/barlow-semi-condensed-latin-600-normal.woff2") format("woff2")}
+:root{--title:"Barlow Condensed","Segoe UI",system-ui,sans-serif;--num:"Barlow Semi Condensed","Segoe UI",system-ui,sans-serif}
+.views a,h3,.card>b:first-child,.comap>b,summary>b,.cothing-t>div:nth-child(2){font-family:var(--title);font-weight:600;letter-spacing:.01em}
+.views a{font-size:17px}h3{font-size:19px!important}.cothing-t>div:nth-child(2){font-size:19px!important}.card>b:first-child,.comap>b{font-size:18px}
+b[style*="font-size:22px"],.cothing-n{font-family:var(--num);font-weight:700}b[style*="font-size:22px"]{font-size:26px!important}
 #appTitle{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .views{align-items:center;gap:6px;margin:0 0 14px}.views a{font-size:15px;padding:5px 14px}
 body[data-view=coach] .fl-other,body:not([data-view=coach]) .fl-coach{display:none!important}

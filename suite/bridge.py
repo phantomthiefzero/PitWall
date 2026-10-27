@@ -342,7 +342,28 @@ class Hub:
                 await self.send_all({"type": "session", "yaml": yaml, "update": self.update})
             if values:
                 await self.send_all({"type": "tick", "v": values})
+                # The home page asks for no telemetry; once a second it gets a glance for its tiles.
+                if time.monotonic() >= getattr(self, "_glance_at", 0.0):
+                    self._glance_at = time.monotonic() + 1.0
+                    g = glance(values)
+                    to = [c for c in self.clients if not getattr(c, "wants_ticks", True)]
+                    if to:
+                        text = json.dumps({"type": "glance", "v": g}, separators=(",", ":"))
+                        res = await asyncio.gather(*(asyncio.wait_for(c.send_text(text), 1.0) for c in to), return_exceptions=True)
+                        for c, r in zip(to, res):
+                            if isinstance(r, BaseException):
+                                self.clients.discard(c)
             await asyncio.sleep(max(0.0, period - (time.monotonic() - start)))
+
+
+GLANCE = ("IsOnTrack", "OnPitRoad", "Speed", "Gear", "Lap", "LapCurrentLapTime", "LapLastLapTime", "LapBestLapTime",
+          "PlayerCarPosition", "PlayerCarClassPosition", "SessionFlags", "SessionTimeRemain", "SessionLapsRemainEx",
+          "SessionState", "FuelLevel", "IsReplayPlaying")
+
+
+def glance(values):
+    """The few of iRacing's variables the home page's tiles show (copied as they are)."""
+    return {k: values.get(k) for k in GLANCE if values.get(k) is not None}
 
 
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
