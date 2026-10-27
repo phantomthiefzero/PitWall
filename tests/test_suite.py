@@ -161,6 +161,24 @@ class SuiteTest(unittest.TestCase):
         status, _headers, body = fetch(self.engine.url.rstrip("/") + path)
         return status, body
 
+    def test_the_live_view_gets_pitwalls_track_outline(self):
+        """/api/trackmap: PitWall's cached outline for a track, for the Live view's map (None when there is none)."""
+        from pitwall import trackmap
+        with tempfile.TemporaryDirectory() as d:
+            old = os.environ.get("PITWALL_CACHE")
+            os.environ["PITWALL_CACHE"] = d
+            try:
+                trackmap.save(trackmap.TrackMap(track_id=4321, config="Full", bins=4, points=[[0, 0], [1, 0], [1, 1], [0, 1]], source="gps"))
+                status, body = self.get("/api/trackmap?id=4321&config=Full")
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body)["points"], [[0, 0], [1, 0], [1, 1], [0, 1]])
+                self.assertIsNone(json.loads(self.get("/api/trackmap?id=1&config=Nope")[1])["points"])
+            finally:
+                if old is None:
+                    os.environ.pop("PITWALL_CACHE", None)
+                else:
+                    os.environ["PITWALL_CACHE"] = old
+
     def test_pages(self):
         for path in ("/", "/analyzer/", "/pitwall/"):
             status, body = self.get(path)
