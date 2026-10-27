@@ -18,6 +18,19 @@ button{font:inherit;font-size:14px;padding:7px 14px;border-radius:7px;border:1px
 .app{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
 a.app:hover,.app.link:hover{border-color:var(--acc);transform:translateY(-2px)}.app.link{cursor:pointer}.app.link:focus-visible,a.app:focus-visible{outline:2px solid var(--acc);outline-offset:2px}.app h2{margin:0;font-size:19px}.app p{margin:0;color:var(--mut);font-size:14px}
 .tag{align-self:flex-start;font-size:12px;font-weight:600;padding:2px 9px;border-radius:10px;background:rgba(127,127,127,.15);color:var(--mut)}.tag.ok{background:rgba(47,179,106,.15);color:var(--good)}
+.app{border-top:3px solid var(--c,var(--acc))}
+@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:url("/pitwall/assets/barlow-condensed-latin-600-normal.woff2") format("woff2")}
+@font-face{font-family:"Barlow Semi Condensed";font-weight:400;font-display:swap;src:url("/pitwall/assets/barlow-semi-condensed-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Barlow Semi Condensed";font-weight:600 700;font-display:swap;src:url("/pitwall/assets/barlow-semi-condensed-latin-600-normal.woff2") format("woff2")}
+:root{--title:"Barlow Condensed","Segoe UI",system-ui,sans-serif;--ui2:"Barlow Semi Condensed","Segoe UI",system-ui,sans-serif}
+h1,.app h2,.share h2,.recs h2{font-family:var(--title);font-weight:600;letter-spacing:.01em}h1{font-size:32px}.app h2{font-size:23px;line-height:1.1}
+.ahead{display:flex;align-items:center;gap:12px}.ahead .tag{margin-left:auto;align-self:center}
+.ico{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c)}
+.ico svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.gl{font-family:var(--ui2);font-variant-numeric:tabular-nums;font-size:15px;display:flex;flex-wrap:wrap;gap:4px 14px;min-height:0}.gl:empty{display:none}
+.gl b{font-weight:700;font-size:19px;color:var(--fg)}.gl span{color:var(--mut)}.gl .fl{font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;align-self:center;color:#111}
+.bcmore{font-size:13px;color:var(--mut)}.bcmore summary{cursor:pointer}.bcmore p{font-size:13px}
+.app .open{margin-top:auto}
 .hidden{display:none!important}.open{margin-top:auto;font-weight:600;color:var(--acc)}
 .share{margin-top:16px;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:20px;display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
 .share h2{margin:0 0 4px;font-size:19px}.share p{margin:0 0 8px;color:var(--mut);font-size:14px}.share .sh-main{flex:1;min-width:280px}
@@ -52,16 +65,18 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <div class="rec hidden" id="rec"></div>
 <div class="share upd hidden" id="upd"></div>
 <div class="apps">
-<a class="app" href="/analyzer/?view=live"><span class="tag ok">Ready</span><h2>Live telemetry</h2><p>What the car is doing right now, for an engineer watching: speed, gear and revs, the pedals and steering, the last 12 seconds of inputs, this lap against your best, and the car's temperatures and settings.</p><span class="open">Open →</span></a>
-<a class="app" href="/analyzer/?view=coach"><span class="tag ok">Ready</span><h2>Coaching</h2><p>Your average lap against your best lap: where the time goes, corner by corner, and what to change in your driving. From an .ibt file, your saved live laps or Garage 61 laps.</p><span class="open">Open →</span></a>
-<a class="app" href="/analyzer/?view=setup"><span class="tag ok">Ready</span><h2>Setup</h2><p>Your car: how it handles on your laps and what to change, the live setup, and the engineer's 6-lap plan, with the manual notes for your car.</p><span class="open">Open →</span></a>
-<a class="app" href="/analyzer/"><span class="tag ok">Ready</span><h2>Lap Analyzer</h2><p>Laps you have driven: your lap against a reference lap (your 2nd fastest, another file or a Garage 61 lap), corner by corner and channel by channel.</p><span class="open">Open →</span></a>
-<div class="app" id="bcTile" role="link" tabindex="0" title="Open the producer panel"><span class="tag" id="bcTag">Starting</span><h2>Broadcast</h2><p>TV-style graphics for streaming a race you spectate: timing tower, battles, driver card, track map, starting grid, race control ticker and replays, with an auto-director for the camera. You and a co-host run it from the producer panel.</p>
+<a class="app" style="--c:#4b8bf0" href="/analyzer/?view=live" id="liveTile"><div class="ahead"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><h2>Live telemetry</h2><span class="tag ok">Ready</span></div><p>What the car is doing right now: speed, gear, pedals, steering, this lap against your best, temperatures and settings.</p><div class="gl" id="glLive"></div><span class="open">Open →</span></a>
+<a class="app" style="--c:#2fb36a" href="/analyzer/?view=coach"><div class="ahead"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span><h2>Coaching</h2><span class="tag ok">Ready</span></div><p>Your average lap against your best lap: where the time goes, corner by corner, and what to change in your driving.</p><span class="open">Open →</span></a>
+<a class="app" style="--c:#e0a325" href="/analyzer/?view=setup"><div class="ahead"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></span><h2>Setup</h2><span class="tag ok">Ready</span></div><p>Your car: how it handles on your laps and what to change, the live setup and the engineer's 6-lap plan.</p><span class="open">Open →</span></a>
+<a class="app" style="--c:#a77bf3" href="/analyzer/"><div class="ahead"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16"/><path d="M7 15c3-6 5-6 7-2s4 3 6-4"/></svg></span><h2>Lap Analyzer</h2><span class="tag ok">Ready</span></div><p>Laps you have driven: your lap against a reference lap, corner by corner and channel by channel.</p><span class="open">Open →</span></a>
+<a class="app" style="--c:#FFB23F" href="/pitwall/" id="pwTile"><div class="ahead"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V8l8-4 8 4v12"/><path d="M8 20v-6h8v6M8 10h8"/></svg></span><h2>PitWall</h2><span class="tag" id="pwTag">Starting</span></div><p>The engineer and spotter's booth: track map, standings, flags, gaps, strategy, weather and car systems.</p><div class="gl" id="glPw"></div><span class="open">Open →</span></a>
+<div class="app" style="--c:#e05a4f" id="bcTile" role="link" tabindex="0" title="Open the producer panel"><div class="ahead"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/><circle cx="17" cy="9" r="1.5"/></svg></span><h2>Broadcast</h2><span class="tag" id="bcTag">Starting</span></div><p>TV graphics for streaming a race you spectate, with an auto-director. You and a co-host run it from the producer panel.</p>
+<details class="bcmore"><summary>OBS address and camera packs</summary>
 <p style="margin-top:6px">OBS Browser Source, 1920 × 1080:</p><code id="bcObs" style="display:block;font-size:12px;background:var(--bg);border:1px solid var(--ln);border-radius:6px;padding:6px 8px;word-break:break-all;user-select:all">–</code>
-<p style="margin-top:6px">Camera packs: free community cameras (BIG EVIL Racing, RedneckTeck, forum sets) give the director more angles. Their licences do not allow bundling, so download one, then install it here.</p>
-<div style="display:flex;gap:8px;flex-wrap:wrap" id="camBtns"></div>
-<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:8px"><button type="button" id="bcCopy" style="white-space:nowrap">Copy OBS address</button><a class="open" id="bcOpen" style="align-self:center;margin-left:auto;text-decoration:none;white-space:nowrap">Open producer panel →</a></div></div>
-<a class="app" href="/pitwall/" id="pwTile"><span class="tag" id="pwTag">Starting</span><h2>PitWall</h2><p>Engineer and spotter dashboard: track map, standings, flags, weather and car systems. Runs on this PC through the built-in bridge.</p><span class="open">Open →</span></a>
+<div style="margin-top:6px"><button type="button" id="bcCopy" style="white-space:nowrap">Copy OBS address</button></div>
+<p style="margin-top:8px">Camera packs: free community cameras (BIG EVIL Racing, RedneckTeck, forum sets) give the director more angles. Their licences do not allow bundling, so download one, then install it here.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap" id="camBtns"></div></details>
+<a class="open" id="bcOpen" style="text-decoration:none;white-space:nowrap">Open producer panel →</a></div>
 </div>
 <div class="share hidden" id="share"></div>
 <section class="recs hidden" id="recs"></section>
@@ -82,12 +97,22 @@ e.onclick=async()=>{if(e.disabled)return;e.disabled=true;e.textContent=busy;try{
 btn('Replay a telemetry file…',async()=>{const r=await window.pywebview.api.pick_replay();if(r&&r.ok){info.mode='replay';info.file=r.file;meta=null;b.dataset.k='';render()}else if(r&&r.error)alert(r.error)},'Choosing a file…');
 if(rep)btn('Back to live',async()=>{await window.pywebview.api.use_live();info.mode='live';info.connected=false;meta=null;b.dataset.k='';render()},'Switching…')}}
 function connect(){let ws;try{ws=new WebSocket('ws://'+location.host+'/ws?ticks=0')}catch(e){return setTimeout(connect,2000)}
-ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.type==='hello'){$('ver').textContent='version '+m.bridge;info.mode=m.mode}else if(m.type==='status'){info.connected=!!m.connected;info.mode=m.source||info.mode;render()}else if(m.type==='session'&&typeof m.yaml==='string'){meta=metaFrom(m.yaml);render()}};
+ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.type==='glance'){glance(m.v);return}if(m.type==='hello'){$('ver').textContent='version '+m.bridge;info.mode=m.mode}else if(m.type==='status'){info.connected=!!m.connected;info.mode=m.source||info.mode;render()}else if(m.type==='session'&&typeof m.yaml==='string'){meta=metaFrom(m.yaml);render()}};
 ws.onclose=()=>setTimeout(connect,2000)}
+// ---- the tiles, alive: a glance at iRacing's own variables once a second (suite/bridge.py glance)
+const FLAG_BITS=[[0x10,'Red','#ff5a5a'],[0x1,'Checkered','#fff'],[0x2,'White','#fff'],[0x4000,'Caution','#ffd23f'],[0x8000,'Caution','#ffd23f'],[0x8,'Yellow','#ffd23f'],[0x4,'Green','#3ddc84']];
+const lapClock=t=>{if(t==null||!(t>0))return'–';const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(3)};
+let lastGlance=0;
+function glance(v){lastGlance=Date.now();const L=$('glLive'),P=$('glPw');if(!L||!P)return;
+const kmh=document.documentElement.dataset.units==='metric',sp=v.Speed!=null?Math.round(v.Speed*(kmh?3.6:2.23694)):null,driving=v.IsOnTrack&&!v.IsReplayPlaying;
+L.innerHTML=driving?'<b>'+sp+'</b><span>'+(kmh?'km/h':'mph')+'</span><b>'+(v.Gear===0?'N':v.Gear===-1?'R':v.Gear)+'</b><span>gear</span>'+(v.Lap!=null?'<span>lap '+v.Lap+'</span>':'')+(v.LapLastLapTime>0?'<span>last '+lapClock(v.LapLastLapTime)+'</span>':''):'';
+const f=FLAG_BITS.find(x=>(v.SessionFlags||0)&x[0]),pos=v.PlayerCarPosition>0?'P'+v.PlayerCarPosition:'',rem=v.SessionTimeRemain!=null&&v.SessionTimeRemain>0&&v.SessionTimeRemain<86400?Math.floor(v.SessionTimeRemain/60)+' min left':'';
+P.innerHTML=(f?'<span class="fl" style="background:'+f[2]+'">'+f[1]+'</span>':'')+(pos?'<b>'+pos+'</b>':'')+(rem?'<span>'+rem+'</span>':'')}
+setInterval(()=>{if(lastGlance&&Date.now()-lastGlance>4000){lastGlance=0;['glLive','glPw'].forEach(k=>{const e=$(k);if(e)e.innerHTML=''})}},2000);
 function pitwallTile(){const p=info.pitwall,t=$('pwTag'),a=$('pwTile');if(!p)return;if(p.ok){t.textContent='Ready';t.className='tag ok';a.href='/pitwall/?relay='+encodeURIComponent(p.relay)+'&token='+encodeURIComponent(p.token);a.title=''}else{t.textContent='Unavailable';t.className='tag';a.removeAttribute('href');a.title=p.error||''}}
 // The Broadcast tile holds buttons of its own (copy the OBS address, camera packs), so it cannot be one link
 // like the others: the whole tile opens the producer panel, except where you click one of its own controls.
-(()=>{const t=$('bcTile'),go=e=>{if(e.target.closest('button,a,code,input,select'))return;const a=$('bcOpen');if(a&&a.href)location.href=a.href};
+(()=>{const t=$('bcTile'),go=e=>{if(e.target.closest('button,a,code,input,select,details'))return;const a=$('bcOpen');if(a&&a.href)location.href=a.href};
 t.addEventListener('click',go);t.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target===t){e.preventDefault();const a=$('bcOpen');if(a&&a.href)location.href=a.href}})})();
 function broadcastTile(){const p=info.pitwall,t=$('bcTag');if(!p)return;const b=p.broadcast;$('bcTile').classList.toggle('link',!!b);if(b){t.textContent='Ready';t.className='tag ok';$('bcObs').textContent=b.overlay;$('bcOpen').href=b.producer+'&home='+encodeURIComponent(location.origin+'/')}else{t.textContent='Unavailable';t.className='tag';$('bcObs').textContent=p.error||'–';$('bcOpen').removeAttribute('href')}}
 function camBtns(){const b=$('camBtns');if(!b||b.dataset.done||!hasApi())return;b.dataset.done=1;const mk=(t,f)=>{const e=document.createElement('button');e.type='button';e.textContent=t;e.onclick=async()=>{if(e.disabled)return;e.disabled=true;e.textContent='Working…';try{await f()}finally{e.disabled=false;e.textContent=t}};b.appendChild(e)};

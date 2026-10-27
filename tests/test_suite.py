@@ -1014,6 +1014,14 @@ class CarArraysTest(unittest.TestCase):
             self.assertIn(name, CARIDX_SEND)
 
 
+class GlanceTest(unittest.TestCase):
+    def test_the_home_page_glance_is_iracings_variables_as_they_are(self):
+        from suite.bridge import glance, GLANCE
+        g = glance({"Speed": 51.2, "Gear": 4, "Lap": 7, "SessionFlags": 0x4, "Throttle": 1.0, "FuelLevel": None})
+        self.assertEqual(g, {"Speed": 51.2, "Gear": 4, "Lap": 7, "SessionFlags": 0x4})
+        self.assertNotIn("Throttle", GLANCE)
+
+
 class HubFanOutTest(unittest.TestCase):
     """The home page asks for no telemetry (/ws?ticks=0), and one slow client holds nobody up."""
 
