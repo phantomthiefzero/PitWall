@@ -589,6 +589,7 @@
       <div class="menu-body">
         <div class="mrow"><span>Units</span><button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button></div>
         <div class="mrow"><span>Look</span><button type="button" id="skinToggle" class="unittoggle" title="Switch between the pit-wall booth look and the classic look. On this screen only.">booth</button></div>
+        <div class="mrow"><span>Radio calls</span><button type="button" id="radioToggle" class="unittoggle" title="Read the alarms and flag changes aloud, like an engineer on the radio: box calls, a car closing, cautions, the white flag. On this screen only.">off</button></div>
         <div class="mrow"><span>Alarm sound</span><button type="button" id="soundToggle" class="unittoggle" title="Play a tone when a new alarm appears. On this screen only.">sound off</button></div>
         <div class="mlegend"><span>plain = reported by iRacing</span><span class="derived">dotted = computed here</span><span style="color:var(--muted)">grey = snapshot, not a live reading</span></div>
       </div></details>
@@ -1030,6 +1031,11 @@
     const inferred = !flags.length && !!(cau && cau.active && cau.inferred);
     const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || (inferred ? "caution" : "");
     const el = $("flag"); el.dataset.flag = f; document.body.dataset.flag = f;
+    if (f !== renderHeader.lastFlag) {
+      if (renderHeader.lastFlag !== undefined && typeof say === "function")
+        say({ green: "Green flag, green flag", white: "White flag, last lap", checkered: "Checkered flag", red: "Red flag, red flag" }[f] || "");
+      renderHeader.lastFlag = f;
+    }
     el.title = inferred ? "Computed here: the replay carries no flags, so the caution is read from how slowly the field is going." : "";
     el.classList.toggle("derived", inferred);
     const stateTxt = words(st.session.state);
@@ -2140,7 +2146,7 @@
     return out;
   }
   function renderAlarms() {
-    const now = alarmConditions(), keys = new Set(now.map(a => a.key));
+    const now = alarmConditions(), keys = new Set(now.map(a => a.key)), wasActive = new Set(ALARM.active.keys());
     for (const k of [...ALARM.dismissed]) if (!keys.has(k)) ALARM.dismissed.delete(k);
     let fresh = null;
     for (const a of now) {
@@ -2154,6 +2160,7 @@
     }
     ALARM.active = new Map(now.map(a => [a.key, a]));
     if (fresh) beep(fresh.level);
+    if (RADIO.on) now.filter(a => !wasActive.has(a.key)).sort((a, b) => (b.level === "hot") - (a.level === "hot")).forEach(a => say(a.html));
     const show = now.filter(a => !ALARM.dismissed.has(a.key));
     const bar = $("alarmBar");
     bar.classList.toggle("hidden", !show.length);
@@ -2163,6 +2170,34 @@
   $("alarmBar").addEventListener("click", e => {
     const b = e.target.closest("button[data-k]");
     if (b) { ALARM.dismissed.add(b.dataset.k); renderAlarms(); }
+  });
+  // ---- radio calls: the alarms and flag changes read aloud (the browser's own speech), one at a time.
+  // Off by default and per screen, like the alarm sound. What is said is what the alarm bar says.
+  const RADIO = { on: false, said: new Map() };
+  try { RADIO.on = localStorage.getItem("pitwall.radio") === "on"; } catch (e) {}
+  function spoken(html) {
+    return String(html).replace(/<[^>]+>/g, "").replace(/\s*·\s*/g, ", ").replace(/(\d)\s*[–-]\s*(\d)/g, "$1 to $2").replace(/#(\d+)/g, "car $1").replace(/\bP(\d+)\b/g, "P $1")
+      .replace(/(\d+(?:\.\d+)?) ?s\b/g, "$1 seconds").replace(/(\d+)x\b/g, "$1").replace(/\s+/g, " ").trim();
+  }
+  function say(html) {
+    if (!RADIO.on || !window.speechSynthesis) return;
+    const text = spoken(html), now = Date.now();
+    if (!text || now - (RADIO.said.get(text) || 0) < 20000) return;      // the same call not twice in 20 s
+    RADIO.said.set(text, now);
+    try {
+      const u = new SpeechSynthesisUtterance(text), vs = speechSynthesis.getVoices();
+      u.voice = vs.find(v => /^en(-|_)GB/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+      u.rate = 1.08; u.pitch = 0.95;
+      speechSynthesis.speak(u);       // queued: calls never talk over each other
+    } catch (e) { /* no speech */ }
+  }
+  function radioLabel() { $("radioToggle").textContent = RADIO.on ? "on" : "off"; }
+  radioLabel();
+  $("radioToggle").addEventListener("click", () => {
+    RADIO.on = !RADIO.on; radioLabel();
+    try { localStorage.setItem("pitwall.radio", RADIO.on ? "on" : "off"); } catch (e) {}
+    if (RADIO.on) { RADIO.said.clear(); say("Radio check. You'll hear the calls from here."); }   // the click lets the browser speak
+    else if (window.speechSynthesis) speechSynthesis.cancel();
   });
   function soundLabel() { $("soundToggle").innerHTML = icon(ALARM.sound ? "soundOn" : "soundOff") + (ALARM.sound ? " sound on" : " sound off"); }
   soundLabel();
