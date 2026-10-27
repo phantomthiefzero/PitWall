@@ -89,7 +89,7 @@ iRacing Suite app (suite/)
   the finish, the cars around (race-order gaps from CarIdxPosition/CarIdxEstTime), the car's systems, brakes and
   shocks per corner, tyres and the next stop, conditions (wind against the car's heading) and recent laps; nothing
   about files. All of it is your car's own telemetry. Coaching is the driving only (gap, 3 things, where
-  the time goes, corners, consistency, track limits, progress, conditions, pace rating; one line points to Setup
+  the time goes, a numbered track map kept beside it all (coachMapSvg; GPS, else traced from yaw rate for live laps), corners, consistency, track limits, progress, conditions, pace rating; one line points to Setup
   when the car costs time); Setup is the car only (how it handles on your laps and what to change, tyres on your
   lap, the live engineer and runs, the setup sheet); the Lap Analyzer is laps already driven (your laps, your lap
   against a reference, every channel, driver laps). The live connection is a one-line bar (#liveBar) on all of them.
