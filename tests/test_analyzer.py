@@ -2047,3 +2047,15 @@ console.log(JSON.stringify({ n: setupLogLoad()['car|T'].length, h }));
         self.assertIn("Front ARB 3 → 4 Slower +0.12 s median lap", r["h"])
         self.assertIn("the track temperature changed too", r["h"])
         self.assertIn("Faster −0.25 s", r["h"])
+
+
+@unittest.skipUnless(NODE and os.path.exists(REAL_IBT), "needs Node and the real Indianapolis file")
+class ExtraLapsTest(unittest.TestCase):
+    def test_more_laps_in_the_charts_come_from_your_file(self):
+        r = run_js(r"""
+IB.a = ibt(readBytes(ARGS[0])); F.a = IB.a.lapObj(IB.a.best); F.a.idx = IB.a.best; ensureRef(); R = analyze(F.a, F.b);
+const h = xlapsHtml(), opts = (h.match(/<option value="\d+"/g) || []).length;
+console.log(JSON.stringify({ has: h.indexOf('More laps in the charts') >= 0, opts, pic: h.indexOf('Save a picture') >= 0 }));
+""", REAL_IBT)
+        self.assertTrue(r["has"] and r["pic"])
+        self.assertGreaterEqual(r["opts"], 15)        # your other clean laps, not the one already shown
