@@ -2134,7 +2134,9 @@ return [flWhen(f.when),f.car,f.session||f.event,f.laps?f.laps+' laps':'',f.best?
 // pure: does a listed file match the car and track loaded now (names differ a little between iRacing and Garage 61)
 function flSame(f,car,track){if(!car&&!track)return true;const c=flNorm(f.car),t=flNorm(f.track),C=flNorm(car),T=flNorm(track);return(!C||c===C)&&(!T||t.startsWith(T)||T.startsWith(t))}
 function flCurrent(){const ib=IB.a;if(ib)return{car:ib.carName,track:ib.track};return{car:null,track:null}}
-async function flLoad(){try{let page=0,pages=1,files=[];do{const r=await fetch('/api/library?page='+page);if(!r.ok)throw 0;const j=await r.json();if(j.ok===false)throw new Error(j.error);if(page===0){FLIB.folders=j.folders||[];pages=j.pages||1;FLIB.chunk=j.chunk||FLIB.chunk}files=files.concat(j.files||[]);page++}while(page<pages&&page<50);FLIB.files=files;FLIB.on=true}catch(e){FLIB.on=false}renderFiles()}
+async function flLoad(){try{let page=0,pages=1,files=[];do{const r=await fetch('/api/library?page='+page);if(!r.ok)throw 0;const j=await r.json();if(j.ok===false)throw new Error(j.error);if(page===0){FLIB.folders=j.folders||[];pages=j.pages||1;FLIB.chunk=j.chunk||FLIB.chunk}files=files.concat(j.files||[]);page++}while(page<pages&&page<50);FLIB.files=files;FLIB.on=true}catch(e){FLIB.on=false}
+// ?open=<id>: a file from the home page's last-session card, opened as your laps once the list is in
+try{const q=new URLSearchParams(location.search),id=q.get('open');if(id&&FLIB.on&&!FLIB.opened){FLIB.opened=true;q.delete('open');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:''));setTimeout(()=>flOpen(id,'a'),0)}}catch(e){}renderFiles()}
 // the file in pieces (each reply under the stall size), several at a time; a File-like object for load()
 // over one WebSocket (fast); the pieces below are the fallback
 function flStream(f,prog){return new Promise((res,rej)=>{let buf=null,off=0,ws;try{ws=new WebSocket('ws://'+location.host+'/api/library/stream?id='+encodeURIComponent(f.id))}catch(e){return rej(e)}ws.binaryType='arraybuffer';

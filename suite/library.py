@@ -227,6 +227,90 @@ def records(files, me=None):
 
 
 # --------------------------------------------------------------------------- #
+# Your last session, for the home page: laps, clean laps, best, how consistent
+# --------------------------------------------------------------------------- #
+
+def session_summary(path, step=6):
+    """Your laps in one .ibt (read at every `step`th sample): each lap's time as iRacing gave it
+    (LapLastLapTime once it updates after the line) and whether it was clean (driven from the line,
+    no pit road, never off track, no new incident points). Raises ValueError for a file it cannot read."""
+    import mmap
+    size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+        try:
+            i = lambda o: struct.unpack_from("<i", mm, o)[0]
+            tick, sl, so, nv, vo, bl, bo = i(8) or 60, i(16), i(20), i(24), i(28), i(36), i(52)
+            if nv <= 0 or bl <= 0 or so + sl > size:
+                raise ValueError("not an .ibt")
+            fmt = {1: "<?", 2: "<i", 3: "<I", 4: "<f", 5: "<d"}
+            var = {}
+            for k in range(nv):
+                q = vo + k * 144
+                t, off, cnt = struct.unpack_from("<iii", mm, q)
+                name = bytes(mm[q + 16:q + 48]).split(b"\0")[0].decode("latin-1")
+                if cnt == 1 and t in fmt:
+                    var[name] = (fmt[t], off)
+            if "Lap" not in var or "LapLastLapTime" not in var:
+                raise ValueError("no lap channels")
+            rows = (size - bo) // bl
+
+            def rd(r, n):
+                v = var.get(n)
+                return None if v is None else struct.unpack_from(v[0], mm, bo + r * bl + v[1])[0]
+            laps, cur, last_lt = [], None, None
+            for r in range(0, rows, step):
+                lap, pct = rd(r, "Lap"), rd(r, "LapDistPct")
+                lt = rd(r, "LapLastLapTime")
+                if cur is not None and lap is not None and lap == cur["lap"] + 1:
+                    cur["end"] = r
+                    laps.append(cur)
+                    cur = None
+                if cur is None and lap is not None:
+                    cur = {"lap": lap, "start_pct": pct, "pit": False, "off": False, "inc0": rd(r, "PlayerCarMyIncidentCount"),
+                           "inc1": None, "end": None, "lt_before": lt}
+                if cur is not None:
+                    if rd(r, "OnPitRoad"):
+                        cur["pit"] = True
+                    if rd(r, "PlayerTrackSurface") == 0:
+                        cur["off"] = True
+                    cur["inc1"] = rd(r, "PlayerCarMyIncidentCount")
+            out = []
+            for L in laps:
+                # the lap's time: LapLastLapTime once it changes, within 4 s after the line
+                t = None
+                for r in range(L["end"], min(rows, L["end"] + int(4 * tick)), 3):
+                    v = rd(r, "LapLastLapTime")
+                    if v and v > 0 and v != L["lt_before"]:
+                        t = v
+                        break
+                if not t or not (20 < t < 3600):
+                    continue
+                clean = (L["start_pct"] is not None and 0 <= L["start_pct"] < 0.05 and not L["pit"] and not L["off"]
+                         and (L["inc0"] is None or L["inc1"] == L["inc0"]))
+                out.append({"lap": L["lap"], "t": round(t, 3), "clean": bool(clean)})
+            return out
+        finally:
+            mm.close()
+
+
+def summarize_laps(laps):
+    """Best, median and spread of the clean laps that are usual (within 7% of the quickest clean lap)."""
+    clean = [x["t"] for x in laps if x["clean"]]
+    if clean:
+        f = min(clean)
+        clean = [t for t in clean if t <= f * 1.07]
+    srt = sorted(clean)
+    med = srt[len(srt) // 2] if srt else None
+    sd = None
+    if len(srt) >= 3:
+        m = sum(srt) / len(srt)
+        sd = round((sum((t - m) ** 2 for t in srt) / (len(srt) - 1)) ** 0.5, 3)
+    return {"timed": len(laps), "clean": len(srt), "best": srt[0] if srt else (min((x["t"] for x in laps), default=None)),
+            "median": med, "spreadS": sd, "bestIsClean": bool(srt)}
+
+
+# --------------------------------------------------------------------------- #
 # The library
 # --------------------------------------------------------------------------- #
 
@@ -392,6 +476,27 @@ class Library:
             except Exception as e:  # a damaged file must not stop the others
                 log("track map from %s: %s: %s" % (os.path.basename(p), type(e).__name__, e))
         return made
+
+    def last_session(self):
+        """The newest .ibt of yours with timed laps, summarized (cached per file and size)."""
+        files = self._last if self._last is not None else self.scan()
+        cache = self.__dict__.setdefault("_sess_cache", {})
+        for d in [f for f in files if f.get("kind") == "ibt"][:6]:
+            p = (self._ids or {}).get(d.get("id"))
+            if not p:
+                continue
+            key = (p, d.get("size"), d.get("mtime"))
+            if key not in cache:
+                try:
+                    laps = session_summary(p)
+                except Exception:
+                    laps = []
+                cache[key] = laps
+            laps = cache[key]
+            if laps:
+                return dict({k: d.get(k) for k in ("id", "car", "track", "when", "session", "driver", "name")},
+                            **summarize_laps(laps))
+        return None
 
     def path_of(self, tok):
         """The file for an id from the page: only a file of the last listing, still a telemetry

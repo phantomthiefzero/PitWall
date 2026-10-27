@@ -146,6 +146,9 @@ def ws_messages(port, count, timeout=10):
     return out
 
 
+REAL_IBT_PATH = os.environ.get("PITWALL_REAL_IBT", "/mnt/user-data/uploads/ferrari296gt3_indianapolis_2022_road_2026-10-10_20-47-23.ibt")
+
+
 class SuiteTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1030,6 +1033,25 @@ class CarArraysTest(unittest.TestCase):
         self.assertEqual(CARIDX_SEND["CarIdxLapDistPct"], 6)
         for name in ("CarIdxLap", "CarIdxOnPitRoad", "CarIdxTrackSurface", "CarIdxLastLapTime"):
             self.assertIn(name, CARIDX_SEND)
+
+
+class LastSessionTest(unittest.TestCase):
+    def test_clean_laps_best_median_and_spread(self):
+        from suite.library import summarize_laps
+        laps = [{"lap": 1, "t": 95.6, "clean": True},                 # an out lap: far from the quickest
+                {"lap": 2, "t": 84.9, "clean": True}, {"lap": 3, "t": 84.2, "clean": True},
+                {"lap": 4, "t": 83.9, "clean": False},                # quicker, but off track: not your best lap
+                {"lap": 5, "t": 84.5, "clean": True}, {"lap": 6, "t": 85.0, "clean": True}]
+        s = summarize_laps(laps)
+        self.assertEqual((s["timed"], s["clean"], s["best"], s["median"], s["bestIsClean"]), (6, 4, 84.2, 84.9, True))
+        self.assertAlmostEqual(s["spreadS"], 0.37, places=3)       # sample standard deviation of 84.2, 84.5, 84.9, 85.0
+
+    @unittest.skipUnless(os.path.exists(REAL_IBT_PATH), "needs the real Indianapolis .ibt")
+    def test_a_real_session(self):
+        from suite.library import session_summary, summarize_laps
+        s = summarize_laps(session_summary(REAL_IBT_PATH))
+        self.assertEqual(s["best"], 84.033)                   # iRacing's own best lap in the file
+        self.assertGreaterEqual(s["clean"], 18)
 
 
 class GlanceTest(unittest.TestCase):
