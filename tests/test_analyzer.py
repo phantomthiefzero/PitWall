@@ -1900,3 +1900,35 @@ console.log(JSON.stringify({ ibt: flLabel(ibtF), g61: flLabel(g), renamed: flLab
         self.assertEqual(r["g61"], "1:23.750 · nick kalra · Ferrari 296 GT3 · Indianapolis Motor Speedway (Road Course)")   # the lap time first
         self.assertEqual(r["renamed"], "about 1:24.600 · my fast lap")   # lap time from the file's length
         self.assertEqual(r["same"], [True, True, False, False, True])
+
+
+CORNER_NAMES_JS = r"""
+const mk = (...aps) => aps.map((p, i) => ({ n: i + 1, ap: Math.round(p * (N - 1)) }));
+const names = { [cnTrackKey('Road Atlanta · Full Course')]: [{ p: 0.300, name: 'Turn 10a' }, { p: 0.312, name: 'Turn 10b' }, { p: 0.700, name: 'Esses' }] };
+const a = nameCorners(mk(0.10, 0.305, 0.315, 0.693), 'Road Atlanta · Full Course', names);
+const other = nameCorners(mk(0.10, 0.305), 'Road America', names);
+// saved and read back through the page's own store, and the words used everywhere
+cnSet('Road Atlanta · Full Course', 0.5, ' Turn 5 ');
+cnSet('Road Atlanta · Full Course', 0.505, 'Turn 5 (renamed)');          // the same corner: replaced, not added
+R = { cs: nameCorners(mk(0.2, 0.5), 'road atlanta - full course') };      // same track, written another way
+console.log(JSON.stringify({ a: a.map(c => c.label), other: other.map(c => c.label), stored: cnLoad()[cnTrackKey('Road Atlanta · Full Course')],
+  cn: [CN(1), CN(2)], cs: [CS(1), CS(2)] }));
+"""
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CornerNamesTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js(CORNER_NAMES_JS)
+
+    def test_names_go_to_the_nearest_corner_once_and_only_on_their_track(self):
+        self.assertEqual(self.r["a"], [None, "Turn 10a", "Turn 10b", "Esses"])
+        self.assertEqual(self.r["other"], [None, None])
+
+    def test_naming_a_corner_again_replaces_its_name(self):
+        self.assertEqual(self.r["stored"], [{"p": 0.505, "name": "Turn 5 (renamed)"}])
+
+    def test_sentences_and_charts_use_the_name(self):
+        self.assertEqual(self.r["cn"], ["Corner 1", "Turn 5 (renamed)"])
+        self.assertEqual(self.r["cs"], ["C1", "5 (rename…"])     # charts keep it short
