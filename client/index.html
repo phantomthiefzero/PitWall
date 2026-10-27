@@ -878,7 +878,9 @@
     },
   };
   let U = UNITS.imperial;
-  try { if (localStorage.getItem("pitwall.units") === "metric") U = UNITS.metric; } catch (e) { /* private mode */ }
+  // One setting for the whole suite (pages served by the suite share it; suite:speed is mph or kmh),
+  // else this screen's own.
+  try { const sp = localStorage.getItem("suite:speed"); if (sp ? sp === "kmh" : localStorage.getItem("pitwall.units") === "metric") U = UNITS.metric; } catch (e) { /* private mode */ }
 
   function applyUnits() {
     $("unitToggle").textContent = U.label;
@@ -3198,7 +3200,7 @@
   // iRacing's picture of the car (pitwall/carcolor.py, Trading Paints included), else the first colour
   // of iRacing's paint scheme. In paint mode a multiclass field keeps its class as a ring.
   let dotMode = "class";
-  try { if (localStorage.getItem("pitwall.dots") === "paint") dotMode = "paint"; } catch (e) { /* storage off */ }
+  try { if ((localStorage.getItem("suite:dots") || localStorage.getItem("pitwall.dots")) === "paint") dotMode = "paint"; } catch (e) { /* storage off */ }
   function designCss(d) { const c = String(d || "").split(",")[1]; return c && /^[0-9a-f]{6}$/i.test(c.trim()) ? "#" + c.trim() : null; }
   function paintCss(c) {
     const key = c.carId != null ? c.carId + "_" + (c.teamId || c.userId) : null;
@@ -3338,7 +3340,14 @@
     }
     const link = !S.lastStateAt ? "off" : (now - S.lastStateAt) < 3000 ? "live" : "stale";
     if (document.body.dataset.link !== link) document.body.dataset.link = link;
-    if (S.lastStateAt) { const age = (now - S.lastStateAt) / 1000; $("age").textContent = age < 1.5 ? "live" : "last update " + age.toFixed(0) + " s ago"; $("age").style.color = age < 3 ? "" : "#FF5A5A"; }
+    if (S.lastStateAt) {
+      // How fresh the data is, and what kind it is: a live race, a replay behind live (the field held),
+      // or a replay where iRacing sends no flags (cautions read from the field's speed).
+      const age = (now - S.lastStateAt) / 1000, le = S.state && S.state.derived && S.state.derived.liveEdge, cau = S.cars && S.cars.derived && S.cars.derived.caution;
+      const kind = le && le.atLive === false ? " · replay behind live: the field is held at the live moment" : (cau && cau.inferred ? " · no flags from iRacing: the caution is read from the field's speed" : "");
+      $("age").textContent = (age < 1.5 ? "live" : "last update " + age.toFixed(0) + " s ago") + (age < 1.5 ? kind : "");
+      $("age").style.color = age < 3 ? "" : "#FF5A5A";
+    }
     // Divide by the real elapsed time, not a constant 2 s: this loop is driven by
     // requestAnimationFrame, which browsers throttle to ~1 Hz or stop outright while
     // the tab is in the background. An engineer's dashboard sits backgrounded behind
@@ -3442,7 +3451,7 @@
     const sync = () => { btn.textContent = dotMode === "paint" ? "car's paint" : "class colour"; };
     btn.addEventListener("click", () => {
       dotMode = dotMode === "paint" ? "class" : "paint";
-      try { localStorage.setItem("pitwall.dots", dotMode); } catch (e) { /* storage off */ }
+      try { localStorage.setItem("pitwall.dots", dotMode); localStorage.setItem("suite:dots", dotMode); } catch (e) { /* storage off */ }
       sync();
     });
     sync();
@@ -3503,8 +3512,13 @@
   });
   $("unitToggle").addEventListener("click", () => {
     U = (U === UNITS.imperial) ? UNITS.metric : UNITS.imperial;
-    try { localStorage.setItem("pitwall.units", U.label); } catch (e) { /* private mode */ }
+    try { localStorage.setItem("pitwall.units", U.label); localStorage.setItem("suite:speed", U === UNITS.metric ? "kmh" : "mph"); } catch (e) { /* private mode */ }
     applyUnits();
+  });
+  // Another page of the suite changed a shared setting: follow it here too.
+  addEventListener("storage", e => {
+    if (e.key === "suite:speed" && e.newValue) { U = e.newValue === "kmh" ? UNITS.metric : UNITS.imperial; applyUnits(); }
+    if (e.key === "suite:dots" && e.newValue && typeof dotMode !== "undefined") { dotMode = e.newValue === "paint" ? "paint" : "class"; const b = $("dotToggle"); if (b) b.textContent = dotMode === "paint" ? "car's paint" : "class colour"; }
   });
   applyUnits();
 

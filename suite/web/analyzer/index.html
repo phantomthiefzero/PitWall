@@ -1008,7 +1008,12 @@ const sgn=(v,d)=>(v>.5*10**-d?'+':v<-.5*10**-d?'\u2212':'')+Math.abs(v).toFixed(
 function lapTbl(){const u=U(),n=nm(),a=R.Sa,b=R.Sb;const row=(l,x,y,k,d,unit,good)=>{const dv=(x-y)*k;return `<tr><td>${l}</td><td>${(x*k).toFixed(d)} ${unit}</td><td>${(y*k).toFixed(d)} ${unit}</td><td class="${good?(dv*good>0?'good':dv*good<0?'bad':''):''}">${sgn(dv,d)} ${unit}</td></tr>`};
 const gs=[1,2,3,4,5,6].filter(g=>a.gt[g]>.05||b.gt[g]>.05).map(g=>row('Time in gear '+g,a.gt[g],b.gt[g],1,1,'%')).join('');
 $('lt').innerHTML=`<caption>Whole lap, you vs ${n}. The last column is you minus ${n}.</caption><tr><th>Measure</th><th>You</th><th>Reference</th><th>Difference</th></tr>`+[row('Top speed',a.top,b.top,u.s[0],0,u.s[1],1),row('Average speed',a.avg,b.avg,u.s[0],1,u.s[1],1),row('Full throttle (time)',a.fu,b.fu,1,1,'%'),row('Braking (time)',a.bk,b.bk,1,1,'%'),row('Coasting, no throttle or brake (time)',a.co,b.co,1,1,'%'),row('Throttle and brake together (time)',a.ov,b.ov,1,1,'%'),row('ABS active (time)',a.ab,b.ab,1,1,'%'),row('Peak lateral G',a.lat,b.lat,1,2,'g'),row('Peak braking G',a.dec,b.dec,1,2,'g'),row('Peak acceleration G',a.acc,b.acc,1,2,'g'),row('Peak steering angle',a.sa,b.sa,1,0,'\u00b0'),row('Steering travel',a.st,b.st,1,1,'wheel turns'),row('Throttle input activity',a.tm,b.tm,1,1,'(total travel)'),row('Brake input activity',a.bm,b.bm,1,1,'(total travel)'),row('Gear changes',a.sh,b.sh,1,0,''),row('Average upshift RPM',a.ur,b.ur,1,0,'rpm'),row('Average RPM',a.rpm,b.rpm,1,0,'rpm'),row('Peak RPM',a.rpmMax,b.rpmMax,1,0,'rpm')].join('')+gs}
-addEventListener('resize',draw);$('us').onchange=$('ud').onchange=()=>{if(R)run();renderSession()};
+addEventListener('resize',draw);
+// Units are one setting for the whole suite (suite:speed, suite:dist), shared with the home page and PitWall.
+try{const sp=localStorage.getItem('suite:speed'),di=localStorage.getItem('suite:dist');if(sp)$('us').value=sp;if(di)$('ud').value=di}catch(e){}
+$('us').onchange=$('ud').onchange=()=>{try{localStorage.setItem('suite:speed',$('us').value);localStorage.setItem('suite:dist',$('ud').value)}catch(e){}if(R)run();renderSession();try{renderCoach()}catch(e){}};
+addEventListener('storage',e=>{if(e.key==='suite:speed'&&e.newValue&&$('us').value!==e.newValue){$('us').value=e.newValue;$('us').onchange()}else if(e.key==='suite:dist'&&e.newValue&&$('ud').value!==e.newValue){$('ud').value=e.newValue;$('ud').onchange()}
+else if(e.key==='suite:theme'&&e.newValue){document.documentElement.setAttribute('data-theme',e.newValue)}else if(e.key==='cornerNames'){try{renderCoach()}catch(x){}}});
 
 /* ---- Live from iRacing (via the local bridge) ---- */
 let LIVE={ws:null,state:'off',sim:false,mode:'',port:(()=>{try{return +localStorage.getItem('livePort')||8123}catch(e){return 8123}})(),yaml:null,meta:null,setup:null,sig:null,vers:[],cur:null,laps:[],v:null,pend:null,lastDraw:0,err:''};
@@ -1060,7 +1065,7 @@ const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tr
 if(LIVE.meta.carPath)try{libRecord({carPath:LIVE.meta.carPath,carName:LIVE.meta.carName,setup:t},'live|'+(LIVE.meta.sid||'session')+'|'+LIVE.vers.length)}catch(e){}
 LIVE.setup=t;if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}else{LIVE.setup=t;if(first){if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}}}
 function liveNewLap(lap,v){if(v.OnPitRoad)LIVE.stint=0;return{lap,st0:v.SessionTime,f0:v.FuelLevel!=null?v.FuelLevel:null,tt:v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp!=null?v.TrackTemp:null,stint:(LIVE.stint=(LIVE.stint||0)+1),d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
-function liveTick(v){LIVE.v=v;try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
+function liveTick(v){LIVE.v=v;LIVE.at=Date.now();try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
 const p=LIVE.pend;if(p&&v.LapLastLapTime>0&&v.LapLastLapTime!==p.stale){const d=v.LapLastLapTime-p.time;if(d>-0.1&&d<1)p.time=v.LapLastLapTime;LIVE.pend=null;liveRender()}
 if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFinish(LIVE.cur,v);LIVE.cur=liveNewLap(v.Lap,v)}
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
@@ -1135,7 +1140,7 @@ const ctl=LIVE.ws?'<button type="button" class="clr" id="liveOff" style="display
 // The connection and what the car is doing now: one line at the top of every view.
 let bar='<b>Live</b> '+status+' '+ctl;
 if(on&&LIVE.meta&&LIVE.meta.carName)bar+='<span>'+(LIVE_SHARE&&LIVE.meta.who?'<b>'+plain(LIVE.meta.who)+'</b> in the ':'')+'<b>'+LIVE.meta.carName.replace(/[<>&]/g,'')+'</b> <span class="m">at '+(LIVE.meta.track||'').replace(/[<>&]/g,'')+(LIVE_SHARE?' · read-only, through a share link':'')+'</span></span>';
-if(on)bar+='<div id="liveNow" style="flex-basis:100%"></div>';
+if(on)bar+='<span class="m" id="liveAge"></span><div id="liveNow" style="flex-basis:100%"></div>';
 if(LIVE.err)bar+='<div class="m" style="flex-basis:100%">'+LIVE.err+'</div>';
 if(!LIVE.ws&&!LIVE.err)bar+='<div class="m" style="flex-basis:100%">Not connected. In the suite this connects by itself; on its own, run the iRacing bridge (Start Bridge.bat) and connect.</div>';
 const lb=$('liveBar');if(lb){lb.innerHTML=bar;lb.hidden=false}
@@ -2361,6 +2366,7 @@ const TELE={roll:[],gg:[],built:false,key:''};
 // the corners are found on the picked lap the same way as in Coaching (so the numbers and names match).
 // Spoken verdicts are off unless turned on (LV.say), per browser.
 const lvCol=n=>getComputedStyle(document.body).getPropertyValue(n).trim()||'#888';
+setInterval(()=>{const e=document.getElementById('liveAge');if(!e)return;const a=LIVE.at?(Date.now()-LIVE.at)/1000:null,t=a==null?'':a<1.5?'data live':'no data for '+a.toFixed(0)+' s';if(e.textContent!==t){e.textContent=t;e.style.color=a!=null&&a>=3?'#d6333a':''}},1000);
 const LV={say:false,ref:null,cs:null,len:0,map:null,mapKey:null,mapAsked:null,lap:null,done:new Set(),verd:[]};
 try{LV.say=localStorage.getItem('liveSay')==='1'}catch(e){}
 // pure: a live reference lap (d,t,Speed,...) as a lap object the analysis can resample

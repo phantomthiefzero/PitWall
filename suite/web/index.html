@@ -7,7 +7,11 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
 .wrap{max-width:1040px;margin:0 auto;padding:28px 24px 40px}
 header{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;border-bottom:1px solid var(--ln);padding-bottom:14px}
-.theme{margin-left:auto;font-size:13px;padding:4px 12px}
+.theme{font-size:13px;padding:4px 12px}
+.sets{margin-left:auto;position:relative;font-size:13px}.sets summary{cursor:pointer;list-style:none;border:1px solid var(--ln);border-radius:7px;padding:4px 12px;color:var(--fg)}.sets summary::-webkit-details-marker{display:none}
+.sets-body{position:absolute;right:0;top:calc(100% + 6px);z-index:5;background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:12px 14px;display:grid;gap:8px;min-width:250px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.sets-body label{display:flex;justify-content:space-between;gap:12px;align-items:center}.sets-body select{font:inherit;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--ln);border-radius:6px;padding:3px 6px}
+.sets-note{margin:0;color:var(--mut);font-size:12px}
 h1{margin:0;font-size:26px;letter-spacing:.02em}h1 span{color:var(--acc)}.ver{color:var(--mut);font-size:13px}
 .status{margin-top:20px;background:var(--card);border:1px solid var(--ln);border-left:4px solid var(--mut);border-radius:10px;padding:16px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
 .status.live{border-left-color:var(--good)}.status.wait{border-left-color:var(--warn)}.status.replay{border-left-color:var(--blue)}
@@ -60,7 +64,13 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 .miles .md{margin-left:auto;color:var(--mut);font-size:12px;white-space:nowrap}.recs .more{margin-top:10px}
 @keyframes rpulse{50%{opacity:.25}}.rec .rmut{color:var(--mut)}.rec .rgo{margin-left:auto;display:flex;gap:8px}
 </style></head><body><div class="wrap">
-<header><h1>iRacing <span>Suite</span></h1><span class="ver"><span id="ver"></span><span id="verBuild"></span></span><button class="theme" id="themeBtn" type="button"></button></header>
+<header><h1>iRacing <span>Suite</span></h1><span class="ver"><span id="ver"></span><span id="verBuild"></span></span><details class="sets" id="sets"><summary>⚙ Settings</summary><div class="sets-body">
+<p class="sets-note">For every app in the suite on this PC: PitWall, the Lap Analyzer views and this page.</p>
+<label>Speed <select id="setSpeed"><option value="mph">mph</option><option value="kmh">km/h</option></select></label>
+<label>Distance <select id="setDist"><option value="m">metres</option><option value="ft">feet</option></select></label>
+<label>Car dots <select id="setDots"><option value="class">class colour</option><option value="paint">the car's paint</option></select></label>
+<label>Look <select id="setTheme"><option value="dark">dark</option><option value="light">light</option></select></label>
+</div></details><button class="theme" id="themeBtn" type="button"></button></header>
 <div class="status wait" id="status"><div class="dot"></div><div class="st-main"><div class="st-title" id="stTitle">Starting...</div><div class="st-sub" id="stSub"></div></div><div id="stBtns"></div></div>
 <div class="rec hidden" id="rec"></div>
 <div class="share upd hidden" id="upd"></div>
@@ -104,11 +114,17 @@ const FLAG_BITS=[[0x10,'Red','#ff5a5a'],[0x1,'Checkered','#fff'],[0x2,'White','#
 const lapClock=t=>{if(t==null||!(t>0))return'–';const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(3)};
 let lastGlance=0;
 function glance(v){lastGlance=Date.now();const L=$('glLive'),P=$('glPw');if(!L||!P)return;
-const kmh=document.documentElement.dataset.units==='metric',sp=v.Speed!=null?Math.round(v.Speed*(kmh?3.6:2.23694)):null,driving=v.IsOnTrack&&!v.IsReplayPlaying;
+const kmh=(()=>{try{return localStorage.getItem('suite:speed')==='kmh'}catch(e){return false}})(),sp=v.Speed!=null?Math.round(v.Speed*(kmh?3.6:2.23694)):null,driving=v.IsOnTrack&&!v.IsReplayPlaying;
 L.innerHTML=driving?'<b>'+sp+'</b><span>'+(kmh?'km/h':'mph')+'</span><b>'+(v.Gear===0?'N':v.Gear===-1?'R':v.Gear)+'</b><span>gear</span>'+(v.Lap!=null?'<span>lap '+v.Lap+'</span>':'')+(v.LapLastLapTime>0?'<span>last '+lapClock(v.LapLastLapTime)+'</span>':''):'';
 const f=FLAG_BITS.find(x=>(v.SessionFlags||0)&x[0]),pos=v.PlayerCarPosition>0?'P'+v.PlayerCarPosition:'',rem=v.SessionTimeRemain!=null&&v.SessionTimeRemain>0&&v.SessionTimeRemain<86400?Math.floor(v.SessionTimeRemain/60)+' min left':'';
 P.innerHTML=(f?'<span class="fl" style="background:'+f[2]+'">'+f[1]+'</span>':'')+(pos?'<b>'+pos+'</b>':'')+(rem?'<span>'+rem+'</span>':'')}
 setInterval(()=>{if(lastGlance&&Date.now()-lastGlance>4000){lastGlance=0;['glLive','glPw'].forEach(k=>{const e=$(k);if(e)e.innerHTML=''})}},2000);
+// ---- settings shared by every app the suite serves (same address, so the same browser storage)
+(function(){const pairs=[['setSpeed','suite:speed','mph'],['setDist','suite:dist','m'],['setDots','suite:dots','class'],['setTheme','suite:theme','dark']];
+const load=()=>pairs.forEach(([id,k,d])=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}$(id).value=v||(k==='suite:theme'?(document.documentElement.getAttribute('data-theme')||d):d)});load();
+pairs.forEach(([id,k])=>$(id).onchange=()=>{try{localStorage.setItem(k,$(id).value)}catch(e){}if(k==='suite:theme'){document.documentElement.setAttribute('data-theme',$(id).value);themeLabel()}});
+addEventListener('storage',e=>{if(pairs.some(p=>p[1]===e.key)){load();if(e.key==='suite:theme'&&e.newValue){document.documentElement.setAttribute('data-theme',e.newValue);themeLabel()}}});
+document.addEventListener('click',e=>{const d=$('sets');if(d&&d.open&&!d.contains(e.target))d.open=false})})();
 function pitwallTile(){const p=info.pitwall,t=$('pwTag'),a=$('pwTile');if(!p)return;if(p.ok){t.textContent='Ready';t.className='tag ok';a.href='/pitwall/?relay='+encodeURIComponent(p.relay)+'&token='+encodeURIComponent(p.token);a.title=''}else{t.textContent='Unavailable';t.className='tag';a.removeAttribute('href');a.title=p.error||''}}
 // The Broadcast tile holds buttons of its own (copy the OBS address, camera packs), so it cannot be one link
 // like the others: the whole tile opens the producer panel, except where you click one of its own controls.
@@ -139,7 +155,7 @@ async function loadRecords(){try{const r=await fetch('/api/library/records',{cac
 loadRecords();setInterval(loadRecords,5*60*1000);
 async function poll(){try{const r=await fetch('/api/info',{cache:'no-store'});Object.assign(info,await r.json());render();pitwallTile();broadcastTile();shareCard()}catch(e){}}
 function themeLabel(){$('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'\u263E Dark mode':'\u2600 Light mode'}
-$('themeBtn').onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}themeLabel()};themeLabel();
+$('themeBtn').onclick=()=>{const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('suite:theme',n)}catch(e){}themeLabel();const st=$('setTheme');if(st)st.value=n};themeLabel();
 // ---- Share online: a Cloudflare quick tunnel to PitWall's relay, started from the app window
 let sh={state:'off'},shUrl=null,shTimer=null;
 async function copyText(v,btn,label){try{await navigator.clipboard.writeText(v);btn.textContent='Copied'}catch(e){btn.textContent='Select and Ctrl+C'}setTimeout(()=>{btn.textContent=label},2000)}
