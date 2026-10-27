@@ -73,11 +73,21 @@ class Engine:
                 return
             await self.pitwall.start(8765)
             self._ready.set()
+            # Track outlines from your .ibt files, for PitWall's map while spectating (its own
+            # builder needs your car on track). On its own thread: it reads files.
+            threading.Thread(target=self._maps_from_library, name="track-maps", daemon=True).start()
             self.loop.create_task(self.hub.pump())
             async with server:
                 await server.serve_forever()
 
         self.loop.run_until_complete(boot())
+
+    def _maps_from_library(self):
+        try:
+            from suite.bridge import library
+            library().build_maps(log=lambda m: print("[maps] " + m))
+        except Exception as e:  # noqa: BLE001  (a map is a nicety; the app runs without it)
+            print("[maps] %s: %s" % (type(e).__name__, e))
 
     @property
     def url(self):

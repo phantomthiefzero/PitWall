@@ -138,7 +138,7 @@ class CarRenderer:
 
     RETRY_DOWN_S = 30.0       # the render server was not answering: wait before trying again
 
-    def __init__(self, store_dir: str, emit, log=print, fetch=_http_get, root: str | None = None):
+    def __init__(self, store_dir: str, emit, log=print, fetch=_http_get, root: str | None = None, on_color=None):
         self.dir = os.path.join(store_dir, "renders")
         self.emit = emit
         self.log = log
@@ -150,6 +150,8 @@ class CarRenderer:
         self._wake = threading.Event()
         self._down_until = 0.0
         self.status = {"available": None, "rendered": 0, "error": None}
+        self.on_color = on_color              # (key, "#rrggbb"): the paint's main colour, for map dots
+        self.colors: dict[str, str] = {}
         threading.Thread(target=self._run, daemon=True, name="car-render").start()
 
     def path(self, key: str) -> str:
@@ -221,6 +223,15 @@ class CarRenderer:
                 self.status.update(available=True, error=None, rendered=self.status["rendered"] + 1)
                 self.emit(livery_message(key, "render", f"data:{ctype.split(';')[0]};base64," + base64.b64encode(body).decode(),
                                          custom=bool(paint)))
+                try:
+                    from .carcolor import png_color
+                    col = png_color(body)
+                except Exception:  # noqa: BLE001  (a colour is a nicety)
+                    col = None
+                if col and self.colors.get(key) != col:
+                    self.colors[key] = col
+                    if self.on_color:
+                        self.on_color(key, col)
                 return
         self._sig[key] = sig      # every form refused: do not hammer it
         self.status["error"] = f"no picture for {d.get('CarPath')}"

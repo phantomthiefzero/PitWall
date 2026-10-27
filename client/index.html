@@ -589,6 +589,7 @@
       <div class="menu-body">
         <div class="mrow"><span>Units</span><button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button></div>
         <div class="mrow"><span>Look</span><button type="button" id="skinToggle" class="unittoggle" title="Switch between the pit-wall booth look and the classic look. On this screen only.">booth</button></div>
+        <div class="mrow"><span>Car dots</span><button type="button" id="dotToggle" class="unittoggle" title="Colour the cars on the map and the radar by their class, or by their own paint (Trading Paints included, from iRacing's picture of each car). On this screen only.">class colour</button></div>
         <div class="mrow"><span>Alarm sound</span><button type="button" id="soundToggle" class="unittoggle" title="Play a tone when a new alarm appears. On this screen only.">sound off</button></div>
         <div class="mlegend"><span>plain = reported by iRacing</span><span class="derived">dotted = computed here</span><span style="color:var(--muted)">grey = snapshot, not a live reading</span></div>
       </div></details>
@@ -964,6 +965,7 @@
         // circuit's map is worse than the plain lap-distance ring.
         if (S.map && !mapMatchesSession(S.map)) dropMap();
         renderHeader(); break;
+      case "carcolors": S.carColors = m.colors || {}; break;
       case "map":
         if (S.session && !mapMatchesSession(m)) break;
         S.map = m; renderMapNote(m); break;
@@ -1195,7 +1197,8 @@
   function renderMapNote(m) {
     const len = m.lapLengthM != null ? U.long(m.lapLengthM) : "?";
     const err = m.closureErrorM != null ? U.short(m.closureErrorM) : "?";
-    $("mapNote").textContent = "Outline from a recorded lap (" + len + ", closure error " + err + ").";
+    $("mapNote").textContent = m.source === "gps" ? "Outline from the GPS in your " + (m.meta && m.meta.track ? m.meta.track + " " : "") + ".ibt file (" + len + "), north up."
+      : "Outline from a recorded lap (" + len + ", closure error " + err + "), north up.";
   }
 
   // ---------------------------------------------------------------- your car
@@ -2869,9 +2872,11 @@
     for (const n of near) {
       if (Math.abs(n.meters) > RANGE || n.inPit) continue;
       const y = Y(n.meters), close = Math.abs(n.meters) < 10;
-      g.fillStyle = close ? "#FFD23F" : "#6FA8FF";
+      const nc = carByIdx(n.idx) || {}, nf = dotMode === "paint" ? paintCss(nc) : close ? "#FFD23F" : "#6FA8FF";
+      g.fillStyle = nf;
       g.fillRect(cx - 9, y - 12, 18, 24);
-      g.fillStyle = "#08203F"; g.fillText(String((carByIdx(n.idx) || {}).num ?? n.idx), cx, y);
+      if (dotMode === "paint" && close) { g.strokeStyle = "#FFD23F"; g.lineWidth = 3; g.strokeRect(cx - 10.5, y - 13.5, 21, 27); }
+      g.fillStyle = inkOn(nf); g.fillText(String(nc.num ?? n.idx), cx, y);
     }
     g.fillStyle = "#FFB23F"; g.fillRect(cx - 9, cy - 12, 18, 24);
     g.fillStyle = CV.dim; g.font = "9px " + CV.font; g.textAlign = "left";
@@ -2974,6 +2979,24 @@
          ? "Lateral against longitudinal g. The envelope fills in as the car is driven."
          : "No accelerometer data — these channels belong to your own car, and read zero while spectating.");
   }
+  // Car dots: by class (as on the broadcast) or by each car's own paint. The paint colour comes from
+  // iRacing's picture of the car (pitwall/carcolor.py, Trading Paints included), else the first colour
+  // of iRacing's paint scheme. In paint mode a multiclass field keeps its class as a ring.
+  let dotMode = "class";
+  try { if (localStorage.getItem("pitwall.dots") === "paint") dotMode = "paint"; } catch (e) { /* storage off */ }
+  function designCss(d) { const c = String(d || "").split(",")[1]; return c && /^[0-9a-f]{6}$/i.test(c.trim()) ? "#" + c.trim() : null; }
+  function paintCss(c) {
+    const key = c.carId != null ? c.carId + "_" + (c.teamId || c.userId) : null;
+    return (key && S.carColors && S.carColors[key]) || designCss(c.carDesign) || "#6FA8FF";
+  }
+  function inkOn(hex) {      // dark or light text on a fill, whichever reads
+    const v = parseInt(String(hex).slice(1), 16); if (!isFinite(v)) return "#08203F";
+    const r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255;
+    return 0.299 * r + 0.587 * g + 0.114 * b > 140 ? "#08203F" : "#FFFFFF";
+  }
+  function dotFill(c, multi) {
+    return dotMode === "paint" ? paintCss(c) : (multi && c.classColor != null ? classCss(c.classColor) : "#6FA8FF");
+  }
   let mapLabelMode = "num";
   try { if (localStorage.getItem("pitwall.mapLabel") === "pos") mapLabelMode = "pos"; } catch (e) { /* storage off */ }
   function drawMap() {
@@ -3024,10 +3047,14 @@
     for (const c of cars.sort((a, b) => (a.idx === me) - (b.idx === me))) {
       const [x, y] = P(c.pct); const mine = c.idx === me;
       ctx.beginPath(); ctx.arc(x, y, mine ? 9 : 7, 0, 7);
-      ctx.fillStyle = mine ? "#FFB23F"
-        : c.onPitRoad ? CV.dim
-        : (multi && c.classColor != null ? classCss(c.classColor) : "#6FA8FF");
+      const fill = mine && dotMode !== "paint" ? "#FFB23F" : c.onPitRoad ? CV.dim : dotFill(c, multi);
+      ctx.fillStyle = fill;
       ctx.fill();
+      if (dotMode === "paint") {   // paint can be any colour: an edge so it shows on the track, the class as a ring
+        ctx.lineWidth = multi && c.classColor != null ? 2.5 : 1.2;
+        ctx.strokeStyle = mine ? "#FFB23F" : multi && c.classColor != null ? classCss(c.classColor) : "rgba(0,0,0,.6)";
+        ctx.stroke();
+      }
       if (c.idx === focus) {   // ring the car being watched so it is findable at a glance
         ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(x, y, mine ? 12 : 10, 0, 7); ctx.stroke();
@@ -3036,7 +3063,7 @@
         ctx.strokeStyle = "#B98BFF"; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
         ctx.beginPath(); ctx.arc(x, y, mine ? 12 : 10, 0, 7); ctx.stroke(); ctx.setLineDash([]);
       }
-      ctx.fillStyle = mine ? "#2A1A00" : "#08203F";
+      ctx.fillStyle = mine && dotMode !== "paint" ? "#2A1A00" : inkOn(c.onPitRoad ? "#7A8088" : fill);
       // In position mode an unscored car (pos 0 -- not yet classified, in the
       // pits before the start, a spectator slot) gets no label rather than
       // falling back to its car number, which would read as a position it does
@@ -3191,6 +3218,16 @@
       e.stopPropagation();
       mapLabelMode = mapLabelMode === "pos" ? "num" : "pos";
       try { localStorage.setItem("pitwall.mapLabel", mapLabelMode); } catch (e2) { /* storage off */ }
+      sync();
+    });
+    sync();
+  })();
+  (function () {
+    const btn = $("dotToggle");
+    const sync = () => { btn.textContent = dotMode === "paint" ? "car's paint" : "class colour"; };
+    btn.addEventListener("click", () => {
+      dotMode = dotMode === "paint" ? "class" : "paint";
+      try { localStorage.setItem("pitwall.dots", dotMode); } catch (e) { /* storage off */ }
       sync();
     });
     sync();

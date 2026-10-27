@@ -55,8 +55,10 @@ sets, in-car settings and CarLeftRight are your-car-only.
 
 A recurring trap, worth stating plainly: FakeSource repeatedly encoded the same
 assumption as the code under test, so the suite passed while the sim disagreed.
-It has now been corrected five times -- the F2Time placeholder, gap monotonicity,
-the mirrored yaw convention, impossible best laps, and single-class-only fields.
+It has now been corrected six times -- the F2Time placeholder, gap monotonicity,
+the yaw convention (mirrored, then turned 90 degrees; settled against GPS), impossible best laps,
+and single-class-only fields. Where a real file carries a second measure of the same thing (GPS
+against velocity and heading), test against that rather than the fake.
 When adding a derived value, make the fake reproduce the sim's awkward shape
 (placeholders, "carry over", mixed classes), not the convenient one.
 Replays are their own awkward shape (Talladega, VARIABLES_TO_VERIFY.md): no flags at all,
@@ -117,6 +119,9 @@ iRacing Suite app (suite/)
   token): `suite.bridge.relay_feed` puts the suite Hub's messages through a RemoteClient that never
   blocks the pump (half-rate ticks, always the ones carrying every car's arrays; oldest ticks dropped when slow). The local /ws stays loopback-only.
 
+- Track maps: the suite builds PitWall's outline for each track from your .ibt files by GPS (`Library.build_maps`, on
+  its own thread at start) into PitWall's cache (`pitwall.trackmap`, north up, `FRAME`); the bridge looks again every
+  10 s while it has none. PitWall's own builder needs your car on track; spectating and replays have no kinematics.
 - Your files (`suite/library.py`): the Lap Analyzer's "Your files" menus list the .ibt and Garage61 .csv
   files in iRacing's telemetry folder and folders you add (kept in %LOCALAPPDATA%\iRacingSuite\library.json),
   named by what they are (read from the header and last sample, cached). Only the suite's own server serves

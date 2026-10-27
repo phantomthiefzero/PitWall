@@ -40,7 +40,7 @@ from websockets.asyncio.server import serve
 from websockets.datastructures import Headers
 from websockets.http11 import Response
 
-SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director", "livery_status",
+SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director", "livery_status", "carcolors",
                   "camera_packs", "refgaps")
 
 # Messages a viewer may have queued before it is judged too slow and dropped.
@@ -375,7 +375,7 @@ class Relay:
 
     def _queue_snapshot(self, q: asyncio.Queue):
         """Everything a page needs to start, in the order it needs it."""
-        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "refgaps", "camera_packs"):
+        for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "carcolors", "refgaps", "camera_packs"):
             raw = self._feed_message() if t == "feed" else self.snapshot.get(t)
             if raw:
                 q.put_nowait(raw)
