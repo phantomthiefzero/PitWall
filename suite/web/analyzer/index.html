@@ -1866,7 +1866,7 @@ const S=[R.A,R.B].find(X=>X&&X.Speed&&(X.YawRate||X.LatG));if(!S||!R.len)return 
 const useYaw=S.YawRate&&S.YawRate.some(q=>q),turn=new Float64Array(N);let tot=0;for(let g=1;g<N;g++){const v=Math.max(5,S.Speed[g-1]);turn[g]=(useYaw?S.YawRate[g-1]:(S.LatG?S.LatG[g-1]/v:0))/v*ds;tot+=turn[g]}
 // a lap turns through one full circle; the car's slip makes the sum ~10% more, so scale it to exactly that
 const k=Math.abs(tot)>2*Math.PI*.7&&Math.abs(tot)<2*Math.PI*1.4?2*Math.PI/Math.abs(tot):1;
-for(let g=1;g<N;g++){h+=turn[g]*k;x[g]=x[g-1]+Math.cos(h)*ds;y[g]=y[g-1]+Math.sin(h)*ds}// y down the screen; checked against GPS (not mirrored)
+for(let g=1;g<N;g++){h+=turn[g]*k;x[g]=x[g-1]+Math.cos(h)*ds;y[g]=y[g-1]-Math.sin(h)*ds}// y runs down the screen, so a turn to the left (positive yaw rate) is -y; checked against GPS at Indianapolis, and Road Atlanta runs clockwise
 const ex=x[N-1]-x[0],ey=y[N-1]-y[0];if(Math.hypot(ex,ey)>R.len*.25)return null;for(let g=0;g<N;g++){x[g]-=ex*g/(N-1);y[g]-=ey*g/(N-1)}return{x,y,gps:false}}
 // The track map: coloured by where the time goes, every corner numbered. hot: corners to pick out (your 3 things).
 function coachMapSvg(R,C,hot){const T=coTrackXY(R);if(!T)return '';const{x,y}=T;let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(let g=0;g<N;g++){x0=Math.min(x0,x[g]);x1=Math.max(x1,x[g]);y0=Math.min(y0,y[g]);y1=Math.max(y1,y[g])}
