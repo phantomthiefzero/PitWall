@@ -1945,3 +1945,25 @@ console.log(JSON.stringify({ half: ghAt(T, 45) / (N - 1), start: ghAt(T, -1), en
         self.assertAlmostEqual(r["half"], 0.5, places=3)
         self.assertEqual((r["start"], r["end"]), (0, 999))
         self.assertAlmostEqual(r["s40"], 0.5, places=2)          # 20 s into an 80 s lap that starts slowly
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CornerReplayTest(unittest.TestCase):
+    def test_a_corner_play_starts_both_laps_together_at_the_corner(self):
+        r = run_js(r"""
+const A = Float64Array.from({ length: N }, (_, g) => g / (N - 1) * 90 + (g > 400 ? 1.5 : 0));   // 1.5 s lost before the corner
+const B = Float64Array.from({ length: N }, (_, g) => g / (N - 1) * 90);
+console.log(JSON.stringify({ a: ghFrom(A, 500, 4.5), b: ghFrom(B, 500, 4.5) }));
+""")
+        self.assertAlmostEqual(r["a"], r["b"], places=3)      # what was lost before the corner does not show in it
+        self.assertAlmostEqual(r["a"], 550, delta=1)
+
+    def test_then_against_now_is_the_best_saved_lap_before_today(self):
+        r = run_js(r"""
+const day = 86400000, now = Date.now(), lap = (t, at) => ({ lap: t, at, D: [0, 1], t: [0, t] });
+localStorage.setItem('coachLive', JSON.stringify({ 'car|Track': [lap(90.4, now - 3 * day), lap(90.1, now - 2 * day), lap(95.0, now - 2 * day), lap(89.0, now), lap(90.6, now - 4 * day)] }));
+const b = coachBefore({ key: 'car|Track' });
+console.log(JSON.stringify({ lap: b && b.lap, none: coachBefore({ key: 'other|Track' }) }));
+""")
+        self.assertEqual(r["lap"], 90.1)                       # today's 89.0 is not "before"
+        self.assertIsNone(r["none"])
