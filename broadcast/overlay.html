@@ -107,6 +107,25 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .bt-foot{background:var(--ink2);color:var(--muted);font:600 15px/1 var(--body);padding:7px 14px}
 .bt-foot .g{color:var(--gain)} .bt-foot .l{color:var(--lose)}
 
+/* ---------- where they're faster ---------- */
+#faster{right:36px;top:164px;width:860px}
+.fs{display:flex;background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.fs-map{width:400px;height:400px;flex:none;background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.06),transparent 70%),var(--ink2)}
+.fs-r{flex:1;display:flex;flex-direction:column;min-width:0}
+.fs-h{background:var(--accent);color:var(--accentText);font:800 20px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:9px 16px 8px}
+.fs-car{display:flex;align-items:center;gap:12px;padding:10px 16px 0}
+.fs-car .sw{width:10px;align-self:stretch;border-radius:3px;flex:none}
+.fs-car .nm{flex:1;min-width:0;font:700 30px/1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fs-car .tm{font:700 26px/1 var(--display);font-variant-numeric:tabular-nums;color:var(--muted)}
+.fs-big{padding:10px 16px 2px;font:800 48px/1 var(--display);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.fs-big small{display:block;font:600 16px/1.2 var(--body);color:var(--muted);letter-spacing:.02em;margin-top:6px}
+.fs-bars{display:flex;gap:3px;height:72px;margin:8px 16px 4px;position:relative}
+.fs-bars:before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+.fs-bars i{flex:1;border-radius:2px;transform:scaleY(0);transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+#faster.on .fs-bars i{transform:scaleY(1)}
+.fs-foot{margin-top:auto;padding:6px 16px 12px;font:600 15px/1.3 var(--body);color:var(--muted)}
+.fs-foot b{color:var(--text)}
+
 /* ---------- driver card ---------- */
 #card{left:460px;bottom:54px;width:900px}
 .cd{display:flex;align-items:stretch;border-radius:var(--r);overflow:hidden;height:118px}
@@ -226,6 +245,12 @@ body.bc-off>*:not(script){visibility:hidden!important}
     <div class="bt-foot" id="btFoot"></div>
   </div></div></section>
 
+  <section class="layer" id="faster"><div class="inner"><div class="fs">
+    <canvas class="fs-map" id="fsCv" width="800" height="800"></canvas>
+    <div class="fs-r"><div class="fs-h">Where they're faster</div><div id="fsCars"></div><div class="fs-big" id="fsBig"></div>
+    <div class="fs-bars" id="fsBars"></div><div class="fs-foot" id="fsFoot"></div></div>
+  </div></div></section>
+
   <section class="layer" id="card"><div class="inner"><div class="cd">
     <div class="lv" id="cdLv"></div>
     <div class="num" id="cdNumBox"><b id="cdNum">–</b><span id="cdPos"></span></div>
@@ -311,11 +336,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return v === undefined ? dflt : v;
   }
   const T = (k, d) => G("theme." + k, d);
-  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true };
+  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
   const shown = name => allowed(name) && !!G(name + ".show", DEFAULT_ON[name]) &&
-    !(gridUp && ["tower", "card", "battle", "map", "board"].includes(name) && G("grid.solo", true));
+    !(gridUp && ["tower", "card", "battle", "map", "board", "faster"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
   const gridWalkCar = () => {
@@ -429,7 +454,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const blogo = assetUrl(th.bannerLogo || th.sponsor);
     $("bnLogoBox").classList.toggle("hide", !blogo); if (blogo) $("bnLogo").src = blogo;
     // layout: every graphic can be moved and resized
-    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid"]) {
+    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster"]) {
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${Number(l.s) || 1})`;
@@ -623,6 +648,80 @@ body.bc-off>*:not(script){visibility:hidden!important}
       else foot = "Gap holding steady";
     }
     $("btFoot").innerHTML = foot;
+  }
+
+  // ---------------------------------------------------------------- where they're faster
+  // The battle's two cars (the battle box's pair), best lap against best lap over 24 stretches of the track
+  // (normalize.py: cars.derived.faster). The map is painted stretch by stretch in the quicker car's colour,
+  // sweeping round from the line when it comes on; the two best laps then race round it as dots, on a loop.
+  const FS = { key: null, shownAt: 0, pair: null };
+  function carColor(c, other) {
+    const d = String(c.carDesign || "").split(",")[1];
+    let col = d && /^[0-9a-f]{6}$/i.test(d) ? "#" + d.toLowerCase() : null;
+    const grey = h => { const n = parseInt(h.slice(1), 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255; return Math.max(r, g, b) - Math.min(r, g, b) < 40; };
+    if (!col || grey(col)) col = other ? "#3a86ff" : "#ffb23f";
+    // a dark paint lifted so it reads on the dark panel
+    const n = parseInt(col.slice(1), 16), r = n >> 16 & 255, g2 = n >> 8 & 255, b2 = n & 255, lum = (r * 299 + g2 * 587 + b2 * 114) / 1000;
+    if (lum < 110) { const k = (110 - lum) / 255 + 0.25, up = v => Math.round(v + (255 - v) * Math.min(0.6, k)); col = "#" + [up(r), up(g2), up(b2)].map(v => v.toString(16).padStart(2, "0")).join(""); }
+    return col;
+  }
+  function fasterPair() {
+    const b = currentBattle(), L = (S.cars && S.cars.derived && S.cars.derived.faster) || [];
+    if (!b) return null;
+    const [x, y] = b.cars.slice(-2);
+    return L.find(f => f.a === x && f.b === y) || null;
+  }
+  function renderFaster() {
+    const f = shown("faster") ? fasterPair() : null, el = $("faster");
+    el.classList.toggle("on", !!f);
+    if (!f) { FS.key = null; return; }
+    const A = carByIdx(f.a), B = carByIdx(f.b); if (!A || !B) return;
+    const key = f.a + "|" + f.b + "|" + f.totalS;
+    if (key === FS.key) return;
+    if (FS.key == null || FS.key.split("|").slice(0, 2).join() !== key.split("|").slice(0, 2).join()) FS.shownAt = performance.now();
+    FS.key = key; FS.pair = f;
+    const ca = carColor(A, false), cb0 = carColor(B, true), cb = cb0 === ca ? "#3a86ff" : cb0;
+    FS.ca = ca; FS.cb = cb;
+    const K = f.gainS.length, row = (c, col, lap) => `<div class="fs-car"><span class="sw" style="background:${col}"></span>${plate(c)}<span class="nm">${nameHtml(c.name)}</span><span class="tm">${fmt.lap(lap)}</span></div>`;
+    $("fsCars").innerHTML = row(A, ca, f.lapA[K]) + row(B, cb, f.lapB[K]);
+    const lead = f.totalS >= 0 ? A : B, lc = f.totalS >= 0 ? ca : cb, wa = f.gainS.filter(v => v > 0.004).length, wb = f.gainS.filter(v => v < -0.004).length;
+    $("fsBig").innerHTML = `<span style="color:${lc}">${Math.abs(f.totalS).toFixed(3)}</span><small>${nameHtml(lead.name, "last")}'s best lap is quicker by that much</small>`;
+    const mx = Math.max(0.01, ...f.gainS.map(Math.abs));
+    $("fsBars").innerHTML = f.gainS.map((v, k) => `<i style="background:${v >= 0 ? ca : cb};height:${Math.max(4, Math.abs(v) / mx * 48)}%;align-self:${v >= 0 ? "flex-end" : "flex-start"};margin-${v >= 0 ? "bottom" : "top"}:36px;transform-origin:${v >= 0 ? "bottom" : "top"};transition-delay:${(k * 0.03).toFixed(2)}s"></i>`).join("");
+    const big = f.gainS.map((v, k) => [Math.abs(v), k, v]).sort((p, q) => q[0] - p[0])[0];
+    $("fsFoot").innerHTML = `<b>${nameHtml(A.name, "last")}</b> quicker on ${wa} of ${K} stretches, <b>${nameHtml(B.name, "last")}</b> on ${wb}. ` +
+      `Biggest difference: ${big[0].toFixed(3)} s to ${nameHtml((big[2] >= 0 ? A : B).name, "last")}, ${Math.round(big[1] / K * 100)}–${Math.round((big[1] + 1) / K * 100)}% round the lap.`;
+  }
+  const fsCtx = $("fsCv").getContext("2d");
+  function drawFaster(now) {
+    const f = FS.pair; if (!f || !$("faster").classList.contains("on")) return;
+    const W = 800, pad = 70, size = W - pad * 2, g = fsCtx, pts = S.map && S.map.points, K = f.gainS.length;
+    g.clearRect(0, 0, W, W);
+    const P = pct => { pct = ((pct % 1) + 1) % 1;
+      if (pts) { const n = pts.length, q = pct * n, i = Math.floor(q) % n, j = (i + 1) % n, r = q - Math.floor(q); return [pad + (pts[i][0] + (pts[j][0] - pts[i][0]) * r) * size, pad + (pts[i][1] + (pts[j][1] - pts[i][1]) * r) * size]; }
+      const a = pct * Math.PI * 2 - Math.PI / 2; return [W / 2 + Math.cos(a) * size / 2, W / 2 + Math.sin(a) * size / 2]; };
+    const seg = (a, b) => { g.beginPath(); const n = Math.max(2, Math.ceil((b - a) * 400)); for (let k = 0; k <= n; k++) { const [x, y] = P(a + (b - a) * k / n); k ? g.lineTo(x, y) : g.moveTo(x, y); } };
+    g.lineJoin = g.lineCap = "round";
+    seg(0, 1); g.strokeStyle = "rgba(0,0,0,.65)"; g.lineWidth = 46; g.stroke();
+    seg(0, 1); g.strokeStyle = "rgba(255,255,255,.08)"; g.lineWidth = 30; g.stroke();
+    const sweep = Math.min(1, (now - FS.shownAt) / 1400), mx = Math.max(0.01, ...f.gainS.map(Math.abs));
+    for (let k = 0; k < K; k++) {
+      const a = k / K, b = (k + 1) / K; if (a > sweep) break;
+      const v = f.gainS[k], col = v >= 0 ? FS.ca : FS.cb;
+      g.globalAlpha = 0.4 + 0.6 * Math.min(1, Math.abs(v) / mx);
+      seg(a, Math.min(b, sweep)); g.strokeStyle = col; g.lineWidth = 22; g.shadowColor = col; g.shadowBlur = 18 * Math.min(1, Math.abs(v) / mx); g.stroke();
+    }
+    g.globalAlpha = 1; g.shadowBlur = 0;
+    const [sx, sy] = P(0); g.save(); g.translate(sx, sy); g.fillStyle = "#fff"; for (let r = 0; r < 4; r++) for (let c = 0; c < 2; c++) if ((r + c) % 2) g.fillRect(-12 + c * 12, -24 + r * 12, 12, 12); g.restore();
+    if (sweep < 1) return;
+    // the two best laps, racing round on a loop at three times real speed
+    const lapLen = Math.max(f.lapA[K], f.lapB[K]), t = (((now - FS.shownAt) / 1000 - 1.6) * 3) % (lapLen + 2);
+    const at = (L, tt) => { if (tt <= 0) return 0; if (tt >= L[K]) return 1; let k = 0; while (k < K && L[k + 1] < tt) k++; return (k + (tt - L[k]) / ((L[k + 1] - L[k]) || 1)) / K; };
+    [[f.lapB, FS.cb], [f.lapA, FS.ca]].forEach(([L, col]) => {
+      const q = at(L, t);
+      for (let tr = 6; tr >= 1; tr--) { const [x, y] = P(at(L, t - tr * 0.08)); g.globalAlpha = 0.12 * (7 - tr) / 6; g.fillStyle = col; g.beginPath(); g.arc(x, y, 14, 0, 7); g.fill(); }
+      g.globalAlpha = 1; const [x, y] = P(q); g.fillStyle = col; g.strokeStyle = "#000"; g.lineWidth = 4; g.beginPath(); g.arc(x, y, 18, 0, 7); g.fill(); g.stroke();
+    });
   }
 
   // ---------------------------------------------------------------- driver card
@@ -962,9 +1061,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard();
+      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster();
     }
-    drawMap();
+    drawMap(); drawFaster(t);
     pumpTicker();
     requestAnimationFrame(frame);
   }

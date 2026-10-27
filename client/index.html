@@ -574,6 +574,10 @@
   /* a panel that is only waiting says so quietly */
   details.panel[open] > div > .note:only-child { font-size: 12px; color: var(--dim); }
   .ev .tm { color: var(--dim); }
+  .fs-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 13px; }
+  .fs-tot { font-weight: 700; }
+  .fs-strip { display: flex; gap: 2px; height: 46px; margin: 6px 0 4px; align-items: stretch; }
+  .fs-strip i { flex: 1; border-radius: 2px; min-height: 3px; }
 </style>
 </head>
 <body>
@@ -672,6 +676,14 @@
       <details class="panel" id="battleDetails" open>
         <summary>Battle</summary>
         <div class="bb" id="bb"><div class="note">Waiting for race gaps.</div></div>
+      </details>
+    </section>
+
+    <section id="faster">
+      <details class="panel" id="fasterDetails" open>
+        <summary>Where they're faster
+          <button type="button" id="fasterSide" class="unittoggle mini" title="Against the car ahead or the car behind">car ahead</button></summary>
+        <div id="fasterBox"><div class="note">Needs each car's best lap timed from line to line on this screen.</div></div>
       </details>
     </section>
 
@@ -1876,6 +1888,60 @@
     const behind = cars.find(c => CP(c) === CP(me) + 1);
     el.innerHTML = battleRow("ahead", ahead) + battleRow("behind", behind);
   }
+
+  // ---- where they're faster: the followed car's best lap against the car ahead's (or behind's), stretch by
+  // stretch of the track. Computed in normalize.py (cars.derived.faster: every car against the car ahead in
+  // class, best lap against best lap, timed over 24 equal stretches from each car's position).
+  let fasterSide = "ahead";
+  try { if (localStorage.getItem("pitwall.fasterSide") === "behind") fasterSide = "behind"; } catch (e) {}
+  function fasterPair(me, other) {
+    const L = (S.cars && S.cars.derived && S.cars.derived.faster) || [];
+    const f = L.find(x => (x.a === me && x.b === other) || (x.a === other && x.b === me));
+    if (!f) return null;
+    return f.a === me ? { gain: f.gainS, total: f.totalS, lapMe: f.lapA, lapO: f.lapB }
+      : { gain: f.gainS.map(v => -v), total: -f.totalS, lapMe: f.lapB, lapO: f.lapA };
+  }
+  function renderFaster() {
+    const box = $("fasterBox"), btn = $("fasterSide");
+    if (!box || !S.cars) return;
+    btn.textContent = fasterSide === "ahead" ? "car ahead" : "car behind";
+    const me = meCar();
+    if (!me) { box.innerHTML = `<div class="note">Pick a car to follow.</div>`; return; }
+    const cars = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
+    const other = cars.find(c => c.classPos === me.classPos + (fasterSide === "ahead" ? -1 : 1));
+    if (!other) { box.innerHTML = `<div class="note">No car ${fasterSide} in class.</div>`; return; }
+    const P = fasterPair(me.idx, other.idx);
+    const key = [me.idx, other.idx, P ? P.total : "", (S.map && S.map.points || []).length].join("|");
+    if (box.dataset.k === key) return; box.dataset.k = key;
+    if (!P) { box.innerHTML = `<div class="note">${esc(shortCar(me.idx))} against ${esc(shortCar(other.idx))}: needs a best lap from each, timed on this screen from line to line.</div>`; return; }
+    const strip_ = h => String(h).replace(/<[^>]+>/g, "");
+    const K = P.gain.length, mx = Math.max(0.01, ...P.gain.map(Math.abs)), wins = P.gain.filter(v => v > 0.005).length;
+    const me$ = "#FFB23F", ot$ = "#6FA8FF";
+    const strip = `<div class="fs-strip">` + P.gain.map((v, k) => `<i title="Stretch ${k + 1} of ${K}: ${esc(strip_(shortCar(v >= 0 ? me.idx : other.idx)))} ${Math.abs(v).toFixed(3)} s quicker (computed here)" style="height:${Math.max(6, Math.abs(v) / mx * 48)}%;background:${v >= 0 ? me$ : ot$};align-self:${v >= 0 ? "flex-end" : "flex-start"};margin-${v >= 0 ? "bottom" : "top"}:23px"></i>`).join("") + `</div>`;
+    box.innerHTML = `<div class="fs-head"><span><b style="color:${me$}">${esc(shortCar(me.idx))}</b> ${D(fmt.lap(P.lapMe[K]), "Computed here: the best lap timed from line to line by position.")}</span>` +
+      `<span class="fs-tot">${D((P.total >= 0 ? "quicker by " : "slower by ") + Math.abs(P.total).toFixed(3) + " s", "Computed here: best lap against best lap.")}</span>` +
+      `<span><b style="color:${ot$}">${esc(shortCar(other.idx))}</b> ${fmt.lap(P.lapO[K])}</span></div>` +
+      `<canvas id="fasterMap" style="width:100%;height:220px;display:block"></canvas>` + strip +
+      `<div class="note">${esc(shortCar(me.idx))} is quicker on ${wins} of ${K} stretches. Each stretch is 1/${K} of the lap from the line; the map is painted in the quicker car's colour.</div>`;
+    const cv = $("fasterMap"), pts = S.map && S.map.points;
+    if (!cv || !pts) { if (cv) cv.remove(); return; }
+    const dpr = devicePixelRatio || 1, W = cv.width = cv.clientWidth * dpr, H = cv.height = cv.clientHeight * dpr, g = cv.getContext("2d");
+    const n = pts.length, pad = 12 * dpr, sz = Math.min(W, H) - 2 * pad, ox = (W - sz) / 2, oy = (H - sz) / 2, XY = i => [ox + pts[i % n][0] * sz, oy + pts[i % n][1] * sz];
+    g.lineCap = "round"; g.lineJoin = "round";
+    g.strokeStyle = CV.line; g.lineWidth = 9 * dpr; g.beginPath(); pts.forEach((p, i) => { const [x, y] = XY(i); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.stroke();
+    for (let k = 0; k < K; k++) {
+      const v = P.gain[k], a = Math.floor(k / K * n), b = Math.floor((k + 1) / K * n);
+      g.globalAlpha = 0.35 + 0.65 * Math.min(1, Math.abs(v) / mx); g.strokeStyle = v >= 0 ? me$ : ot$; g.lineWidth = 6 * dpr;
+      g.beginPath(); for (let i = a; i <= b; i++) { const [x, y] = XY(i); i === a ? g.moveTo(x, y) : g.lineTo(x, y); } g.stroke();
+    }
+    g.globalAlpha = 1; const [sx, sy] = XY(0); g.fillStyle = CV.text; g.fillRect(sx - 2 * dpr, sy - 7 * dpr, 4 * dpr, 14 * dpr);
+  }
+  $("fasterSide").addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();
+    fasterSide = fasterSide === "ahead" ? "behind" : "ahead";
+    try { localStorage.setItem("pitwall.fasterSide", fasterSide); } catch (e2) {}
+    $("fasterBox").dataset.k = ""; renderFaster();
+  });
 
   // ---- pit strategy: lane loss, where the followed car would rejoin, pit battles
   function renderStrategy() {
@@ -3115,7 +3181,7 @@
     }
     if (dirty.cars && now - drawnAt.cars >= 100) {
       drawnAt.cars = now; dirty.cars = false;
-      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderStrategy(); renderRaceStrategy(); renderTeam(); renderTraffic(); renderFollow(); renderTires();
+      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderFaster(); renderStrategy(); renderRaceStrategy(); renderTeam(); renderTraffic(); renderFollow(); renderTires();
     }
     if (now - ALARM.at >= 500 && (S.state || S.cars)) { ALARM.at = now; renderAlarms(); }
     if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {

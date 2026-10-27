@@ -11,6 +11,7 @@ import random
 import sys
 import tempfile
 import threading
+import pytest  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -1022,3 +1023,76 @@ def test_the_renderer_reports_each_cars_colour():
         while not got and _t.time() < deadline:
             _t.sleep(0.05)
     assert got == {"5_7": "#00a050"}
+
+
+# --------------------------------------------------------------------- where they're faster
+
+def test_best_laps_timed_by_stretches_say_where_each_car_is_faster():
+    """Two cars, sampled at 10 Hz as a replay is: car 1 is quicker in the first half of the lap, car 2 in
+    the second. A lap with a pit visit and a lap with a jump (a reset) are not kept."""
+    from pitwall.normalize import Deriver
+    d = Deriver()
+    K = d.STRETCHES
+
+    def pace(car, x):                       # laps per second at lap fraction x
+        quick_first = car == 1
+        return 1 / 60 * (1.08 if (x < 0.5) == quick_first else 0.95)
+    pos = {1: 0.5, 2: 0.5}
+    t = 0.0
+    for step in range(int(5 * 65 / 0.1)):
+        t += 0.1
+        cars = []
+        for i in (1, 2):
+            pos[i] += pace(i, pos[i] % 1) * 0.1
+            cars.append({"idx": i, "pct": pos[i] % 1, "surface": "on_track", "onPitRoad": False, "bestLapS": None})
+        d.lap_splits(cars, t)
+    f = d.faster(1, 2)
+    assert f is not None and len(f["gainS"]) == K
+    assert all(v > 0 for v in f["gainS"][:K // 2 - 1]) and all(v < 0 for v in f["gainS"][K // 2 + 1:])
+    assert abs(sum(f["gainS"]) - f["totalS"]) < 0.01
+    # each lap's time: the stretch times add up to the lap
+    lap1 = 1 / (1 / 60 * 1.08) * 0.5 + 1 / (1 / 60 * 0.95) * 0.5
+    assert abs(f["lapA"][-1] - lap1) < 0.05, f["lapA"][-1]
+    # a lap with a pit visit is not kept: car 3 only ever does pit laps
+    d2 = Deriver()
+    p, t = 0.5, 0.0
+    for step in range(int(3 * 62 / 0.1)):
+        t += 0.1
+        p += 1 / 60 * 0.1
+        d2.lap_splits([{"idx": 3, "pct": p % 1, "surface": "on_track", "onPitRoad": 0.2 < (p % 1) < 0.25}], t)
+    assert d2._split[3]["best"] is None
+    # never quicker than iRacing's own best lap for the car (a slip in the timing)
+    d3 = Deriver()
+    p, t = 0.5, 0.0
+    for step in range(int(3 * 62 / 0.1)):
+        t += 0.1
+        p += 1 / 60 * 0.1
+        d3.lap_splits([{"idx": 4, "pct": p % 1, "surface": "on_track", "onPitRoad": False, "bestLapS": 70.0}], t)
+    assert d3._split[4]["best"] is None
+
+
+TALLADEGA = "/mnt/user-data/uploads/Recordings/Talladega-Super-Speedway-Race_2026-10-25_192220.jsonl.gz"
+
+
+@pytest.mark.skipif(not os.path.exists(TALLADEGA), reason="needs the Talladega capture")
+def test_stretch_timed_best_laps_match_iracings_own_on_a_real_race():
+    """Every car's best lap, timed here from its position alone, against iRacing's CarIdxBestLapTime:
+    measured on the Talladega replay, the median difference was 0.003 s."""
+    import statistics
+    from pitwall.normalize import Deriver, build_session, build_state, build_cars
+    from pitwall.sources import ReplaySource
+    src = ReplaySource(TALLADEGA, realtime=False)
+    src.connect()
+    d, sess, k, cars = Deriver(), None, 0, None
+    while src.tick():
+        k += 1
+        if sess is None or k % 600 == 0:
+            sess = build_session(src)
+        build_state(src, d, sess)
+        cars = build_cars(src, sess, d)
+    by = {c["idx"]: c for c in cars["cars"]}
+    diffs = [abs(st["bestS"] - by[i]["bestLapS"]) for i, st in d._split.items()
+             if st["bestS"] and by.get(i) and (by[i].get("bestLapS") or 0) > 0]
+    assert len(diffs) >= 15
+    assert statistics.median(diffs) < 0.01 and max(diffs) < 0.05, (statistics.median(diffs), max(diffs))
+    assert len(cars["derived"]["faster"]) >= 15

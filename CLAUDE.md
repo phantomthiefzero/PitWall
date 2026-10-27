@@ -147,6 +147,8 @@ Broadcast (broadcast/)
   step. Same provenance rule for what is COMPUTED (only in normalize.py, under `derived`),
   but the on-air overlay does not mark derived values: the dotted underline was distracting
   on a stream. The producer panel still marks them for the people running the show.
+- Where they're faster (normalize `lap_splits`, `faster`, `derived.faster`): best laps timed by position over 24
+  stretches, every car against the car ahead in class; PitWall's panel and the overlay's `faster` graphic.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
 - Race length comes from the leader and SessionLaps (normalize.race_length), never from
