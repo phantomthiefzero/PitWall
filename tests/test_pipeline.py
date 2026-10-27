@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import time
+import pytest  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -288,26 +289,28 @@ def test_intervals_are_never_negative_or_placeholder():
     assert got[4] is None and got[5] is None and got[6] is None and got[7] is None
 
 
-def test_yaw_convention_is_not_mirrored():
+def test_yaw_convention_is_north_up_and_not_mirrored():
     """Pin the heading convention itself, not just self-consistency.
 
-    The original bug was that FakeSource and trackmap.integrate() used the same
-    wrong convention, so they inverted each other and the ground-truth test
-    passed at 1.5 m while every REAL track came out mirrored. These assertions
-    depend on neither module agreeing with the other.
+    Twice FakeSource and trackmap.integrate() shared a wrong guess (mirrored, then
+    turned 90 degrees) and the ground-truth test passed. The convention is now
+    settled against GPS (test_yawnorth_convention_against_gps_on_a_real_lap):
+    YawNorth is the heading clockwise from north, forward = (sin, cos) in (east, north).
     """
     from pitwall.trackmap import LapSample, integrate
 
-    # Pure forward motion at yaw = 0 must travel along -X. heading = (-cos, sin).
-    flat = [LapSample(t=0.0, pct=0.0, vx=10.0, vy=0.0, yaw=0.0),
-            LapSample(t=1.0, pct=0.5, vx=10.0, vy=0.0, yaw=0.0)]
-    pts, _ = integrate(flat)
-    assert pts[-1][1] < -5.0, pts[-1]
-    assert abs(pts[-1][2]) < 1e-6, pts[-1]
+    def end(yaw, vx=10.0, vy=0.0):
+        pts, _ = integrate([LapSample(t=0.0, pct=0.0, vx=vx, vy=vy, yaw=yaw), LapSample(t=1.0, pct=0.5, vx=vx, vy=vy, yaw=yaw)])
+        return pts[-1][1], pts[-1][2]
+    x, y = end(0.0)
+    assert y > 9.9 and abs(x) < 1e-6, "yaw 0 drives north"
+    x, y = end(math.pi / 2)
+    assert x > 9.9 and abs(y) < 1e-6, "a quarter turn clockwise drives east"
+    x, y = end(0.0, vx=0.0, vy=10.0)
+    assert x < -9.9 and abs(y) < 1e-6, "sliding left while facing north goes west"
 
-    # Chirality: a car holding constant speed with steadily increasing yaw traces
-    # a circle. Which way it winds is exactly what the mirror bug got backwards,
-    # so the sign of the enclosed area is the real regression guard.
+    # Chirality: steadily increasing yaw is turning right, so the circle winds clockwise
+    # (negative area with north up). The mirror bug got exactly this backwards.
     n = 360
     circle = [LapSample(t=i / 10.0, pct=i / n, vx=10.0, vy=0.0,
                         yaw=2 * math.pi * i / n) for i in range(n + 1)]
@@ -2621,3 +2624,142 @@ def test_an_inferred_caution_holds_through_a_tick_without_speeds():
     assert c["active"], "no speeds this tick: no change"
     c = d.caution(field(35.0), [], True, 4000.0, t + 0.5, state="racing")
     assert c["active"]
+
+
+# ---- track outlines from .ibt files (the suite's library), and iRacing's heading convention ----
+
+def _write_ibt(path, yaml, channels, rows, hz=60):
+    import struct
+    types = {1: ("B", 1), 2: ("i", 4), 4: ("f", 4), 5: ("d", 8)}
+    offs, o = [], 0
+    for _, t in channels:
+        offs.append(o)
+        o += types[t][1]
+    bl, nv, vho = o, len(channels), 144
+    so = vho + nv * 144
+    session = yaml.encode("latin-1") + b"\x00"
+    bo = so + len(session)
+    hdr = bytearray(144)
+    struct.pack_into("<iiiiiiiiii", hdr, 0, 2, 1, hz, 1, len(session), so, nv, vho, 1, bl)
+    struct.pack_into("<ii", hdr, 48, len(rows), bo)
+    vh = bytearray()
+    for (name, t), off in zip(channels, offs):
+        h = bytearray(144)
+        struct.pack_into("<iiii", h, 0, t, off, 1, 0)
+        h[16:16 + len(name)] = name.encode()
+        vh += h
+    fmt = "<" + "".join(types[t][0] for _, t in channels)
+    data = b"".join(struct.pack(fmt, *[r.get(n, 0) for n, _ in channels]) for r in rows)
+    with open(path, "wb") as f:
+        f.write(bytes(hdr) + bytes(vh) + session + data)
+
+
+def _test_track(n=4000):
+    """An asymmetric closed track (x east, y north, metres), driven clockwise, so a
+    mirrored or turned outline cannot pass for it."""
+    pts = []
+    for k in range(n):
+        a = -2 * math.pi * k / n                                   # clockwise
+        r = 400 + 120 * math.cos(a) + 70 * math.sin(2 * a) + 40 * math.cos(3 * a)
+        pts.append((r * math.cos(a) + 150 * math.sin(a) ** 3, r * math.sin(a)))
+    cum = [0.0]
+    for a, b in zip(pts, pts[1:] + pts[:1]):
+        cum.append(cum[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
+    return pts, cum
+
+
+def _track_ibt(path, gps=True, laps=3, v=45.0, hz=60):
+    pts, cum = _test_track()
+    L = cum[-1]
+    import bisect
+
+    def at(d):
+        d %= L
+        i = min(len(pts) - 1, bisect.bisect_right(cum, d) - 1)
+        a, b = pts[i], pts[(i + 1) % len(pts)]
+        f = (d - cum[i]) / ((cum[i + 1] - cum[i]) or 1)
+        return a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f
+    lat0, lon0 = 40.0, -85.0
+    k = math.cos(math.radians(lat0)) * 111320.0
+    rows, d = [], 0.5 * L                                         # start mid-lap, as a session does
+    for i in range(int((laps * L) / v * hz)):
+        x, y = at(d)
+        x1, y1 = at(d + 1.0)
+        yaw = math.atan2(x1 - x, y1 - y)                            # clockwise from north (the real convention)
+        r = {"SessionTime": i / hz, "Lap": int(d // L), "LapDistPct": (d % L) / L, "Speed": v, "IsOnTrack": 1,
+             "OnPitRoad": 0, "VelocityX": v, "VelocityY": 0.0, "YawNorth": yaw, "SessionNum": 0}
+        if gps:
+            r.update(Lat=lat0 + y / 111320.0, Lon=lon0 + x / k)
+        rows.append(r)
+        d += v / hz
+    ch = [("SessionTime", 5), ("Lap", 2), ("LapDistPct", 4), ("Speed", 4), ("IsOnTrack", 1), ("OnPitRoad", 1),
+          ("VelocityX", 4), ("VelocityY", 4), ("YawNorth", 4), ("SessionNum", 2)] + ([("Lat", 5), ("Lon", 5)] if gps else [])
+    yaml = ("WeekendInfo:\n TrackName: testtrack\n TrackID: 777\n TrackDisplayName: Test Track\n"
+            " TrackConfigName: Full\nDriverInfo:\n DriverCarIdx: 0\n Drivers:\n - CarIdx: 0\n   UserName: Me\n"
+            "SessionInfo:\n Sessions:\n - SessionNum: 0\n   SessionType: Practice\n")
+    _write_ibt(path, yaml, ch, rows, hz)
+    truth = [[*at(b / 720 * L)] for b in range(720)]
+    return truth, L
+
+
+def _outline_err(tm, truth):
+    tn, span = trackmap.normalize_points(truth)
+    return max(math.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(tm.points, tn)) * span
+
+
+def test_an_ibt_gives_its_track_outline_north_up_by_gps_or_by_heading():
+    """GPS when the file has it; else speed and YawNorth. Both must land on the same
+    north-up outline: that is what proves the heading convention in CI."""
+    with tempfile.TemporaryDirectory() as d:
+        a, b = os.path.join(d, "gps.ibt"), os.path.join(d, "nogps.ibt")
+        truth, L = _track_ibt(a, gps=True)
+        _track_ibt(b, gps=False)
+        g, h = trackmap.build_from_ibt(a), trackmap.build_from_ibt(b)
+    assert g.source == "gps" and (g.track_id, g.config) == (777, "Full")
+    assert h.source == "velocity_integration"
+    assert abs(g.lap_length_m - L) / L < 0.01 and abs(h.lap_length_m - L) / L < 0.01
+    assert _outline_err(g, truth) < 15.0, _outline_err(g, truth)
+    assert _outline_err(h, truth) < 15.0, "the heading-built outline is turned or mirrored"
+
+
+def test_the_suite_saves_outlines_from_your_files_and_pitwall_finds_them():
+    from suite.library import Library
+    with tempfile.TemporaryDirectory() as d:
+        tele, cache, app = (os.path.join(d, x) for x in ("telemetry", "maps", "app"))
+        for x in (tele, cache, app):
+            os.makedirs(x)
+        _track_ibt(os.path.join(tele, "car_testtrack 2026-10-01.ibt"), gps=True)
+        old = os.environ.get("PITWALL_CACHE")
+        os.environ["PITWALL_CACHE"] = cache
+        try:
+            lib = Library(folder=app, iracing=[tele])
+            made = lib.build_maps(log=lambda m: None)
+            assert made == ["Test Track"]
+            assert lib.build_maps(log=lambda m: None) == [], "each file is tried once"
+            tm = trackmap.load(777, "Full")
+            assert tm is not None and tm.source == "gps" and tm.meta["frame"] == trackmap.FRAME
+            # a map saved before north was up is built again, not shown turned
+            tm.meta["frame"] = 1
+            with open(os.path.join(cache, "777_Full.json"), "w", encoding="utf-8") as f:
+                json.dump(tm.to_message(), f)
+            assert trackmap.load(777, "Full") is None
+        finally:
+            if old is None:
+                os.environ.pop("PITWALL_CACHE", None)
+            else:
+                os.environ["PITWALL_CACHE"] = old
+
+
+REAL_IBT = os.environ.get("PITWALL_REAL_IBT", "/mnt/user-data/uploads/ferrari296gt3_indianapolis_2022_road_2026-10-10_20-47-23.ibt")
+
+
+@pytest.mark.skipif(not os.path.exists(REAL_IBT), reason="needs the real Indianapolis .ibt")
+def test_yawnorth_convention_against_gps_on_a_real_lap():
+    """The same real lap two ways: GPS, and VelocityX/Y turned by YawNorth. They agree
+    to a few metres only with heading = clockwise from north."""
+    lap, (tid, cfg, _name) = trackmap.ibt_lap(REAL_IBT)
+    g = trackmap.build_from_gps(lap, tid, cfg)
+    v = trackmap.build_from_lap([trackmap.LapSample(t, p, vx, vy, yaw) for p, _a, _o, t, vx, vy, yaw in lap], tid, cfg)
+    span = g.meta["spanM"]
+    err = sum(math.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(g.points, v.points)) / len(g.points) * span
+    assert err < 10.0, err

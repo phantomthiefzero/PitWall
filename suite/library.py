@@ -299,6 +299,41 @@ class Library:
                 pass
         return out
 
+    def build_maps(self, log=print, files=None):
+        """Track outlines for PitWall from your .ibt files (GPS), newest first, one per track,
+        saved where PitWall looks for them (pitwall.trackmap). A track that already has a GPS
+        outline is skipped; each file is tried once per run of the app."""
+        from pitwall import trackmap
+        tried = self.__dict__.setdefault("_map_tried", set())
+        files = files if files is not None else (self._last if self._last is not None else self.scan())
+        made, have = [], set()
+        for d in files:
+            if d.get("kind") != "ibt":
+                continue
+            p = (self._ids or {}).get(d.get("id"))
+            if not p or p in tried:
+                continue
+            tried.add(p)
+            try:
+                tid, cfg, name = trackmap.ibt_track(p)
+                key = (tid, cfg or "default")
+                if tid is None or key in have:
+                    continue
+                old = trackmap.load(*key)
+                if old is not None and old.source == "gps":
+                    have.add(key)
+                    continue
+                tm = trackmap.build_from_ibt(p)
+                if tm is None or (old is not None and tm.source != "gps"):
+                    continue
+                trackmap.save(tm)
+                have.add(key)
+                made.append(name or str(tid))
+                log("track map for %s from %s (%s)" % (name or tid, os.path.basename(p), tm.source))
+            except Exception as e:  # a damaged file must not stop the others
+                log("track map from %s: %s: %s" % (os.path.basename(p), type(e).__name__, e))
+        return made
+
     def path_of(self, tok):
         """The file for an id from the page: only a file of the last listing, still a telemetry
         file inside one of the folders. A path from the page is never used."""

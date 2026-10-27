@@ -511,18 +511,14 @@ class FakeSource(TelemetrySource):
         return (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
 
     def heading_at(self, pct: float) -> float:
-        """YawNorth in iRacing's convention, so the map test proves the real thing.
-
-        iRacing's heading works out to (-cos(yaw), sin(yaw)), not (cos(yaw),
-        sin(yaw)) -- verified by rebuilding a real lap and comparing against
-        iRacing's own track map. This used to return a plain atan2(dy, dx),
-        which trackmap.integrate() inverted exactly, so the pair agreed with
-        each other and disagreed with the sim: every real outline came out
-        mirrored while the test passed at 1.5 m.
+        """YawNorth in iRacing's convention, so the map test proves the real thing:
+        the heading clockwise from north, forward = (sin, cos) in (east, north).
+        Proven against GPS on a real .ibt (see trackmap.integrate). Twice before,
+        this function and integrate() shared a wrong guess and the test passed.
         """
         p0 = self.pos_at(pct - 0.0005)
         p1 = self.pos_at(pct + 0.0005)
-        return math.atan2(p1[1] - p0[1], -(p1[0] - p0[0]))
+        return math.atan2(p1[0] - p0[0], p1[1] - p0[1])        # clockwise from north (x east, y north)
 
     CSF_STEPS = 20000
 

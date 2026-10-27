@@ -939,3 +939,86 @@ def test_with_the_broadcast_off_nothing_moves_the_camera():
     assert [r["ok"] for r in res] == [False, False, False, False, False, True, True, True], res
     assert all(r["error"] == BROADCAST_OFF for r in res[:5])
     assert b.director.live and b.director.owner == "battle"
+
+
+# --------------------------------------------------------------------- car colours for map dots
+
+def _png(w, h, pixel, ctype=6, filters=(0, 1, 2, 3, 4)):
+    """A real PNG (8-bit RGBA or RGB), each row with a different filter, so the decoder's
+    unfiltering is checked rather than assumed."""
+    import struct as st
+    import zlib as zl
+    bpp = 4 if ctype == 6 else 3
+    raw, prev = bytearray(), bytearray(w * bpp)
+    for y in range(h):
+        line = bytearray()
+        for x in range(w):
+            r, g, b, a = pixel(x, y)
+            line += bytes((r, g, b, a)) if bpp == 4 else bytes((r, g, b))
+        ft = filters[y % len(filters)]
+        out = bytearray(len(line))
+        for i in range(len(line)):
+            left = line[i - bpp] if i >= bpp else 0
+            up, ul = prev[i], (prev[i - bpp] if i >= bpp else 0)
+            if ft == 0:
+                p = 0
+            elif ft == 1:
+                p = left
+            elif ft == 2:
+                p = up
+            elif ft == 3:
+                p = (left + up) >> 1
+            else:
+                pa, pb, pc = abs(up - ul), abs(left - ul), abs(left + up - 2 * ul)
+                p = left if pa <= pb and pa <= pc else up if pb <= pc else ul
+            out[i] = (line[i] - p) & 255
+        raw += bytes([ft]) + out
+        prev = line
+
+    def chunk(k, b):
+        return st.pack(">I", len(b)) + k + b + st.pack(">I", zl.crc32(k + b) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", st.pack(">IIBBBBB", w, h, 8, ctype, 0, 0, 0))
+            + chunk(b"IDAT", zl.compress(bytes(raw))) + chunk(b"IEND", b""))
+
+
+def _car_picture(body, backdrop=None):
+    """A side view: a body-coloured box, black tyres, grey glass, on a transparent or plain backdrop."""
+    def px(x, y):
+        if 10 <= x < 70 and 14 <= y < 30:
+            if 30 <= x < 50 and y < 19:
+                return (120, 130, 140, 255)                # glass
+            return (*body, 255)
+        if (16 <= x < 26 or 54 <= x < 64) and 30 <= y < 38:
+            return (12, 12, 12, 255)                       # tyres
+        return (*backdrop, 255) if backdrop else (0, 0, 0, 0)
+    return px
+
+
+def test_a_cars_paint_colour_comes_from_its_picture():
+    from pitwall.carcolor import png_color, png_pixels, design_color
+    data = _png(80, 44, _car_picture((200, 30, 40)))
+    w, h, px = png_pixels(data, step=1)
+    assert (w, h, len(px)) == (80, 44, 80 * 44)
+    assert px[20 * 80 + 12] == (200, 30, 40, 255), "every filter type undone"
+    assert png_color(data) == "#c81e28"
+    assert png_color(_png(80, 44, _car_picture((20, 90, 210), backdrop=(235, 235, 235)), ctype=2)) == "#145ad2", \
+        "an opaque studio backdrop is not the paint"
+    white = png_color(_png(80, 44, _car_picture((245, 245, 245))))
+    assert white == "#f5f5f5", "a white car is white, not its tyres"
+    assert png_color(b"not a png") is None
+    assert design_color("1,ff3b30,ffffff,111111") == "#ff3b30" and design_color("") is None and design_color("3") is None
+
+
+def test_the_renderer_reports_each_cars_colour():
+    import time as _t
+    from pitwall.carrender import CarRenderer
+    got = {}
+    data = _png(80, 44, _car_picture((0, 160, 80)))
+    with tempfile.TemporaryDirectory() as d:
+        r = CarRenderer(d, lambda m: None, fetch=lambda url: (200, "image/png", data), root=os.path.join(d, "paint"),
+                        on_color=lambda k, c: got.__setitem__(k, c))
+        r.request([{"CarPath": "gr86", "CarID": 5, "UserID": 7, "TeamID": 0, "CarNumber": "7"}])
+        deadline = _t.time() + 3
+        while not got and _t.time() < deadline:
+            _t.sleep(0.05)
+    assert got == {"5_7": "#00a050"}
