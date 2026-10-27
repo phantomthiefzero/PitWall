@@ -182,6 +182,14 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .bd-row .v{width:88px;text-align:right;font:600 17px/1 var(--display);font-variant-numeric:tabular-nums}
 .bd-row .v.m{color:var(--muted)}
 .bd-row .v.fl{color:#d9c2ff}
+.bd-row .v.up{color:#3fd47a}.bd-row .v.dn{color:#ff6b6b}
+.bd-hi{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:12px}.bd-hi:empty{display:none}
+.bd-hi .hi{display:flex;align-items:center;gap:10px;background:var(--ink2);border-top:3px solid var(--accent);padding:10px 12px;border-radius:var(--r);animation:hiIn .5s ease both}
+.bd-hi .hi:nth-child(2){animation-delay:.15s}.bd-hi .hi:nth-child(3){animation-delay:.3s}
+.bd-hi small{color:var(--muted);font:600 11px/1.1 var(--body);text-transform:uppercase;letter-spacing:.06em;width:70px}
+.bd-hi .nm{flex:1;font:600 19px/1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bd-hi b{font:700 20px/1 var(--display);font-variant-numeric:tabular-nums}
+@keyframes hiIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .bd-colhead{display:flex;gap:10px;color:var(--muted);font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em;padding:4px 6px}
 .bd-colhead .sp{flex:1}.bd-colhead .c{width:88px;text-align:right}
 
@@ -267,7 +275,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
 
   <section class="layer" id="board"><div class="inner"><div class="pn">
     <div class="pn-head"><img class="logo hide" id="bdLogo" alt=""><b id="bdTitle">Standings</b><span id="bdSub"></span></div>
-    <div class="pn-body"><div class="bd-cols" id="bdCols"></div></div>
+    <div class="pn-body"><div class="bd-cols" id="bdCols"></div><div class="bd-hi" id="bdHi"></div></div>
   </div></div></section>
 
   <section class="layer" id="grid"><div class="inner"><div class="pn">
@@ -339,7 +347,25 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
-  const shown = name => allowed(name) && !!G(name + ".show", DEFAULT_ON[name]) &&
+  // Automatic graphics (producer: "Pick graphics for me"): the battle's "where they're faster" when the two
+  // are within half a second, at most 20 s per pair every 2 minutes; the results board at the finish.
+  const AUTO = { pair: null, from: 0, rest: {} };
+  function autoWants(name) {
+    if (!G("auto.on", false)) return false;
+    if (name === "board") return isRace() && racingFlag() === "checkered";
+    if (name !== "faster") return false;
+    const b = currentBattle(); if (!b) { AUTO.pair = null; return false; }
+    const c2 = carByIdx(b.cars[b.cars.length - 1]), d = c2 && c2.derived || {};
+    const gap = d.liveClassIntervalS != null ? d.liveClassIntervalS : b.gapsS[b.gapsS.length - 1];
+    const key = b.cars.slice(-2).join("|"), now = performance.now();
+    if (AUTO.pair === key) {
+      if (now - AUTO.from < 20000) return true;
+      AUTO.rest[key] = now; AUTO.pair = null; return false;
+    }
+    if (gap == null || Math.abs(gap) >= 0.5 || now - (AUTO.rest[key] || -1e9) < 120000) return false;
+    AUTO.pair = key; AUTO.from = now; return true;
+  }
+  const shown = name => allowed(name) && (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
     !(gridUp && ["tower", "card", "battle", "map", "board", "faster"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
@@ -419,6 +445,12 @@ body.bc-off>*:not(script){visibility:hidden!important}
     daylight: { colors: { ink: "#ffffff", ink2: "#f1f3f6", head: "#0b2a5b", headText: "#ffffff", text: "#0d1320", muted: "#5c6b80",
                           accent: "#e4002b", accentText: "#ffffff", fl: "#7b2fd6", plate: "#dfe4ea" },
                 fonts: { display: "Saira Condensed", body: "Saira" }, caps: true, radius: 4, names: "initial" },
+    neon: { colors: { ink: "#0b0a14", ink2: "#14122a", head: "#ff2e88", headText: "#0b0a14", text: "#f4f1ff", muted: "#8f89b8",
+                      accent: "#00e5ff", accentText: "#0b0a14", fl: "#c77dff", plate: "#221f3d" },
+            fonts: { display: "Chakra Petch", body: "Barlow" }, caps: true, radius: 2, names: "initial" },
+    heritage: { colors: { ink: "#0f2a1d", ink2: "#143425", head: "#e9e2c9", headText: "#0f2a1d", text: "#f3eedb", muted: "#a8b5a0",
+                          accent: "#d4a017", accentText: "#0f2a1d", fl: "#b58cff", plate: "#1d4430" },
+                fonts: { display: "Oswald", body: "Barlow" }, caps: true, radius: 0, names: "initial" },
   };
   let fontKey = "";
   const fontFaces = new Set();
@@ -915,7 +947,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("bdTitle").textContent = f === "checkered" ? "Results" : (T("text.series", "") || (sess ? sess.SessionType : "Standings"));
     $("bdSub").innerHTML = esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + "<br>" + raceState().main.replace(/<[^>]+>/g, "");
     const race = isRace(), off = officialPublished();
-    const cols = race ? (off ? ["Gap", "Best", "Inc"] : ["Gap", "Best", "Pits"]) : ["Best", "Last", ""];
+    const fin = race && f === "checkered";
+    const cols = race ? (fin ? ["Gap", "Best", "+/−"] : off ? ["Gap", "Best", "Inc"] : ["Gap", "Best", "Pits"]) : ["Best", "Last", ""];
     const fl = fastestByClass();
     const field = allCars().filter(c => c.pos > 0);
     const groups = multi() ? classes().map(k => ({ k, list: field.filter(c => c.classId === k.id).sort((a, b) => a.classPos - b.classPos) }))
@@ -925,11 +958,13 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const g = c.pos === 1 || (byClass && c.classPos === 1) ? "Leader" :
         (byClass ? (d.classGapLaps >= 1 ? fmt.laps(d.classGapLaps) : d.liveClassGapS != null ? fmt.gap(d.liveClassGapS) : "–")
                  : (d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : d.liveGapS != null ? fmt.gap(d.liveGapS) : "–"));
-      const vals = race ? [g, fmt.lap(c.bestLapS), off ? (c.incidents >= 0 ? c.incidents + "x" : "–") : (d.stopsSeen ?? "–")]
+      const pg = byClass ? d.classPosGained : d.posGained;
+      const gained = pg == null ? "–" : pg > 0 ? "▲" + pg : pg < 0 ? "▼" + (-pg) : "=";
+      const vals = race ? [g, fmt.lap(c.bestLapS), fin ? gained : off ? (c.incidents >= 0 ? c.incidents + "x" : "–") : (d.stopsSeen ?? "–")]
                         : [fmt.lap(c.bestLapS), fmt.lap(c.lastLapS), ""];
       const isFl = fl[c.classId] && fl[c.classId].idx === c.idx;
       return `<div class="bd-row"><span class="pos">${esc(byClass ? c.classPos : c.pos)}</span>${plate(c)}<span class="nm">${nameHtml(c.name)}${c.onPitRoad ? ' <span style="color:var(--muted);font-size:14px">PIT</span>' : ""}</span>` +
-        vals.map((v, i) => `<span class="v${i ? " m" : ""}${(race ? i === 1 : i === 0) && isFl ? " fl" : ""}">${esc(v)}</span>`).join("") + `</div>`;
+        vals.map((v, i) => `<span class="v${i ? " m" : ""}${(race ? i === 1 : i === 0) && isFl ? " fl" : ""}${fin && i === 2 ? (pg > 0 ? " up" : pg < 0 ? " dn" : "") : ""}">${esc(v)}</span>`).join("") + `</div>`;
     };
     const colHead = `<div class="bd-colhead"><span style="width:80px"></span><span class="sp">Driver</span>${cols.map(c => `<span class="c">${c}</span>`).join("")}</div>`;
     const ncols = groups.length > 1 ? Math.min(groups.length, 3) : (groups[0].list.length > 20 ? 2 : 1);
@@ -940,6 +975,17 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const list = groups[0].list.slice(0, 40), half = ncols === 2 ? Math.ceil(list.length / 2) : list.length;
       $("bdCols").innerHTML = [list.slice(0, half), list.slice(half)].filter(x => x.length).map(part => `<div class="bd-sec">${colHead}${part.map(c => row(c, false)).join("")}</div>`).join("");
     }
+    // The story of the race, under the results: fastest lap, most laps led, biggest climb (over the field)
+    const hi = $("bdHi");
+    if (!fin) { hi.innerHTML = ""; return; }
+    const by = (k, pick) => field.filter(c => pick(c) != null).sort((a, b) => k(a, b))[0];
+    const fast = by((a, b) => a.bestLapS - b.bestLapS, c => c.bestLapS > 0 ? c.bestLapS : null);
+    const led = by((a, b) => (b.derived.lapsLedSeen || 0) - (a.derived.lapsLedSeen || 0), c => c.derived && c.derived.lapsLedSeen > 0 ? 1 : null);
+    const up = by((a, b) => (b.derived.posGained || 0) - (a.derived.posGained || 0), c => c.derived && c.derived.posGained > 0 ? 1 : null);
+    const card = (lab, c, v) => c ? `<div class="hi"><small>${lab}</small>${plate(c)}<span class="nm">${nameHtml(c.name, "last")}</span><b>${esc(v)}</b></div>` : "";
+    hi.innerHTML = card("Fastest lap", fast, fast && fmt.lap(fast.bestLapS)) +
+      card("Most laps led", led, led && led.derived.lapsLedSeen + (led.derived.lapsLedSeen === 1 ? " lap" : " laps")) +
+      card("Biggest climb", up, up && "▲" + up.derived.posGained + " from P" + up.derived.gridPos);
   }
 
   // ---------------------------------------------------------------- starting grid
