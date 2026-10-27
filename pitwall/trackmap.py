@@ -3,7 +3,7 @@
 iRacing does not expose track geometry. What it does expose every frame:
     VelocityX  forward speed in the car's frame (m/s)
     VelocityY  leftward speed in the car's frame (m/s)
-    YawNorth   heading relative to north (rad); heading = (-cos, sin), NOT (cos, sin)
+    YawNorth   heading clockwise from north (rad): forward = (sin, cos) in (east, north)
     LapDistPct 0..1 distance around the lap
 
 Integrating (VelocityX, VelocityY) rotated by YawNorth gives a world-frame
@@ -112,19 +112,17 @@ def integrate(samples: list[LapSample]) -> tuple[list[tuple[float, float, float]
             continue
         # trapezoidal on the rotated velocity
         def world(s):
-            # YawNorth is NOT a counterclockwise angle from +X. Treating it as one
-            # produced a world frame of the wrong handedness, so every generated
-            # outline came out MIRRORED against the real track -- confirmed by eye
-            # at VIR North, where the turn-1 hairpin landed top-right instead of
-            # top-left. The X component is negated to restore correct handedness:
-            # heading = (-cos(yaw), sin(yaw)).
+            # YawNorth is the heading clockwise from north: forward = (sin, cos) in
+            # (east, north), and VelocityY (leftward) along (-cos, sin). Proven against
+            # GPS: an Indianapolis .ibt carries Lat/Lon and these channels for the same
+            # lap, and the two outlines agree to ~2 m (tests/test_pipeline.py).
             #
-            # This went unnoticed because FakeSource.heading_at() emitted the same
-            # wrong convention, so the ground-truth test inverted the same error
-            # and passed at 1.5 m. Both were changed together; the test now checks
-            # the convention iRacing actually uses.
+            # History: it was first taken as a counterclockwise angle from +X (mirrored
+            # maps), then "fixed" by eye at VIR to (-cos, sin), which was no longer
+            # mirrored but turned 90 degrees, so north was not up. Each time
+            # FakeSource.heading_at() carried the same assumption and the test passed.
             c, s_ = math.cos(s.yaw), math.sin(s.yaw)
-            return (-(s.vx * c - s.vy * s_), s.vx * s_ + s.vy * c)
+            return (s.vx * s_ - s.vy * c, s.vx * c + s.vy * s_)
         wa, wb = world(a), world(b)
         x += 0.5 * (wa[0] + wb[0]) * dt
         y += 0.5 * (wa[1] + wb[1]) * dt
@@ -184,6 +182,125 @@ def build_from_lap(samples: list[LapSample], track_id, config, bins: int = DEFAU
 
 
 # --------------------------------------------------------------------------- #
+# From an .ibt file (the suite's library): one clean lap, by GPS when it has it
+# --------------------------------------------------------------------------- #
+
+_IBT_FMT = {1: "<?", 2: "<i", 3: "<I", 4: "<f", 5: "<d"}
+
+
+def _ibt_open(path):
+    import mmap
+    import struct
+    f = open(path, "rb")
+    mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+    i = lambda o: struct.unpack_from("<i", mm, o)[0]
+    sl, so, nv, vo, bl, bo = i(16), i(20), i(24), i(28), i(36), i(52)
+    if nv <= 0 or bl <= 0 or so + sl > len(mm):
+        raise ValueError("not an .ibt")
+    yaml = bytes(mm[so:so + sl]).split(b"\0", 1)[0].decode("latin-1")
+    var = {}
+    for k in range(nv):
+        q = vo + k * 144
+        t, off, cnt = struct.unpack_from("<iii", mm, q)
+        name = bytes(mm[q + 16:q + 48]).split(b"\0")[0].decode("latin-1")
+        if cnt == 1 and t in _IBT_FMT:
+            var[name] = (_IBT_FMT[t], off)
+    return f, mm, yaml, var, bl, bo, i(8) or 60
+
+
+def _yaml_track(yaml):
+    import re
+
+    def val(key):
+        m = re.search(r"^\s*" + key + r":\s*([^\n]*)$", yaml, re.M)
+        return m.group(1).strip() if m else None
+    tid = val("TrackID")
+    try:
+        tid = int(tid)
+    except (TypeError, ValueError):
+        pass
+    return tid, val("TrackConfigName") or None, val("TrackDisplayName")
+
+
+def ibt_lap(path, max_laps: int = 40):
+    """The first clean, complete lap in an .ibt: [(pct, lat, lon, t, vx, vy, yaw)], with the track's
+    (TrackID, TrackConfigName, name). Clean: on track the whole way, no pit road, LapDistPct
+    rising steadily from the line to the line (a reset jumps it). None when there is none."""
+    import struct
+    f, mm, yaml, var, bl, bo, tick = _ibt_open(path)
+    try:
+        need = ("LapDistPct", "Lap")
+        if any(n not in var for n in need):
+            return None, _yaml_track(yaml)
+        rows = (len(mm) - bo) // bl
+        get = {n: var[n] for n in ("LapDistPct", "Lap", "Lat", "Lon", "OnPitRoad", "IsOnTrack",
+                                   "VelocityX", "VelocityY", "YawNorth") if n in var}
+
+        def rd(r, n):
+            v = get.get(n)
+            return None if v is None else struct.unpack_from(v[0], mm, bo + r * bl + v[1])[0]
+        cur, last_pct, laps_seen = None, None, 0
+        for r in range(rows):
+            pct = rd(r, "LapDistPct")
+            ok = pct is not None and pct >= 0 and not rd(r, "OnPitRoad") and rd(r, "IsOnTrack") is not False
+            crossed = last_pct is not None and last_pct > 0.9 and pct is not None and pct < 0.1
+            if crossed:
+                if cur is not None and len(cur) > 200 and cur[-1][0] > 0.98:
+                    return cur, _yaml_track(yaml)
+                laps_seen += 1
+                if laps_seen > max_laps:
+                    break
+                cur = []
+            if cur is not None:
+                if not ok or (last_pct is not None and not crossed and not (-0.002 <= pct - last_pct < 0.02)):
+                    cur = None                     # a pit visit, an off, a reset: wait for the next line
+                else:
+                    cur.append((pct, rd(r, "Lat"), rd(r, "Lon"), r / tick, rd(r, "VelocityX"), rd(r, "VelocityY"),
+                                rd(r, "YawNorth")))
+            last_pct = pct
+        return None, _yaml_track(yaml)
+    finally:
+        mm.close()
+        f.close()
+
+
+def build_from_gps(lap, track_id, config, bins: int = DEFAULT_BINS) -> TrackMap | None:
+    """An outline from GPS (Lat/Lon in degrees), north up, the same frame as build_from_lap."""
+    pts = [(p, la, lo) for p, la, lo, *_ in lap if la and lo]
+    if len(pts) < 200:
+        return None
+    lat0 = sum(q[1] for q in pts) / len(pts)
+    k = math.cos(math.radians(lat0)) * 111320.0
+    path = [(p, lo * k, la * 111320.0) for p, la, lo in pts]      # x east, y north (metres)
+    x0, y0 = path[0][1], path[0][2]
+    path = [(p, x - x0, y - y0) for p, x, y in path]
+    closure = math.hypot(path[-1][1] - path[0][1], path[-1][2] - path[0][2])
+    closed = close_loop(path)
+    lap_len = sum(math.hypot(b[1] - a[1], b[2] - a[2]) for a, b in zip(closed, closed[1:]))
+    if lap_len < 500:
+        return None
+    norm, span = normalize_points(resample(closed, bins))
+    return TrackMap(track_id=track_id, config=config, bins=bins, points=norm, start_finish_index=0,
+                    lap_length_m=round(lap_len, 1), closure_error_m=round(closure, 1), source="gps",
+                    meta={"samples": len(pts), "spanM": round(span, 1)})
+
+
+def build_from_ibt(path, bins: int = DEFAULT_BINS) -> TrackMap | None:
+    """The outline of an .ibt's track: GPS when the file has it, else its own speed and heading."""
+    lap, (tid, cfg, name) = ibt_lap(path)
+    if not lap or tid is None:
+        return None
+    tm = build_from_gps(lap, tid, cfg or "default", bins)
+    if tm is None and all(q[4] is not None and q[6] is not None for q in lap):
+        tm = build_from_lap([LapSample(t, p, vx, vy or 0.0, yaw) for p, _la, _lo, t, vx, vy, yaw in lap],
+                            tid, cfg or "default", bins)
+    if tm is not None:
+        tm.meta["from"] = "ibt"
+        tm.meta["track"] = name
+    return tm
+
+
+# --------------------------------------------------------------------------- #
 # Cache
 # --------------------------------------------------------------------------- #
 
@@ -199,10 +316,16 @@ def _key(track_id, config) -> str:
     return f"{track_id}_{safe}.json"
 
 
+FRAME = 2      # north up; maps saved before it (turned 90 degrees) are built again
+
+
 def save(tm: TrackMap) -> str:
+    tm.meta["frame"] = FRAME
     path = os.path.join(cache_dir(), _key(tm.track_id, tm.config))
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(tm.to_message(), f)
+    os.replace(tmp, path)
     return path
 
 
@@ -210,5 +333,19 @@ def load(track_id, config) -> TrackMap | None:
     path = os.path.join(cache_dir(), _key(track_id, config))
     if not os.path.exists(path):
         return None
-    with open(path, encoding="utf-8") as f:
-        return TrackMap.from_message(json.load(f))
+    try:
+        with open(path, encoding="utf-8") as f:
+            tm = TrackMap.from_message(json.load(f))
+    except (OSError, ValueError, KeyError):
+        return None
+    if (tm.meta or {}).get("frame") != FRAME:
+        return None
+    return tm
+
+
+def ibt_track(path):
+    """(TrackID, TrackConfigName, TrackDisplayName) of an .ibt, from its session info only."""
+    f, mm, yaml, *_ = _ibt_open(path)
+    mm.close()
+    f.close()
+    return _yaml_track(yaml)
