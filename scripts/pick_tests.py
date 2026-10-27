@@ -23,7 +23,7 @@ RULES = [
     ("suite/web/", [SUITE]),
     ("suite/", [SUITE, ANALYZER]),                    # bridge, share, updater, page splitting
     ("broadcast/", PITWALL[1:] + [SUITE]),
-    ("client/", ["tests/test_pipeline.py", SUITE]),
+    ("client/", ["tests/test_pipeline.py", "tests/test_client.py", SUITE]),
     ("pitwall/", PITWALL + [SUITE]),
     ("relay/", PITWALL + [SUITE]),
     ("tests/analyzer_harness.js", [ANALYZER]),
