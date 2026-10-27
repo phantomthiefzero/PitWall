@@ -2002,3 +2002,19 @@ const h = pracHtml('car|Track').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 console.log(JSON.stringify({ h }));
 """)
         self.assertIn("Better : +0.19 s at the start, +0.04 s now (8 laps)", r["h"])    # tags stripped to spaces
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CoachMoreTest(unittest.TestCase):
+    def test_what_changed_in_a_corner_that_got_better(self):
+        r = run_js(r"""
+const a = { tq: { 4: [-9, -6.0], 7: [2, 0] } }, b = { tq: { 4: [-2, -1.0], 7: [2, 0.4] } };
+const g61 = [{ lap: 83.2, who: 'Alien' }, { lap: 84.1, who: 'Close' }, { lap: 84.3, who: 'Too close' }, { lap: 85.0, who: 'Slower' }];
+console.log(JSON.stringify({ w4: coachWhyBetter(a, b, 4), w7: coachWhyBetter(a, b, 7), near: coachG61Near(g61, 84.45).who,
+  far: coachG61Near([{ lap: 80.0, who: 'Alien' }], 84.6).who, none: coachG61Near([{ lap: 85, who: 'x' }], 84.6) }));
+""")
+        self.assertEqual(r["w4"], "you now brake where your best does, from 9 m, 3 mph more at the slowest point")
+        self.assertEqual(r["w7"], "")
+        self.assertEqual(r["near"], "Close")          # quicker by 0.35 s; 84.3 (0.15 s) is too close to learn from
+        self.assertEqual(r["far"], "Alien")           # nothing within 3%: the quickest that is quicker
+        self.assertIsNone(r["none"])
