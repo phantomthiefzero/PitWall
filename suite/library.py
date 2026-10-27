@@ -168,6 +168,65 @@ def g61_info(path):
 
 
 # --------------------------------------------------------------------------- #
+# Your records: best laps per car and track, and the moments worth remembering
+# --------------------------------------------------------------------------- #
+
+def _norm(s):
+    return re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
+
+
+def _person(s):
+    """iRacing adds digits to repeated names ("Andrew Brooks6"); Garage 61 writes the plain name."""
+    return re.sub(r"\d+$", "", _norm(s))
+
+
+def records(files, me=None):
+    """From the listed files (Library.scan): your best lap for each car and track, how many sessions,
+    when you last drove it, and milestones in date order (first time at a track in a car, each new
+    best, each whole second broken). Only your own laps: the driver who recorded most of the .ibt
+    files is you, unless `me` says otherwise; team events count only when you are the driver named.
+    Times are iRacing's (LapBestLapTime at the end of the file) or Garage 61's (its file name)."""
+    files = [f for f in files if f.get("kind") in ("ibt", "g61") and f.get("car") and f.get("track")]
+    if me is None:
+        names = {}
+        for f in files:
+            if f["kind"] == "ibt" and f.get("driver"):
+                names[_person(f["driver"])] = names.get(_person(f["driver"]), 0) + 1
+        me = max(names, key=names.get) if names else None
+    else:
+        me = _person(me)
+    laps = []
+    for f in files:
+        t = f.get("best") if f["kind"] == "ibt" else (None if f.get("est") else f.get("lap"))
+        if not t or not (20 < t < 3600) or (me and _person(f.get("driver")) != me):
+            continue
+        when = f.get("when") or f.get("mtime")
+        laps.append({"car": f["car"], "track": f["track"], "key": _norm(f["car"]) + "|" + _norm(f["track"].replace("·", " ")),
+                     "t": round(t, 3), "when": when, "kind": f["kind"], "session": f.get("session") or "", "id": f.get("id")})
+    laps.sort(key=lambda x: (x["when"] or 0, x["t"]))
+    by, miles = {}, []
+    for x in laps:
+        r = by.get(x["key"])
+        if r is None:
+            r = by[x["key"]] = {"car": x["car"], "track": x["track"], "best": x["t"], "bestWhen": x["when"], "bestKind": x["kind"],
+                                "sessions": 0, "first": x["when"], "last": x["when"], "history": []}
+            miles.append({"when": x["when"], "kind": "first", "car": x["car"], "track": x["track"], "t": x["t"]})
+        else:
+            if x["t"] < r["best"] - 0.0005:
+                m = {"when": x["when"], "kind": "best", "car": x["car"], "track": x["track"], "t": x["t"], "was": r["best"],
+                     "by": round(r["best"] - x["t"], 3)}
+                if int(x["t"]) < int(r["best"]):          # a new best that also breaks a whole second: one milestone
+                    m.update(kind="barrier", under=int(r["best"]))
+                miles.append(m)
+                r.update(best=x["t"], bestWhen=x["when"], bestKind=x["kind"])
+        r["sessions"] += 1
+        r["last"] = max(r["last"] or 0, x["when"] or 0) or None
+        r["history"].append([x["when"], x["t"]])
+    rows = sorted(by.values(), key=lambda r: -(r["last"] or 0))
+    return {"me": me, "records": rows, "milestones": miles[::-1][:40]}
+
+
+# --------------------------------------------------------------------------- #
 # The library
 # --------------------------------------------------------------------------- #
 
