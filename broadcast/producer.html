@@ -459,11 +459,13 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const LAYERS = [["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
     ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
+  // Not a layer: lets the overlay bring up "where they're faster" in a close battle and the results at the finish.
+  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, results at the finish)");
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
     const prod = canProduce(), dis = prod ? "" : "disabled";
     $("roleWarn").classList.toggle("hide", prod || S.role == null);
-    $("toggles").innerHTML = LAYERS.map(([k, label, d]) => sw("sw-" + k, G(k + ".show", d), `data-layer="${k}"`, label)).join("");
+    $("toggles").innerHTML = AUTO_SW() + LAYERS.map(([k, label, d]) => sw("sw-" + k, G(k + ".show", d), `data-layer="${k}"`, label)).join("");
     const lay = G("tower.layout", multi() ? "classes" : "overall");
     $("twLayout").innerHTML = [["overall", "Overall"], ["classes", "Every class, split"], ["class", "One class"]]
       .map(([k, l]) => `<button data-twl="${k}" class="${lay === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
@@ -592,6 +594,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const b = e.target.closest("button"); if (!b || b.disabled) return;
     const ds = b.dataset;
     if (ds.layer) { const d = LAYERS.find(x => x[0] === ds.layer)[2]; setGfx({ [ds.layer]: { show: !G(ds.layer + ".show", d) } }); }
+    if (ds.auto) setGfx({ auto: { on: !G("auto.on", false) } });
     else if (ds.twl) setGfx({ tower: { layout: ds.twl } });
     else if (ds.per) setGfx({ tower: { perClass: Number(ds.per) } });
     else if (ds.cls !== undefined) setGfx({ tower: { class: Number(ds.cls) } });
@@ -816,12 +819,14 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const FONTS = ["Barlow Condensed", "Barlow", "Big Shoulders Display", "Saira Condensed", "Saira", "Oswald", "Roboto Condensed",
     "Roboto", "Titillium Web", "Exo 2", "Rajdhani", "Teko", "Bebas Neue", "Archivo Narrow", "Archivo", "Inter", "Montserrat",
     "Kanit", "Chakra Petch", "Orbitron", "Russo One", "Anton", "IBM Plex Sans Condensed", "Fira Sans Condensed"];
-  const PRESETS = { imsa: "IMSA style", pitboard: "Pit board", daylight: "Daylight" };
+  const PRESETS = { imsa: "IMSA style", pitboard: "Pit board", daylight: "Daylight", neon: "Night neon", heritage: "Heritage green" };
   const PRESET_COLORS = {
     imsa: { ink: "#111317", ink2: "#16191f", head: "#000000", headText: "#ffffff", text: "#ffffff", muted: "#9aa3ae", accent: "#ffcc00", accentText: "#000000", fl: "#a766ff", plate: "#2a2f38" },
     pitboard: { ink: "#101824", ink2: "#162131", head: "#f2efe6", headText: "#101824", text: "#f2efe6", muted: "#98a5b8", accent: "#f5b841", accentText: "#101824", fl: "#a766ff", plate: "#24344c" },
-    daylight: { ink: "#ffffff", ink2: "#f1f3f6", head: "#0b2a5b", headText: "#ffffff", text: "#0d1320", muted: "#5c6b80", accent: "#e4002b", accentText: "#ffffff", fl: "#7b2fd6", plate: "#dfe4ea" } };
-  const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"] };
+    daylight: { ink: "#ffffff", ink2: "#f1f3f6", head: "#0b2a5b", headText: "#ffffff", text: "#0d1320", muted: "#5c6b80", accent: "#e4002b", accentText: "#ffffff", fl: "#7b2fd6", plate: "#dfe4ea" },
+    neon: { ink: "#0b0a14", ink2: "#14122a", head: "#ff2e88", headText: "#0b0a14", text: "#f4f1ff", muted: "#8f89b8", accent: "#00e5ff", accentText: "#0b0a14", fl: "#c77dff", plate: "#221f3d" },
+    heritage: { ink: "#0f2a1d", ink2: "#143425", head: "#e9e2c9", headText: "#0f2a1d", text: "#f3eedb", muted: "#a8b5a0", accent: "#d4a017", accentText: "#0f2a1d", fl: "#b58cff", plate: "#1d4430" } };
+  const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
   const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid" };
