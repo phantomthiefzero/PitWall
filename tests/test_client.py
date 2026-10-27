@@ -15,7 +15,14 @@ def test_radio_calls_read_the_alarm_text_as_speech():
     fn = s[s.index("  function spoken(html) {"):s.index("  function say(html) {")]
     cases = ['<span class="derived">#12 0.45 s behind you</span>', "Box this lap · last chance on fuel",
              "Incidents 15x of 17", "Pit window open · laps 20–24"]
-    out = subprocess.run(["node", "-e", fn + "for (const t of " + json.dumps(cases) + ") console.log(spoken(t));"],
-                         capture_output=True, text=True, encoding="utf-8", timeout=30).stdout.splitlines()
+    # In a UTF-8 file, not on the command line: Windows mangles the page's "·" and "–" there (CI failed on it).
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+        f.write(fn + "for (const t of " + json.dumps(cases) + ") console.log(spoken(t));")
+    try:
+        out = subprocess.run(["node", f.name], capture_output=True, text=True, encoding="utf-8",
+                             timeout=30).stdout.splitlines()
+    finally:
+        os.remove(f.name)
     assert out == ["car 12 0.45 seconds behind you", "Box this lap, last chance on fuel", "Incidents 15 of 17",
                    "Pit window open, laps 20 to 24"]
