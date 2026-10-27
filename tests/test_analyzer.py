@@ -2018,3 +2018,32 @@ console.log(JSON.stringify({ w4: coachWhyBetter(a, b, 4), w7: coachWhyBetter(a, 
         self.assertEqual(r["near"], "Close")          # quicker by 0.35 s; 84.3 (0.15 s) is too close to learn from
         self.assertEqual(r["far"], "Alien")           # nothing within 3%: the quickest that is quicker
         self.assertIsNone(r["none"])
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class RunConditionsTest(unittest.TestCase):
+    def test_a_track_temperature_change_between_runs_is_said(self):
+        r = run_js(r"""
+const L = (tt, n) => Array.from({ length: n }, (_, i) => ({ tt: tt + (i % 2 ? 0.4 : -0.4) }));
+localStorage.setItem('suite:speed', 'kmh');
+console.log(JSON.stringify({ warm: runConditions(L(30, 6), L(36, 6)), same: runConditions(L(30, 6), L(31.5, 6)), none: runConditions([{ tt: null }], L(30, 3)) }));
+""")
+        self.assertTrue(r["warm"].startswith("The track warmed 6 °C between these runs (30 °C → 36 °C)"), r["warm"])
+        self.assertEqual((r["same"], r["none"]), ("", ""))
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class SetupLogTest(unittest.TestCase):
+    def test_setup_changes_are_kept_across_sessions(self):
+        r = run_js(r"""
+setupLogPut({ key: 'car|T', id: '111:2', at: 1, chg: ['Rear wing 5 → 6'], call: 'faster', dt: -0.21, n: [5, 6], track: false, bal: [] });
+setupLogPut({ key: 'car|T', id: '111:2', at: 2, chg: ['Rear wing 5 → 6'], call: 'faster', dt: -0.25, n: [5, 8], track: false, bal: [] });   // the same run, more laps
+setupLogPut({ key: 'car|T', id: '222:2', at: 3, chg: ['Front ARB 3 → 4'], call: 'slower', dt: 0.12, n: [6, 6], track: true, bal: ['mid in slow corners more understeer'] });
+const h = setupLogHtml('car|T').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+console.log(JSON.stringify({ n: setupLogLoad()['car|T'].length, h }));
+""")
+        self.assertEqual(r["n"], 2)
+        self.assertIn("2 tried, across sessions", r["h"])
+        self.assertIn("Front ARB 3 → 4 Slower +0.12 s median lap", r["h"])
+        self.assertIn("the track temperature changed too", r["h"])
+        self.assertIn("Faster −0.25 s", r["h"])
