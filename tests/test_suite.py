@@ -1522,3 +1522,48 @@ class SimLookupTest(unittest.TestCase):
         self.assertTrue(ok, "never connected once the sim answered")
         self.assertEqual(src.ir.calls, 1)                    # one look at a time
         self.assertGreater(polls, 30)                         # the loop kept running meanwhile
+
+
+class RecordsTest(unittest.TestCase):
+    """The home page's records: best laps per car and track, and milestones, from the file list."""
+
+    def files(self):
+        D = 86400
+        ibt = lambda car, track, best, day, who="Andrew Brooks6", team=False: {
+            "kind": "ibt", "car": car, "track": track, "best": best, "when": 1_760_000_000 + day * D, "driver": who, "team": team}
+        return [
+            ibt("FIA F4", "Road Atlanta · Full Course", 84.10, 1),
+            ibt("FIA F4", "Road Atlanta · Full Course", 83.62, 3),
+            ibt("FIA F4", "Road Atlanta · Full Course", 83.90, 4),                  # slower: not a best
+            ibt("FIA F4", "Road Atlanta · Full Course", 82.73, 6),
+            ibt("FIA F4", "Road Atlanta · Full Course", 81.00, 7, who="Team Mate"),   # someone else's lap
+            ibt("Ferrari 296 GT3", "Indianapolis Motor Speedway · Road Course", 84.03, 2),
+            {"kind": "g61", "car": "Ferrari 296 GT3", "track": "Indianapolis Motor Speedway (Road Course)", "lap": 84.636,
+             "driver": "Andrew Brooks", "mtime": 1_760_000_000 + 5 * D},
+            {"kind": "g61", "car": "Ferrari 296 GT3", "track": "Indianapolis Motor Speedway (Road Course)", "lap": 83.75,
+             "driver": "nick kalra", "mtime": 1_760_000_000 + 5 * D},                 # a Garage 61 reference lap
+            ibt("FIA F4", "Road Atlanta · Full Course", None, 8),                   # no timed lap
+        ]
+
+    def test_best_lap_per_car_and_track_only_yours(self):
+        from suite.library import records
+        r = records(self.files())
+        self.assertEqual(r["me"], "andrewbrooks")
+        by = {(x["car"], x["track"]): x for x in r["records"]}
+        f4 = by[("FIA F4", "Road Atlanta · Full Course")]
+        self.assertEqual((f4["best"], f4["sessions"]), (82.73, 4))
+        self.assertEqual(len(by), 2, "the Garage 61 file and the .ibt are the same car and track")
+        gt3 = next(x for x in r["records"] if x["car"] == "Ferrari 296 GT3")
+        self.assertEqual((gt3["best"], gt3["sessions"]), (84.03, 2))
+
+    def test_milestones_in_order(self):
+        from suite.library import records
+        m = records(self.files())["milestones"]
+        kinds = [(x["kind"], x.get("t")) for x in m]
+        self.assertEqual(kinds[0], ("barrier", 82.73))              # newest first; under 1:23 and a new best, said once
+        self.assertIn(("barrier", 83.62), kinds)                    # under 1:24
+        self.assertEqual(len([k for k in kinds if k[1] == 82.73]), 1)
+        self.assertIn(("first", 84.10), kinds)
+        self.assertNotIn(83.90, [x.get("t") for x in m])
+        best = next(x for x in m if x["t"] == 83.62)
+        self.assertAlmostEqual(best["by"], 0.48, places=3)
