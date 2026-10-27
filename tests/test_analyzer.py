@@ -1967,3 +1967,25 @@ console.log(JSON.stringify({ lap: b && b.lap, none: coachBefore({ key: 'other|Tr
 """)
         self.assertEqual(r["lap"], 90.1)                       # today's 89.0 is not "before"
         self.assertIsNone(r["none"])
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class LiveGhostTest(unittest.TestCase):
+    def test_a_corner_verdict_from_your_lap_against_the_reference(self):
+        r = run_js(r"""
+// a 2 km lap at 50 m/s with one corner at 40-60% (speed down to 25 m/s); you brake 10 m earlier and lose time
+function lap(brakeAt, vmin) { const d = [], t = [], Speed = [], Brake = []; let T = 0;
+  for (let i = 0; i <= 2000; i++) { const x = i / 2000, v = x > 0.4 && x < 0.6 ? vmin + (50 - vmin) * Math.abs(x - 0.5) / 0.1 : 50;
+    if (i) T += 1 / ((v + Speed[i - 1]) / 2); d.push(x); t.push(T); Speed.push(v); Brake.push(x >= brakeAt && x < 0.5 ? 0.8 : 0) } return { d, t, Speed, Brake } }
+const ref = lap(0.40, 25), you = lap(0.395, 23), c = { n: 4, s: Math.round(0.4 * (N - 1)), ap: Math.round(0.5 * (N - 1)), e: Math.round(0.6 * (N - 1)) };
+const v = lvVerdict(c, you, ref, 2000);
+// the first samples of a lap still carry the last lap's time: cleaned away
+const dirty = { d: [0.0005, 0.001, 0.002, 0.5, 1], t: [84.9, 0.05, 0.1, 42, 84], Speed: [1, 2, 3, 4, 5] }, cl = lvClean(dirty);
+console.log(JSON.stringify({ dt: v.dt, brakeM: v.brakeM, minV: v.minV, words: lvWords(v, 'Turn 4'), clean: cl.t, speed: cl.Speed }));
+""")
+        self.assertGreater(r["dt"], 0.05)
+        self.assertAlmostEqual(r["brakeM"], -10, delta=1.5)
+        self.assertAlmostEqual(r["minV"], -2, delta=0.3)
+        self.assertTrue(r["words"].startswith("Turn 4: 0.") and "lost" in r["words"] and "earlier" in r["words"], r["words"])
+        self.assertEqual(r["clean"], [0.05, 0.1, 42, 84])
+        self.assertEqual(r["speed"], [2, 3, 4, 5])
