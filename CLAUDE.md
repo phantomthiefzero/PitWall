@@ -27,6 +27,8 @@ Hard rules
   system fonts. The booth look (default) and the classic look are the same page: colours are tokens
   on `:root`, booth overrides under `:root[data-skin="booth"]`, and canvases read them via `CV`.
   Screen settings (units, look, alarm sound, the provenance legend) live in one header menu (#screenMenu).
+  Layout presets (Everything / Engineer / Spotter / Strategist / Crew) are in that menu too: CSS only, per viewer
+  (`data-role` on :root, localStorage pitwall.role); a phone with no saved choice starts on Crew (#crewPanel).
   The header's laps come from `cars.derived.race` (the leader), as on the broadcast; a lap race with no
   time limit shows laps to go on the big display. Race control lists by event time, not arrival.
   The spotter list is ordered by side, not distance: cars ahead always above the followed car, cars

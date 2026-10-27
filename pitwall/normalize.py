@@ -2692,6 +2692,36 @@ def fuel_plan(fuel_l, fpl, laps_left, laps_left_est, lap_pct, lap_no, tank_l,
     return out
 
 
+def fuel_save(plan, fpl, fuel_l, tank_l, lap_pct, lane_loss_s=None, box_s=None) -> dict | None:
+    """What-if: run to the flag with one stop fewer by saving fuel.
+
+    Distance left is the plan's (laps left minus the part of this lap done). With
+    one stop fewer, the most fuel you can have for it is what is aboard plus a
+    full tank at each remaining stop (boxing nearly dry each time), so the burn
+    per lap must come down to that over the distance: targetLpl, and savePct
+    against the measured burn. The stop you skip is worth its lane loss plus the
+    median stationary time, both measured from stops watched this session; spread
+    over the laps left that is the lap time you can give up and still come out
+    ahead (breakEvenPerLapS). Nothing here says what lifting costs you per lap:
+    that is the driver's to find. None without stops to skip or a known tank."""
+    if not plan or not plan.get("stops") or not (fpl and fpl > 0) or fuel_l is None \
+            or not (tank_l and tank_l > 0) or plan.get("lapsLeft") is None or lap_pct is None:
+        return None
+    dist = max(0.0, plan["lapsLeft"] - min(1.0, max(0.0, lap_pct)))
+    if dist <= 0:
+        return None
+    fewer = plan["stops"] - 1
+    target = (fuel_l + fewer * tank_l) / dist
+    save = 1.0 - target / fpl
+    cost = None
+    if lane_loss_s is not None:
+        cost = lane_loss_s + (box_s or 0.0)
+    return {"stopsNow": plan["stops"], "stopsIfSaved": fewer, "targetLpl": round(target, 3),
+            "savePct": round(save * 100, 1), "saveLPerLap": round(fpl - target, 3),
+            "stopCostS": None if cost is None else round(cost, 1),
+            "breakEvenPerLapS": None if cost is None else round(cost / dist, 2)}
+
+
 # Sector boundaries are interpolated between samples, so a sum of best sectors
 # carries a few hundredths of error. Within this, it is still a theoretical best.
 THEO_SLACK_S = 0.05
@@ -3017,6 +3047,9 @@ def build_state(src: TelemetrySource, deriver: Deriver, session_msg: dict | None
     rate = derived["refuelLps"]
     # Fuel time only: tyre changes and repairs add to it, and are not measured.
     plan["fuelTimeS"] = round(add / rate, 1) if add is not None and rate else None
+    pl_loss = deriver.pit_loss()
+    derived["fuelSave"] = fuel_save(plan, derived["fuelPerLap"], player["fuelL"], deriver.tank_l,
+                                    player["lapPct"], pl_loss["laneLossS"], pl_loss["boxMedianS"])
     deriver._fuel_info = ({"plan": plan, "fpl": derived["fuelPerLap"], "fuelL": player["fuelL"],
                            "tankL": deriver.tank_l, "refuelLps": rate}
                           if derived["fuelPerLap"] and player["fuelL"] is not None else None)
