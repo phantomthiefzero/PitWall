@@ -1989,3 +1989,16 @@ console.log(JSON.stringify({ dt: v.dt, brakeM: v.brakeM, minV: v.minV, words: lv
         self.assertTrue(r["words"].startswith("Turn 4: 0.") and "lost" in r["words"] and "earlier" in r["words"], r["words"])
         self.assertEqual(r["clean"], [0.05, 0.1, 42, 84])
         self.assertEqual(r["speed"], [2, 3, 4, 5])
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class PracticeTrendTest(unittest.TestCase):
+    def test_a_practised_corner_says_how_it_went_over_the_run(self):
+        r = run_js(r"""
+const r = d => ({ n: 4, dct: d, ms: 100, dms: 0, dba: null, dta: null, ok: { time: d <= .03, speed: true, brake: null, throttle: null } });
+const laps = [0.21, 0.18, 0.19, 0.12, 0.08, 0.05, 0.04, 0.03].map((d, i) => ({ lap: i + 1, at: i, r: [r(d)] }));
+localStorage.setItem('coachPrac', JSON.stringify({ 'car|Track': { targets: [{ n: 4, name: 'Turn 4', ms: 100, head: 'Brake later' }], laps } }));
+const h = pracHtml('car|Track').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+console.log(JSON.stringify({ h }));
+""")
+        self.assertIn("Better : +0.19 s at the start, +0.04 s now (8 laps)", r["h"])    # tags stripped to spaces
