@@ -345,6 +345,7 @@ class Deriver:
         self.events_live = True
         self._dist_prev: dict[int, float] = {}
         self._prof: dict = {}                      # class -> lap profile bins (learn_lap_profile)
+        self._split: dict = {}                     # idx -> this lap's stretch crossings, and its best lap's (lap_splits)
         self._meet: dict = {}                      # smoothed meetings for the shared reference
         self._ev = {"pit": {}, "best": {}, "bestSeeded": False, "closing": {}, "stable": {}, "surf": {},
                     "flags": None, "flagAt": {}, "inc": None, "warn": None, "tow": None,
@@ -1336,6 +1337,84 @@ class Deriver:
             if n >= 50:                              # a running average over the latest ~50
                 sp, su, n = sp * 49 / 50, su * 49 / 50, 49
             bins[b] = (sp + pct, su + u, n + 1)
+
+    # ---- where they are faster: each car's best lap timed over equal stretches of the track ----
+    # Every car's position is known all the time (CarIdxLapDistPct), so the time it reaches each 1/24 of
+    # the lap can be interpolated between two samples. A lap timed that way from line to line, with no pit
+    # visit and no jump, at racing pace, is kept when it is the car's quickest. Two cars' best laps compared
+    # stretch by stretch say where one is faster than the other: no inputs needed, any car.
+    STRETCHES = 24
+
+    def lap_splits(self, cars: list, t) -> None:
+        if t is None:
+            return
+        K = self.STRETCHES
+        for c in cars:
+            i, pct = c.get("idx"), c.get("pct")
+            st = self._split.setdefault(i, {"last": None, "cross": None, "best": None, "bestS": None, "bad": False})
+            ok = pct is not None and pct >= 0 and c.get("surface") in ("on_track", "off_track")
+            if c.get("onPitRoad") or not ok:
+                st["bad"], st["last"] = True, None if not ok else (pct, t)
+                continue
+            last = st["last"]
+            st["last"] = (pct, t)
+            if last is None or t <= last[1]:
+                continue
+            p0, t0 = last
+            step = pct - p0
+            wrapped = p0 > 0.9 and pct < 0.1
+            if wrapped:
+                step += 1.0
+            if step < 0 or step > 0.05:              # a jump: a reset, a tow, a replay cut
+                st["bad"] = True
+                continue
+            at = lambda q: t0 + (q - p0) / step * (t - t0) if step > 0 else t
+            if wrapped:                               # the line: finish the lap, start the next
+                tl = at(1.0)
+                cr = st["cross"]
+                if cr is not None and not st["bad"] and len(cr) == K:
+                    prof = [round(x - cr[0], 3) for x in cr] + [round(tl - cr[0], 3)]
+                    lap = prof[-1]
+                    best = st["bestS"]
+                    # never quicker than iRacing's own best for the car (a timing slip), and no slower than ever
+                    floor = (c.get("bestLapS") or 0) * 0.98
+                    if lap > 5 and lap >= floor and (best is None or lap < best):
+                        st["best"], st["bestS"] = prof, lap
+                st["cross"], st["bad"] = [tl], False
+                p0, t0, step = 0.0, tl, pct
+                at = lambda q: t0 + (q - p0) / step * (t - t0) if step > 0 else t
+            cr = st["cross"]
+            if cr is None:
+                continue
+            k = len(cr)                               # the next boundary to cross is k/K
+            while k < K and pct >= k / K:
+                cr.append(at(k / K))
+                k += 1
+
+    def faster(self, a, b) -> dict | None:
+        """Car a against car b, best lap against best lap, over STRETCHES equal parts of the track:
+        seconds a gains in each (negative: a loses), and each lap's time at every boundary."""
+        pa, pb = (self._split.get(a) or {}).get("best"), (self._split.get(b) or {}).get("best")
+        if not pa or not pb:
+            return None
+        seg = [round((pb[k + 1] - pb[k]) - (pa[k + 1] - pa[k]), 3) for k in range(self.STRETCHES)]
+        return {"a": a, "b": b, "gainS": seg, "totalS": round(pb[-1] - pa[-1], 3), "lapA": pa, "lapB": pb}
+
+    def faster_pairs(self, cars: list) -> list:
+        """Every car against the car ahead of it in its class (the battles and the battle box), when
+        both have a best lap timed by stretches."""
+        by: dict = {}
+        for c in cars:
+            if c.get("classPos") and c["classPos"] > 0:
+                by.setdefault(c.get("classId"), []).append(c)
+        out = []
+        for L in by.values():
+            L.sort(key=lambda c: c["classPos"])
+            for x, y in zip(L, L[1:]):
+                f = self.faster(x["idx"], y["idx"])
+                if f:
+                    out.append(f)
+        return out
 
     def _u(self, c):
         est, lap = c.get("estTimeS"), c.get("classEstLapS")
@@ -3264,6 +3343,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         caution = deriver.caution(cars, decode_bits(g("SessionFlags"), FLAG_BITS), g("PitsOpen"),
                                   track_length_m(session_msg), now, state=SESSION_STATE.get(g("SessionState")))
         deriver.learn_lap_profile(cars)
+        if live_edge(g)["atLive"]:
+            deriver.lap_splits(cars, now)
         meet = deriver.meetings(cars, player_idx, now)
         out["derived"] = {
             "caution": caution,
@@ -3282,6 +3363,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "compoundPace": deriver.compound_pace(cars),
             "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
             "battles": deriver.battles(cars, ahead_of, is_race),
+            "faster": deriver.faster_pairs(cars),
             "predictedIncidents": deriver.predicted_incidents(),
             "race": race,
             "sof": strength_of_field(cars),

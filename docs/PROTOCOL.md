@@ -339,6 +339,14 @@ pace) / its speed now. `lossNowS` re-scales the stops watched this session: the 
 long as ever, the field covers `fieldSlowdown` times less track meanwhile, so the loss is the
 lane drive minus the same stretch at caution speed, plus the typical stationary time.
 
+`derived.faster = [{"a","b","gainS":[24],"totalS","lapA":[25],"lapB":[25]}]`: every car (`b`) against the car
+ahead of it in class (`a`), best lap against best lap, over 24 equal stretches of the lap. Each car's best is
+timed here from its own position (CarIdxLapDistPct, the moment it reaches each 1/24 interpolated between two
+samples), from line to line with no pit visit and no jump, never quicker than iRacing's own best for the car.
+`gainS[k]`: seconds `a` gains on stretch k (negative: `a` loses); `lapA`/`lapB`: each lap's time at the 25
+boundaries. On the Talladega replay these best laps matched CarIdxBestLapTime to a median 0.003 s. Shown in
+PitWall's "Where they're faster" panel and the overlay's `faster` graphic (the battle box's two cars).
+
 `derived.strategy` (shared stream: the reference car; each `refview` carries its own for the
 followed car) = `{"basis":"fuel"|"stints","lapsToGo","lossGreenS","options":[...],"best","targets"}`
 or null. `basis` is `fuel` for your own car with a fuel plan, else the car's stints. Each option
