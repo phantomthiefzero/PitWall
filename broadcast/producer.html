@@ -457,7 +457,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
 
   // ------------------------------------------------------------- Show tab
   const LAYERS = [["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
-    ["battle", "Battle box", false], ["map", "Track map", false], ["ticker", "Race control ticker", true],
+    ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
