@@ -1932,3 +1932,16 @@ class CornerNamesTest(unittest.TestCase):
     def test_sentences_and_charts_use_the_name(self):
         self.assertEqual(self.r["cn"], ["Corner 1", "Turn 5 (renamed)"])
         self.assertEqual(self.r["cs"], ["C1", "5 (rename…"])     # charts keep it short
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class GhostDotsTest(unittest.TestCase):
+    def test_a_dot_is_where_its_lap_had_got_to_at_that_time(self):
+        r = run_js(r"""
+const T = Float64Array.from({ length: N }, (_, g) => g / (N - 1) * 90);   // a 90 s lap, even pace
+const S = Float64Array.from({ length: N }, (_, g) => (g / (N - 1)) ** 2 * 80); // slow start, 80 s lap
+console.log(JSON.stringify({ half: ghAt(T, 45) / (N - 1), start: ghAt(T, -1), end: ghAt(T, 99), s40: ghAt(S, 20) / (N - 1) }));
+""")
+        self.assertAlmostEqual(r["half"], 0.5, places=3)
+        self.assertEqual((r["start"], r["end"]), (0, 999))
+        self.assertAlmostEqual(r["s40"], 0.5, places=2)          # 20 s into an 80 s lap that starts slowly
