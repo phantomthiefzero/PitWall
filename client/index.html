@@ -72,6 +72,22 @@
     grid-template-rows: minmax(0, 1fr);
     gap: 14px; padding: 14px 18px; min-height: 0; }
   main[data-track="closed"] { --c-track: auto; }
+  /* Layout presets (Screen menu): per viewer, this screen only. */
+  #crewPanel { display: none; }
+  :root[data-role="engineer"] :is(#spotter,#battle,#faster,#raceStrat,#strategy,#cmpPanel) { display: none; }
+  :root[data-role="spotter"] :is(#chartsPanel,#faster,#raceStrat,#fuelPanel,#strategy,#tiresPanel,#teamPanel,#car,#cmpPanel,#focusPanel,#ggPanel,#weather) { display: none; }
+  :root[data-role="strategist"] :is(#spotter,#car,#focusPanel,#ggPanel,#chartsPanel,#cmpPanel) { display: none; }
+  :root[data-role="crew"] main { display: flex; flex-direction: column; }
+  :root[data-role="crew"] main section:not(#crewPanel):not(#feedPanel) { display: none; }
+  :root[data-role="crew"] main .stack, :root[data-role="crew"] main .col { display: contents; }
+  :root[data-role="crew"] #crewPanel { display: block; order: -1; }
+  :root[data-role="crew"] #feedPanel { height: auto; }
+  :root[data-role="crew"] .feed { max-height: 50vh; }
+  .crew-pos { font: 700 44px/1 var(--mono, monospace); }
+  .crew-pos small { font-size: 15px; font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .crew-row { display: grid; grid-template-columns: 70px 1fr auto; gap: 8px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line, #2a2f36); font-size: 17px; }
+  .crew-row b.mono { font-size: 22px; }
+  .crew-call { margin-top: 10px; padding: 10px 12px; border-radius: 6px; background: var(--panel2, rgba(255,255,255,.05)); font-size: 18px; }
   main[data-standings="closed"] { --c-standings: auto; }
   section { background: var(--panel); border-radius: 10px; padding: 12px 14px; min-height: 0;
     display: flex; flex-direction: column; overflow: hidden; }
@@ -595,6 +611,9 @@
       <select id="followSel"><option value="">Auto</option></select> <span id="followSrc" class="note"></span></label>
     <details class="menu" id="screenMenu"><summary class="unittoggle" title="Units, look, alarm sound and what the text styles mean. On this screen only.">&#9881; Screen</summary>
       <div class="menu-body">
+        <div class="mrow"><span>Layout</span><select id="roleSel" title="Show the panels for one job. On this screen only: nobody else's view changes.">
+          <option value="all">Everything</option><option value="engineer">Engineer</option><option value="spotter">Spotter</option>
+          <option value="strategist">Strategist</option><option value="crew">Crew (phone)</option></select></div>
         <div class="mrow"><span>Units</span><button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button></div>
         <div class="mrow"><span>Look</span><button type="button" id="skinToggle" class="unittoggle" title="Switch between the pit-wall booth look and the classic look. On this screen only.">booth</button></div>
         <div class="mrow"><span>Car dots</span><button type="button" id="dotToggle" class="unittoggle" title="Colour the cars on the map and the radar by their class, or by their own paint (Trading Paints included, from iRacing's picture of each car). On this screen only.">class colour</button></div>
@@ -608,6 +627,9 @@
 </header>
 
 <main>
+  <section id="crewPanel" aria-label="Crew view">
+    <details class="panel" open><summary>Crew view</summary><div id="crewBox"><div class="note">Waiting for the field.</div></div></details>
+  </section>
   <div class="stack" id="colA">
   <section id="mapPanel">
     <details class="panel" id="trackPanel" open>
@@ -1889,6 +1911,43 @@
       `<span title="Their last lap / the followed car's">last <span class="mono">${fmt.lap(c.lastLapS)}</span> vs <span class="mono">${fmt.lap(me && me.lastLapS)}</span></span>` +
       (sp ? `<span title="Gap at each of their lap crossings">${sp}</span>` : "") + `</div></div>`;
   }
+  // ---- crew view (Layout: Crew): the followed car at a glance for a phone on the share link
+  function renderCrew() {
+    const el = $("crewBox");
+    if (!el || document.documentElement.dataset.role !== "crew" || !S.cars) return;
+    const me = meCar();
+    if (!me) { el.innerHTML = `<div class="note">Pick a car to follow (Following, at the top).</div>`; return; }
+    const CP = c => (c.derived && c.derived.liveClassPos) || c.classPos;
+    const cars = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
+    const ahead = cars.find(c => CP(c) === CP(me) - 1), behind = cars.find(c => CP(c) === CP(me) + 1);
+    const row = (side, c) => {
+      if (!c) return `<div class="crew-row"><span class="note">${side}</span><span class="note">–</span><span></span></div>`;
+      const tp = c.derived && c.derived.toPlayerS, tr = gapTrend(side, c.derived || {});
+      return `<div class="crew-row"><span class="note">${side}</span><span>${carLabel(c.idx)}${tr ? `<div style="font-size:13px">${D(tr, TREND_TIP)}</div>` : ""}</span>` +
+        `<b class="mono">${tp == null ? "–" : D(Math.abs(tp).toFixed(1) + " s", "Computed here: the time between the two cars.")}</b></div>`;
+    };
+    let call = "";
+    const st = S.state, d = st && st.derived, pl = d && d.plan;
+    if (isOwnRef() && pl && pl.stops != null) {
+      call = pl.stops === 0 ? "No stop needed to the flag"
+        : pl.boxNow ? "BOX THIS LAP"
+        : `Box between lap ${pl.windowOpenLap} and lap ${pl.windowCloseLap}`;
+      call = D(call, "Computed here from the measured burn, the fuel aboard and the laps left.");
+    }
+    el.innerHTML = `<div class="crew-pos">P${CP(me) ?? "–"}<small>in class · ${carLabel(me.idx)}</small></div>` +
+      `<div class="note">last lap <span class="mono">${fmt.lap(me.lastLapS)}</span> · best <span class="mono">${fmt.lap(me.bestLapS)}</span></div>` +
+      row("ahead", ahead) + row("behind", behind) + (call ? `<div class="crew-call">${call}</div>` : "");
+  }
+  // Layout presets: which panels show, per viewer. A phone opening the share link starts on Crew.
+  (function () {
+    const sel = $("roleSel"), ok = ["all", "engineer", "spotter", "strategist", "crew"];
+    let r = null;
+    try { r = localStorage.getItem("pitwall.role"); } catch (e) {}
+    if (!ok.includes(r)) r = matchMedia("(max-width: 720px)").matches ? "crew" : "all";
+    const set = v => { document.documentElement.dataset.role = v; sel.value = v; };
+    set(r);
+    sel.addEventListener("change", () => { set(sel.value); try { renderCrew(); } catch (e) {} try { localStorage.setItem("pitwall.role", sel.value); } catch (e) {} });
+  })();
   function renderBattle() {
     const el = $("bb");
     if (!S.cars) return;
@@ -2838,6 +2897,12 @@
                 : `<div class="fp-line">${D(`When the window opens (lap ${open}): add <b class="mono">${L(pl.addAtOpenL)}</b> (${L(pl.addAtOpenSpareL)} with a lap spare)`, dTip)}</div>`) +
               (pl.addAtCloseL != null && close !== cur ? `<div class="fp-line">${D(`At the latest (lap ${close}): add ${L(pl.addAtCloseL)}`, dTip)}</div>` : ""));
     }
+    const fs = d.fuelSave;
+    if (fs && fs.savePct > 0) {
+      const sTip = "Computed here: one stop fewer means the fuel aboard plus a full tank at each stop left must last to the flag. What the stop is worth is its lane loss plus the median time stopped, both measured from stops this session. What lifting costs per lap is not known here: that is for the driver to find.";
+      h += `<div class="fp-line">${D(`One stop fewer: burn <b class="mono">${U.fuel(fs.targetLpl, 2)} ${U.fuelAbbr}/lap</b> (${fs.savePct.toFixed(1)}% less)` +
+        (fs.breakEvenPerLapS != null ? ` · the stop is worth ${fs.stopCostS.toFixed(0)} s, so up to <b class="mono">${fs.breakEvenPerLapS.toFixed(2)} s/lap</b> slower still gains` : ` · the stop's cost needs a stop watched in the lane`), sTip)}</div>`;
+    }
     // the pit menu, checked against the plan
     const sv = st.player.pitService || {};
     if ((sv.flags || []).includes("fuel") && pl.menuFuelL != null) {
@@ -3332,7 +3397,7 @@
     }
     if (dirty.cars && now - drawnAt.cars >= 100) {
       drawnAt.cars = now; dirty.cars = false;
-      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderFaster(); renderStrategy(); renderRaceStrategy(); renderTeam(); renderTraffic(); renderFollow(); renderTires();
+      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderCrew(); renderFaster(); renderStrategy(); renderRaceStrategy(); renderTeam(); renderTraffic(); renderFollow(); renderTires();
     }
     if (now - ALARM.at >= 500 && (S.state || S.cars)) { ALARM.at = now; renderAlarms(); }
     if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {

@@ -1271,7 +1271,7 @@ def test_bridge_sends_the_feed_whole_then_only_what_is_new():
 # Engineer: fuel & stops, lap log, head-to-head, spotter.
 # --------------------------------------------------------------------------- #
 
-from pitwall.normalize import CAR_LEFT_RIGHT, fuel_plan, track_length_m, vs_you  # noqa: E402
+from pitwall.normalize import CAR_LEFT_RIGHT, fuel_plan, fuel_save, track_length_m, vs_you  # noqa: E402
 
 # Fuel used per lap in the real Indianapolis capture (ferrari296gt3, 2026-10-10),
 # in order from lap 1, with whether the lap touched pit road. Lap 20 is the in-lap
@@ -1323,6 +1323,25 @@ def test_fuel_plan_no_stop():
     p = fuel_plan(30.0, 2.5, 10, False, 0.5, 16, 100.0)
     assert p["stops"] == 0 and p["finishLap"] == 25
     assert p["needL"] == 23.75 and p["spareAtFlagL"] == 6.25 and p["spareAtFlagLaps"] == 2.5
+
+
+def test_fuel_save_skips_a_stop():
+    # 47 L aboard, 2.5 L/lap, on the line with 20 to go, 40 L tank: need 50, short 3 -> one stop.
+    # To skip it the 47 L must last 20 laps: 2.35 L/lap, 6 % less than the burn.
+    p = fuel_plan(47.0, 2.5, 20, False, 0.0, 6, 40.0)
+    fs = fuel_save(p, 2.5, 47.0, 40.0, 0.0, lane_loss_s=25.0, box_s=5.0)
+    assert fs["stopsNow"] == 1 and fs["stopsIfSaved"] == 0
+    assert fs["targetLpl"] == 2.35 and fs["savePct"] == 6.0 and fs["saveLPerLap"] == 0.15
+    # the stop is worth 30 s: over 20 laps you can give up 1.5 s a lap and still gain
+    assert fs["stopCostS"] == 30.0 and fs["breakEvenPerLapS"] == 1.5
+    # two stops down to one: aboard plus one full tank over the distance
+    p2 = fuel_plan(20.0, 2.5, 40, False, 0.0, 6, 40.0)
+    fs2 = fuel_save(p2, 2.5, 20.0, 40.0, 0.0)
+    assert fs2["stopsIfSaved"] == 1 and fs2["targetLpl"] == 1.5 and fs2["stopCostS"] is None
+    # nothing to skip, or nothing known
+    assert fuel_save(fuel_plan(30.0, 2.5, 10, False, 0.5, 16, 100.0), 2.5, 30.0, 100.0, 0.5) is None
+    assert fuel_save(None, 2.5, 30.0, 100.0, 0.5) is None
+    assert fuel_save(p, 2.5, 47.0, None, 0.0) is None
 
 
 def test_fuel_plan_one_stop_window_and_amounts():

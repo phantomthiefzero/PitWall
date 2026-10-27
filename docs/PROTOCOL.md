@@ -62,6 +62,8 @@ integration missed closing the loop before correction; treat > 30 m as suspect.
             "plan":{"tankL","lapsLeft","lapsLeftIsEstimate","finishLap","needL","stops","windowOpenLap",
                     "windowCloseLap","boxNow","fillToFull","addThisLapL","addThisLapSpareL","addAtOpenL",
                     "addAtOpenSpareL","addAtCloseL","spareAtFlagL","spareAtFlagLaps","menuFuelL","menuVsPlanL"},
+            "fuelSave":{"stopsNow","stopsIfSaved","targetLpl","savePct","saveLPerLap","stopCostS",
+                        "breakEvenPerLapS"} | null,   # one stop fewer: the burn it needs, and what the stop is worth
             "weatherTrend":{"spanS","change":{key:delta},"series":{key:[...]}} | null,
             "engineTrend":{...same shape...} | null, "ggPeakG"}}
 ```
