@@ -631,6 +631,8 @@ async def library_reply(writer, path, headers):
             out = await loop.run_in_executor(None, tm)
         elif u.path == "/api/library":
             out = await loop.run_in_executor(None, lib.info, max(0, int(q.get("page", "0") or 0)))
+        elif u.path == "/api/library/last":
+            out = await loop.run_in_executor(None, lambda: {"session": lib.last_session()})
         elif u.path == "/api/library/records":
             def recs():
                 from suite.library import records

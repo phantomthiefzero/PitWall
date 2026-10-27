@@ -35,6 +35,12 @@ h1,.app h2,.share h2,.recs h2{font-family:var(--title);font-weight:600;letter-sp
 .gl b{font-weight:700;font-size:19px;color:var(--fg)}.gl span{color:var(--mut)}.gl .fl{font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;align-self:center;color:#111}
 .bcmore{font-size:13px;color:var(--mut)}.bcmore summary{cursor:pointer}.bcmore p{font-size:13px}
 .app .open{margin-top:auto}
+.ctx{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 0}.ctx span{color:var(--mut);font-size:13px}
+.ctx a{display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--fg);background:var(--card);border:1px solid var(--ln);border-left:3px solid var(--c,var(--acc));border-radius:8px;padding:6px 12px;font-size:14px;font-weight:600}.ctx a:hover{border-color:var(--c,var(--acc))}
+.last{margin-top:14px;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px 18px;display:flex;flex-wrap:wrap;gap:8px 26px;align-items:center}
+.last .lt{flex-basis:100%;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.last .lt b{font-family:var(--title);font-size:21px;font-weight:600}.last .lt span{color:var(--mut);font-size:13px}
+.last .st{display:flex;flex-direction:column}.last .st span{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}.last .st b{font-family:var(--ui2);font-size:24px;font-variant-numeric:tabular-nums}
+.last .go{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}.last .go a{text-decoration:none;font-weight:600;color:var(--acc);border:1px solid var(--ln);border-radius:7px;padding:6px 12px;font-size:14px}.last .go a:hover{border-color:var(--acc)}
 .hidden{display:none!important}.open{margin-top:auto;font-weight:600;color:var(--acc)}
 .share{margin-top:16px;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:20px;display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
 .share h2{margin:0 0 4px;font-size:19px}.share p{margin:0 0 8px;color:var(--mut);font-size:14px}.share .sh-main{flex:1;min-width:280px}
@@ -72,6 +78,8 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <label>Look <select id="setTheme"><option value="dark">dark</option><option value="light">light</option></select></label>
 </div></details><button class="theme" id="themeBtn" type="button"></button></header>
 <div class="status wait" id="status"><div class="dot"></div><div class="st-main"><div class="st-title" id="stTitle">Starting...</div><div class="st-sub" id="stSub"></div></div><div id="stBtns"></div></div>
+<div class="ctx hidden" id="ctx"></div>
+<div class="last hidden" id="last"></div>
 <div class="rec hidden" id="rec"></div>
 <div class="share upd hidden" id="upd"></div>
 <div class="apps">
@@ -113,7 +121,7 @@ ws.onclose=()=>setTimeout(connect,2000)}
 const FLAG_BITS=[[0x10,'Red','#ff5a5a'],[0x1,'Checkered','#fff'],[0x2,'White','#fff'],[0x4000,'Caution','#ffd23f'],[0x8000,'Caution','#ffd23f'],[0x8,'Yellow','#ffd23f'],[0x4,'Green','#3ddc84']];
 const lapClock=t=>{if(t==null||!(t>0))return'–';const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(3)};
 let lastGlance=0;
-function glance(v){lastGlance=Date.now();const L=$('glLive'),P=$('glPw');if(!L||!P)return;
+function glance(v){lastGlance=Date.now();try{ctxActions(v)}catch(e){}const L=$('glLive'),P=$('glPw');if(!L||!P)return;
 const kmh=(()=>{try{return localStorage.getItem('suite:speed')==='kmh'}catch(e){return false}})(),sp=v.Speed!=null?Math.round(v.Speed*(kmh?3.6:2.23694)):null,driving=v.IsOnTrack&&!v.IsReplayPlaying;
 L.innerHTML=driving?'<b>'+sp+'</b><span>'+(kmh?'km/h':'mph')+'</span><b>'+(v.Gear===0?'N':v.Gear===-1?'R':v.Gear)+'</b><span>gear</span>'+(v.Lap!=null?'<span>lap '+v.Lap+'</span>':'')+(v.LapLastLapTime>0?'<span>last '+lapClock(v.LapLastLapTime)+'</span>':''):'';
 const f=FLAG_BITS.find(x=>(v.SessionFlags||0)&x[0]),pos=v.PlayerCarPosition>0?'P'+v.PlayerCarPosition:'',rem=v.SessionTimeRemain!=null&&v.SessionTimeRemain>0&&v.SessionTimeRemain<86400?Math.floor(v.SessionTimeRemain/60)+' min left':'';
@@ -125,6 +133,22 @@ const load=()=>pairs.forEach(([id,k,d])=>{let v=null;try{v=localStorage.getItem(
 pairs.forEach(([id,k])=>$(id).onchange=()=>{try{localStorage.setItem(k,$(id).value)}catch(e){}if(k==='suite:theme'){document.documentElement.setAttribute('data-theme',$(id).value);themeLabel()}});
 addEventListener('storage',e=>{if(pairs.some(p=>p[1]===e.key)){load();if(e.key==='suite:theme'&&e.newValue){document.documentElement.setAttribute('data-theme',e.newValue);themeLabel()}}});
 document.addEventListener('click',e=>{const d=$('sets');if(d&&d.open&&!d.contains(e.target))d.open=false})})();
+// ---- your last session: the newest .ibt of yours, summarized by the suite (suite/library.session_summary)
+async function loadLast(){try{const r=await fetch('/api/library/last',{cache:'no-store'}),j=await r.json(),S=j&&j.session,el=$('last');if(!S){el.classList.add('hidden');return}
+const st=(k,v)=>'<div class="st"><span>'+k+'</span><b>'+v+'</b></div>',day=S.when?new Date(S.when*1000).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}):'';
+el.innerHTML='<div class="lt"><b>Your last session</b><span>'+esc(S.car)+' at '+esc(S.track)+(S.session?' · '+esc(S.session):'')+(day?' · '+day:'')+'</span></div>'+
+st(S.bestIsClean?'Your best lap':'Best lap',lapClock(S.best))+st('Clean laps',S.clean+' of '+S.timed)+(S.median?st('Median lap',lapClock(S.median)):'')+(S.spreadS!=null?st('Most within','±'+S.spreadS.toFixed(2)+' s'):'')+
+'<div class="go"><a href="/analyzer/?view=coach&open='+encodeURIComponent(S.id)+'">Coach me on it →</a><a href="/analyzer/?open='+encodeURIComponent(S.id)+'">Open in the Lap Analyzer</a></div>';el.classList.remove('hidden')}catch(e){}}
+loadLast();setInterval(loadLast,10*60*1000);
+// ---- what iRacing is doing now, and the apps that fit it (built only when that changes: a rebuilt link loses its click)
+function ctxActions(v){const el=$('ctx');if(!el)return;let kind='';if(v){if(v.IsReplayPlaying)kind='replay';else if(v.IsOnTrack)kind='driving';else kind='watching'}
+if(el.dataset.k===kind)return;el.dataset.k=kind;if(!kind){el.classList.add('hidden');el.innerHTML='';return}
+const pw=$('pwTile'),a=(href,txt,c)=>'<a href="'+href+'" style="--c:'+c+'">'+txt+'</a>';
+const L={driving:[info.mode==='replay'?'A telemetry file is playing':'You are driving',a('/analyzer/?view=live','Live telemetry','#4b8bf0')+a('/analyzer/?view=coach','Coaching','#2fb36a')+(pw&&pw.getAttribute('href')?a(pw.getAttribute('href'),'PitWall','#FFB23F'):'')],
+watching:['You are watching a session',(pw&&pw.getAttribute('href')?a(pw.getAttribute('href'),'PitWall','#FFB23F'):'')+(($('bcOpen')||{}).href?a($('bcOpen').href,'Broadcast producer','#e05a4f'):'')],
+replay:['A replay is playing',(pw&&pw.getAttribute('href')?a(pw.getAttribute('href'),'PitWall','#FFB23F'):'')+(($('bcOpen')||{}).href?a($('bcOpen').href,'Broadcast producer','#e05a4f'):'')]}[kind];
+el.innerHTML='<span>'+L[0]+':</span>'+L[1];el.classList.remove('hidden')}
+setInterval(()=>{if(!lastGlance)ctxActions(null)},3000);
 function pitwallTile(){const p=info.pitwall,t=$('pwTag'),a=$('pwTile');if(!p)return;if(p.ok){t.textContent='Ready';t.className='tag ok';a.href='/pitwall/?relay='+encodeURIComponent(p.relay)+'&token='+encodeURIComponent(p.token);a.title=''}else{t.textContent='Unavailable';t.className='tag';a.removeAttribute('href');a.title=p.error||''}}
 // The Broadcast tile holds buttons of its own (copy the OBS address, camera packs), so it cannot be one link
 // like the others: the whole tile opens the producer panel, except where you click one of its own controls.
