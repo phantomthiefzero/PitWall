@@ -1708,11 +1708,15 @@ console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind),
   titles: PR.map(p => p.title), notes: Object.keys(SDiff).length, svgs: (html.match(/<svg/g) || []).length,
   hasMap: html.indexOf('Track map with every corner numbered') >= 0, mapFirst: html.indexOf('class="comap"') > 0,
   traced: (() => { const R = X.C.R, G = coTrackXY(R), D = coTrackXY({ ...R, A: { ...R.A, Lat: null, Lon: null }, B: { ...R.B, Lat: null, Lon: null } });
-    const area = T => { let a = 0; for (let g = 0; g < N - 1; g++) a += T.x[g] * T.y[g + 1] - T.x[g + 1] * T.y[g]; return a };
+    // signed area of the closed outline, measured from its middle (raw GPS metres are millions from
+    // the origin, and an open outline's missing edge then swamps the sign: that hid a mirrored map once)
+    const area = T => { let cx = 0, cy = 0; for (let g = 0; g < N; g++) { cx += T.x[g]; cy += T.y[g] } cx /= N; cy /= N; let a = 0;
+      for (let g = 0; g < N; g++) { const h = (g + 1) % N; a += (T.x[g] - cx) * (T.y[h] - cy) - (T.x[h] - cx) * (T.y[g] - cy) } return a / 2 };
     const rad = T => { let cx = 0, cy = 0; for (let g = 0; g < N; g++) { cx += T.x[g]; cy += T.y[g] } cx /= N; cy /= N; return Array.from({ length: N }, (_, g) => Math.hypot(T.x[g] - cx, T.y[g] - cy)) };
     const a = rad(G), b = rad(D), m = v => v.reduce((p, q) => p + q, 0) / v.length, ma = m(a), mb = m(b); let num = 0, da = 0, db = 0;
     for (let g = 0; g < N; g++) { num += (a[g] - ma) * (b[g] - mb); da += (a[g] - ma) ** 2; db += (b[g] - mb) ** 2 }
-    return { gps: G.gps, tracedGps: D.gps, sameHand: Math.sign(area(G)) === Math.sign(area(D)), corr: num / Math.sqrt(da * db) } })(), text: text.slice(0, 600), sections: ['Your next session', 'Where the time goes', 'Corner by corner', 'Consistency', 'Track limits', 'Setup'].map(s => text.indexOf(s) >= 0),
+    return { gps: G.gps, tracedGps: D.gps, sameHand: Math.sign(area(G)) === Math.sign(area(D)), corr: num / Math.sqrt(da * db),
+      sizes: [Math.abs(area(G)), Math.abs(area(D))] } })(), text: text.slice(0, 600), sections: ['Your next session', 'Where the time goes', 'Corner by corner', 'Consistency', 'Track limits', 'Setup'].map(s => text.indexOf(s) >= 0),
   c4: (X.C.corners.find(c => c.n === 4).cause || { steps: [] }).steps.map(s => s.k), lineMaps: (html.match(/aria-label="Your line through the corner/g) || []).length, offs: coachOffs(IB.a, X.C.R.cs) }));
 """
         cls.r = run_js(js, REAL_IBT)
@@ -1732,6 +1736,8 @@ console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind),
         self.assertFalse(t["tracedGps"])
         self.assertTrue(t["sameHand"], "the traced map is mirrored")
         self.assertGreater(t["corr"], 0.99)
+        g, d = t["sizes"]
+        self.assertLess(abs(g - d) / g, 0.35)                 # about the same enclosed area (~0.5 km²)
 
     def test_corner_four_brakes_and_turns_in_early(self):
         # measured on the real laps: 9 m early on the brake and the turn-in, 3.9 m tight on the exit
