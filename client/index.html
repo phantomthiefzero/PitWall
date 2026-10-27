@@ -574,6 +574,10 @@
   /* a panel that is only waiting says so quietly */
   details.panel[open] > div > .note:only-child { font-size: 12px; color: var(--dim); }
   .ev .tm { color: var(--dim); }
+  .storybox { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+  .storyin { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; max-width: min(1240px, 100%); }
+  .storyin canvas { width: 100%; height: auto; display: block; border-radius: 8px; }
+  .storyrow { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -781,6 +785,7 @@
   <span id="rate"></span>
   <span id="rig" style="color:var(--muted)"></span>
   <button type="button" id="reportBtn" class="unittoggle mini" style="margin-left:0" title="Save a report of this session as a web page: result, stops, lap times, events and the alarms raised on this screen"></button>
+  <button type="button" id="storyBtn" class="unittoggle mini" title="A picture of the followed car's race to share: start and finish, positions lap by lap, best lap, laps led, stops and incidents">Story card</button>
 </footer>
 
 <div id="connect">
@@ -2231,6 +2236,115 @@
       `<\/head><body>${b}<\/body><\/html>`;
   }
   $("reportBtn").innerHTML = icon("report") + " Race report";
+  // ---- story card: the followed car's race as one picture to share (1200 x 675, a social-media card).
+  // Every number on it is iRacing's or already computed in normalize.py; the card only lays them out.
+  function storyData() {
+    const me = meCar(); if (!me) return null;
+    const sess = S.session || {}, t = sess.track || {}, st = S.state;
+    const sType = st && sess.sessions ? ((sess.sessions.find(x => x.SessionNum === st.session.num) || {}).SessionType || "") : "";
+    const laps = S.feed.laps.filter(l => l.idx === me.idx && l.pos > 0).sort((a, b) => a.lap - b.lap);
+    const d = me.derived || {}, multi = isMulticlass();
+    const pred = S.feed.events.filter(e => e.kind === "race_incident" && e.idx === me.idx).reduce((s, e) => s + (e.likelyPoints || 0), 0);
+    const official = typeof me.incidents === "number" && me.incidents >= 0 ? me.incidents : null;
+    return { track: t.TrackDisplayName || t.TrackName || "Track", config: t.TrackConfigName || "", session: sType,
+      num: me.num ?? me.idx, name: me.name || "", car: me.car || me.className || "", cls: multi ? me.className : null,
+      clsColor: multi && me.classColor != null ? classCss(me.classColor) : null,
+      grid: multi ? d.gridClassPos : d.gridPos, pos: multi ? me.classPos : me.pos, gained: multi ? d.classPosGained : d.posGained,
+      field: Object.values(S.cars.cars || {}).filter(c => c.pos > 0 && (!multi || c.classId === me.classId)).length,
+      best: me.bestLapS, led: multi ? d.classLapsLedSeen : d.lapsLedSeen, stops: d.stopsSeen, laps: me.lap,
+      consistency: d.consistencyS, incidents: official, predicted: official == null ? pred : null,
+      posByLap: laps.map(l => [l.lap, multi ? (l.classPos || l.pos) : l.pos]), paint: typeof dotMode !== "undefined" && dotMode === "paint" ? paintCss(me) : null,
+      checkered: !!(st && (st.session.flags || []).includes("checkered")) };
+  }
+  function drawStory(cv, D) {
+    const W = 1200, H = 675, g = cv.getContext("2d"); cv.width = W; cv.height = H;
+    const TF = getComputedStyle(document.documentElement).getPropertyValue("--title").trim() || "system-ui, sans-serif";
+    const UF = CV.font || "system-ui, sans-serif";
+    const acc = "#FFB23F", ink = "#F2F4F8", mut = "#8E9AB5", stripe = D.clsColor || D.paint || acc;
+    const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, "#0D1424"); bg.addColorStop(1, "#18233D");
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.fillStyle = stripe; g.fillRect(0, 0, 14, H);
+    // a faint chequer in the corner
+    g.globalAlpha = 0.06; g.fillStyle = "#FFFFFF";
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if ((x + y) % 2) g.fillRect(W - 8 * 26 + x * 26, y * 26, 26, 26);
+    g.globalAlpha = 1;
+    const text = (s, x, y, font, col, align) => { g.font = font; g.fillStyle = col; g.textAlign = align || "left"; g.fillText(s, x, y); };
+    text(D.track.toUpperCase() + (D.config ? " · " + D.config.toUpperCase() : ""), 56, 70, "600 26px " + TF, mut);
+    text((D.session || "Session") + (D.checkered ? " · Result" : " · As it stands") + " · " + new Date().toLocaleDateString(), 56, 102, "500 20px " + UF, mut);
+    text("#" + D.num, 56, 170, "700 54px " + TF, stripe);
+    const nw = g.measureText("#" + D.num).width;
+    text(D.name, 56 + nw + 18, 170, "700 54px " + TF, ink);
+    text([D.car, D.cls].filter(Boolean).join(" · "), 56, 206, "500 22px " + UF, mut);
+    // the result, large
+    const P = v => v ? "P" + v : "–";
+    if (D.grid) {
+      text(P(D.grid), 56, 330, "700 96px " + TF, mut);
+      const gw = g.measureText(P(D.grid)).width;
+      text("→", 56 + gw + 20, 318, "600 64px " + UF, mut);
+      text(P(D.pos), 56 + gw + 100, 330, "700 112px " + TF, ink);
+    } else text(P(D.pos), 56, 330, "700 112px " + TF, ink);
+    const gn = D.gained;
+    text(gn == null ? (D.field ? "of " + D.field : "") : gn > 0 ? "▲ " + gn + " place" + (gn === 1 ? "" : "s") + " gained" : gn < 0 ? "▼ " + -gn + " place" + (gn === -1 ? "" : "s") + " lost" : "held position",
+      56, 372, "600 26px " + UF, gn > 0 ? "#3DDC84" : gn < 0 ? "#FF6B6B" : mut);
+    // the numbers
+    const tiles = [["Best lap", D.best ? fmt.lap(D.best) : "–"], ["Laps led", D.led != null ? String(D.led) : "–"],
+      ["Pit stops", D.stops != null ? String(D.stops) : "–"],
+      ["Consistency", D.consistency != null ? "±" + D.consistency.toFixed(2) + " s" : "–"],
+      ["Incidents", D.incidents != null ? D.incidents + "x" : D.predicted != null ? D.predicted + "x (predicted)" : "–"]];
+    tiles.forEach(([k, v], i) => {
+      const x = 56 + i * 222, y = 430;
+      g.fillStyle = "rgba(255,255,255,.05)"; g.beginPath(); g.roundRect ? g.roundRect(x, y, 206, 96, 10) : g.rect(x, y, 206, 96); g.fill();
+      text(k.toUpperCase(), x + 16, y + 30, "600 16px " + UF, mut);
+      text(v, x + 16, y + 74, (v.length > 9 ? "700 26px " : "700 34px ") + TF, ink);
+    });
+    // positions lap by lap
+    const pts = D.posByLap;
+    const cx = 640, cy = 110, cw = 500, ch = 270;
+    text("POSITION, LAP BY LAP", cx, cy - 12, "600 16px " + UF, mut);
+    if (pts.length >= 2) {
+      const lo = 1, hi = Math.max(...pts.map(p => p[1]), D.grid || 1, 2), l0 = pts[0][0], l1 = pts[pts.length - 1][0];
+      const X = l => cx + (l - l0) / ((l1 - l0) || 1) * cw, Y = p => cy + (p - lo) / ((hi - lo) || 1) * ch;
+      g.strokeStyle = "rgba(255,255,255,.08)"; g.lineWidth = 1;
+      for (let p = lo; p <= hi; p += Math.max(1, Math.round((hi - lo) / 5))) { g.beginPath(); g.moveTo(cx, Y(p)); g.lineTo(cx + cw, Y(p)); g.stroke(); text("P" + p, cx - 8, Y(p) + 5, "500 14px " + UF, mut, "right"); }
+      const grd = g.createLinearGradient(0, cy, 0, cy + ch); grd.addColorStop(0, acc); grd.addColorStop(1, stripe);
+      g.strokeStyle = grd; g.lineWidth = 5; g.lineJoin = "round"; g.beginPath();
+      pts.forEach(([l, p], i) => i ? g.lineTo(X(l), Y(p)) : g.moveTo(X(l), Y(p))); g.stroke();
+      const [la, pa] = pts[pts.length - 1]; g.fillStyle = acc; g.beginPath(); g.arc(X(la), Y(pa), 8, 0, 7); g.fill();
+      text("lap " + l0, cx, cy + ch + 26, "500 14px " + UF, mut); text("lap " + l1, cx + cw, cy + ch + 26, "500 14px " + UF, mut, "right");
+    } else text("needs a few laps seen on this screen", cx, cy + 40, "500 18px " + UF, mut);
+    text("PitWall · iRacing Suite", W - 40, H - 32, "600 18px " + TF, mut, "right");
+    text(D.laps ? D.laps + " laps" : "", 56, H - 32, "500 18px " + UF, mut);
+  }
+  function storyOpen() {
+    const D = storyData();
+    if (!D) { reportSaid("Follow a car first: the card is that car's race.", true); return; }
+    let box = $("storyBox");
+    if (!box) {
+      box = document.createElement("div"); box.id = "storyBox"; box.className = "storybox";
+      box.innerHTML = '<div class="storyin"><canvas id="storyCv"></canvas><div class="storyrow"><button type="button" id="storySave" class="unittoggle">Save picture</button>' +
+        '<button type="button" id="storyCopy" class="unittoggle">Copy picture</button><span id="storyMsg" class="note"></span><button type="button" id="storyClose" class="unittoggle" style="margin-left:auto">Close</button></div></div>';
+      document.body.appendChild(box);
+      box.addEventListener("click", e => { if (e.target === box) box.remove(); });
+      $("storyClose").onclick = () => box.remove();
+      $("storyCopy").onclick = () => $("storyCv").toBlob(async b => {
+        try { await navigator.clipboard.write([new ClipboardItem({ "image/png": b })]); $("storyMsg").textContent = "Copied: paste it into Discord or anywhere."; }
+        catch (e) { $("storyMsg").textContent = "This browser would not copy a picture; use Save."; }
+      }, "image/png");
+      $("storySave").onclick = async () => {
+        const url = $("storyCv").toDataURL("image/png"), name = "race-story-" + new Date().toISOString().slice(0, 10) + ".png";
+        const api = window.pywebview && window.pywebview.api;
+        if (api && api.save_image) {
+          const r = await api.save_image(url, name);
+          $("storyMsg").textContent = r && r.ok ? "Saved to " + r.path : r && r.cancelled ? "Not saved." : (r && r.error) || "Could not save it.";
+          return;
+        }
+        const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        $("storyMsg").textContent = "Downloaded as " + name + ".";
+      };
+    }
+    drawStory($("storyCv"), D);
+  }
+  $("storyBtn").addEventListener("click", () => { if (document.fonts && document.fonts.ready) document.fonts.ready.then(storyOpen); else storyOpen(); });
   function skinLabel() { $("skinToggle").textContent = document.documentElement.dataset.skin === "classic" ? "classic" : "booth"; }
   skinLabel();
   $("skinToggle").addEventListener("click", () => {

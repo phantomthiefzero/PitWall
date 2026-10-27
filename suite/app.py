@@ -168,6 +168,33 @@ class Api:
             pass
         return {"ok": True, "path": path}
 
+    def save_image(self, data_url, name):
+        """PitWall's story card (a PNG): a Save dialog in Documents\\iRacingSuite\\Reports, then it opens."""
+        import base64
+        import webview
+        head, _, b64 = str(data_url or "").partition(",")
+        if not head.startswith("data:image/png;base64") or not b64:
+            return {"ok": False, "error": "Not a picture."}
+        safe = "".join(ch for ch in str(name or "race-story.png") if ch.isalnum() or ch in "-_. ")[:120] or "race-story.png"
+        if not safe.lower().endswith(".png"):
+            safe += ".png"
+        kind = webview.FileDialog.SAVE if hasattr(webview, "FileDialog") else webview.SAVE_DIALOG
+        picked = self._window.create_file_dialog(kind, directory=reports_dir(), save_filename=safe,
+                                                 file_types=("Picture (*.png)", "All files (*.*)"))
+        if not picked:
+            return {"ok": False, "cancelled": True}
+        path = picked[0] if isinstance(picked, (list, tuple)) else picked
+        try:
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(b64))
+        except (OSError, ValueError) as e:
+            return {"ok": False, "error": "Could not save the picture: %s" % e}
+        try:
+            os.startfile(path)
+        except Exception:
+            pass
+        return {"ok": True, "path": path}
+
     def use_live(self):
         self._engine.live()
         return {"ok": True}
