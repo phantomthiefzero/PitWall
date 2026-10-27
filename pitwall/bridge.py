@@ -67,7 +67,8 @@ class Bridge:
         self.livery_store = LiveryStore(livery_dir)
         self.capture = LiveryCapture(self.livery_store, self._cut, self._emit, log=log)
         # iRacing's own picture of every car with its paint (Trading Paints included)
-        self.renderer = CarRenderer(self.livery_store.base, self._emit, log=log) if render_cars else None
+        self.renderer = CarRenderer(self.livery_store.base, self._emit, log=log,
+                                    on_color=self._car_color) if render_cars else None
         self._render_check = 0.0
         self.camera_packs_dir = None              # None: Documents\iRacing\cameras
         self.packs_msg = None
@@ -141,6 +142,16 @@ class Bridge:
     def _maybe_build_map(self, state: dict, outbox: list[dict]):
         if self.map_msg is not None or self._map_key is None:
             return
+        # The suite may save this track's outline from your .ibt files meanwhile: look again now and then.
+        t = now_m()
+        if t - getattr(self, "_map_looked", 0.0) >= 10.0:
+            self._map_looked = t
+            cached = trackmap.load(self._map_key[0], self._map_key[1] or "default")
+            if cached:
+                self.map_msg = cached.to_message()
+                outbox.append(self.map_msg)
+                self.log(f"track map found in the cache for {self._map_key}")
+                return
         p = state["player"]
         g = self.src.get
         lap = self._collector.push(state["t"], p["lapPct"], g("VelocityX"), g("VelocityY"), g("YawNorth"),
@@ -279,6 +290,12 @@ class Bridge:
     def _cut(self, car_number: str, group: int) -> dict:
         return self.gate.execute(self.src, {"cmd": "camera", "action": "car", "car": str(car_number),
                                             "group": int(group), "camera": 0})
+
+    def _car_color(self, key: str, color: str):
+        """Each car's paint colour, from iRacing's picture of it (Trading Paints included): one small
+        message with all of them, kept by the relay for pages that join later."""
+        self.renderer_colors = dict(getattr(self, "renderer_colors", {}), **{key: color})
+        self._emit({"type": "carcolors", "colors": self.renderer_colors})
 
     def _emit(self, msg: dict):
         """Thread-safe: queue a message for the next frame."""
