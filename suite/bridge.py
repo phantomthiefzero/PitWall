@@ -601,6 +601,13 @@ async def library_reply(writer, path, headers):
                 out = await loop.run_in_executor(None, lib.remove_folder, q["remove"])
             else:
                 out = {"ok": True, "folders": lib.folders()}
+        elif u.path == "/api/trackmap":
+            # PitWall's outline for a track (pitwall.trackmap's cache, north up), for the Live view's map
+            def tm():
+                from pitwall import trackmap
+                t = trackmap.load(int(q.get("id", "0") or 0), q.get("config") or "default")
+                return {"points": t.points, "source": t.source, "lapLengthM": t.lap_length_m} if t else {"points": None}
+            out = await loop.run_in_executor(None, tm)
         elif u.path == "/api/library":
             out = await loop.run_in_executor(None, lib.info, max(0, int(q.get("page", "0") or 0)))
         else:
@@ -669,7 +676,7 @@ def make_handler(hub):
             if path.split("?")[0] == "/api/library/stream" and headers.get("upgrade", "").lower() == "websocket":
                 await library_stream(reader, writer, path, headers.get("sec-websocket-key", ""))
                 return
-            if path.split("?")[0].startswith("/api/library"):
+            if path.split("?")[0].startswith("/api/library") or path.split("?")[0] == "/api/trackmap":
                 await library_reply(writer, path, headers)
                 return
             if path.split("?")[0] == "/favicon.ico":
