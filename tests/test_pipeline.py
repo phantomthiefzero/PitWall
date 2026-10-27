@@ -2621,4 +2621,3 @@ def test_an_inferred_caution_holds_through_a_tick_without_speeds():
     assert c["active"], "no speeds this tick: no change"
     c = d.caution(field(35.0), [], True, 4000.0, t + 0.5, state="racing")
     assert c["active"]
-
