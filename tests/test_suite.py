@@ -340,7 +340,7 @@ class AppWindowApiTest(unittest.TestCase):
         self.assertEqual(public, {"version", "pick_replay", "use_live", "install_camera_pack", "open_cameras_folder", "library_pick_folder",
                                   "share_start", "share_stop", "share_info",
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
-                                  "update_open_key_page", "save_report",
+                                  "update_open_key_page", "save_report", "save_image",
                                   "record_start", "record_stop", "record_info", "record_show"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
