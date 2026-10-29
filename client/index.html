@@ -636,6 +636,8 @@
       <summary>Track
         <button type="button" id="mapLabelToggle" class="unittoggle mini"
                 title="Switch the map markers between car numbers and running position">car #</button>
+        <button type="button" id="mapXClear" class="unittoggle mini hidden"
+                title="Clear the red crosses (the followed car's incidents) off the map. New ones still appear. On this screen only.">clear &#10005;</button>
       </summary>
       <canvas id="map"></canvas>
       <div class="traffic" id="traffic"></div>
@@ -3280,6 +3282,7 @@
     return dotMode === "paint" ? paintCss(c) : (multi && c.classColor != null ? classCss(c.classColor) : "#6FA8FF");
   }
   let mapLabelMode = "num";
+  let mapXClearedSeq = -1;           // crosses up to this feed event are cleared off the map (this screen only)
   try { if (localStorage.getItem("pitwall.mapLabel") === "pos") mapLabelMode = "pos"; } catch (e) { /* storage off */ }
   function drawMap() {
     // Skip entirely while the Track panel is collapsed. Drawing into a sliver of a
@@ -3319,12 +3322,17 @@
     // Incidents of the followed car, where on the lap they happened: predicted
     // from telemetry for any car, and your own counted incidents when driving.
     ctx.font = "bold 10px " + CV.font; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    let nX = 0;
     for (const e of S.feed.events.slice(-300)) {
       if (e.idx !== focus || e.pct == null || !["race_incident", "car_incident", "incident", "off_track", "slowed"].includes(e.kind)) continue;
+      if (e.seq != null && e.seq <= mapXClearedSeq) continue;
+      nX++;
       const [x, y] = P(e.pct);
       ctx.strokeStyle = "#FF5A5A"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke();
     }
+    const xb = $("mapXClear");
+    if (xb && xb.dataset.n !== String(nX)) { xb.dataset.n = String(nX); xb.classList.toggle("hidden", !nX); xb.innerHTML = `clear &#10005; ${nX}`; }
     ctx.font = "bold 10px " + CV.font; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const c of cars.sort((a, b) => (a.idx === me) - (b.idx === me))) {
       const [x, y] = P(c.pct); const mine = c.idx === me;
@@ -3511,6 +3519,10 @@
     });
     sync();
   })();
+  $("mapXClear").addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();           // inside <summary>: don't fold the panel
+    mapXClearedSeq = Math.max(mapXClearedSeq, ...S.feed.events.map(x => x.seq ?? -1));
+  });
   (function () {
     const btn = $("dotToggle");
     const sync = () => { btn.textContent = dotMode === "paint" ? "car's paint" : "class colour"; };

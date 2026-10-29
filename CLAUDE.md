@@ -111,6 +111,8 @@ iRacing Suite app (suite/)
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
+  Ride heights are suggested last (`rhLast`, and last in every symptom's `ch` list): most setups already run the
+  car as low as it is allowed to go, so springs, bump rubbers, bars and wing come first.
 - `suite/bridge.py` uses only the standard library (plus pyirsdk). Its replay reads
   .ibt files; PitWall's replay reads its own .jsonl.gz captures. They are different.
 - `tests/test_suite.py` must pass along with `tests/test_pipeline.py`.
