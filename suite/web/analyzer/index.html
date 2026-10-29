@@ -884,13 +884,16 @@ const bot=Object.entries(h.BT).filter(([,x])=>x.frac>=.5).sort((a,b)=>b[1].frac-
 for(const[t,x]of Object.entries(h.T)){if(x.outer>=x.inner+2)F.push({kind:'camber_more',t,x,sev:(x.outer-x.inner)/20});else if(x.inner>=x.outer+15)F.push({kind:'camber_less',t,x,sev:(x.inner-x.outer-15)/20})}
 const ab=['slow','fast'].map(z=>B['entry_'+z]).filter(x=>x&&x.n>=150&&x.abs>=30);if(ab.length)F.push({kind:'abs',sev:Math.max(...ab.map(x=>x.abs))/200,v:Math.max(...ab.map(x=>x.abs))});
 return F.sort((a,b)=>b.sev-a.sev)}
+// Ride heights are offered last, after everything else that could do the job: most setups already run
+// the car as low as it is allowed to go, so a height change is rarely the first thing to reach for.
+function rhLast(L){return L.filter(c=>c[0]!=='rideheight').concat(L.filter(c=>c[0]==='rideheight'))}
 // what to try for each finding: [setting key, axle or corner, +1 raise / -1 lower]
 function adviceChanges(f){const u=f.kind,p=f.p,w=f.where;
 if(u==='us'){if(p==='entry')return[['brakepressurebias','',-1],['arbblades','front',-1],['arbblades','rear',1]];
-const mech=[['arbblades','front',-1],['arbblades','rear',1]],aero=[['rideheight','front',-1],['rearwingangle','',-1]];return w==='fast'?aero.concat(mech):mech.concat(w==='both'?aero:[])}
+const mech=[['arbblades','front',-1],['arbblades','rear',1]],wing=[['rearwingangle','',-1]],rh=[['rideheight','front',-1]];return rhLast(w==='fast'?wing.concat(mech,rh):mech.concat(w==='both'?wing.concat(rh):[]))}
 if(u==='os'){if(p==='entry')return[['brakepressurebias','',1],['diffpreload','',1],['arbblades','rear',-1]];
 if(p==='exit')return[['tcsetting','',0],['arbblades','rear',-1],['rearwingangle','',1]];return[['arbblades','rear',-1],['arbblades','front',1],['rearwingangle','',1]]}
-if(u==='bottom')return w.map(x=>x==='front'||x[1]==='F'?['rideheight','front',1]:['rideheight','rear',1]).filter((x,i,a)=>a.findIndex(y=>y[1]===x[1])===i);
+if(u==='bottom'){const ax=[...new Set(w.map(x=>x==='front'||x[1]==='F'?'front':'rear'))];return ax.map(a=>['springrate',a,1]).concat(ax.map(a=>['bumprubbergap',a,-1]),ax.map(a=>['rideheight',a,1]))}
 if(u==='camber_more')return[['camber',f.t,-1]];if(u==='camber_less')return[['camber',f.t,1]];if(u==='abs')return[['brakepressurebias','',-1]];return[]}
 const CORNER_OF={LF:'Left front',RF:'Right front',LR:'Left rear',RR:'Right rear'};
 function adviceRow(rows,[k,ax,dir],carPath){const r=rows.find(x=>x.k===k&&!x.calc&&(!ax||(ax.length===2?x.cn===CORNER_OF[ax]:x.ax===ax)));if(!r)return null;
@@ -1342,7 +1345,7 @@ const SYMPTOMS=[
  ch:[['arbblades','front',-1],['arbblades','rear',1],['diffpreload','',-1]],
  drive:'Coasting or adding steering while waiting for the apex makes the front scrub: carry a little throttle or brake through the turn and unwind the wheel as early as you can.'},
 {g:'Understeer',id:'u_mid_fast',lab:'Understeer mid-corner, fast corners',help:'Pushes wide in high-speed corners, where aero matters most.',
- ch:[['rideheight','front',-1],['rearwingangle','',-1],['arbblades','front',-1]],
+ ch:[['rearwingangle','',-1],['arbblades','front',-1],['rideheight','front',-1]],
  drive:'Lifting mid-corner in a fast turn moves the aero balance: keep the throttle steady through the turn.'},
 {g:'Understeer',id:'u_exit',lab:'Understeer on the throttle out',help:'Runs wide as you put the power down.',
  ch:[['arbblades','front',-1],['diffpreload','',1],['arbblades','rear',1]],
@@ -1363,7 +1366,7 @@ const SYMPTOMS=[
  ch:[['brakepressurebias','',1],['diffpreload','',1],['toein','rear',1]],
  drive:'Steering while braking at the limit unsettles the rear: brake in a straight line where you can.'},
 {g:'Ride',id:'r_bottom',lab:'Bottoming or splitter scraping',help:'Hits the ground at speed or over crests; sudden snaps of understeer.',
- ch:[['rideheight','front',1],['springrate','front',1],['bumprubbergap','front',-1]],
+ ch:[['springrate','front',1],['bumprubbergap','front',-1],['rideheight','front',1]],
  drive:''},
 {g:'Ride',id:'r_kerbs',lab:'Bounces or jumps over kerbs and bumps',help:'Thrown off line by kerbs, or skips over bumps.',
  ch:[['highspeedcompressiondamping','front',-1],['highspeedcompressiondamping','rear',-1],['bumprubbergap','front',1]],

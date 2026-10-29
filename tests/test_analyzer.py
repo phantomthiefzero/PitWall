@@ -509,8 +509,8 @@ console.log(JSON.stringify({ K: h.K, laps: h.laps, B: h.B, F: out, html: adviceH
         self.assertEqual(len(us), 1)
         self.assertEqual((us[0]["p"], us[0]["where"]), ("mid", "fast"))
         labels = [c["label"] for c in us[0]["changes"]]
-        self.assertEqual(labels[0], "Front ride height (both sides)")
-        self.assertIn("Rear wing angle", labels)
+        self.assertEqual(labels[0], "Rear wing angle")                 # aero first: the wing
+        self.assertEqual(labels[-1], "Front ride height (both sides)")  # the height last of all
         rear = [c for c in us[0]["changes"] if c["label"] == "Rear ARB blades"][0]
         self.assertIn("maximum", rear["at"])                     # 90 degrees on the 296: shown as blocked, not offered
 
@@ -536,8 +536,21 @@ console.log(JSON.stringify({ K: h.K, laps: h.laps, B: h.B, F: out, html: adviceH
     def test_splitter_on_the_ground_raises_the_front(self):
         r = self.run_case(splitter=0.001)
         b = [f for f in r["F"] if f["kind"] == "bottom"][0]
-        self.assertEqual(b["changes"][0]["label"], "Front ride height (both sides)")
-        self.assertEqual(b["changes"][0]["word"], "Higher")
+        # Ride height is offered, but last: most setups already run the car as low as it goes,
+        # so springs and the bump rubbers come first.
+        labels = [c["label"] for c in b["changes"]]
+        self.assertIn("Front ride height (both sides)", labels)
+        self.assertEqual(labels[-1], "Front ride height (both sides)")
+        self.assertEqual(b["changes"][-1]["word"], "Higher")
+        self.assertEqual(len(labels), 1 + labels.index("Front ride height (both sides)"))
+
+    def test_ride_height_is_the_last_suggestion_everywhere(self):
+        r = self.run_case(splitter=0.001)
+        for f in r["F"]:
+            labs = [c["label"] for c in f["changes"]]
+            rh = [i for i, x in enumerate(labs) if "ride height" in x.lower()]
+            if rh:
+                self.assertEqual(rh, list(range(len(labs) - len(rh), len(labs))), (f["kind"], labs))
 
 
 # --------------------------------------------------------------------------- #
@@ -909,7 +922,8 @@ class FixBySymptomTest(unittest.TestCase):
         self.assertEqual(o["u_mid_slow"]["items"][0], ["Front ARB blades", "softer"])
         self.assertIn(["Brake bias", "more to the front"], o["o_entry"]["items"])
         self.assertIn("Rear toe (both sides)", [i[0] for i in o["o_entry"]["items"]])
-        self.assertEqual(o["r_bottom"]["items"][0], ["Front ride height (both sides)", "higher"])
+        self.assertEqual(o["r_bottom"]["items"][-1], ["Front ride height (both sides)", "higher"])
+        self.assertNotEqual(o["r_bottom"]["items"][0][0], "Front ride height (both sides)")
         self.assertTrue(o["u_turnin"]["drive"])
         self.assertEqual(self.r["measured"], {})                      # live setup: no file laps to measure
 
