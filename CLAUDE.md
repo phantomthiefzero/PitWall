@@ -99,6 +99,9 @@ iRacing Suite app (suite/)
   against a reference, every channel, driver laps). The live connection is a one-line bar (#liveBar) on all of them.
   A live lap counts (valid) only when the car covered it (distance) and the lap clock agrees with the time it
   took (a formation lap's clock starts at the green), with no pit, incident, off-track moment or reset.
+  Coaching's map replay: a live lap's clock is cleaned when saved (coachCompact) and repaired when read (coFixT);
+  a new live lap waits while a replay plays, pauses or is zoomed (coachLater). Anything zoomed (a corner on the map,
+  a chart in the zoom box) goes back to normal with a second click.
   Which card shows where is the `body[data-view=...]` CSS at the top of the page. Switching views happens in
   the page (showView / viewShown, history.pushState): no reload, so nothing loaded is lost. The files in the
   two boxes, the lap picked from each and Coaching's Garage 61 laps are kept in IndexedDB (KEEP) and opened

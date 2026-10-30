@@ -1915,6 +1915,18 @@ console.log(JSON.stringify({ ibt: flLabel(ibtF), g61: flLabel(g), renamed: flLab
         self.assertEqual(r["renamed"], "about 1:24.600 · my fast lap")   # lap time from the file's length
         self.assertEqual(r["same"], [True, True, False, False, True])
 
+    def test_garage61_names_written_differently_still_match(self):
+        js = r"""
+const f = (car, track) => ({ kind: 'g61', car, track });
+console.log(JSON.stringify({ r: [
+  flSame(f('BMW M4 GT3 EVO', 'Road Atlanta (Full Course)'), 'BMW M4 GT3', 'Michelin Raceway Road Atlanta'),
+  flSame(f('Ferrari 296 GT3', 'Spa-Francorchamps (Grand Prix Pits)'), 'Ferrari 296 GT3', 'Circuit de Spa-Francorchamps'),
+  flSame(f('', ''), 'Ferrari 296 GT3', 'Indianapolis Motor Speedway'),              // a renamed file: names unknown, kept
+  flSame(f('Ferrari 296 GT3', 'Road America'), 'Ferrari 296 GT3', 'Road Atlanta'),   // a different track
+  flSame(f('Ferrari 296 GT3', 'Daytona International Speedway'), 'Ferrari 296 GT3', 'Indianapolis Motor Speedway')] }));
+"""
+        self.assertEqual(run_js(js)["r"], [True, True, True, False, False])
+
 
 CORNER_NAMES_JS = r"""
 const mk = (...aps) => aps.map((p, i) => ({ n: i + 1, ap: Math.round(p * (N - 1)) }));
@@ -2073,3 +2085,31 @@ console.log(JSON.stringify({ has: h.indexOf('More laps in the charts') >= 0, opt
 """, REAL_IBT)
         self.assertTrue(r["has"] and r["pic"])
         self.assertGreaterEqual(r["opts"], 15)        # your other clean laps, not the one already shown
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class SavedLiveLapClockTest(unittest.TestCase):
+    """Live laps saved by older versions kept a few samples at the line still carrying the previous lap's
+    clock, so the saved clock started high and fell below zero: Coaching's replay ended at once."""
+
+    def test_clock_repaired_and_new_laps_clean(self):
+        js = r"""
+const n = 200, D = [], t = [];
+for (let i = 0; i < n; i++) { D.push(i / (n - 1)); t.push(i < 3 ? 85 + i * 0.01 : (i / (n - 1)) * 84); }
+const t0 = t[0], saved = t.map(x => x - t0);                     // what the old coachCompact stored
+const u = coFixT(saved, D, 84);
+let rising = true; for (let i = 1; i < n; i++) if (u[i] < u[i - 1]) rising = false;
+// a fresh lap's buffers with the same stale samples at the line
+const b = { d: [], t: [], Speed: [], Brake: [], thr: [], str: [], gear: [], rpm: [], LatG: [], lon: [], yaw: [], abs: [] };
+for (let i = 0; i < 400; i++) { const d = i / 399; b.d.push(d); b.t.push(i < 4 ? 85 + i * 0.01 : d * 84); ['Speed','Brake','thr','str','gear','rpm','LatG','lon','yaw','abs'].forEach(k => b[k].push(1)); }
+const o = coachCompact(b, 84, { lap: 3, who: 'me', ver: 1 });
+let ok2 = true; for (let i = 1; i < o.t.length; i++) if (o.t[i] < o.t[i - 1]) ok2 = false;
+console.log(JSON.stringify({ rising, first: u[0], last: u[n - 1], fresh: ok2, freshLast: o.t[o.t.length - 1], same: Array.from(coFixT([0, 1, 2], [0, .5, 1], 2)) }));
+"""
+        r = run_js(js)
+        self.assertTrue(r["rising"])
+        self.assertEqual(r["first"], 0)
+        self.assertAlmostEqual(r["last"], 84, delta=0.01)
+        self.assertTrue(r["fresh"])
+        self.assertAlmostEqual(r["freshLast"], 84, delta=0.5)
+        self.assertEqual(r["same"], [0, 1, 2])                       # a good clock is left alone
