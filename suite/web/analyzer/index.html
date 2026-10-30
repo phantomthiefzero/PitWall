@@ -1127,7 +1127,7 @@ const why=valid?'':c.reset?'active reset':span!=null&&c.lastT>0&&Math.abs(c.last
 const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,stats:teleStatsOut(c),sx:full&&c.sx&&LIVE.secs&&c.sx.length===LIVE.secs.length?c.sx.slice():null,fuel:c.f0!=null&&v.FuelLevel!=null&&!c.pit&&!c.reset&&full&&c.f0>v.FuelLevel?c.f0-v.FuelLevel:null,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb),tt:c.tt!=null?c.tt:null,at:v.AirTemp!=null?v.AirTemp:null};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR),LatG:pick(b.LatG),yaw:pick(b.yaw)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
-LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{renderCoach()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
+LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{coachLater()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
 const liveMm=v=>v==null?'—':suNum(Math.round(v*10)/10,'mm'),liveTemp=v=>v==null?'—':(SETUP_UNITS==='imperial'?(v*1.8+32).toFixed(0)+'°F':v.toFixed(0)+'°C'),liveSpd=ms=>(ms*3.6*U().s[0]).toFixed(0)+' '+U().s[1];
 const liveMed=a=>{const s=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q);return s.length?s[Math.floor((s.length-1)/2)]:null};
 function liveGauges(barsOnly){const el=$('liveNow');if(!el)return;const v=LIVE.v;if(!v){el.innerHTML='<span class="m">Waiting for data...</span>';el.dataset.g='';return}
@@ -1711,7 +1711,13 @@ COACH_KEYS.forEach(key=>{const o=new Float64Array(N);for(let i=0;i<N;i++){for(le
 const t=new Float64Array(N);RS.forEach(R0=>{const t0=R0.t[0];for(let i=0;i<N;i++)t[i]+=(R0.t[i]-t0)/k});comp.t=t;
 comp.spread=(()=>{const L=list.map(x=>x.lap),m=comp.lap;return k>1?Math.sqrt(L.reduce((s,x)=>s+(x-m)**2,0)/(k-1)):0})();return comp}
 // a lap saved from a live session (compact) back into a lap object
-function coachFromSaved(s){const n=s.D.length,o={n,cond:s.cond||null,who:s.who||'Live lap',lap:s.lap,lapNum:s.lapNum,at:s.at||null,D:Float64Array.from(s.D),t:Float64Array.from(s.t),ext:{},meta:{}};
+// pure: a saved live lap's clock made to rise from 0. Laps saved by older versions kept a few samples at the
+// line that still carried the previous lap's time, so the clock started high and fell below zero. The clock
+// after the last fall is right; the samples before it get times at the pace that follows.
+function coFixT(t,D,lap){const n=t.length;let k=0;for(let i=1;i<n;i++)if(t[i]<t[i-1])k=i;if(!k)return Float64Array.from(t);
+const u=new Float64Array(n),j=Math.min(n-1,k+5),sl=(t[j]-t[k])/((D[j]-D[k])||1);for(let i=k;i<n;i++)u[i]=t[i]-t[k];for(let i=0;i<k;i++)u[i]=-(D[k]-D[i])*sl;
+const z=u[0];for(let i=0;i<n;i++)u[i]-=z;if(lap>0&&u[n-1]>0&&Math.abs(u[n-1]-lap)<5){const f=lap/u[n-1];for(let i=0;i<n;i++)u[i]*=f}return u}
+function coachFromSaved(s){const n=s.D.length,o={n,cond:s.cond||null,who:s.who||'Live lap',lap:s.lap,lapNum:s.lapNum,at:s.at||null,D:Float64Array.from(s.D),t:coFixT(s.t,s.D,s.lap),ext:{},meta:{}};
 COACH_KEYS.forEach(k=>{o[k]=s[k]?Float64Array.from(s[k]):new Float64Array(n)});return o}
 // pure: what differs between the average and the best, corner by corner, and what to do about it
 // ---- What each lap does in each corner (the inputs behind the time) ----
@@ -1811,11 +1817,12 @@ const COACH_LIVE_KEY='coachLive',COACH_LIVE_MAX=40,COACH_PTS=250;
 function coachLiveLoad(){try{return JSON.parse(localStorage.getItem(COACH_LIVE_KEY)||'{}')||{}}catch(e){return {}}}
 function coachLiveKey(){return(LIVE.meta&&LIVE.meta.carPath||'')+'|'+ghTrackOf(LIVE.yaml||'')}
 // pure: a finished live lap's buffers -> compact saved lap (null when the lap is not usable)
-function coachCompact(b,lapTime,meta){const n=b.d.length;if(n<50)return null;const keep=[];let last=-1;for(let i=0;i<n;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}if(keep.length<50)return null;
+function coachCompact(b,lapTime,meta){const n=b.d.length;if(n<50)return null;const keep=[];let last=-1;for(let i=0;i<n;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||(d<0.1&&t>30)||d<=last||(keep.length&&t<=b.t[keep[keep.length-1]]))continue;keep.push(i);last=d}if(keep.length<50)return null;
 const M=COACH_PTS,o={lap:lapTime,lapNum:meta.lap,who:meta.who,ver:meta.ver,at:Date.now(),D:[]},src={Speed:b.Speed,Brake:b.Brake,Throttle:b.thr,Steer:b.str,Gear:b.gear,RPM:b.rpm,LatG:b.LatG,LonG:b.lon,YawRate:b.yaw,ABS:b.abs,t:b.t};
 for(const k in src)o[k]=[];let j=0;
 for(let g=0;g<M;g++){const d=g/(M-1);while(j<keep.length-2&&b.d[keep[j+1]]<d)j++;const i0=keep[j],i1=keep[j+1],f=Math.min(1,Math.max(0,(d-b.d[i0])/((b.d[i1]-b.d[i0])||1)));o.D.push(+d.toFixed(4));
-for(const k in src){const a=src[k];if(!a||a[i0]==null||a[i1]==null){o[k].push(0);continue}const v=a[i0]+(a[i1]-a[i0])*f;o[k].push(+v.toFixed(k==='t'?3:3))}}
+const fu=j===0&&d<b.d[i0]?(d-b.d[i0])/((b.d[i1]-b.d[i0])||1):f;   // before the first sample: the clock runs back at the same pace
+for(const k in src){const a=src[k];if(!a||a[i0]==null||a[i1]==null){o[k].push(0);continue}const v=a[i0]+(a[i1]-a[i0])*(k==='t'?fu:f);o[k].push(+v.toFixed(k==='t'?3:3))}}
 // the lap must start at 0 s
 const t0=o.t[0];o.t=o.t.map(x=>+(x-t0).toFixed(3));return o}
 function coachSaveLive(c){try{if(!LIVE.meta||!LIVE.meta.carPath)return;const o=coachCompact(c.b,c.lastT,{lap:c.lap,who:LIVE.meta.who,ver:c.ver});if(o)o.cond={f0:c.f0,tt:c.tt,stint:c.stint};if(!o)return null;const S=coachLiveLoad(),k=coachLiveKey(),L=S[k]||(S[k]=[]);L.push(o);while(L.length>COACH_LIVE_MAX)L.shift();
@@ -1891,7 +1898,12 @@ const X=g=>(g-g0)/(g1-g0||1)*W,Y=v=>4+(hi-v)/((hi-lo)||1)*(H-18),line=(S,col)=>{
 return '<svg id="coTrace" data-w="'+W+'" viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;margin-top:6px" aria-label="Speed through the corner, both laps">'+line(B,'var(--ref)')+line(A,'var(--you)')+
 '<line id="coCurB" y1="0" y2="'+(H-14)+'" style="stroke:var(--ref);stroke-width:1.5;stroke-dasharray:3 2"/><line id="coCurA" y1="0" y2="'+(H-14)+'" style="stroke:var(--you);stroke-width:1.5"/>'+
 '<text x="0" y="'+(H-2)+'" style="fill:var(--mut);font-size:10px">speed '+(lo*3.6*u.s[0]).toFixed(0)+'–'+(hi*3.6*u.s[0]).toFixed(0)+' '+u.s[1]+'</text></svg>'}
-function ghStop(done){GHOST.on=false;cancelAnimationFrame(GHOST.raf);GHOST.pos=done?0:GHOST.pos;const b=document.getElementById('coPlay');if(b)b.textContent=done?(GHOST.mode==='corner'?'▶ Replay the corner':'▶ Play again'):'▶ Carry on'}
+// A new live lap rebuilds Coaching, which would stop a replay and drop a zoomed corner. While one is
+// playing, paused or zoomed in, the new lap waits; it is shown when the replay ends or you go back to the lap.
+function ghBusy(){return GHOST.on||GHOST.pos>0||GHOST.mode!=='lap'}
+function coachLater(){if(typeof GHOST!=='undefined'&&ghBusy()){COACH.waiting=true;const g=document.getElementById('coGap');if(g&&!/new lap/.test(g.title))g.title='A new lap is in: the map takes it when this replay ends.';return}COACH.waiting=false;renderCoach()}
+function ghFlush(){if(COACH.waiting&&!ghBusy())setTimeout(()=>{if(COACH.waiting&&!ghBusy()){COACH.waiting=false;renderCoach()}},0)}
+function ghStop(done){GHOST.on=false;cancelAnimationFrame(GHOST.raf);GHOST.pos=done?0:GHOST.pos;if(done)ghFlush();const b=document.getElementById('coPlay');if(b)b.textContent=done?(GHOST.mode==='corner'?'▶ Replay the corner':'▶ Play again'):'▶ Carry on'}
 function ghGo(){const b=document.getElementById('coPlay');if(GHOST.on){GHOST.pos+=(performance.now()-GHOST.t0)/1000*GHOST.speed;ghStop(false);return}
 const g=document.getElementById('coGhost');if(g)g.style.display='';if(GHOST.pos===0&&GHOST.mode==='corner'){const m=document.getElementById('coMarks');if(m){m.innerHTML='';m.dataset.h=''}}
 GHOST.on=true;GHOST.t0=performance.now();if(b)b.textContent='❚❚ Pause';GHOST.raf=requestAnimationFrame(ghFrame)}
@@ -1925,7 +1937,13 @@ function cornerNameBox(n){const box=document.getElementById('coName'),X=COACH.la
 box.innerHTML='<label>'+(cur?plain(cur):'Corner '+n)+' is called <input id="coNameIn" maxlength="24" style="width:9em" value="'+plain(cur)+'" placeholder="Turn '+n+'"></label> <button type="button" id="coNameOk" style="margin:0">Save</button>'+(cur?' <button type="button" id="coNameDel" class="clr" style="display:inline-block;margin:0">Forget the name</button>':'');
 const inp=box.querySelector('#coNameIn'),save=v=>{cnSet(track,p,v);renderCoach();if(typeof run==='function'&&F.a&&F.b)run()};inp.focus();inp.select();
 box.querySelector('#coNameOk').onclick=()=>save(inp.value);inp.onkeydown=e=>{if(e.key==='Enter')save(inp.value)};const del=box.querySelector('#coNameDel');if(del)del.onclick=()=>save('')}
-function wireCornerNames(el){el.querySelectorAll('.comap g[data-cn]').forEach(g=>g.onclick=()=>ghMode('corner',+g.dataset.cn))}
+// Click a corner to zoom onto it; click the map again (anywhere) to go back to the whole lap.
+function wireCornerNames(el){el.querySelectorAll('.comap g[data-cn]').forEach(g=>g.onclick=e=>{e.stopPropagation();if(GHOST.mode==='corner')ghMode('lap');else ghMode('corner',+g.dataset.cn)});
+const sv=el.querySelector('#coMapSvg');if(sv)sv.onclick=e=>{e.stopPropagation();if(GHOST.mode==='corner'){ghMode('lap');return}
+// anywhere else on the map: zoom onto the nearest corner
+const X=COACH.last,R=X&&X.C&&X.C.R;if(!R||!R.cs||!R.cs.length||!COMAP||!sv.getScreenCTM)return;const m=sv.getScreenCTM();if(!m)return;const pt=new DOMPoint(e.clientX,e.clientY).matrixTransform(m.inverse());
+let bg=0,bd=1e18;for(let g=0;g<N;g+=2){const dx=COMAP.px(g)-pt.x,dy=COMAP.py(g)-pt.y,d=dx*dx+dy*dy;if(d<bd){bd=d;bg=g}}
+const c=R.cs.slice().sort((a,b)=>Math.abs(a.ap-bg)-Math.abs(b.ap-bg))[0];if(c)ghMode('corner',c.n)}}
 // Then against now: your best saved live lap in this car at this track from before today
 function coachBefore(S){if(!S)return null;const key=S.key||((S.car||'')+'|'+(S.track||''));const L=(coachLiveLoad()[key]||[]).filter(x=>x.at&&x.at<new Date().setHours(0,0,0,0));
 const keep=usualLaps(L,x=>x.lap);if(!keep.length)return null;const b=keep.slice().sort((p,q)=>p.lap-q.lap)[0],o=coachFromSaved(b);o.who='Your best before today';return o}
@@ -2201,7 +2219,14 @@ const flWhen=t=>{if(!t)return '';const d=new Date(t*1000),y=d.getFullYear()!==ne
 function flLabel(f){if(f.kind==='g61')return [f.lap?(f.est?'about ':'')+ft(f.lap):'lap time unknown',f.driver||f.name.replace(/\.csv$/i,''),f.car,f.track].filter(Boolean).join(' · ');
 return [flWhen(f.when),f.car,f.session||f.event,f.laps?f.laps+' laps':'',f.best?'best '+ft(f.best):'',f.team?'team event':'',f.driver].filter(Boolean).join(' · ')}
 // pure: does a listed file match the car and track loaded now (names differ a little between iRacing and Garage 61)
-function flSame(f,car,track){if(!car&&!track)return true;const c=flNorm(f.car),t=flNorm(f.track),C=flNorm(car),T=flNorm(track);return(!C||c===C)&&(!T||t.startsWith(T)||T.startsWith(t))}
+// Garage 61 names a car or track a little differently from iRacing ("BMW M4 GT3 EVO", "Road Atlanta (Full Course)",
+// "Spa-Francorchamps"), and a renamed Garage 61 file has no names at all: unknown is kept, and a name matches when
+// one contains the other or they share the place's own word (not "motor", "speedway", "raceway"...).
+const FL_GENERIC=new Set(['motor','speedway','raceway','circuit','international','park','road','course','full','track','grand','prix','national','autodromo','autodrom','race','racing','michelin','the','and','de','du','di','la','le','gp','oval','short','long','layout','config','configuration','gt3','gt4','gtp','gte','evo','car','spec','edition']);
+function flWords(s){return String(s||'').toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>=3&&!FL_GENERIC.has(w))}
+function flNameMatch(a,b){const x=flNorm(a),y=flNorm(b);if(!x||!y)return true;if(x===y||x.includes(y)||y.includes(x))return true;const A=flWords(a),B=flWords(b);if(!A.length||!B.length)return false;
+const[s1,s2]=A.length<=B.length?[A,B]:[B,A];return s1.every(w=>s2.includes(w))||A.some(w=>w.length>=5&&B.includes(w))}
+function flSame(f,car,track){if(!car&&!track)return true;return(!car||flNameMatch(f.car,car))&&(!track||flNameMatch(f.track,track))}
 function flCurrent(){const ib=IB.a;if(ib)return{car:ib.carName,track:ib.track};return{car:null,track:null}}
 async function flLoad(){try{let page=0,pages=1,files=[];do{const r=await fetch('/api/library?page='+page);if(!r.ok)throw 0;const j=await r.json();if(j.ok===false)throw new Error(j.error);if(page===0){FLIB.folders=j.folders||[];pages=j.pages||1;FLIB.chunk=j.chunk||FLIB.chunk}files=files.concat(j.files||[]);page++}while(page<pages&&page<50);FLIB.files=files;FLIB.on=true}catch(e){FLIB.on=false}
 // ?open=<id>: a file from the home page's last-session card, opened as your laps once the list is in
@@ -2224,14 +2249,14 @@ async function flOpenAll(ids){for(const id of ids)await flOpen(id,'coachq');rend
 async function flFolder(op,path){try{let r;if(op==='pick'&&window.pywebview&&window.pywebview.api&&window.pywebview.api.library_pick_folder)r=await window.pywebview.api.library_pick_folder();
 else r=await(await fetch('/api/library/folders?'+op+'='+encodeURIComponent(path))).json();if(r&&r.ok===false&&r.error)$('flMsg').textContent=r.error;await flLoad()}catch(e){$('flMsg').textContent='Could not change the folders: '+e.message}}
 function renderFiles(){const el=$('files');if(!el)return;if(!FLIB.on){el.hidden=true;return}el.hidden=false;const cur=flCurrent(),same=FLIB.same&&(cur.car||cur.track),
-pickable=f=>!same||flSame(f,cur.car,cur.track),I=FLIB.files.filter(f=>f.kind==='ibt'&&pickable(f)),G=FLIB.files.filter(f=>f.kind==='g61'&&pickable(f)).sort((a,b)=>(a.lap||1e9)-(b.lap||1e9)),keepI=($('flI')||{}).value,keepG=($('flG')||{}).value;
+pickable=f=>!same||flSame(f,cur.car,cur.track),I=FLIB.files.filter(f=>f.kind==='ibt'&&pickable(f)),G0=FLIB.files.filter(f=>f.kind==='g61'),Gm=G0.filter(pickable),gAll=same&&!Gm.length&&G0.length>0,G=(gAll?G0:Gm).slice().sort((a,b)=>(a.lap||1e9)-(b.lap||1e9)),keepI=($('flI')||{}).value,keepG=($('flG')||{}).value;
 const groups=(L,key)=>{const by={};L.forEach(f=>{const g=key(f)||'Other';(by[g]=by[g]||[]).push(f)});return Object.keys(by).map(g=>'<optgroup label="'+plain(g)+'">'+by[g].map(f=>'<option value="'+f.id+'">'+plain(flLabel(f))+'</option>').join('')+'</optgroup>').join('')};
 const gSame=cur.car||cur.track?G.filter(f=>flSame(f,cur.car,cur.track)):[],canPick=!!(window.pywebview&&window.pywebview.api&&window.pywebview.api.library_pick_folder);
 const fo=FLIB.folders||[],sum=fo.length?fo.map(x=>plain(x.path.split(/[\\/]/).filter(Boolean).slice(-2).join('\\'))+(x.exists?'':' (not found)')).join(' · '):'none yet';
 el.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><b>Your files</b><span class="m" style="font-size:13px">'+FLIB.files.length+' in your folders · <a href="#" id="flRe">refresh</a>'+(cur.car||cur.track?' · <label><input type="checkbox" id="flSame"'+(FLIB.same?' checked':'')+'> only '+plain([cur.car,cur.track].filter(Boolean).join(', '))+'</label>':'')+'</span></div>'+
 (I.length||!FLIB.files.length?'':'<p class="m" style="margin:4px 0">No .ibt files for this car and track in your folders yet.</p>')+
 (I.length?'<div class="flrow"><span class="m">iRacing</span><select id="flI">'+groups(I,f=>f.track)+'</select><span class="flbtn"><button type="button" data-fl="a" title="Into the left box">Open as your lap</button><button type="button" data-fl="b" title="Into the right box">Open as reference lap</button></span></div>':'')+
-(G.length?'<div class="flrow"><span class="m">Garage 61</span><select id="flG">'+groups(G,f=>[f.car,f.track].filter(Boolean).join(' · '))+'</select><span class="flbtn"><button type="button" data-fl="gb" class="fl-other" title="Into the right box">Open as reference lap</button>'+
+(gAll?'<p class="m" style="margin:4px 0">None of your Garage 61 laps is named for this car and track, so all of them are listed.</p>':'')+(G.length?'<div class="flrow"><span class="m">Garage 61</span><select id="flG">'+groups(G,f=>[f.car,f.track].filter(Boolean).join(' · '))+'</select><span class="flbtn"><button type="button" data-fl="gb" class="fl-other" title="Into the right box">Open as reference lap</button>'+
 '<button type="button" data-fl="gref" class="fl-coach" title="Coaching measures your average lap against this lap (it goes in the right box)">Coach me against this lap</button>'+
 '<button type="button" data-fl="gc" title="For your own Garage 61 laps: Coaching can then average them (Average of: Garage 61 laps) or measure against the fastest of them">Add to my Garage 61 laps in Coaching</button>'+(gSame.length>1?'<button type="button" id="flGAll" title="Every Garage 61 lap for this car and track, for Coaching to average">Add all '+gSame.length+' (this car and track)</button>':'')+'</span></div>':'')+
 '<details class="flfold"><summary class="m">Folders: '+sum+'</summary><div style="margin-top:4px">'+fo.map(x=>'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code style="overflow-wrap:anywhere">'+plain(x.path)+'</code>'+(x.auto?'<span class="m">(iRacing\'s telemetry folder)</span>':'<a href="#" data-flrm="'+plain(x.path)+'">remove</a>')+(x.exists?'':' <span class="bad">not found</span>')+'</div>').join('')+
@@ -2381,8 +2406,8 @@ if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(ENG_TXT);cp.t
 let ZOOM=null;
 function zoomClose(){const z=ZOOM;if(!z)return;ZOOM=null;if(z.el){z.el.style.cssText=z.css;if(z.ph.isConnected)z.ph.replaceWith(z.el)}z.ov.remove();document.removeEventListener('keydown',zoomKey);try{window.dispatchEvent(new Event('resize'))}catch(e){}}
 function zoomKey(e){if(e.key==='Escape')zoomClose()}
-function zoomOpen(el,title,live){if(ZOOM)zoomClose();const ov=document.createElement('div');ov.className='zoomov';ov.innerHTML='<div class="zoombox"><div class="zoomhd"><b></b><span><span class="m" style="font-size:13px;margin-right:10px">Esc or click outside to close</span><button type="button">Close ✕</button></span></div><div class="zoombody"></div></div>';ov.querySelector('.zoomhd b').textContent=title||'';const body=ov.querySelector('.zoombody');
-ov.onclick=e=>{if(e.target===ov)zoomClose()};ov.querySelector('button').onclick=zoomClose;document.body.appendChild(ov);document.addEventListener('keydown',zoomKey);
+function zoomOpen(el,title,live){if(ZOOM)zoomClose();const ov=document.createElement('div');ov.className='zoomov';ov.innerHTML='<div class="zoombox"><div class="zoomhd"><b></b><span><span class="m" style="font-size:13px;margin-right:10px">Click it again, press Esc or click outside to close</span><button type="button">Close ✕</button></span></div><div class="zoombody"></div></div>';ov.querySelector('.zoomhd b').textContent=title||'';const body=ov.querySelector('.zoombody');
+ov.onclick=e=>{const t=e.target;if(t===ov||(t.closest&&t.closest('.zoombody')&&!t.closest('button,a,select,input,label,[data-j],[data-g],.cr'))){e.stopPropagation();zoomClose()}};ov.querySelector('button').onclick=zoomClose;document.body.appendChild(ov);document.addEventListener('keydown',zoomKey);
 if(live){const cv=document.createElement('canvas');cv.style.cssText='width:100%;height:100%;display:block';body.appendChild(cv);ZOOM={ov,live,cv};try{liveDrawCharts()}catch(e){}return}
 const ph=document.createComment('zoom');el.parentNode.insertBefore(ph,el);ZOOM={ov,el,ph,css:el.style.cssText};body.appendChild(el);
 if(el.tagName==='CANVAS'){const sq=el.id==='gg'||el.id==='map';el.style.cssText=sq?'height:100%;width:auto;aspect-ratio:1;max-width:100%;display:block':'width:100%;height:100%;display:block'}else el.style.cssText='width:100%;height:100%;max-width:none;max-height:none;display:block';
