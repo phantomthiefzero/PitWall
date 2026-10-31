@@ -1,4 +1,4 @@
-# Assets used by the PitWall dashboard's booth look and the suite's Arcade look
+# Assets used by the PitWall dashboard's booth look and the suite's Arcade look (fonts and sounds)
 
 All free to use and to ship with the app. The page works without them (it falls back to
 system fonts).
@@ -11,6 +11,7 @@ system fonts).
 | `bungee-latin-400-normal.woff2` | Bungee, the Arcade look's pop-ups and big numbers. Copyright 2023 The Bungee Project Authors (https://github.com/djrrb/Bungee). From `@fontsource/bungee` 5.3.0. | SIL Open Font License 1.1 |
 | `russo-one-latin-400-normal.woff2` | Russo One, the Arcade look's headings. Copyright (c) 2011-2012 Jovanny Lemonad, Reserved Font Name "Russo". From `@fontsource/russo-one` 5.3.0. | SIL Open Font License 1.1 |
 | `exo-2-latin-500-normal.woff2`, `exo-2-latin-900-italic.woff2` | Exo 2, the Arcade look's text and italic numbers. Copyright 2013 The Exo 2 Project Authors (https://github.com/NDISCOVER/Exo-2.0). From `@fontsource/exo-2` 5.0.20. | SIL Open Font License 1.1 |
+| `sfx-*.mp3` | The Arcade look's sound effects and announcer. Layered and mastered for the suite from: Kenney (kenney.nl) Voiceover Pack Fighter, Impact Sounds, Interface Sounds, Sci-fi Sounds, Digital Audio and Music Jingles; OpenGameArt.org "100 CC0 SFX #2" by rubberduck (the air whoosh) and "Level up, power up, coin get" by wobbleboxx. Taken from the Legerdo/open-game-sfx-index mirror, which checked each source's licence. | CC0 1.0 (public domain) |
 | icons inside `client/index.html` (`ICON`) | Tabler Icons (outline): flag, gas-station, alert-triangle, cloud-rain, volume, volume-3, file-download, clock-hour-4, car, alert-octagon, users. Copyright (c) 2020-2026 Paweł Kuna. From `@tabler/icons`. | MIT |
 
 The licence texts are in `DSEG-OFL.txt`, `BARLOW-OFL.txt`, `BUNGEE-OFL.txt`, `RUSSO-OFL.txt` and `EXO2-OFL.txt` (SIL Open Font License 1.1). The fonts are shipped
