@@ -188,8 +188,9 @@ Broadcast (broadcast/)
   not just the colours. The driver card shows the driver's picture (gfx.photos by iRacing user id, uploaded in the
   producer's Liveries tab; else the helmet on the race suit, drawn from HelmetDesignStr / SuitDesignStr) and the helmet
   (carrender's pk_helmet.png when iRacing gives one -- unverified, VARIABLES_TO_VERIFY "Helmets" -- else drawn). Arcade's
-  sound effects (the suite's recorded sfx-*.mp3 from the relay; gfx sound.on, off by default; the announcer also
-  gfx sound.voice) never play with the master switch off.
+  sound effects (the suite's recorded sfx-*.mp3 from the relay: a car passing for a battle, the last-lap bell, the
+  finish; gfx sound.on, off by default; the announcer, at the checkered flag only, also gfx sound.voice) never play
+  with the master switch off.
 - `tests/test_broadcast.py` and `tests/test_broadcast2.py` must pass with the others.
 - Graphics state ("gfx") lives in the relay, not the bridge. Camera/replay commands go
   through the bridge under `--allow-camera` and the producer token, separate from pit.

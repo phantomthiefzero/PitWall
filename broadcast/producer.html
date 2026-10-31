@@ -469,7 +469,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
     sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Sound effects (Arcade look; in OBS tick Control audio via OBS)") +
-    sw("sw-voice", G("sound.voice", true), `data-gflag="sound.voice" data-gdef="1"`, "Announcer (FIGHT! when a battle comes on)");
+    sw("sw-voice", G("sound.voice", true), `data-gflag="sound.voice" data-gdef="1"`, "Announcer (at the checkered flag)");
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
     const prod = canProduce(), dis = prod ? "" : "disabled";
@@ -837,7 +837,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     neon: { ink: "#0b0a14", ink2: "#14122a", head: "#ff2e88", headText: "#0b0a14", text: "#f4f1ff", muted: "#8f89b8", accent: "#00e5ff", accentText: "#0b0a14", fl: "#c77dff", plate: "#221f3d" },
     heritage: { ink: "#0f2a1d", ink2: "#143425", head: "#e9e2c9", headText: "#0f2a1d", text: "#f3eedb", muted: "#a8b5a0", accent: "#d4a017", accentText: "#0f2a1d", fl: "#b58cff", plate: "#1d4430" },
     pitwall: { ink: "#050607", ink2: "#0b0d10", head: "#000000", headText: "#ffffff", text: "#e4e8ec", muted: "#7f8892", accent: "#ffb23f", accentText: "#000000", fl: "#b43cf0", plate: "#16181b" },
-    arcade: { ink: "#0b0b0f", ink2: "#16151d", head: "#000000", headText: "#ffffff", text: "#ffffff", muted: "#a7a3b5", accent: "#ffe600", accentText: "#000000", fl: "#c13dff", plate: "#2a2833" } };
+    arcade: { ink: "#0c1018", ink2: "#141b2a", head: "#06080d", headText: "#ffffff", text: "#ffffff", muted: "#9aa4b8", accent: "#ffd400", accentText: "#000000", fl: "#b45cff", plate: "#273044" } };
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };

@@ -239,7 +239,6 @@ body.bc-off>*:not(script){visibility:hidden!important}
 
 /* ---------- LOOKS: the Pit wall and Arcade presets restyle the graphics, not just their colours (data-look) ---------- */
 @font-face{font-family:"DSEG7 digits";font-weight:400 900;font-display:swap;unicode-range:U+0020,U+002B-002E,U+0030-003A;src:url("/pitwall/assets/dseg7-classic-bold.woff2") format("woff2")}
-@font-face{font-family:"Bungee";font-display:swap;src:url("/pitwall/assets/bungee-latin-400-normal.woff2") format("woff2")}
 @font-face{font-family:"Russo One";font-display:swap;src:url("/pitwall/assets/russo-one-latin-400-normal.woff2") format("woff2")}
 @font-face{font-family:"Exo 2";font-weight:400 600;font-display:swap;src:url("/pitwall/assets/exo-2-latin-500-normal.woff2") format("woff2")}
 @font-face{font-family:"Exo 2";font-weight:700 900;font-style:italic;font-display:swap;src:url("/pitwall/assets/exo-2-latin-900-italic.woff2") format("woff2")}
@@ -260,70 +259,72 @@ body.bc-off>*:not(script){visibility:hidden!important}
 :root[data-look="pitwall"] .bt-head,:root[data-look="pitwall"] .fs-h{background:#000;color:var(--accent);border-bottom:3px solid var(--accent)}
 :root[data-look="pitwall"] .tk i{background:#000;color:var(--accent);border-right:3px solid var(--accent)}
 :root[data-look="pitwall"] .cd .ph,:root[data-look="pitwall"] .cd .hel{background:#000}
-:root[data-look="arcade"]{--pop:"Bungee",var(--display);--chrome:linear-gradient(180deg,#ffffff 0%,#fff6a8 38%,#ffb000 52%,#ff3b00 53%,#ffe600 100%);--hit:#ff1e3c}
-:root[data-look="arcade"] .tw-head,:root[data-look="arcade"] .bn,:root[data-look="arcade"] .cd,:root[data-look="arcade"] .pn,:root[data-look="arcade"] .fs,:root[data-look="arcade"] .rp{border:3px solid #fff;box-shadow:8px 8px 0 var(--hit)}
-:root[data-look="arcade"] .tw-head{transform:skewX(-8deg)}
+:root[data-look="arcade"]{--num:"Exo 2",var(--body);--chkg:conic-gradient(#fff 0 25%,#0b0d12 0 50%,#fff 0 75%,#0b0d12 0);
+  --chrome:linear-gradient(180deg,#ffffff 0%,#fff3b0 40%,#ffb000 54%,#ff5a1f 55%,#ffd400 100%);
+  --trail:-5px 0 0 rgba(255,90,31,.5),-12px 0 0 rgba(255,90,31,.22)}
+:root[data-look="arcade"] .tw-head,:root[data-look="arcade"] .bn,:root[data-look="arcade"] .cd,:root[data-look="arcade"] .pn,:root[data-look="arcade"] .fs,:root[data-look="arcade"] .rp{box-shadow:0 14px 40px rgba(0,0,0,.55);border:1px solid #2b3549}
+:root[data-look="arcade"] .tw-head{transform:skewX(-8deg);position:relative;border-bottom:3px solid var(--accent)}
+:root[data-look="arcade"] .tw-head::after{content:"";position:absolute;left:0;right:0;bottom:-11px;height:8px;background:var(--chkg) 0 0/8px 8px;opacity:.9}
 :root[data-look="arcade"] .tw-head .ttl,:root[data-look="arcade"] .tw-head .st{font-style:italic}
-:root[data-look="arcade"] .tw-head .st{font-family:var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.2px #000}
+:root[data-look="arcade"] .tw-head .st{font:900 italic 1em var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
 :root[data-look="arcade"] .tw-flag,:root[data-look="arcade"] .tw-foot{display:none}
-:root[data-look="arcade"] .tw-body{background:transparent}
-:root[data-look="arcade"] .row{background:linear-gradient(90deg,#0e0e13,#18161f)!important;border:2px solid #34313f;transform-origin:left;margin-top:0}
+:root[data-look="arcade"] .tw-body{background:transparent;margin-top:10px}
+:root[data-look="arcade"] .row{background:linear-gradient(90deg,rgba(17,23,37,.94),rgba(10,14,22,.94))!important;border-left:3px solid transparent;margin-top:0}
 :root[data-look="arcade"] .row .nm{font-style:italic}
-:root[data-look="arcade"] .row .pos{font-family:var(--pop);color:var(--accent)}
-:root[data-look="arcade"] .row .val{font:900 italic 18px var(--body)}
-:root[data-look="arcade"] .row.cam{border-color:var(--accent);box-shadow:5px 5px 0 var(--hit)}
+:root[data-look="arcade"] .row .pos{font:900 italic 1.05em var(--num);color:var(--accent)}
+:root[data-look="arcade"] .row .val{font:900 italic 18px var(--num)}
+:root[data-look="arcade"] .row.cam{border-left-color:var(--accent);background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 30%,#0c1018),rgba(10,14,22,.94) 70%)!important;box-shadow:0 0 24px color-mix(in srgb,var(--accent) 25%,transparent)}
 :root[data-look="arcade"] .row.cam .pos{background:var(--accent);color:#000}
-:root[data-look="arcade"] .bn .main b{font-family:var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.2px #000}
-:root[data-look="arcade"] #card{width:960px;left:420px}
-:root[data-look="arcade"] #card.on .cd{animation:lkCard .6s cubic-bezier(.2,1.4,.4,1) both}
-:root[data-look="arcade"] .cd{height:150px;clip-path:polygon(0 0,100% 0,97.5% 100%,0 100%);box-shadow:none;border:3px solid #fff}
-:root[data-look="arcade"] .cd .ph{width:170px;background:linear-gradient(135deg,var(--hit),#5a0010)}
-:root[data-look="arcade"] .cd .ph::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(-60deg,rgba(255,255,255,.08) 0 3px,transparent 3px 14px)}
-:root[data-look="arcade"] .cd .num{background:transparent!important;width:120px}
-:root[data-look="arcade"] .cd .num b{font-family:var(--pop);font-size:70px;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;filter:drop-shadow(4px 4px 0 var(--hit))}
-:root[data-look="arcade"] .cd .name{font-style:italic;text-shadow:3px 3px 0 var(--hit)}
-:root[data-look="arcade"] .cd .stats{background:transparent}
-:root[data-look="arcade"] .cd .stats b{font:900 italic 24px var(--body);color:var(--accent);text-shadow:2px 2px 0 #000}
-:root[data-look="arcade"] #card.on .cd .hel{animation:lkHel .5s .45s cubic-bezier(.2,2,.4,1) both}
-:root[data-look="arcade"] #card.on .cd .lv{animation:lkLv .7s .25s cubic-bezier(.2,1.3,.4,1) both}
+:root[data-look="arcade"] .bn .main b{font:900 italic 30px var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
+:root[data-look="arcade"] .bn{transform:skewX(-8deg)}
+:root[data-look="arcade"] #card.on .cd{animation:lkCard .6s cubic-bezier(.15,.9,.25,1) both}
+:root[data-look="arcade"] .cd{height:132px;clip-path:polygon(0 0,100% 0,98% 100%,0 100%);border-top:3px solid var(--accent)}
+:root[data-look="arcade"] .cd .ph{width:160px;background:linear-gradient(135deg,#1a2234,#0a0e16)}
+:root[data-look="arcade"] .cd .num b{font:900 italic 60px/.9 var(--num);text-shadow:0 3px 0 rgba(0,0,0,.6)}
+:root[data-look="arcade"] .cd .name{font-style:italic;text-shadow:var(--trail)}
+:root[data-look="arcade"] .cd .stats b{font:900 italic 24px var(--num);color:var(--accent)}
+:root[data-look="arcade"] #card.on .cd .hel{animation:lkHel .45s .4s cubic-bezier(.2,1.5,.4,1) both}
+:root[data-look="arcade"] #card.on .cd .lv{animation:lkLv .7s .2s cubic-bezier(.15,.9,.25,1) both}
 :root[data-look="arcade"] .cd .lv{width:250px;background:transparent}
-@keyframes lkCard{from{transform:translateY(220px) skewX(-20deg);opacity:0}}
-@keyframes lkHel{from{transform:scale(3) rotate(-30deg);opacity:0}}
-@keyframes lkLv{from{transform:translateX(400px) skewX(-25deg);opacity:0}}
+@keyframes lkCard{0%{transform:translateX(520px) skewX(-24deg);filter:blur(8px);opacity:0}70%{transform:translateX(-10px) skewX(-2deg);filter:none;opacity:1}100%{transform:none}}
+@keyframes lkHel{from{transform:scale(1.5) translateX(40px);opacity:0}}
+@keyframes lkLv{0%{transform:translateX(480px) skewX(-28deg);filter:blur(8px);opacity:0}75%{transform:translateX(-8px);filter:none;opacity:1}100%{transform:none}}
 :root[data-look="arcade"] #battle{width:900px;margin-left:-450px}
 :root[data-look="arcade"] .bt{overflow:visible;border-radius:0}
-:root[data-look="arcade"] .bt-head{display:inline-flex;gap:14px;transform:skewX(-12deg);box-shadow:5px 5px 0 #000;margin-bottom:8px;font-style:italic}
-:root[data-look="arcade"] .bt-cars{display:grid;grid-template-columns:1fr auto 1fr;background:transparent;align-items:stretch;position:relative}
-:root[data-look="arcade"] #battle.on .bt-cars{animation:lkSlamIn .5s cubic-bezier(.2,1.3,.4,1) both}
-@keyframes lkSlamIn{from{transform:scaleX(1.6) skewX(-25deg);opacity:0}}
-:root[data-look="arcade"] .bt-cars::after{content:"VS";position:absolute;left:50%;top:6px;transform:translateX(-50%) rotate(-8deg);font:104px/1 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:3px #000;filter:drop-shadow(6px 6px 0 #000) drop-shadow(0 0 20px #fff);z-index:3;pointer-events:none}
-:root[data-look="arcade"] #battle.on .bt-cars::after{animation:lkVsIn .7s .3s cubic-bezier(.2,1.8,.4,1) both}
-:root[data-look="arcade"] .bt-car{flex-direction:column;align-items:flex-start;gap:6px;padding:14px 18px;height:170px;box-sizing:border-box;position:relative}
-:root[data-look="arcade"] .bt-car:first-child{background:linear-gradient(135deg,#ff1e3c,#5a0010);clip-path:polygon(0 0,100% 0,88% 100%,0 100%)}
-:root[data-look="arcade"] .bt-car:last-child{background:linear-gradient(225deg,#19a8ff,#001a5a);clip-path:polygon(12% 0,100% 0,100% 100%,0 100%);align-items:flex-end;text-align:right}
-:root[data-look="arcade"] .bt-car .pos{font-family:var(--pop);color:var(--accent);text-shadow:3px 3px 0 #000}
-:root[data-look="arcade"] .bt-car .nm{font-style:italic;font-size:28px;text-shadow:3px 3px 0 #000;max-width:100%}
+:root[data-look="arcade"] .bt-head{display:inline-flex;gap:14px;transform:skewX(-14deg);margin-bottom:8px;font-style:italic}
+:root[data-look="arcade"] .bt-cars{display:grid;grid-template-columns:1fr auto 1fr;background:linear-gradient(180deg,rgba(17,23,37,.95),rgba(8,11,17,.95));align-items:stretch;position:relative;overflow:hidden;
+  border:1px solid #2b3549;border-top:3px solid var(--accent);transform:skewX(-8deg);box-shadow:0 14px 40px rgba(0,0,0,.55)}
+:root[data-look="arcade"] .bt-cars::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.6;
+  background:repeating-linear-gradient(180deg,transparent 0 13px,rgba(255,255,255,.06) 13px 14px,transparent 14px 31px,rgba(255,212,0,.08) 31px 33px,transparent 33px 52px);
+  -webkit-mask:repeating-linear-gradient(90deg,#000 0 140px,transparent 140px 200px,#000 200px 260px,transparent 260px 380px);mask:repeating-linear-gradient(90deg,#000 0 140px,transparent 140px 200px,#000 200px 260px,transparent 260px 380px);animation:lkLines .4s linear infinite}
+:root[data-look="arcade"] #battle.on .bt-cars{animation:lkBattle .55s cubic-bezier(.15,.9,.25,1) both}
+@keyframes lkBattle{0%{transform:translateX(600px) skewX(-28deg);filter:blur(8px);opacity:0}70%{transform:translateX(-10px) skewX(-6deg);filter:none;opacity:1}100%{transform:skewX(-8deg)}}
+@keyframes lkLines{to{-webkit-mask-position:-380px 0;mask-position:-380px 0}}
+:root[data-look="arcade"] .bt-car{flex-direction:column;align-items:flex-start;gap:6px;padding:14px 18px;height:160px;box-sizing:border-box;position:relative;z-index:1}
+:root[data-look="arcade"] .bt-car:last-child{align-items:flex-end;text-align:right}
+:root[data-look="arcade"] .bt-car:first-child{border-left:6px solid var(--accent)}
+:root[data-look="arcade"] .bt-car:last-child{border-right:6px solid #19d9ff}
+:root[data-look="arcade"] .bt-car .pos{font:900 italic 30px var(--num);color:var(--accent)}
+:root[data-look="arcade"] .bt-car:last-child .pos{color:#19d9ff}
+:root[data-look="arcade"] .bt-car .nm{font-style:italic;font-size:28px;max-width:100%}
 :root[data-look="arcade"] .bt-car .lv{width:220px;height:80px;background:transparent}
-:root[data-look="arcade"] .bt-car .ph{position:absolute;top:14px;width:70px;height:70px;border:3px solid #fff;box-shadow:4px 4px 0 #000}
-:root[data-look="arcade"] .bt-car:first-child .ph{right:130px}
-:root[data-look="arcade"] .bt-car:last-child .ph{left:130px}
-:root[data-look="arcade"] .bt-gap{background:transparent;margin:0 -50px;z-index:4;justify-content:flex-end;padding-bottom:16px}
-:root[data-look="arcade"] .bt-gap b{font:30px var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #000;filter:drop-shadow(3px 3px 0 var(--hit))}
-:root[data-look="arcade"] .bt-gap span{color:#fff;letter-spacing:.2em}
-:root[data-look="arcade"] .bt-foot{background:#000;border:2px solid #fff;margin-top:10px;transform:skewX(-8deg);font-style:italic}
-@keyframes lkInL{from{transform:translateX(-110%)}}
-@keyframes lkInR{from{transform:translateX(110%)}}
-@keyframes lkVsIn{from{transform:translateX(-50%) rotate(-8deg) scale(5);opacity:0}}
-:root[data-look="arcade"] .tk{border:2px solid #fff;box-shadow:5px 5px 0 var(--hit);transform:skewX(-8deg)}
+:root[data-look="arcade"] .bt-car .ph{position:absolute;top:14px;width:64px;height:64px;border:2px solid #fff;border-radius:50%;overflow:hidden}
+:root[data-look="arcade"] .bt-car:first-child .ph{right:20px}
+:root[data-look="arcade"] .bt-car:last-child .ph{left:20px}
+:root[data-look="arcade"] .bt-gap{background:transparent;z-index:2;justify-content:center;padding:0 22px;position:relative}
+:root[data-look="arcade"] .bt-gap::before{content:"";position:absolute;inset:14px 0;background:rgba(0,0,0,.55);border-left:1px solid #2b3549;border-right:1px solid #2b3549;z-index:-1}
+:root[data-look="arcade"] .bt-gap b{font:900 italic 46px var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
+:root[data-look="arcade"] .bt-gap span{color:#fff;letter-spacing:.3em;font-style:italic}
+:root[data-look="arcade"] .bt-foot{background:#06080d;border:1px solid #2b3549;margin-top:10px;transform:skewX(-8deg);font-style:italic}
+:root[data-look="arcade"] .tk{border:1px solid #2b3549;border-left:4px solid var(--accent);transform:skewX(-8deg);box-shadow:0 10px 30px rgba(0,0,0,.5)}
 :root[data-look="arcade"] .tk p b{font-style:italic}
-:root[data-look="arcade"] .pn-head b{font-family:var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #000}
+:root[data-look="arcade"] .pn-head b{font:900 italic 1em var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
 :root[data-look="arcade"] .fs-h,:root[data-look="arcade"] .bt-head{background:var(--accent);color:#000}
-:root[data-look="arcade"] .rp b{font-family:var(--pop)}
-:root[data-look="arcade"] .lk-hit .inner::after{content:"";position:absolute;inset:-20px;background:radial-gradient(closest-side,rgba(255,255,255,.95),rgba(255,230,0,.5) 40%,transparent 75%);mix-blend-mode:screen;pointer-events:none;animation:lkHitFlash .45s ease-out both}
-:root[data-look="arcade"] .lk-hit .inner{animation:lkHitShake .35s cubic-bezier(.2,.8,.3,1)}
+:root[data-look="arcade"] .rp{transform:skewX(-10deg)}
+:root[data-look="arcade"] .rp b{font-style:italic}
+:root[data-look="arcade"] .lk-hit .inner::after{content:"";position:absolute;inset:-10px;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 48%,rgba(255,243,176,.25) 54%,transparent 66%) no-repeat;background-size:250% 100%;mix-blend-mode:screen;animation:lkSweep .6s cubic-bezier(.3,0,.5,1) both}
 :root[data-look="arcade"] .layer .inner{position:relative}
-@keyframes lkHitFlash{0%{opacity:1;transform:scale(.6)}100%{opacity:0;transform:scale(1.4)}}
-@keyframes lkHitShake{15%{transform:translate(-10px,4px)}35%{transform:translate(8px,-4px)}60%{transform:translate(-4px,2px)}100%{transform:none}}
+@keyframes lkSweep{from{background-position:120% 0}to{background-position:-30% 0}}
 /* ---------- /LOOKS ---------- */
 </style>
 </head>
@@ -404,8 +405,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   })();
   const assetUrl = n => n ? ASSET_BASE + encodeURIComponent(n) : "";
 
-  // Sound (Arcade look only, gfx sound.on, never while the broadcast is off): the suite's recorded effects and
-  // announcer (client/assets/sfx-*.mp3, CC0), from the relay. OBS carries it when the browser source has
+  // Sound (Arcade look only, gfx sound.on, never while the broadcast is off): the suite's recorded racing effects and
+  // announcer (client/assets/sfx-*.mp3, CC0), from the relay: a car passing for a battle, the bell, the finish. OBS carries it when the browser source has
   // "Control audio via OBS"; the announcer can be switched off on its own (gfx sound.voice).
   const SFX_BASE = (() => { const r = Q.get("relay"); if (location.protocol.startsWith("http") && !r) return location.origin + "/pitwall/assets/";
     if (r) return r.replace(/^ws/, "http").replace(/\/+$/, "") + "/pitwall/assets/"; return "http://127.0.0.1:8765/pitwall/assets/"; })();
@@ -421,7 +422,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const ac = audio(); if (!ac) return;
     load(name).then(buf => { if (!buf) return; const s = ac.createBufferSource(), g = ac.createGain(); s.buffer = buf; g.gain.value = .9; s.connect(g); g.connect(BUS); s.start(ac.currentTime + (delay || 0)); });
   }
-  // the moment a graphic lands: a white flash on it (Arcade look; CSS class lk-hit)
+  // the moment a graphic lands: a light sweeps across it (Arcade look; CSS class lk-hit)
+  const lastFlag = {};
   function hit(el) { if (!el || document.documentElement.dataset.look !== "arcade") return; el.classList.remove("lk-hit"); void el.offsetWidth; el.classList.add("lk-hit"); }
 
   function fit() {
@@ -575,8 +577,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     pitwall: { colors: { ink: "#050607", ink2: "#0b0d10", head: "#000000", headText: "#ffffff", text: "#e4e8ec", muted: "#7f8892",
                          accent: "#ffb23f", accentText: "#000000", fl: "#b43cf0", plate: "#16181b" },
                fonts: { display: "Barlow Condensed", body: "Barlow Semi Condensed" }, caps: true, radius: 0, names: "initial" },
-    arcade: { colors: { ink: "#0b0b0f", ink2: "#16151d", head: "#000000", headText: "#ffffff", text: "#ffffff", muted: "#a7a3b5",
-                        accent: "#ffe600", accentText: "#000000", fl: "#c13dff", plate: "#2a2833" },
+    arcade: { colors: { ink: "#0c1018", ink2: "#141b2a", head: "#06080d", headText: "#ffffff", text: "#ffffff", muted: "#9aa4b8",
+                        accent: "#ffd400", accentText: "#000000", fl: "#b45cff", plate: "#273044" },
               fonts: { display: "Russo One", body: "Exo 2" }, caps: true, radius: 0, names: "initial" },
   };
   let fontKey = "";
@@ -790,6 +792,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Checkered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
     $("bnSub").textContent = [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · ");
     $("bnFlag").style.background = f ? FLAG_BG[f] : "var(--muted)";
+    // Arcade sound for the flags in a race: the bell for the last lap, the fanfare and the announcer at the finish
+    if (f !== lastFlag.f) { if (lastFlag.f !== undefined && isRace()) { if (f === "white") bcSfx("lastlap"); else if (f === "checkered") { bcSfx("finish"); bcSfx("v_congrats", 1.1, true); } else if (f === "green" && lastFlag.f) bcSfx("green"); } lastFlag.f = f; }
     // replay bug: behind live, paused, slow or fast
     const cam = S.state.camera || {}, sp = cam.replaySpeed;
     const behind = !live() || (sp != null && (sp !== 1 || cam.replaySlowMotion));
@@ -824,7 +828,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const side = c => `<div class="bt-car"><span class="pos">${esc(m ? c.classPos : c.pos)}</span>${plate(c)}${G("card.photo", true) ? `<div class="ph">${photoHtml(c)}</div>` : ""}<span class="nm">${nameHtml(c.name)}</span><div class="lv" style="position:relative">${liveryHtml(c)}</div></div>`;
     const bk = b.cars.slice(-2).join("|"); // a new battle: the VS hit and FIGHT!, at most every 15 s, and the same pair not again for a minute
     if (bk !== lastBattle.key && $("battle").classList.contains("on")) { lastBattle.key = bk; const now = performance.now(), seen = lastBattle.seen || (lastBattle.seen = {});
-      if (now - (lastBattle.at || -1e9) > 15000 && now - (seen[bk] || -1e9) > 60000) { lastBattle.at = seen[bk] = now; bcSfx("vs"); bcSfx("v_fight", 1.1, true); setTimeout(() => hit($("battle")), 360); } }
+      if (now - (lastBattle.at || -1e9) > 15000 && now - (seen[bk] || -1e9) > 60000) { lastBattle.at = seen[bk] = now; bcSfx("passby"); setTimeout(() => hit($("battle")), 300); } }
     $("btCars").innerHTML = side(cars[0]) + `<div class="bt-gap"><b>${gapTxt != null ? gapTxt.toFixed(gapTxt < 10 ? 3 : 1) : "–"}</b><span>gap</span></div>` + side(cars[1]);
     const rate = k >= 0 ? b.closingSPerLap[k] : null, laps = k >= 0 ? b.catchLaps[k] : null;
     let foot = "Within a second";
@@ -937,7 +941,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("cdPh").innerHTML = G("card.photo", true) ? photoHtml(c) : "";
     $("cdHel").innerHTML = G("card.helmet", true) ? helmetHtml(c, 84) : "";
     // a new car on the card: whoosh and slam, at most every 6 s (the camera can hop between cars)
-    if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; bcSfx("whoosh"); bcSfx("slam", .3); setTimeout(() => hit($("card")), 300); } }
+    if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; bcSfx("whoosh"); setTimeout(() => hit($("card")), 300); } }
     const d = c.derived || {};
     // the class position is on the number; in a multi-class field this is the overall one
     const stats = [[m ? "Overall" : "Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];
