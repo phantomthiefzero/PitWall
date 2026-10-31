@@ -272,6 +272,11 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         <div class="progress hide" id="lvProg"><i></i></div>
         <p class="note">This cuts the camera to each car in turn, so do it before going live, or during the grid walk. Photos are kept for next time.</p>
       </section>
+      <section>
+        <h2>Driver pictures</h2>
+        <p class="note" style="margin-top:0">A photo for a driver goes on the driver card and the battle graphic, kept for every race by their iRacing ID. Without one, the driver's helmet on their race suit is drawn in their own iRacing colours. Ask drivers before putting their face on a stream.</p>
+        <div id="photoList" class="assets"></div>
+      </section>
     </div>
   </div>
 
@@ -460,7 +465,10 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
   // Not a layer: lets the overlay bring up "where they're faster" in a close battle and the results at the finish.
-  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, results at the finish)");
+  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, results at the finish)") +
+    sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
+    sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
+    sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Sound effects (Arcade look; in OBS tick Control audio via OBS)");
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
     const prod = canProduce(), dis = prod ? "" : "disabled";
@@ -595,6 +603,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const ds = b.dataset;
     if (ds.layer) { const d = LAYERS.find(x => x[0] === ds.layer)[2]; setGfx({ [ds.layer]: { show: !G(ds.layer + ".show", d) } }); }
     if (ds.auto) setGfx({ auto: { on: !G("auto.on", false) } });
+    if (ds.gflag) { const [a, b] = ds.gflag.split("."); setGfx({ [a]: { [b]: !G(ds.gflag, !!ds.gdef) } }); }
     else if (ds.twl) setGfx({ tower: { layout: ds.twl } });
     else if (ds.per) setGfx({ tower: { perClass: Number(ds.per) } });
     else if (ds.cls !== undefined) setGfx({ tower: { class: Number(ds.cls) } });
@@ -819,14 +828,16 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const FONTS = ["Barlow Condensed", "Barlow", "Big Shoulders Display", "Saira Condensed", "Saira", "Oswald", "Roboto Condensed",
     "Roboto", "Titillium Web", "Exo 2", "Rajdhani", "Teko", "Bebas Neue", "Archivo Narrow", "Archivo", "Inter", "Montserrat",
     "Kanit", "Chakra Petch", "Orbitron", "Russo One", "Anton", "IBM Plex Sans Condensed", "Fira Sans Condensed"];
-  const PRESETS = { imsa: "IMSA style", pitboard: "Pit board", daylight: "Daylight", neon: "Night neon", heritage: "Heritage green" };
+  const PRESETS = { imsa: "IMSA style", pitboard: "Pit board", daylight: "Daylight", neon: "Night neon", heritage: "Heritage green", pitwall: "Pit wall", arcade: "Arcade" };
   const PRESET_COLORS = {
     imsa: { ink: "#111317", ink2: "#16191f", head: "#000000", headText: "#ffffff", text: "#ffffff", muted: "#9aa3ae", accent: "#ffcc00", accentText: "#000000", fl: "#a766ff", plate: "#2a2f38" },
     pitboard: { ink: "#101824", ink2: "#162131", head: "#f2efe6", headText: "#101824", text: "#f2efe6", muted: "#98a5b8", accent: "#f5b841", accentText: "#101824", fl: "#a766ff", plate: "#24344c" },
     daylight: { ink: "#ffffff", ink2: "#f1f3f6", head: "#0b2a5b", headText: "#ffffff", text: "#0d1320", muted: "#5c6b80", accent: "#e4002b", accentText: "#ffffff", fl: "#7b2fd6", plate: "#dfe4ea" },
     neon: { ink: "#0b0a14", ink2: "#14122a", head: "#ff2e88", headText: "#0b0a14", text: "#f4f1ff", muted: "#8f89b8", accent: "#00e5ff", accentText: "#0b0a14", fl: "#c77dff", plate: "#221f3d" },
-    heritage: { ink: "#0f2a1d", ink2: "#143425", head: "#e9e2c9", headText: "#0f2a1d", text: "#f3eedb", muted: "#a8b5a0", accent: "#d4a017", accentText: "#0f2a1d", fl: "#b58cff", plate: "#1d4430" } };
-  const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"] };
+    heritage: { ink: "#0f2a1d", ink2: "#143425", head: "#e9e2c9", headText: "#0f2a1d", text: "#f3eedb", muted: "#a8b5a0", accent: "#d4a017", accentText: "#0f2a1d", fl: "#b58cff", plate: "#1d4430" },
+    pitwall: { ink: "#050607", ink2: "#0b0d10", head: "#000000", headText: "#ffffff", text: "#e4e8ec", muted: "#7f8892", accent: "#ffb23f", accentText: "#000000", fl: "#b43cf0", plate: "#16181b" },
+    arcade: { ink: "#0b0b0f", ink2: "#16151d", head: "#000000", headText: "#ffffff", text: "#ffffff", muted: "#a7a3b5", accent: "#ffe600", accentText: "#000000", fl: "#c13dff", plate: "#2a2833" } };
+  const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
   const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid" };
@@ -923,6 +934,33 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     e.target.value = "";
   };
 
+  // ------------------------------------------------------------- Driver pictures
+  let photoKey = "";
+  function renderPhotos() {
+    const el = $("photoList"); if (!el) return;
+    const P = S.gfx.photos || {}, cars = allCars().filter(c => c.userId > 0).sort((a, b) => (a.pos > 0 ? a.pos : 999) - (b.pos > 0 ? b.pos : 999));
+    const key = cars.map(c => c.userId + ":" + (P[c.userId] || "")).join("|") + (canProduce() ? "p" : "");
+    if (key === photoKey) return; photoKey = key;
+    if (!cars.length) { el.innerHTML = '<p class="note">Drivers appear here once the session is loaded.</p>'; return; }
+    const dis = canProduce() ? "" : "disabled";
+    el.innerHTML = cars.map(c => `<div>${P[c.userId] ? `<img src="${assetUrl(P[c.userId])}" alt="" style="object-fit:cover">` : `<span class="note" style="flex:none;width:40px">none</span>`}` +
+      `<span>#${esc(c.num ?? "")} ${esc(c.name || "")}</span><label class="btn" style="flex:none;cursor:pointer"><input type="file" accept=".png,.jpg,.jpeg,.webp" hidden data-photo="${c.userId}" ${dis}><span style="font-size:12px;padding:2px 8px;border:1px solid var(--line);border-radius:4px">${P[c.userId] ? "Change" : "Add photo"}</span></label>` +
+      (P[c.userId] ? `<button data-photodel="${c.userId}" style="min-height:26px;padding:1px 7px" ${dis}>Remove</button>` : "") + `</div>`).join("");
+  }
+  document.addEventListener("change", async e => {
+    const uid = e.target && e.target.dataset && e.target.dataset.photo; if (!uid) return;
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { toast(f.name + " is over 8 MB", true); return; }
+    const ext = (f.name.match(/\.(png|jpe?g|webp)$/i) || [".jpg"])[0].toLowerCase(), name = "photo_" + uid + ext;
+    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+    send({ type: "asset_put", name, data });
+    setGfx({ photos: { [uid]: name } });
+  });
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-photodel]"); if (!b) return;
+    setGfx({ photos: { [b.dataset.photodel]: null } });
+  });
+
   // ------------------------------------------------------------- Liveries tab
   function renderLiveries() {
     const st = S.lv;
@@ -1011,6 +1049,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         const before = JSON.stringify(S.gfx);
         S.gfx = m.state || {};
         if (m.by && m.by !== me && before !== JSON.stringify(S.gfx)) { log(esc(m.by) + " changed the graphics"); dirty.look = true; }
+        try { renderPhotos(); } catch (e) {}
         dirty.ctl = dirty.field = true; break;
       }
       case "gfx_result": if (!m.ok) { toast(m.error, true); log(esc(m.error), true); } break;
@@ -1032,7 +1071,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     if (holding) return;
     if (dirty.ctl) { dirty.ctl = false; renderControls(); }
     if (dirty.cam) { dirty.cam = false; renderHeader(); renderCameraButtons(); renderDirector(); }
-    if (dirty.field) { dirty.field = false; renderField(); renderBattles(); }
+    if (dirty.field) { dirty.field = false; renderField(); renderBattles(); renderPhotos(); }
     if (dirty.inc) { dirty.inc = false; renderIncidents(); }
     if (dirty.lv) { dirty.lv = false; renderLiveries(); }
     if (dirty.look && !document.querySelector("[data-pane=look]").classList.contains("hide") &&

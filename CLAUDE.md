@@ -179,6 +179,11 @@ Broadcast (broadcast/)
 - One owner of the camera at a time (director.py): you / director / grid walk / followed battle.
   A producer `camera` command always takes it back (bridge._consumer calls Director.manual()).
   Anything new that moves the camera must go through the Director's owner, not around it.
+- Looks on air: the producer's look presets Pit wall and Arcade restyle the graphics (overlay CSS under `:root[data-look]`),
+  not just the colours. The driver card shows the driver's picture (gfx.photos by iRacing user id, uploaded in the
+  producer's Liveries tab; else the helmet on the race suit, drawn from HelmetDesignStr / SuitDesignStr) and the helmet
+  (carrender's pk_helmet.png when iRacing gives one -- unverified, VARIABLES_TO_VERIFY "Helmets" -- else drawn). Arcade's
+  sound effects (gfx sound.on, off by default) never play with the master switch off.
 - `tests/test_broadcast.py` and `tests/test_broadcast2.py` must pass with the others.
 - Graphics state ("gfx") lives in the relay, not the bridge. Camera/replay commands go
   through the bridge under `--allow-camera` and the producer token, separate from pit.
