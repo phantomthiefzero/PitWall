@@ -298,8 +298,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <label>Car dots <select id="setDots"><option value="class">class colour</option><option value="paint">the car's paint</option></select></label>
 <label>Look <select id="setTheme"><option value="dark">dark</option><option value="light">light</option></select></label>
 <label>Style <select id="setLook"><option value="basic">Basic</option><option value="pitwall">Pit wall</option><option value="arcade">Arcade</option></select></label>
-<label>Arcade sounds <select id="setSfx"><option value="off">off</option><option value="on">on</option></select></label>
-<label>Announcer <select id="setVoice"><option value="on">on</option><option value="off">off</option></select></label>
+<label>Announcer <select id="setVoice"><option value="off">off</option><option value="f">a woman's voice</option><option value="m">a man's voice</option></select></label>
 <label>Team name <input id="setTeam" maxlength="40" placeholder="optional"></label>
 <label>Car number <input id="setPlate" maxlength="4" placeholder="optional" style="width:70px"></label>
 <p class="sets-note">Style: Pit wall and Arcade restyle every page of the suite (Arcade adds pop-ups and, if switched on, sounds). Team name and car number show in their bar.</p>
@@ -330,8 +329,8 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <script>
 // ---- Looks (Basic / Pit wall / Arcade): one setting for the suite (suite:look), same on every page. ----
 // Pit wall and Arcade only restyle the page and add a bar across the top (lkHud); the words stay the same.
-// Arcade adds an arcade racer's layer: call-outs, the start lights, a clean-lap streak and sound effects (suite:sfx,
-// off until switched on). Every number in the bar is one the page already shows.
+// Arcade adds an arcade racer's layer: call-outs, the start lights, a clean-lap streak and an announcer (suite:announcer,
+// off until a voice is picked; no sound effects: the sim has the racing sounds). Every number in the bar is one the page already shows.
 const LK = { look: 'basic', streak: 0, pos: null, flags: 0, gear: null, AC: null };
 function lkGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v } catch (e) { return d } }
 function lkLook() { const v = lkGet('suite:look', 'basic'); return v === 'pitwall' || v === 'arcade' ? v : 'basic' }
@@ -376,7 +375,7 @@ function lkArcade() { return LK.look === 'arcade' }
 const LK_CALM = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches } catch (e) { return false } };
 // A call-out: it comes in from the right like a car, brakes past its mark, settles, then pulls away to the left.
 // kind: a colour (red, purple, cyan, green, white) and 'chk' for a checkered edge.
-// opts: sound (a name in LK_SND), voice (a LK_VOICE line), voiceAt (s), fx ('pb' | 'streak' | 'off' | 'pass' | 'go')
+// opts: say (an announcer line, LK_LINES), sayAt (s), fx ('pb' | 'streak' | 'off' | 'pass' | 'go')
 function lkPop(t, s, kind, opts) {
   if (!lkArcade()) return; opts = opts || {};
   const p = document.createElement('div'); p.className = 'lk-pop ' + (kind || ''); p.setAttribute('role', 'status');
@@ -384,9 +383,9 @@ function lkPop(t, s, kind, opts) {
   const T = p.querySelector('.t'); T.textContent = t; T.dataset.t = t; if (s) p.querySelector('.s').textContent = s;
   document.querySelectorAll('.lk-pop').forEach(x => x.remove());
   document.body.prepend(p); if (opts.fx === 'off') lkShake(6);
-  lkSfx(opts.sound || 'whoosh'); if (opts.voice) lkVoice(opts.voice, opts.voiceAt || .55);
+  if (opts.say) lkSay(opts.say, opts.sayAt == null ? .2 : opts.sayAt);
   lkFx(opts.fx || 'streak', getComputedStyle(p).getPropertyValue('--k').trim() || '#ffd400');
-  setTimeout(() => lkSfx('out'), 1850); setTimeout(() => p.remove(), 2300);
+  setTimeout(() => p.remove(), 2300);
 }
 // the page rumbles like a car on the kerbs (one transform on the body, no layout)
 function lkShake(px) { if (LK_CALM()) return; const b = document.body; b.style.setProperty('--sh', px + 'px'); b.classList.remove('lk-shake'); void b.offsetWidth; b.classList.add('lk-shake') }
@@ -464,10 +463,10 @@ function lkStart(a, b) {
   v.onclick = end; document.body.prepend(v);
   // the lights wait for the page to settle (a big result is still being drawn), so they come on one at a time
   const pods = v.querySelectorAll('.pod'); let last = performance.now(), calm = 0; const t0 = last;
-  const go = () => { lkVoice('ready', 0);
-    pods.forEach((p, i) => T.push(setTimeout(() => { p.classList.add('on'); lkSfx('light') }, 350 + i * 330)));
-    T.push(setTimeout(() => lkVoice('set', 0), 350 + 3 * 330));
-    T.push(setTimeout(() => { v.classList.add('go'); pods.forEach(p => p.classList.remove('on')); lkSfx('lightgo'); lkSfx('passby', .05); lkVoice('go', .02); lkFx('go') }, 350 + 4 * 330 + 650));
+  const go = () => { lkSay('ready', 0);
+    pods.forEach((p, i) => T.push(setTimeout(() => p.classList.add('on'), 350 + i * 330)));
+    T.push(setTimeout(() => lkSay('set', 0), 350 + 3 * 330));
+    T.push(setTimeout(() => { v.classList.add('go'); pods.forEach(p => p.classList.remove('on')); lkSay('go', 0); lkFx('go') }, 350 + 4 * 330 + 650));
     T.push(setTimeout(end, 4300)) };
   const wait = now => { if (!v.isConnected) return; calm = now - last < 50 ? calm + 1 : 0; last = now; if (calm >= 5 || now - t0 > 4000) go(); else requestAnimationFrame(wait) };
   requestAnimationFrame(wait);
@@ -487,47 +486,46 @@ function lkLapEvent(rec, prior) {
 }
 function lkLap(rec, prior) {
   const e = lkLapEvent(rec, prior || []); if (!e) return;
-  if (e.kind === 'pb') { LK.streak++; lkPop('PERSONAL BEST!', lkTime(rec.time) + ' · lap ' + rec.lap + ' · −' + e.gain.toFixed(3) + ' s', 'purple chk', { sound: 'pb', voice: 'record', voiceAt: .95, fx: 'pb' }) }
-  else if (e.kind === 'clean') { LK.streak++; if (e.first) lkPop('CLEAN LAP', lkTime(rec.time) + ' · lap ' + rec.lap, 'green', { sound: 'clean' });
-    else if ([3, 5, 10, 15, 20].includes(LK.streak)) lkPop(LK.streak + ' IN A ROW', 'clean laps · ' + lkTime(rec.time), 'green', { sound: 'clean' }) }
-  else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red', { sound: 'off', fx: 'off' }) }
+  if (e.kind === 'pb') { LK.streak++; lkPop('PERSONAL BEST!', lkTime(rec.time) + ' · lap ' + rec.lap + ' · −' + e.gain.toFixed(3) + ' s', 'purple chk', { say: 'pb', fx: 'pb' }) }
+  else if (e.kind === 'clean') { LK.streak++; if (e.first) lkPop('CLEAN LAP', lkTime(rec.time) + ' · lap ' + rec.lap, 'green', { say: 'clean' });
+    else if ([3, 5, 10, 15, 20].includes(LK.streak)) lkPop(LK.streak + ' IN A ROW', 'clean laps · ' + lkTime(rec.time), 'green', { say: 'row' + LK.streak }) }
+  else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red', { say: e.why === 'incident' ? 'incident' : 'off', fx: 'off' }) }
   lkCombo(LK.streak);
 }
 // every telemetry tick: places gained, the white and checkered flags, gear changes
 function lkTick(v) {
   if (!lkArcade() || !v) return;
   const pos = v.PlayerCarClassPosition > 0 ? v.PlayerCarClassPosition : v.PlayerCarPosition > 0 ? v.PlayerCarPosition : null;
-  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { sound: 'overtake', fx: 'pass' });
+  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { say: pos === 1 ? 'lead' : 'overtake', fx: 'pass' });
   LK.pos = pos || LK.pos;
   const f = v.SessionFlags || 0;
-  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', 'white', { sound: 'lastlap' });
-  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'white chk', { sound: 'finish', voice: pos === 1 ? 'win' : 'congrats', voiceAt: 1.1, fx: 'pb' });
+  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
+  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'white chk', { say: pos === 1 ? 'win' : 'checkered', fx: 'pb' });
   LK.flags = f;
-  if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } lkSfx('gear') }
+  if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } }
   LK.gear = v.Gear;
 }
-// ---- sound: recorded effects and an announcer (client/assets/sfx-*.mp3: a public-domain racing-engine recording put
-// through a Doppler pass, Kenney and OpenGameArt, all CC0; LICENSES.md), layered and mastered for this; only in Arcade, only with suite:sfx on (off by default), the announcer with suite:voice
-const LK_SND = ['light', 'lightgo', 'passby', 'overtake', 'pb', 'clean', 'off', 'lastlap', 'finish', 'green', 'whoosh', 'out', 'hover', 'click', 'gear'];
-const LK_VOICE = { ready: 'v_ready', set: 'v_set', go: 'v_go', record: 'v_record', congrats: 'v_congrats', win: 'v_win' };
+// ---- the announcer: a voice calls the moments (client/assets/voice-f-*.mp3 and voice-m-*.mp3, made for the suite with
+// the Kokoro text-to-speech model, Apache 2.0; LICENSES.md). Only in Arcade, only with suite:announcer set to a voice
+// ('f' or 'm'; off by default). No sound effects: the sim already makes the racing sounds. One line at a time.
+const LK_LINES = ['ready', 'set', 'go', 'pb', 'clean', 'row3', 'row5', 'row10', 'row15', 'row20', 'off', 'incident', 'overtake', 'lead', 'final', 'checkered', 'win', 'green', 'yellow', 'caution', 'red'];
 const LK_BUF = {}, LK_ASSET = /^\/pitwall(\/|$)/.test(location.pathname) ? 'assets/' : '/pitwall/assets/';
-function lkAudio() { if (!LK.AC) { try { LK.AC = new (window.AudioContext || window.webkitAudioContext)(); LK.bus = LK.AC.createDynamicsCompressor(); LK.bus.threshold.value = -10; LK.bus.ratio.value = 4; LK.bus.connect(LK.AC.destination) } catch (e) { return null } }
+function lkAudio() { if (!LK.AC) { try { LK.AC = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { return null } }
   if (LK.AC.state === 'suspended') LK.AC.resume(); return LK.AC }
 function lkLoad(name) {
   if (LK_BUF[name]) return LK_BUF[name]; const ac = lkAudio(); if (!ac) return Promise.resolve(null);
-  return LK_BUF[name] = fetch(LK_ASSET + 'sfx-' + name + '.mp3').then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null);
+  return LK_BUF[name] = fetch(LK_ASSET + 'voice-' + name + '.mp3').then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null);
 }
-function lkPlay(name, delay, gain) {
-  const ac = lkAudio(); if (!ac) return;
-  lkLoad(name).then(buf => { if (!buf) return; const s = ac.createBufferSource(), g = ac.createGain(); s.buffer = buf; g.gain.value = gain == null ? .9 : gain; s.connect(g); g.connect(LK.bus); s.start(ac.currentTime + (delay || 0)) });
+// which voice: 'f' or 'm', or null when the announcer is off (or the look isn't Arcade, unless asked for a sample)
+function lkWho(any) { const w = lkGet('suite:announcer', 'off'); return (w === 'f' || w === 'm') && (any || lkArcade()) ? w : null }
+function lkSay(line, delay, sample) {
+  const w = lkWho(sample), ac = w && LK_LINES.includes(line) && lkAudio(); if (!ac) return;
+  lkLoad(w + '-' + line).then(buf => { if (!buf) return; try { if (LK.said) LK.said.stop() } catch (e) {}
+    const s = ac.createBufferSource(); s.buffer = buf; s.connect(ac.destination); s.start(ac.currentTime + (delay || 0)); LK.said = s });
 }
-function lkSfxOn() { return lkArcade() && lkGet('suite:sfx', 'off') === 'on' }
-function lkSfx(name, delay) { if (!lkSfxOn() || !LK_SND.includes(name)) return; const now = performance.now(); if (LK['t_' + name] && now - LK['t_' + name] < 60) return; LK['t_' + name] = now; lkPlay(name, delay) }
-function lkVoice(line, delay) { if (lkSfxOn() && lkGet('suite:voice', 'on') !== 'off' && LK_VOICE[line]) lkPlay(LK_VOICE[line], delay, 1) }
-// load everything once sound is on, so the first hit lands on time
-function lkPreload() { if (lkSfxOn()) [...LK_SND, ...Object.values(LK_VOICE)].forEach(lkLoad) }
-document.addEventListener('mouseover', e => { if (!lkArcade()) return; const t = e.target.closest && e.target.closest('.views a,.app,button'); if (t && t !== LK.hov) { LK.hov = t; lkSfx('hover') } });
-document.addEventListener('click', e => { lkPreload(); if (lkArcade() && e.target.closest && e.target.closest('.views a,button,.app')) lkSfx('click') }, true);
+// load the voice's lines once it is on, so a call lands on time
+function lkPreload() { const w = lkWho(); if (w) LK_LINES.forEach(l => lkLoad(w + '-' + l)) }
+document.addEventListener('click', lkPreload, true);
 addEventListener('storage', e => { if (e.key === 'suite:look' || e.key === 'suite:team' || e.key === 'suite:plate') lkApply() });
 // The bar's numbers on this page: your last session (best and median lap), and the car and track when iRacing is running
 function lkData(){const S=LK.last||{},live=!!(typeof info!=='undefined'&&info.connected),m=typeof meta!=='undefined'&&meta||{};
@@ -560,9 +558,9 @@ const f=FLAG_BITS.find(x=>(v.SessionFlags||0)&x[0]),pos=v.PlayerCarPosition>0?'P
 P.innerHTML=(f?'<span class="fl" style="background:'+f[2]+'">'+f[1]+'</span>':'')+(pos?'<b>'+pos+'</b>':'')+(rem?'<span>'+rem+'</span>':'')}
 setInterval(()=>{if(lastGlance&&Date.now()-lastGlance>4000){lastGlance=0;['glLive','glPw'].forEach(k=>{const e=$(k);if(e)e.innerHTML=''})}},2000);
 // ---- settings shared by every app the suite serves (same address, so the same browser storage)
-(function(){const pairs=[['setSpeed','suite:speed','mph'],['setDist','suite:dist','m'],['setDots','suite:dots','class'],['setTheme','suite:theme','dark'],['setLook','suite:look','basic'],['setSfx','suite:sfx','off'],['setVoice','suite:voice','on'],['setTeam','suite:team',''],['setPlate','suite:plate','']];
+(function(){const pairs=[['setSpeed','suite:speed','mph'],['setDist','suite:dist','m'],['setDots','suite:dots','class'],['setTheme','suite:theme','dark'],['setLook','suite:look','basic'],['setVoice','suite:announcer','off'],['setTeam','suite:team',''],['setPlate','suite:plate','']];
 const load=()=>pairs.forEach(([id,k,d])=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}$(id).value=v||(k==='suite:theme'?(document.documentElement.getAttribute('data-theme')||d):d)});load();
-pairs.forEach(([id,k])=>$(id).onchange=()=>{try{localStorage.setItem(k,$(id).value)}catch(e){}if(k==='suite:theme'){document.documentElement.setAttribute('data-theme',$(id).value);themeLabel()}if(/^suite:(look|team|plate)$/.test(k)){lkApply();themeLabel();lkEnter()}if(k==='suite:sfx'&&$(id).value==='on'){lkPreload();lkSfx('click')}if(k==='suite:voice'&&$(id).value==='on')lkVoice('ready')});
+pairs.forEach(([id,k])=>$(id).onchange=()=>{try{localStorage.setItem(k,$(id).value)}catch(e){}if(k==='suite:theme'){document.documentElement.setAttribute('data-theme',$(id).value);themeLabel()}if(/^suite:(look|team|plate)$/.test(k)){lkApply();themeLabel();lkEnter()}if(k==='suite:announcer')lkSay('green',0,true)});
 addEventListener('storage',e=>{if(pairs.some(p=>p[1]===e.key)){load();if(e.key==='suite:theme'&&e.newValue){document.documentElement.setAttribute('data-theme',e.newValue);themeLabel()}}});
 document.addEventListener('click',e=>{const d=$('sets');if(d&&d.open&&!d.contains(e.target))d.open=false})})();
 // ---- your last session: the newest .ibt of yours, summarized by the suite (suite/library.session_summary)
