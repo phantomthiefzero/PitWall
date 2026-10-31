@@ -601,106 +601,107 @@
   .storyin canvas { width: 100%; height: auto; display: block; border-radius: 8px; }
   .storyrow { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
 /* ---- LOOKS: the suite's Arcade look (suite:look) on top of the booth look; Pit wall and Basic are the booth. ---- */
-@font-face{font-family:"Bungee";font-display:swap;src:url("assets/bungee-latin-400-normal.woff2") format("woff2")}
 @font-face{font-family:"Russo One";font-display:swap;src:url("assets/russo-one-latin-400-normal.woff2") format("woff2")}
 @font-face{font-family:"Exo 2";font-weight:400 600;font-display:swap;src:url("assets/exo-2-latin-500-normal.woff2") format("woff2")}
 @font-face{font-family:"Exo 2";font-weight:700 900;font-style:italic;font-display:swap;src:url("assets/exo-2-latin-900-italic.woff2") format("woff2")}
-:root[data-look="arcade"]{--bg:#07070a;--panel:#0b0b0f;--line:#2a2833;--text:#fff;--muted:#a7a3b5;--dim:#6d6880;
-  --green:#39ff6a;--yellow:#ffe600;--red:#ff1e3c;--blue:#19e6ff;--purple:#c13dff;--orange:#ff9d00;--led:#ffe600;--bezel:#34313f;--stand:#07070a;
-  --ui:"Exo 2","Segoe UI",system-ui,sans-serif;--title:"Russo One","Exo 2",system-ui,sans-serif;--canvas-font:"Exo 2",system-ui,sans-serif;
-  --pop:"Bungee",system-ui,sans-serif;--hz:repeating-linear-gradient(-45deg,#ffe600 0 10px,#0a0a0a 10px 20px);
-  --chrome:linear-gradient(180deg,#ffffff 0%,#fff6a8 38%,#ffb000 52%,#ff3b00 53%,#ffe600 100%)}
-:root[data-look="arcade"] body{font-family:var(--ui)!important;background:radial-gradient(closest-side at 50% 45%,transparent 60%,rgba(0,0,0,.75) 100%),repeating-conic-gradient(from 0deg at 110% -10%,rgba(255,30,60,.16) 0 2deg,transparent 2deg 7deg),radial-gradient(900px 600px at 100% 0%,rgba(255,30,60,.35),transparent 70%),radial-gradient(700px 500px at 0% 100%,rgba(25,230,255,.18),transparent 70%),#07070a!important;background-attachment:fixed!important}
-:root[data-look="arcade"] body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
-:root[data-look="arcade"] section{background:linear-gradient(180deg,#121218,#0b0b0f)!important;border:2px solid #34313f!important;border-radius:0!important;box-shadow:7px 7px 0 rgba(255,30,60,.85)!important;padding:0 10px 10px!important}
-:root[data-look="arcade"] section::before{content:"";position:absolute;left:-2px;top:-2px;width:80px;height:7px;background:var(--hz);z-index:1}
-:root[data-look="arcade"] section::after{display:none!important}
-:root[data-look="arcade"] details.panel>summary{font:17px var(--title)!important;font-style:italic!important;text-transform:uppercase;letter-spacing:.01em;text-shadow:2px 2px 0 var(--red)}
-:root[data-look="arcade"] header{background:#000!important;border-bottom:3px solid #fff!important;box-shadow:0 6px 0 rgba(255,30,60,.85)}
-:root[data-look="arcade"] header::after{display:none!important}
-:root[data-look="arcade"] header .track{font:24px var(--title)!important;font-style:italic!important;text-transform:uppercase;text-shadow:3px 3px 0 var(--red)}
-:root[data-look="arcade"] header .flag{font:22px var(--pop)!important;border-radius:0!important;transform:skewX(-12deg);box-shadow:5px 5px 0 #000;border:3px solid #fff!important}
-:root[data-look="arcade"] #remain{font-family:var(--pop)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #000;filter:drop-shadow(3px 3px 0 var(--red))}
-:root[data-look="arcade"] th{font:13px var(--title)!important;color:var(--yellow)!important;text-transform:uppercase}
+:root[data-look="arcade"]{--bg:#06080d;--panel:#0c1018;--line:#273044;--text:#fff;--muted:#9aa4b8;--dim:#66708a;
+  --green:#38f07a;--yellow:#ffd400;--red:#ff3a2a;--blue:#19d9ff;--purple:#b45cff;--orange:#ffb000;--led:#ffd400;--bezel:#273044;--stand:#06080d;
+  --ui:"Exo 2","Segoe UI",system-ui,sans-serif;--title:"Exo 2",system-ui,sans-serif;--num:"Exo 2",system-ui,sans-serif;--canvas-font:"Exo 2",system-ui,sans-serif;
+  --you:#ffd400;--warn:#ffb000;
+  --chkg:conic-gradient(#fff 0 25%,#0b0d12 0 50%,#fff 0 75%,#0b0d12 0);--chk:var(--chkg) 0 0/12px 12px;
+  --chrome:linear-gradient(180deg,#ffffff 0%,#fff3b0 40%,#ffb000 54%,#ff5a1f 55%,#ffd400 100%);
+  --trail:-6px 0 0 rgba(255,90,31,.55),-14px 0 0 rgba(255,90,31,.28),-24px 0 0 rgba(255,90,31,.12)}
+:root[data-look="arcade"] body{font-family:var(--ui)!important;background:radial-gradient(1100px 520px at 85% -8%,rgba(255,90,31,.26),transparent 70%),radial-gradient(900px 600px at 0% 110%,rgba(25,217,255,.14),transparent 70%),linear-gradient(180deg,#0a0d16,#05070b 60%)!important;background-attachment:fixed!important}
+:root[data-look="arcade"] section{background:linear-gradient(180deg,#111725,#0a0e16)!important;border:1px solid #273044!important;border-radius:2px!important;box-shadow:0 12px 30px rgba(0,0,0,.5)!important;padding:0 10px 10px!important}
+:root[data-look="arcade"] section::before{content:"";position:absolute;left:-1px;right:-1px;top:-1px;height:10px;z-index:1;pointer-events:none;background:
+  linear-gradient(100deg,var(--yellow),var(--orange) 92%,transparent 92%) left top/100px 4px no-repeat,
+  repeating-linear-gradient(90deg,#fff 0 5px,#0b0d12 5px 10px) right top/40px 5px no-repeat,
+  repeating-linear-gradient(90deg,#0b0d12 0 5px,#fff 5px 10px) right 0 top 5px/40px 5px no-repeat}
+:root[data-look="arcade"] details.panel>summary{font:900 italic 17px var(--ui)!important;text-transform:uppercase;letter-spacing:.01em}
+:root[data-look="arcade"] header{background:linear-gradient(180deg,#0b0f18,#06080d)!important;border-bottom:2px solid #2b3446!important;position:relative}
+:root[data-look="arcade"] header .track{font:900 italic 24px var(--ui)!important;text-transform:uppercase;text-shadow:var(--trail)}
+:root[data-look="arcade"] header .flag{font:900 italic 20px var(--ui)!important;text-transform:uppercase;border-radius:0!important;transform:skewX(-14deg)}
+:root[data-look="arcade"] #remain{font-family:var(--ui)!important;font-style:italic!important;font-weight:900!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
+:root[data-look="arcade"] th{font:800 italic 13px var(--ui)!important;color:var(--yellow)!important;text-transform:uppercase}
 :root[data-look="arcade"] td{font-weight:500}
-:root[data-look="arcade"] tbody tr.me>td,:root[data-look="arcade"] tbody tr.focus>td{background:rgba(255,230,0,.12)!important}
-:root[data-look="arcade"] .bb-gap,:root[data-look="arcade"] .fp-big{font:900 italic 32px var(--ui)!important;color:var(--yellow)!important;text-shadow:3px 3px 0 #000}
+:root[data-look="arcade"] tbody tr.me>td,:root[data-look="arcade"] tbody tr.focus>td{background:rgba(255,212,0,.12)!important}
+:root[data-look="arcade"] .bb-gap,:root[data-look="arcade"] .fp-big{font:900 italic 32px var(--ui)!important;color:var(--yellow)!important;text-shadow:var(--trail)}
 :root[data-look="arcade"] button,:root[data-look="arcade"] .unittoggle,:root[data-look="arcade"] select{border-radius:0!important}
-:root[data-look="arcade"] .unittoggle{font-family:var(--title)!important;font-style:italic;background:#16151d!important;border:2px solid #fff!important;transform:skewX(-10deg)}
-:root[data-look="arcade"] footer{background:#000!important;border-top:3px solid #fff!important}
-:root[data-look="arcade"] .alarm{border-radius:0!important;transform:skewX(-8deg);box-shadow:4px 4px 0 #000}
+:root[data-look="arcade"] .unittoggle{font:800 italic 13px var(--ui)!important;background:linear-gradient(180deg,#1a2234,#111827)!important;border:1px solid #3a4762!important;transform:skewX(-14deg)}
+:root[data-look="arcade"] footer{background:#06080d!important;border-top:2px solid #2b3446!important}
+:root[data-look="arcade"] .alarm{border-radius:0!important;transform:skewX(-10deg)}
 :root[data-look="arcade"] .lk-fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8990}
-:root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none;overflow:hidden}
-:root[data-look="arcade"] .lk-pop .rays{position:absolute;left:50%;top:50%;width:260vmax;height:260vmax;margin:-130vmax 0 0 -130vmax;background:repeating-conic-gradient(from 0deg,rgba(255,255,255,.0) 0 4deg,color-mix(in srgb,var(--k,#ffe600) 22%,transparent) 4deg 5.5deg);
-  -webkit-mask:radial-gradient(closest-side,transparent 9%,#000 22%,transparent 70%);mask:radial-gradient(closest-side,transparent 9%,#000 22%,transparent 70%);animation:lkRays 2.2s linear both}
-:root[data-look="arcade"] .lk-pop .band{position:absolute;left:-10%;right:-10%;height:200px;top:calc(50% - 100px);background:linear-gradient(90deg,transparent,#000 12% 88%,transparent);transform:skewY(-6deg);border-top:6px solid var(--k,#ffe600);border-bottom:6px solid var(--k,#ffe600);
-  box-shadow:0 0 60px color-mix(in srgb,var(--k,#ffe600) 55%,transparent);animation:lkBand 2.2s cubic-bezier(.2,.9,.2,1) both}
-:root[data-look="arcade"] .lk-pop .t{position:relative;font:104px/1 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:3px #000;
-  filter:drop-shadow(6px 6px 0 #000) drop-shadow(0 0 34px var(--k,#ff1e3c));transform:rotate(-6deg);animation:lkSlam 2.2s both;white-space:nowrap}
-:root[data-look="arcade"] .lk-pop .t::before,:root[data-look="arcade"] .lk-pop .t::after{content:attr(data-t);position:absolute;inset:0;-webkit-text-stroke:0;background:none;mix-blend-mode:screen;opacity:0}
-:root[data-look="arcade"] .lk-pop .t::before{color:#00f0ff;animation:lkSplitA 2.2s both}
-:root[data-look="arcade"] .lk-pop .t::after{color:#ff1e3c;animation:lkSplitB 2.2s both}
-:root[data-look="arcade"] .lk-pop .s{position:absolute;top:calc(50% + 74px);font:900 italic 32px var(--num);color:#fff;text-shadow:3px 3px 0 #000;transform:rotate(-6deg);animation:lkSub 2.2s ease both}
-:root[data-look="arcade"] .lk-pop.red{--k:#ff1e3c}
-:root[data-look="arcade"] .lk-pop.purple{--k:#c13dff}
-:root[data-look="arcade"] .lk-pop.cyan{--k:#19e6ff}
-:root[data-look="arcade"] .lk-pop.green{--k:#39ff6a}
-@keyframes lkRays{0%{opacity:0;transform:rotate(0) scale(.6)}12%{opacity:1}80%{opacity:.8}100%{opacity:0;transform:rotate(28deg) scale(1.1)}}
-@keyframes lkBand{0%{transform:skewY(-6deg) scaleY(0) scaleX(1.4);opacity:1}10%,84%{transform:skewY(-6deg) scaleY(1);opacity:1}100%{opacity:0;transform:skewY(-6deg) scaleY(.15) translateX(30vw)}}
-@keyframes lkSlam{0%{transform:rotate(-6deg) scale(4);opacity:0;animation-timing-function:cubic-bezier(.55,0,1,.45)}
-  11%{transform:rotate(-6deg) scale(.9);opacity:1}15%{transform:rotate(-6deg) scale(.9);opacity:1;animation-timing-function:cubic-bezier(.2,2,.4,1)}
-  24%,82%{transform:rotate(-6deg) scale(1);opacity:1;animation-timing-function:cubic-bezier(.6,0,.9,.4)}100%{transform:rotate(-6deg) translateX(130vw) skewX(-40deg) scaleX(1.6);opacity:0}}
-@keyframes lkSplitA{0%,10%{opacity:0}11%{opacity:.95;transform:translate(-14px,3px)}15%{opacity:.9;transform:translate(9px,-2px)}19%{opacity:.7;transform:translate(-5px,1px)}26%,100%{opacity:0;transform:none}}
-@keyframes lkSplitB{0%,10%{opacity:0}11%{opacity:.95;transform:translate(14px,-3px)}15%{opacity:.9;transform:translate(-9px,2px)}19%{opacity:.7;transform:translate(5px,-1px)}26%,100%{opacity:0;transform:none}}
-@keyframes lkSub{0%,20%{opacity:0;transform:rotate(-6deg) translateX(-80px)}30%,82%{opacity:1;transform:rotate(-6deg)}100%{opacity:0;transform:rotate(-6deg) translateX(60px)}}
-:root[data-look="arcade"] .lk-shake{animation:lkShake .45s cubic-bezier(.2,.8,.3,1)}
-@keyframes lkShake{0%{transform:translate(0,0)}10%{transform:translate(calc(var(--sh,9px)*-1),calc(var(--sh,9px)*.5)) rotate(-.4deg)}25%{transform:translate(calc(var(--sh,9px)*.8),calc(var(--sh,9px)*-.6)) rotate(.35deg)}
-  45%{transform:translate(calc(var(--sh,9px)*-.45),calc(var(--sh,9px)*.3)) rotate(-.15deg)}65%{transform:translate(calc(var(--sh,9px)*.2),0)}100%{transform:none}}
-:root[data-look="arcade"] .lk-vs{position:fixed;inset:0;z-index:9500;overflow:hidden;background:#000;cursor:pointer;animation:lkVsBg .2s ease both}
-:root[data-look="arcade"] .lk-vs.out{animation:lkVsOut .38s cubic-bezier(.6,0,.9,.4) both}
-:root[data-look="arcade"] .lk-vs .half{position:absolute;top:0;bottom:0;width:58%;display:flex;flex-direction:column;justify-content:center;padding:0 7%;box-sizing:border-box}
-:root[data-look="arcade"] .lk-vs .l{left:0;background:linear-gradient(135deg,#ff1e3c,#5a0010);clip-path:polygon(0 0,100% 0,82% 100%,0 100%);animation:lkInL .36s cubic-bezier(.7,0,1,.6) both}
-:root[data-look="arcade"] .lk-vs .r{right:0;align-items:flex-end;text-align:right;background:linear-gradient(225deg,#19a8ff,#001a5a);clip-path:polygon(18% 0,100% 0,100% 100%,0 100%);animation:lkInR .36s cubic-bezier(.7,0,1,.6) both}
-:root[data-look="arcade"] .lk-vs .half::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(-60deg,rgba(255,255,255,.07) 0 3px,transparent 3px 18px);animation:lkScroll .6s linear infinite}
-:root[data-look="arcade"] .lk-vs .half>*{position:relative;z-index:1;max-width:34vw}
-:root[data-look="arcade"] .lk-vs small{font:20px var(--title);letter-spacing:.2em;opacity:.85}
-:root[data-look="arcade"] .lk-vs b{font:clamp(28px,3.6vw,64px)/1.05 var(--title);font-style:italic;text-transform:uppercase;text-shadow:5px 5px 0 #000;overflow-wrap:anywhere}
-:root[data-look="arcade"] .lk-vs em{font:900 italic 64px/1.1 var(--num);color:#ffe600;text-shadow:4px 4px 0 #000}
-:root[data-look="arcade"] .lk-vs .half>*{animation:lkSettle .5s .36s cubic-bezier(.2,1.6,.4,1) both}
-:root[data-look="arcade"] .lk-vs .seam{position:absolute;left:50%;top:-10%;bottom:-10%;width:14px;margin-left:-7px;background:#fff;transform:skewX(-22deg);box-shadow:0 0 40px 12px #fff;opacity:0;animation:lkSeam .5s .34s ease-out both}
-:root[data-look="arcade"] .lk-vs .vs,:root[data-look="arcade"] .lk-vs .fight{position:absolute;left:50%;top:50%;font:220px/1 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:5px #000;z-index:3;white-space:nowrap}
-:root[data-look="arcade"] .lk-vs .vs{transform:translate(-50%,-50%) rotate(-8deg);filter:drop-shadow(10px 10px 0 #000) drop-shadow(0 0 40px #fff);animation:lkVs 1.3s .34s both}
-:root[data-look="arcade"] .lk-vs .fight{font-size:150px;transform:translate(-50%,-50%) rotate(-6deg);filter:drop-shadow(8px 8px 0 #000) drop-shadow(0 0 40px #ff1e3c);animation:lkFight 2.2s 1.2s both}
-:root[data-look="arcade"] .lk-vs .go{position:absolute;left:0;right:0;bottom:8%;text-align:center;font:24px var(--pop);color:#fff;text-shadow:4px 4px 0 #000;animation:lkBlink .9s steps(2) 1s infinite;opacity:0;z-index:4}
-@keyframes lkVsBg{from{opacity:0}}
-@keyframes lkVsOut{to{opacity:0;transform:scale(1.15);filter:blur(6px)}}
-@keyframes lkInL{from{transform:translateX(-105%) skewX(-12deg);filter:blur(10px)}to{transform:none;filter:none}}
-@keyframes lkInR{from{transform:translateX(105%) skewX(12deg);filter:blur(10px)}to{transform:none;filter:none}}
-@keyframes lkSettle{0%{transform:translateX(0)}30%{transform:translateX(-14px)}100%{transform:none}}
-@keyframes lkSeam{0%{opacity:0;transform:skewX(-22deg) scaleX(3)}4%{opacity:1}100%{opacity:0;transform:skewX(-22deg) scaleX(.2)}}
-@keyframes lkScroll{to{background-position:42px 0}}
-@keyframes lkVs{0%{transform:translate(-50%,-50%) rotate(-8deg) scale(6);opacity:0;animation-timing-function:cubic-bezier(.55,0,1,.45)}18%{transform:translate(-50%,-50%) rotate(-8deg) scale(.88);opacity:1}
-  26%{transform:translate(-50%,-50%) rotate(-8deg) scale(.88);animation-timing-function:cubic-bezier(.2,2,.4,1)}40%,62%{transform:translate(-50%,-50%) rotate(-8deg) scale(1);opacity:1}100%{transform:translate(-50%,-50%) rotate(-8deg) scale(.4);opacity:0}}
-@keyframes lkFight{0%{transform:translate(-50%,-50%) rotate(-6deg) scale(3.2);opacity:0}9%{transform:translate(-50%,-50%) rotate(-6deg) scale(.92);opacity:1}14%,80%{transform:translate(-50%,-50%) rotate(-6deg) scale(1);opacity:1}100%{opacity:0;transform:translate(-50%,-50%) rotate(-6deg) scale(1.3)}}
-@keyframes lkBlink{0%{opacity:1}50%{opacity:0}}
-:root[data-look="arcade"] .lk-combo{position:fixed;right:28px;top:40%;z-index:50;text-align:right;transform:rotate(-4deg)}
-:root[data-look="arcade"] .lk-combo b{display:block;font:84px/0.9 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;filter:drop-shadow(5px 5px 0 var(--bad))}
-:root[data-look="arcade"] .lk-combo span{font:22px var(--title);font-style:italic;text-shadow:3px 3px 0 #000}
-@media (prefers-reduced-motion:reduce){:root[data-look="arcade"] .lk-pop *,:root[data-look="arcade"] .lk-vs,:root[data-look="arcade"] .lk-vs *{animation-duration:.01s!important}}
-:root[data-look="arcade"] .lk-hud .plate{text-shadow:none}
-:root[data-look="arcade"] .lk-pop .band{background:linear-gradient(90deg,transparent,#000 12% 88%,transparent)}
-:root[data-look="arcade"] .lk-in{animation:lkIn .45s cubic-bezier(.2,1.5,.4,1) both}
-@keyframes lkIn{0%{opacity:0;transform:translateX(-80px) skewX(-12deg)}60%{opacity:1}100%{transform:none}}
-:root[data-look="arcade"] .lk-punch{animation:lkPunch .25s cubic-bezier(.2,2,.4,1)}
-@keyframes lkPunch{0%{transform:scale(1.6) rotate(-6deg)}100%{transform:none}}
-:root[data-look="arcade"] .lk-hud .bar i{transition:width .5s cubic-bezier(.2,1.4,.4,1)}
-:root[data-look="arcade"] .lk-hud .clock{animation:lkPulse 1.6s ease-in-out infinite}
-@keyframes lkPulse{50%{filter:drop-shadow(4px 4px 0 #000) drop-shadow(0 0 26px rgba(255,30,60,1))}}
-:root[data-look="arcade"] .app:hover .ico{animation:lkWiggle .4s}
-@keyframes lkWiggle{25%{transform:skewX(-14deg) rotate(-8deg)}75%{transform:skewX(-14deg) rotate(8deg)}}
-:root[data-look="arcade"] .lk-combo.lk-bump b{animation:lkBump .35s cubic-bezier(.2,2,.4,1)}
-@keyframes lkBump{0%{transform:scale(1.8)}100%{transform:none}}
-:root[data-look="arcade"] .lk-hud .clock small{min-height:12px}
+:root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none;overflow:hidden;--k:#ffd400}
+:root[data-look="arcade"] .lk-pop .band{position:absolute;left:-12%;right:-12%;height:190px;top:calc(50% - 95px);transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(4,6,10,.92) 14% 86%,transparent);
+  border-top:5px solid var(--k);border-bottom:5px solid var(--k);box-shadow:0 0 50px color-mix(in srgb,var(--k) 40%,transparent);overflow:hidden;animation:lkBand 2.2s cubic-bezier(.2,.9,.2,1) both}
+:root[data-look="arcade"] .lk-pop .band::before{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(180deg,transparent 0 9px,rgba(255,255,255,.10) 9px 10px,transparent 10px 23px,color-mix(in srgb,var(--k) 22%,transparent) 23px 25px,transparent 25px 41px);
+  -webkit-mask:repeating-linear-gradient(90deg,#000 0 160px,transparent 160px 220px,#000 220px 300px,transparent 300px 420px);mask:repeating-linear-gradient(90deg,#000 0 160px,transparent 160px 220px,#000 220px 300px,transparent 300px 420px);animation:lkLines .35s linear infinite}
+:root[data-look="arcade"] .lk-pop.chk .band{border:0;padding:12px 0}
+:root[data-look="arcade"] .lk-pop.chk .band::after{content:"";position:absolute;inset:0;background:var(--chkg) 0 0/14px 14px;
+  -webkit-mask:linear-gradient(#000 0 14px,transparent 14px calc(100% - 14px),#000 0);mask:linear-gradient(#000 0 14px,transparent 14px calc(100% - 14px),#000 0)}
+:root[data-look="arcade"] .lk-pop .t{position:relative;font:900 italic 112px/1 var(--num);letter-spacing:-.02em;text-transform:uppercase;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #1a0d00;
+  filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));white-space:nowrap;animation:lkDrive 2.2s both}
+:root[data-look="arcade"] .lk-pop .t::before,:root[data-look="arcade"] .lk-pop .t::after{content:attr(data-t);position:absolute;inset:0;-webkit-text-stroke:0;background:none;color:var(--k);z-index:-1}
+:root[data-look="arcade"] .lk-pop .t::before{opacity:.45;animation:lkGhostA 2.2s both}
+:root[data-look="arcade"] .lk-pop .t::after{opacity:.22;animation:lkGhostB 2.2s both}
+:root[data-look="arcade"] .lk-pop .s{position:absolute;top:calc(50% + 68px);font:800 italic 30px var(--num);color:#fff;text-shadow:0 2px 0 #000,0 0 14px rgba(0,0,0,.8);animation:lkSub 2.2s ease both}
+:root[data-look="arcade"] .lk-pop.red{--k:#ff3a2a}
+:root[data-look="arcade"] .lk-pop.purple{--k:#b45cff}
+:root[data-look="arcade"] .lk-pop.cyan{--k:#19d9ff}
+:root[data-look="arcade"] .lk-pop.green{--k:#38f07a}
+:root[data-look="arcade"] .lk-pop.white{--k:#ffffff}
+@keyframes lkLines{to{background-position:0 0;-webkit-mask-position:-420px 0;mask-position:-420px 0}}
+@keyframes lkBand{0%{clip-path:inset(0 0 0 100%);opacity:1}9%,84%{clip-path:inset(0 0 0 0);opacity:1}100%{clip-path:inset(0 100% 0 0);opacity:.6}}
+@keyframes lkDrive{0%{transform:translateX(70vw) skewX(-34deg) scaleX(1.5);filter:blur(10px) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:0;animation-timing-function:cubic-bezier(.3,0,.6,1)}
+  11%{transform:translateX(-3vw) skewX(-4deg) scaleX(.97);filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:1;animation-timing-function:cubic-bezier(.2,1.3,.4,1)}
+  18%,84%{transform:translateX(0) skewX(-10deg);filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:1;animation-timing-function:cubic-bezier(.6,0,.9,.5)}
+  100%{transform:translateX(-90vw) skewX(-36deg) scaleX(1.7);filter:blur(10px) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:0}}
+@keyframes lkGhostA{0%,4%{transform:translateX(90px);opacity:0}9%{transform:translateX(70px);opacity:.5}20%,84%{transform:translateX(0);opacity:0}92%{transform:translateX(80px);opacity:.45}100%{transform:translateX(160px);opacity:0}}
+@keyframes lkGhostB{0%,4%{transform:translateX(170px);opacity:0}9%{transform:translateX(140px);opacity:.3}22%,84%{transform:translateX(0);opacity:0}92%{transform:translateX(160px);opacity:.25}100%{transform:translateX(300px);opacity:0}}
+@keyframes lkSub{0%,16%{opacity:0;transform:translateX(120px) skewX(-10deg)}26%,82%{opacity:1;transform:skewX(-10deg)}100%{opacity:0;transform:translateX(-200px) skewX(-10deg)}}
+:root[data-look="arcade"] .lk-shake{animation:lkRumble .5s linear}
+@keyframes lkRumble{0%,100%{transform:none}10%{transform:translateY(calc(var(--sh,6px)*-1))}20%{transform:translateY(var(--sh,6px))}30%{transform:translateY(calc(var(--sh,6px)*-.8))}
+  40%{transform:translateY(calc(var(--sh,6px)*.7))}50%{transform:translateY(calc(var(--sh,6px)*-.5))}60%{transform:translateY(calc(var(--sh,6px)*.4))}75%{transform:translateY(calc(var(--sh,6px)*-.2))}}
+:root[data-look="arcade"] .lk-start{position:fixed;inset:0;z-index:9500;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;
+  background:radial-gradient(900px 500px at 50% 30%,rgba(255,58,42,.18),transparent 70%),rgba(4,6,10,.95);animation:lkFade .25s ease both}
+:root[data-look="arcade"] .lk-start.go{background:radial-gradient(900px 500px at 50% 30%,rgba(56,240,122,.22),transparent 70%),rgba(4,6,10,.95)}
+:root[data-look="arcade"] .lk-start.out{animation:lkAway .45s cubic-bezier(.6,0,.9,.5) both}
+:root[data-look="arcade"] .lk-start .gantry{display:flex;gap:18px;padding:16px 22px;background:linear-gradient(180deg,#1a1f2a,#0a0d13);border:2px solid #2e3647;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,.7);position:relative}
+:root[data-look="arcade"] .lk-start .gantry::before{content:"";position:absolute;left:50%;top:-60px;width:16px;height:60px;margin-left:-8px;background:linear-gradient(90deg,#11151d,#262d3b,#11151d)}
+:root[data-look="arcade"] .lk-start .pod{display:flex;flex-direction:column;gap:12px;padding:12px;background:#050608;border-radius:6px;box-shadow:inset 0 0 0 2px #1c2230}
+:root[data-look="arcade"] .lk-start .pod i{width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#3a1414,#140707 70%);box-shadow:inset 0 3px 8px rgba(0,0,0,.8);transition:background .05s,box-shadow .05s}
+:root[data-look="arcade"] .lk-start .pod.on i{background:radial-gradient(circle at 40% 35%,#ffd6c8,#ff3a2a 35%,#a00e04 75%);box-shadow:0 0 26px 6px rgba(255,58,42,.75),inset 0 -3px 6px rgba(0,0,0,.4)}
+:root[data-look="arcade"] .lk-start.go .pod i{background:radial-gradient(circle at 40% 35%,#d9ffe6,#38f07a 35%,#0a8a37 75%);box-shadow:0 0 26px 6px rgba(56,240,122,.7)}
+:root[data-look="arcade"] .lk-start .grid{display:grid;grid-template-columns:auto 1fr auto;gap:0;min-width:min(760px,90vw);transform:skewX(-10deg)}
+:root[data-look="arcade"] .lk-start .row{display:contents}
+:root[data-look="arcade"] .lk-start .row>*{padding:12px 18px;background:linear-gradient(90deg,rgba(17,23,37,.95),rgba(10,14,22,.95));border-top:1px solid #273044;display:flex;align-items:center}
+:root[data-look="arcade"] .lk-start .row small{font:800 italic 15px var(--num);text-transform:uppercase;letter-spacing:.06em;color:var(--mut);border-left:6px solid var(--k);white-space:nowrap}
+:root[data-look="arcade"] .lk-start .row b{font:900 italic clamp(22px,2.6vw,40px)/1.05 var(--num);text-transform:uppercase;overflow-wrap:anywhere}
+:root[data-look="arcade"] .lk-start .row em{font:900 italic clamp(28px,3.2vw,52px)/1 var(--num);color:var(--k);justify-content:flex-end;font-variant-numeric:tabular-nums}
+:root[data-look="arcade"] .lk-start .row:nth-child(1){--k:var(--you)}
+:root[data-look="arcade"] .lk-start .row:nth-child(2){--k:var(--ref)}
+:root[data-look="arcade"] .lk-start .row>*{animation:lkRowIn .45s cubic-bezier(.15,.9,.25,1) both}
+:root[data-look="arcade"] .lk-start .row:nth-child(2)>*{animation-delay:.12s}
+:root[data-look="arcade"] .lk-start .gap{font:800 italic 18px var(--num);text-transform:uppercase;letter-spacing:.3em;color:#fff;opacity:.8}
+:root[data-look="arcade"] .lk-start .gap b{font:900 italic 40px var(--num);letter-spacing:0;margin-left:14px;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
+:root[data-look="arcade"] .lk-start .word{position:absolute;left:50%;top:22%;font:900 italic 230px/1 var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:3px #1a0d00;
+  filter:drop-shadow(0 6px 0 #000) drop-shadow(0 0 40px rgba(56,240,122,.7));transform:translate(-50%,-50%) skewX(-12deg);opacity:0;pointer-events:none;white-space:nowrap}
+:root[data-look="arcade"] .lk-start.go .word{animation:lkGo 1.3s both}
+:root[data-look="arcade"] .lk-start .skip{position:absolute;left:0;right:0;bottom:6%;text-align:center;font:700 italic 16px var(--num);color:var(--mut);letter-spacing:.08em}
+@keyframes lkFade{from{opacity:0}}
+@keyframes lkAway{to{opacity:0;transform:translateX(-12vw) skewX(-8deg);filter:blur(8px)}}
+@keyframes lkRowIn{from{opacity:0;transform:translateX(120px)}}
+@keyframes lkGo{0%{opacity:0;transform:translate(-30%,-50%) skewX(-30deg) scaleX(1.5);filter:blur(8px)}14%{opacity:1;transform:translate(-52%,-50%) skewX(-8deg)}24%,70%{opacity:1;transform:translate(-50%,-50%) skewX(-12deg)}100%{opacity:0;transform:translate(-110%,-50%) skewX(-34deg) scaleX(1.6);filter:blur(8px)}}
+:root[data-look="arcade"] .lk-combo{position:fixed;right:24px;top:40%;z-index:50;text-align:right;padding:12px 16px 10px;background:linear-gradient(180deg,rgba(17,23,37,.94),rgba(8,11,17,.94));border:1px solid #2b3549;transform:skewX(-10deg);box-shadow:0 14px 34px rgba(0,0,0,.6)}
+:root[data-look="arcade"] .lk-combo::before{content:"";position:absolute;left:0;right:0;top:-1px;height:10px;background:var(--chk);background-size:10px 10px}
+:root[data-look="arcade"] .lk-combo b{display:block;margin-top:6px;font:900 italic 76px/.9 var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #1a0d00}
+:root[data-look="arcade"] .lk-combo span{font:800 italic 17px var(--num);text-transform:uppercase;letter-spacing:.04em}
+:root[data-look="arcade"] .lk-combo.lk-bump b{animation:lkBump .4s cubic-bezier(.2,1.6,.4,1)}
+@keyframes lkBump{0%{transform:translateX(40px) scale(1.25);filter:blur(3px)}100%{transform:none}}
+:root[data-look="arcade"] .lk-punch{animation:lkPunch .22s cubic-bezier(.2,1.6,.4,1)}
+@keyframes lkPunch{0%{transform:scale(1.25) translateX(-6px)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){:root[data-look="arcade"] .lk-pop *,:root[data-look="arcade"] .lk-start,:root[data-look="arcade"] .lk-start *{animation-duration:.01s!important}}
 /* ---- /LOOKS ---- */
 </style>
 </head>
@@ -946,7 +947,7 @@
 <script>
 // ---- Looks (Basic / Pit wall / Arcade): one setting for the suite (suite:look), same on every page. ----
 // Pit wall and Arcade only restyle the page and add a bar across the top (lkHud); the words stay the same.
-// Arcade adds a game layer: pop-up banners, the VS screen, a clean-lap streak and sound effects (suite:sfx,
+// Arcade adds an arcade racer's layer: call-outs, the start lights, a clean-lap streak and sound effects (suite:sfx,
 // off until switched on). Every number in the bar is one the page already shows.
 const LK = { look: 'basic', streak: 0, pos: null, flags: 0, gear: null, AC: null };
 function lkGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v } catch (e) { return d } }
@@ -960,7 +961,7 @@ function lkApply() {
 function lkTime(s) { if (s == null || !isFinite(s) || s <= 0) return '–'; const m = Math.floor(s / 60), r = s - m * 60; return m ? m + ':' + r.toFixed(3).padStart(6, '0') : r.toFixed(3) }
 // pure: iRacing adds digits to repeated names ("Andrew Brooks6"); the bar shows "A. Brooks"
 function lkShort(n) { n = String(n || '').replace(/\d+$/, '').trim(); if (!n) return ''; const p = n.split(/\s+/); return p.length > 1 ? p[0][0] + '. ' + p.slice(1).join(' ') : n }
-// pure: how full each fight bar is: your best lap is the full bar, your average lap loses 10 % of the bar per 1 % slower
+// pure: how full each LED bar in the Arcade bar is: your best lap is the full bar, your average lap loses 10 % of the bar per 1 % slower
 function lkBars(avg, best) { if (!(avg > 0 && best > 0)) return [100, 100]; const pct = (avg - best) / best * 100; return [Math.max(8, Math.min(100, 100 - pct * 10)), 100] }
 function lkHud() {
   if (LK.look === 'basic') { document.querySelectorAll('.lk-hud').forEach(x => x.remove()); return }
@@ -987,43 +988,48 @@ function lkHud() {
   const old = document.querySelector('.lk-hud'); if (old && old.dataset.look === LK.look && old.innerHTML === h.innerHTML) return;
   h.dataset.look = LK.look; if (old) old.replaceWith(h); else (document.querySelector('.wrap') || document.body).prepend(h);
 }
-// ---- Arcade's game layer ----
+// ---- Arcade's racing layer ----
 function lkArcade() { return LK.look === 'arcade' }
 const LK_CALM = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches } catch (e) { return false } };
-// A banner: hard slam, a frame of hit-stop, a chromatic split that settles, then it tears off sideways.
-// opts: sound (a name in LK_SND), voice (a LK_VOICE line), voiceAt (s), fx ('pb' | 'hit' | 'off' | 'zap')
+// A call-out: it comes in from the right like a car, brakes past its mark, settles, then pulls away to the left.
+// kind: a colour (red, purple, cyan, green, white) and 'chk' for a checkered edge.
+// opts: sound (a name in LK_SND), voice (a LK_VOICE line), voiceAt (s), fx ('pb' | 'streak' | 'off' | 'pass' | 'go')
 function lkPop(t, s, kind, opts) {
   if (!lkArcade()) return; opts = opts || {};
   const p = document.createElement('div'); p.className = 'lk-pop ' + (kind || ''); p.setAttribute('role', 'status');
-  p.innerHTML = '<div class="rays"></div><div class="band"></div><div class="t"></div>' + (s ? '<div class="s"></div>' : '');
+  p.innerHTML = '<div class="band"></div><div class="t"></div>' + (s ? '<div class="s"></div>' : '');
   const T = p.querySelector('.t'); T.textContent = t; T.dataset.t = t; if (s) p.querySelector('.s').textContent = s;
   document.querySelectorAll('.lk-pop').forEach(x => x.remove());
-  document.body.prepend(p); lkShake(opts.fx === 'off' ? 14 : 9);
-  lkSfx(opts.sound || 'slam'); if (opts.voice) lkVoice(opts.voice, opts.voiceAt || .55);
-  lkFx(opts.fx || 'hit', getComputedStyle(p).getPropertyValue('--k').trim() || '#ffe600');
-  setTimeout(() => lkSfx('out'), 1750); setTimeout(() => p.remove(), 2300);
+  document.body.prepend(p); if (opts.fx === 'off') lkShake(6);
+  lkSfx(opts.sound || 'whoosh'); if (opts.voice) lkVoice(opts.voice, opts.voiceAt || .55);
+  lkFx(opts.fx || 'streak', getComputedStyle(p).getPropertyValue('--k').trim() || '#ffd400');
+  setTimeout(() => lkSfx('out'), 1850); setTimeout(() => p.remove(), 2300);
 }
-// the whole page jolts, harder for bad news, and settles (one transform on the body, no layout)
+// the page rumbles like a car on the kerbs (one transform on the body, no layout)
 function lkShake(px) { if (LK_CALM()) return; const b = document.body; b.style.setProperty('--sh', px + 'px'); b.classList.remove('lk-shake'); void b.offsetWidth; b.classList.add('lk-shake') }
 // ---- effects layer: one canvas over the page, drawn only while something is moving ----
-const FX = { cv: null, g: null, parts: [], rings: [], flash: 0, flashCol: '#fff', raf: 0, last: 0 };
+// speed lines, a light sweep for a pass, checkered flag pieces for a personal best, dust and gravel off the track
+const FX = { cv: null, g: null, parts: [], sweeps: [], flash: 0, flashCol: '#fff', raf: 0, last: 0 };
 function lkFx(kind, col) {
   if (LK_CALM()) return;
   if (!FX.cv) { FX.cv = document.createElement('canvas'); FX.cv.className = 'lk-fx'; FX.cv.setAttribute('aria-hidden', 'true'); document.body.appendChild(FX.cv); FX.g = FX.cv.getContext('2d') }
   if (!FX.cv.isConnected) document.body.appendChild(FX.cv);
-  const W = innerWidth, H = innerHeight, cx = W / 2, cy = H / 2, R = Math.random, P = FX.parts;
-  FX.flash = kind === 'off' ? .55 : .8; FX.flashCol = kind === 'off' ? '#ff1e3c' : '#ffffff';
-  FX.rings.push({ x: cx, y: cy, r: 40, v: Math.max(W, H) * 1.6, a: 1, w: 26, col: col });
-  if (kind !== 'off') FX.rings.push({ x: cx, y: cy, r: 10, v: Math.max(W, H) * 1.1, a: .8, w: 8, col: '#ffffff', delay: .08 });
-  const sparks = kind === 'pb' ? 120 : kind === 'off' ? 50 : 80;
-  for (let i = 0; i < sparks; i++) { const a = R() * Math.PI * 2, sp = 500 + R() * 1400;
-    P.push({ k: 'spark', x: cx + (R() - .5) * 200, y: cy + (R() - .5) * 60, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * .62 - 200, life: .55 + R() * .7, age: 0,
-      col: kind === 'off' ? (R() < .6 ? '#ff1e3c' : '#ffb000') : [col, '#fff6a8', '#ffffff', '#ffb000'][i % 4], w: 1.5 + R() * 2.5 }) }
-  if (kind === 'pb') for (let i = 0; i < 160; i++) { const a = -Math.PI / 2 + (R() - .5) * 2.4, sp = 700 + R() * 900;
-    P.push({ k: 'conf', x: cx + (R() - .5) * 300, y: cy + 40, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 2.2 + R() * 1.2, age: 0, rot: R() * 6, vr: (R() - .5) * 18,
-      col: ['#ffe600', '#ff1e3c', '#19e6ff', '#c13dff', '#ffffff', '#39ff6a'][i % 6], w: 8 + R() * 8, h: 4 + R() * 5 }) }
-  if (kind === 'off') for (let i = 0; i < 36; i++) { const a = R() * Math.PI * 2, sp = 300 + R() * 700;
-    P.push({ k: 'shard', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 300, life: 1.4 + R() * .6, age: 0, rot: R() * 6, vr: (R() - .5) * 14, col: R() < .5 ? '#2a2833' : '#ff1e3c', w: 10 + R() * 22 }) }
+  const W = innerWidth, H = innerHeight, cy = H / 2, R = Math.random, P = FX.parts;
+  const lines = kind === 'off' ? 0 : kind === 'pb' || kind === 'go' ? 70 : 46;
+  for (let i = 0; i < lines; i++) { const y = cy + (R() - .5) * H * (R() < .6 ? .35 : .95);
+    P.push({ k: 'line', x: W + R() * W * .8, y, vx: -(2600 + R() * 3200), len: 80 + R() * 420, w: R() < .2 ? 3 : 1.2, life: 1.2, age: R() * -.25, col: R() < .3 ? col : '#ffffff', a: .35 + R() * .5 }) }
+  if (kind === 'pass' || kind === 'go' || kind === 'pb') FX.sweeps.push({ x: -W * .3, v: W * (kind === 'pass' ? 3.2 : 2.4), col: kind === 'go' ? '#38f07a' : col, w: W * .22 });
+  if (kind === 'go') { FX.flash = .28; FX.flashCol = '#38f07a' }
+  if (kind === 'pb') { FX.flash = .18; FX.flashCol = col;
+    for (let i = 0; i < 150; i++) { const a = -Math.PI / 2 + (R() - .5) * 2.6, sp = 600 + R() * 900, x = W / 2 + (R() - .5) * W * .5;
+      P.push({ k: 'chk', x, y: cy + 60, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 2.3 + R() * 1.1, age: 0, rot: R() * 6, vr: (R() - .5) * 14, s: 9 + R() * 9 }) }
+    for (let i = 0; i < 60; i++) { const sp = 900 + R() * 1600, a = Math.PI + (R() - .5) * .5;
+      P.push({ k: 'spark', x: W / 2 + (R() - .5) * 500, y: cy + (R() - .5) * 140, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .5 + R() * .5, age: 0, col: R() < .5 ? '#fff3b0' : col, w: 1.5 + R() * 2 }) } }
+  if (kind === 'off') { FX.flash = .3; FX.flashCol = 'vignette';
+    for (let i = 0; i < 26; i++) { const x = W * (.2 + R() * .6);
+      P.push({ k: 'dust', x, y: cy + 110 + R() * 60, vx: (R() - .5) * 160, vy: -40 - R() * 90, r: 30 + R() * 50, gr: 90 + R() * 120, life: 1.6 + R() * 1, age: R() * -.3, a: .25 + R() * .25 }) }
+    for (let i = 0; i < 90; i++) { const a = -Math.PI / 2 + (R() - .5) * 2, sp = 300 + R() * 800;
+      P.push({ k: 'stone', x: W * (.3 + R() * .4), y: cy + 120, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1.4 + R() * .5, age: 0, s: 2 + R() * 4, col: ['#6d6150', '#8a7c66', '#4a4136', '#a39478'][i % 4] }) } }
   if (!FX.raf) { FX.last = performance.now(); FX.raf = requestAnimationFrame(lkFxFrame) }
 }
 function lkFxFrame(now) {
@@ -1031,41 +1037,64 @@ function lkFxFrame(now) {
   const cv = FX.cv, g = FX.g, dpr = Math.min(2, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
   if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr) }
   g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
-  if (FX.flash > 0) { g.globalAlpha = FX.flash; g.fillStyle = FX.flashCol; g.fillRect(0, 0, W, H); FX.flash = Math.max(0, FX.flash - dt * 5.5) }
+  if (FX.flash > 0) { g.globalAlpha = FX.flash;
+    if (FX.flashCol === 'vignette') { const v = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .3, W / 2, H / 2, Math.max(W, H) * .75); v.addColorStop(0, 'rgba(255,58,42,0)'); v.addColorStop(1, 'rgba(255,58,42,1)'); g.fillStyle = v }
+    else g.fillStyle = FX.flashCol;
+    g.fillRect(0, 0, W, H); FX.flash = Math.max(0, FX.flash - dt * 1.6) }
   g.globalAlpha = 1;
-  for (const r of FX.rings) { if (r.delay > 0) { r.delay -= dt; continue } r.r += r.v * dt; r.v *= Math.pow(.18, dt); r.a -= dt * 1.8;
-    if (r.a <= 0) continue; g.globalAlpha = r.a; g.strokeStyle = r.col; g.lineWidth = r.w * r.a; g.beginPath(); g.ellipse(r.x, r.y, r.r, r.r * .62, 0, 0, Math.PI * 2); g.stroke() }
-  FX.rings = FX.rings.filter(r => r.a > 0);
+  // dust under everything
+  for (const p of FX.parts) { if (p.k !== 'dust') continue; p.age += dt; if (p.age < 0 || p.age > p.life) continue; const f = 1 - p.age / p.life;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy *= Math.pow(.4, dt); p.r += p.gr * dt;
+    const d = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r); d.addColorStop(0, 'rgba(150,130,104,' + (p.a * f) + ')'); d.addColorStop(1, 'rgba(150,130,104,0)'); g.fillStyle = d; g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fill() }
   g.globalCompositeOperation = 'lighter';
-  for (const p of FX.parts) { p.age += dt; if (p.age > p.life) continue; const f = 1 - p.age / p.life;
-    if (p.k === 'spark') { const px = p.x, py = p.y; p.vx *= Math.pow(.08, dt); p.vy = p.vy * Math.pow(.08, dt) + 900 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
-      g.globalAlpha = f; g.strokeStyle = p.col; g.lineWidth = p.w; g.lineCap = 'round'; g.beginPath(); g.moveTo(px - (p.x - px) * 2.5, py - (p.y - py) * 2.5); g.lineTo(p.x, p.y); g.stroke() } }
+  for (const s of FX.sweeps) { s.x += s.v * dt; const gr = g.createLinearGradient(s.x - s.w, 0, s.x + s.w, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(.5, s.col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = .22; g.fillStyle = gr; g.setTransform(dpr, 0, -.35 * dpr, dpr, 0, 0); g.fillRect(s.x - s.w, -H, s.w * 2, H * 3); g.setTransform(dpr, 0, 0, dpr, 0, 0) }
+  FX.sweeps = FX.sweeps.filter(s => s.x - s.w < W * 1.6);
+  for (const p of FX.parts) { if (p.k !== 'line' && p.k !== 'spark') continue; p.age += dt; if (p.age < 0 || p.age > p.life) continue;
+    if (p.k === 'line') { p.x += p.vx * dt; if (p.x + p.len < 0) { p.age = p.life + 1; continue }
+      const gr = g.createLinearGradient(p.x, 0, p.x + p.len, 0); gr.addColorStop(0, p.col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.globalAlpha = p.a; g.strokeStyle = gr; g.lineWidth = p.w; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + p.len, p.y); g.stroke() }
+    else { const f = 1 - p.age / p.life, px = p.x, py = p.y; p.vx *= Math.pow(.1, dt); p.vy = p.vy * Math.pow(.1, dt) + 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      g.globalAlpha = f; g.strokeStyle = p.col; g.lineWidth = p.w; g.lineCap = 'round'; g.beginPath(); g.moveTo(px - (p.x - px) * 3, py - (p.y - py) * 3); g.lineTo(p.x, p.y); g.stroke() } }
   g.globalCompositeOperation = 'source-over';
-  for (const p of FX.parts) { if (p.k === 'spark' || p.age > p.life) continue; const f = Math.min(1, (p.life - p.age) * 2);
-    p.vx *= Math.pow(p.k === 'conf' ? .3 : .5, dt); p.vy = p.vy * Math.pow(p.k === 'conf' ? .3 : .5, dt) + (p.k === 'conf' ? 520 : 1400) * dt; p.x += p.vx * dt + (p.k === 'conf' ? Math.sin(p.age * 9 + p.rot) * 40 * dt : 0); p.y += p.vy * dt; p.rot += p.vr * dt;
-    g.save(); g.globalAlpha = f; g.translate(p.x, p.y); g.rotate(p.rot); g.fillStyle = p.col;
-    if (p.k === 'conf') { g.scale(1, Math.abs(Math.cos(p.age * 7 + p.rot))); g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h) }
-    else { g.beginPath(); g.moveTo(-p.w / 2, -p.w / 3); g.lineTo(p.w / 2, -p.w / 5); g.lineTo(p.w / 6, p.w / 2); g.closePath(); g.fill() } g.restore() }
+  for (const p of FX.parts) { if (p.k !== 'chk' && p.k !== 'stone') continue; p.age += dt; if (p.age > p.life) continue; const f = Math.min(1, (p.life - p.age) * 2);
+    if (p.k === 'chk') { p.vx *= Math.pow(.25, dt); p.vy = p.vy * Math.pow(.25, dt) + 480 * dt; p.x += p.vx * dt + Math.sin(p.age * 8 + p.rot) * 50 * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+      g.save(); g.globalAlpha = f; g.translate(p.x, p.y); g.rotate(p.rot); g.scale(1, Math.abs(Math.cos(p.age * 6 + p.rot)) * .9 + .1); const h = p.s / 2;
+      g.fillStyle = '#ffffff'; g.fillRect(-h, -h, p.s, p.s); g.fillStyle = '#0b0d12'; g.fillRect(-h, -h, h, h); g.fillRect(0, 0, h, h); g.restore() }
+    else { p.vx *= Math.pow(.6, dt); p.vy += 1700 * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.y > H * .5 + 190 && p.vy > 0) { p.vy *= -.35; p.vx *= .6 }
+      g.globalAlpha = f; g.fillStyle = p.col; g.beginPath(); g.arc(p.x, p.y, p.s, 0, Math.PI * 2); g.fill() } }
+  g.globalAlpha = 1;
   FX.parts = FX.parts.filter(p => p.age <= p.life);
-  if (FX.parts.length || FX.rings.length || FX.flash > 0) FX.raf = requestAnimationFrame(lkFxFrame); else { FX.raf = 0; g.clearRect(0, 0, W, H) }
+  if (FX.parts.length || FX.sweeps.length || FX.flash > 0) FX.raf = requestAnimationFrame(lkFxFrame); else { FX.raf = 0; g.clearRect(0, 0, W, H) }
 }
-// the VS screen: your average lap against the lap it is measured against (Coaching). The halves smash in,
-// a white flash and sparks on impact, VS stamps down, then the announcer: FIGHT.
-function lkVs(a, b) {
-  if (!lkArcade() || !a || !b) return; document.querySelectorAll('.lk-vs').forEach(x => x.remove());
-  const v = document.createElement('div'); v.className = 'lk-vs'; v.setAttribute('role', 'status');
-  v.innerHTML = '<div class="half l"><small></small><b></b><em></em></div><div class="half r"><small></small><b></b><em></em></div><div class="seam"></div><div class="vs" data-t="VS">VS</div><div class="fight" data-t="FIGHT!">FIGHT!</div><div class="go">Click to skip</div>';
-  [[a, '.l'], [b, '.r']].forEach(([x, s]) => { const H = v.querySelector(s); H.querySelector('small').textContent = x.label; H.querySelector('b').textContent = x.name; H.querySelector('em').textContent = lkTime(x.time) });
-  const end = () => { v.classList.add('out'); setTimeout(() => v.remove(), 380) };
-  v.onclick = end; document.body.prepend(v); setTimeout(end, 3600);
-  lkSfx('vs'); setTimeout(() => { lkFx('hit', '#ffffff'); lkShake(12) }, 360); lkVoice('fight', 1.25);
+// The start (Coaching): your average lap and the lap it is measured against line up on the grid under five
+// red lights; the lights come on one by one and go out, and the call is GO. Click to skip.
+function lkStart(a, b) {
+  if (!lkArcade() || !a || !b) return; document.querySelectorAll('.lk-start').forEach(x => x.remove());
+  const v = document.createElement('div'); v.className = 'lk-start'; v.setAttribute('role', 'status');
+  const gap = a.time > 0 && b.time > 0 ? a.time - b.time : null;
+  v.innerHTML = '<div class="gantry">' + '<div class="pod"><i></i><i></i></div>'.repeat(5) + '</div>' +
+    '<div class="grid"><div class="row"><small></small><b></b><em></em></div><div class="row"><small></small><b></b><em></em></div></div>' +
+    (gap != null ? '<div class="gap">Gap<b>' + (gap >= 0 ? '+' : '−') + Math.abs(gap).toFixed(3) + '</b></div>' : '') + '<div class="word">GO!</div><div class="skip">Click to skip</div>';
+  v.querySelectorAll('.row').forEach((r, i) => { const x = i ? b : a; r.querySelector('small').textContent = x.label; r.querySelector('b').textContent = x.name; r.querySelector('em').textContent = lkTime(x.time) });
+  const T = [], end = () => { T.forEach(clearTimeout); v.classList.add('out'); setTimeout(() => v.remove(), 450) };
+  v.onclick = end; document.body.prepend(v);
+  // the lights wait for the page to settle (a big result is still being drawn), so they come on one at a time
+  const pods = v.querySelectorAll('.pod'); let last = performance.now(), calm = 0; const t0 = last;
+  const go = () => { lkVoice('ready', 0);
+    pods.forEach((p, i) => T.push(setTimeout(() => { p.classList.add('on'); lkSfx('light') }, 350 + i * 330)));
+    T.push(setTimeout(() => lkVoice('set', 0), 350 + 3 * 330));
+    T.push(setTimeout(() => { v.classList.add('go'); pods.forEach(p => p.classList.remove('on')); lkSfx('lightgo'); lkSfx('passby', .05); lkVoice('go', .02); lkFx('go') }, 350 + 4 * 330 + 650));
+    T.push(setTimeout(end, 4300)) };
+  const wait = now => { if (!v.isConnected) return; calm = now - last < 50 ? calm + 1 : 0; last = now; if (calm >= 5 || now - t0 > 4000) go(); else requestAnimationFrame(wait) };
+  requestAnimationFrame(wait);
 }
 // the streak counter on the side, bumped on every clean lap
 function lkCombo(n) { let c = document.querySelector('.lk-combo'); if (!lkArcade() || !n) { if (c) c.remove(); return } if (!c) { c = document.createElement('div'); c.className = 'lk-combo'; document.body.prepend(c) }
   c.innerHTML = '<b>' + n + '</b><span>clean lap' + (n === 1 ? '' : 's') + ' in a row</span>'; c.classList.remove('lk-bump'); void c.offsetWidth; c.classList.add('lk-bump') }
-// panels slam in one after another when a view opens (Arcade only; one motion per view)
+// panels drive in one after another when a view opens (Arcade only; one motion per view)
 function lkEnter() { if (!lkArcade() || matchMedia('(prefers-reduced-motion: reduce)').matches) return; let i = 0;
-  document.querySelectorAll('.card,.app').forEach(c => { if (c.offsetParent === null) return; c.classList.remove('lk-in'); void c.offsetWidth; c.style.animationDelay = Math.min(i++, 8) * .07 + 's'; c.classList.add('lk-in') }) }
+  document.querySelectorAll('.card,.app').forEach(c => { if (c.offsetParent === null) return; c.classList.remove('lk-in'); void c.offsetWidth; c.style.animationDelay = Math.min(i++, 8) * .06 + 's'; c.classList.add('lk-in') }) }
 // pure: what a finished live lap means in the game: a personal best, a clean lap or a lap that won't count
 function lkLapEvent(rec, prior) {
   if (!rec) return null; const best = Math.min(...prior.filter(x => x.valid && x.time > 0).map(x => x.time));
@@ -1075,30 +1104,29 @@ function lkLapEvent(rec, prior) {
 }
 function lkLap(rec, prior) {
   const e = lkLapEvent(rec, prior || []); if (!e) return;
-  const was = LK.streak;
-  if (e.kind === 'pb') { LK.streak++; lkPop('PERSONAL BEST!', lkTime(rec.time) + ' · lap ' + rec.lap + ' · −' + e.gain.toFixed(3) + ' s', 'purple', { sound: 'pb', voice: 'win', voiceAt: .8, fx: 'pb' }) }
-  else if (e.kind === 'clean') { LK.streak++; if (e.first) lkPop('CLEAN LAP', lkTime(rec.time) + ' · lap ' + rec.lap, 'green', { sound: 'clean', fx: 'hit' });
-    else if ([3, 5, 10, 15, 20].includes(LK.streak)) lkPop(LK.streak + ' IN A ROW', 'clean laps · ' + lkTime(rec.time), 'green', { sound: 'clean', voice: 'combo', voiceAt: .35, fx: 'hit' }) }
-  else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won\u2019t count', 'red', { sound: 'off', voice: was >= 3 ? 'breaker' : null, voiceAt: .5, fx: 'off' }) }
+  if (e.kind === 'pb') { LK.streak++; lkPop('PERSONAL BEST!', lkTime(rec.time) + ' · lap ' + rec.lap + ' · −' + e.gain.toFixed(3) + ' s', 'purple chk', { sound: 'pb', voice: 'record', voiceAt: .95, fx: 'pb' }) }
+  else if (e.kind === 'clean') { LK.streak++; if (e.first) lkPop('CLEAN LAP', lkTime(rec.time) + ' · lap ' + rec.lap, 'green', { sound: 'clean' });
+    else if ([3, 5, 10, 15, 20].includes(LK.streak)) lkPop(LK.streak + ' IN A ROW', 'clean laps · ' + lkTime(rec.time), 'green', { sound: 'clean' }) }
+  else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red', { sound: 'off', fx: 'off' }) }
   lkCombo(LK.streak);
 }
 // every telemetry tick: places gained, the white and checkered flags, gear changes
 function lkTick(v) {
   if (!lkArcade() || !v) return;
   const pos = v.PlayerCarClassPosition > 0 ? v.PlayerCarClassPosition : v.PlayerCarPosition > 0 ? v.PlayerCarPosition : null;
-  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { sound: 'overtake', fx: 'zap' });
+  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { sound: 'overtake', fx: 'pass' });
   LK.pos = pos || LK.pos;
   const f = v.SessionFlags || 0;
-  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', '', { sound: 'slam', voice: 'final', voiceAt: .3 });
-  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'purple', { sound: 'finish', voice: pos === 1 ? 'winner' : null, voiceAt: .4, fx: 'pb' });
+  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', 'white', { sound: 'lastlap' });
+  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'white chk', { sound: 'finish', voice: pos === 1 ? 'win' : 'congrats', voiceAt: 1.1, fx: 'pb' });
   LK.flags = f;
   if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } lkSfx('gear') }
   LK.gear = v.Gear;
 }
-// ---- sound: recorded effects and an announcer (client/assets/sfx-*.mp3: Kenney and OpenGameArt, CC0; LICENSES.md),
-// layered and mastered for this; only in Arcade, only with suite:sfx on (off by default), the announcer with suite:voice
-const LK_SND = ['vs', 'pb', 'clean', 'off', 'overtake', 'slam', 'finish', 'whoosh', 'swish', 'out', 'hover', 'click', 'gear'];
-const LK_VOICE = { fight: 'v_fight', final: 'v_final', combo: 'v_combo', breaker: 'v_breaker', win: 'v_win', winner: 'v_winner', ready: 'v_ready' };
+// ---- sound: recorded effects and an announcer (client/assets/sfx-*.mp3: a public-domain racing-engine recording put
+// through a Doppler pass, Kenney and OpenGameArt, all CC0; LICENSES.md), layered and mastered for this; only in Arcade, only with suite:sfx on (off by default), the announcer with suite:voice
+const LK_SND = ['light', 'lightgo', 'passby', 'overtake', 'pb', 'clean', 'off', 'lastlap', 'finish', 'green', 'whoosh', 'out', 'hover', 'click', 'gear'];
+const LK_VOICE = { ready: 'v_ready', set: 'v_set', go: 'v_go', record: 'v_record', congrats: 'v_congrats', win: 'v_win' };
 const LK_BUF = {}, LK_ASSET = /^\/pitwall(\/|$)/.test(location.pathname) ? 'assets/' : '/pitwall/assets/';
 function lkAudio() { if (!LK.AC) { try { LK.AC = new (window.AudioContext || window.webkitAudioContext)(); LK.bus = LK.AC.createDynamicsCompressor(); LK.bus.threshold.value = -10; LK.bus.ratio.value = 4; LK.bus.connect(LK.AC.destination) } catch (e) { return null } }
   if (LK.AC.state === 'suspended') LK.AC.resume(); return LK.AC }
@@ -1120,8 +1148,9 @@ document.addEventListener('click', e => { lkPreload(); if (lkArcade() && e.targe
 addEventListener('storage', e => { if (e.key === 'suite:look' || e.key === 'suite:team' || e.key === 'suite:plate') lkApply() });
 // PitWall: the Arcade banners for the flags (no top bar here: the header already is one)
 function lkFlag(f) {
-  const W = { green: ["GREEN FLAG", "green"], yellow: ["YELLOW FLAG", ""], caution: ["CAUTION", ""], white: ["FINAL LAP", ""], checkered: ["FINISH!", "purple"], red: ["RED FLAG", "red"] }[f];
-  if (W) lkPop(W[0], "", W[1]);
+  const W = { green: ["GREEN FLAG", "green", { sound: "green", fx: "go" }], yellow: ["YELLOW FLAG", "", {}], caution: ["CAUTION", "", {}],
+    white: ["FINAL LAP", "white", { sound: "lastlap" }], checkered: ["FINISH!", "white chk", { sound: "finish", fx: "pb" }], red: ["RED FLAG", "red", {}] }[f];
+  if (W) lkPop(W[0], "", W[1], W[2]);
 }
 LK.look = document.documentElement.dataset.look || "basic";
 // ---- /looks ----
