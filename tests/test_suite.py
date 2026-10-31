@@ -200,9 +200,9 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual((status, headers.get("Content-Type")), (200, "font/woff2"))
         self.assertEqual(body, on_disk("client", "assets", "barlow-condensed-latin-600-normal.woff2"))
         # the Arcade look's sounds, by name, the same way
-        status, headers, body = fetch(base + "/pitwall/assets/sfx-passby.mp3", gzip_ok=False)
+        status, headers, body = fetch(base + "/pitwall/assets/voice-f-pb.mp3", gzip_ok=False)
         self.assertEqual((status, headers.get("Content-Type")), (200, "audio/mpeg"))
-        self.assertEqual(body, on_disk("client", "assets", "sfx-passby.mp3"))
+        self.assertEqual(body, on_disk("client", "assets", "voice-f-pb.mp3"))
 
     def test_large_analyzer_page_arrives_in_pieces_that_join_back(self):
         import re

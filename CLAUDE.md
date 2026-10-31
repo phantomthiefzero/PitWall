@@ -39,11 +39,11 @@ Hard rules
   never change with the look. In PitWall, Pit wall is the booth look and Arcade sits on top of it (Look button: booth,
   arcade, classic). Arcade is an arcade RACER, not a fighting game (the user's call): call-outs that drive in and
   brake (lkPop), five start lights before Coaching's result (lkStart), the clean-lap streak, checkered flags, speed
-  lines, kerbs and gravel; no VS, rounds or fighter voices. It follows real events only: a finished live lap
-  (lkLapEvent), places gained, the white and checkered flags. Its sounds are recorded (client/assets/sfx-*.mp3, CC0:
-  a public-domain racing-engine recording through a Doppler pass, a bell, Kenney's general announcer; LK_SND /
-  LK_VOICE; the sources and build are in LICENSES.md) and play only with suite:sfx on (off by default), the announcer
-  also with suite:voice. Effects are drawn on one canvas (lkFx) only while something moves. Fonts: Exo 2 (italic 900
+  lines, kerbs and gravel drawn on screen; no VS, rounds or fighter voices. It follows real events only: a finished live
+  lap (lkLapEvent), places gained, the white and checkered flags. Sound is an ANNOUNCER only, never sound effects (the
+  user's call: the sim makes the racing sounds): lkSay plays client/assets/voice-<f|m>-<line>.mp3 (LK_LINES; Kokoro TTS,
+  Apache 2.0, see LICENSES.md), one line at a time, in Arcade only, when suite:announcer is 'f' or 'm' (off by
+  default). Effects are drawn on one canvas (lkFx) only while something moves. Fonts: Exo 2 (italic 900
   for the big type) and Russo One in client/assets (OFL).
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).
 
