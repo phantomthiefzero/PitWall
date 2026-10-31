@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><script>(function(){var t=null;try{t=localStorage.getItem('suite:theme')}catch(e){}if(!t&&/^\/analyzer/.test(location.pathname))t='dark';if(t)document.documentElement.setAttribute('data-theme',t)})()</script><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Lap Analyzer</title><!-- v78 2026-10-15: setup Suggestions tab: balance by corner phase (braking in, mid, throttle out) for slow and fast corners from steering vs yaw rate, opposite lock and slip, plus bottoming, tyre temperatures across the tread and ABS, mapped to this car's settings with limits; v77 2026-10-15: racing line overlay per corner from GPS, with how far your line is from the reference (inside/outside) at turn-in, apex and exit; v76 2026-10-15: session review (every lap: iRacing sectors, theoretical best, consistency, fuel, incidents, tyre pressure and temperature trends); v75 2026-10-12: live view redraws every frame (was 4 per second), restarts the lap trace when the car jumps (reset to pits/tow), steady live numbers, ride height front/rear by color; v74 2026-10-12: live graphs (speed, pedals, steering, ride heights, delta) against best or last lap; v73: live telemetry via the local iRacing bridge: live setup, gauges, runs by setup; v72: imperial labels match iRacing (lbs, lbs/in, ft-lbs); v71: setup panel collapsible, open state remembered; v70: setup tools available without a file, using the last recorded setup per car; v69: measured ride heights at speed from telemetry, aero calculator explained; v68: setup panel mirrors the iRacing garage tabs and sections; v67: compact setup layout: corner grid, front/rear grid, info on demand; v66: per-car setup library: ranges you enter, values seen in your files, export/import; v65: iRacing setup notes, damper and ARB ranges for the 296, downforce trim guide, setup units; earlier v60: lap times matched to the right lap; setup tools; single-file comparison; clear buttons; wording and spelling cleanup -->
+<!DOCTYPE html><html lang="en"><head><script>(function(){var t=null;try{t=localStorage.getItem('suite:theme')}catch(e){}if(!t&&/^\/analyzer/.test(location.pathname))t='dark';if(t)document.documentElement.setAttribute('data-theme',t);var k=null;try{k=localStorage.getItem('suite:look')}catch(e){}if(k==='pitwall'||k==='arcade'){document.documentElement.setAttribute('data-look',k);document.documentElement.setAttribute('data-theme','dark')}})()</script><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Lap Analyzer</title><!-- v78 2026-10-15: setup Suggestions tab: balance by corner phase (braking in, mid, throttle out) for slow and fast corners from steering vs yaw rate, opposite lock and slip, plus bottoming, tyre temperatures across the tread and ABS, mapped to this car's settings with limits; v77 2026-10-15: racing line overlay per corner from GPS, with how far your line is from the reference (inside/outside) at turn-in, apex and exit; v76 2026-10-15: session review (every lap: iRacing sectors, theoretical best, consistency, fuel, incidents, tyre pressure and temperature trends); v75 2026-10-12: live view redraws every frame (was 4 per second), restarts the lap trace when the car jumps (reset to pits/tow), steady live numbers, ride height front/rear by color; v74 2026-10-12: live graphs (speed, pedals, steering, ride heights, delta) against best or last lap; v73: live telemetry via the local iRacing bridge: live setup, gauges, runs by setup; v72: imperial labels match iRacing (lbs, lbs/in, ft-lbs); v71: setup panel collapsible, open state remembered; v70: setup tools available without a file, using the last recorded setup per car; v69: measured ride heights at speed from telemetry, aero calculator explained; v68: setup panel mirrors the iRacing garage tabs and sections; v67: compact setup layout: corner grid, front/rear grid, info on demand; v66: per-car setup library: ranges you enter, values seen in your files, export/import; v65: iRacing setup notes, damper and ARB ranges for the 296, downforce trim guide, setup units; earlier v60: lap times matched to the right lap; setup tools; single-file comparison; clear buttons; wording and spelling cleanup -->
 <style>
 :root{--bg:#f6f6f4;--fg:#1d2024;--mut:#6a7079;--card:#fff;--ln:#dcdde0;--you:#e8710a;--ref:#2f6fed;--bad:#d6333a;--good:#1a8f4c;--rear:#7b4fd6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15171a;--fg:#e7e9ec;--mut:#9aa1ab;--card:#1e2126;--ln:#33373d;--you:#ff9a3d;--ref:#6ea0ff;--bad:#ff6b72;--good:#4fd68a;--rear:#b48cff}}
@@ -95,6 +95,197 @@ body:not([data-view=setup]) #liveNow{display:none}
 .clr[hidden]{display:none!important}#own tr.nt{opacity:.55}
 @media(hover:hover){#own .sjb{opacity:0;transition:opacity .1s}#own tr:hover .sjb,#own .sjb:focus{opacity:1}}
 .sjb{font:inherit;font-size:12px;padding:2px 8px;cursor:pointer}
+/* ---- LOOKS (generated from one source for the home page and the Lap Analyzer; same text in both): Pit wall and Arcade, set by suite:look on :root[data-look]. Basic is the page as it is. ---- */
+@font-face{font-family:"DSEG7 digits";font-weight:400 900;font-display:swap;unicode-range:U+0020,U+002B-002E,U+0030-003A;src:url("/pitwall/assets/dseg7-classic-bold.woff2") format("woff2")}
+@font-face{font-family:"Bungee";font-display:swap;src:url("/pitwall/assets/bungee-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Russo One";font-display:swap;src:url("/pitwall/assets/russo-one-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Exo 2";font-weight:400 600;font-display:swap;src:url("/pitwall/assets/exo-2-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:"Exo 2";font-weight:700 900;font-style:italic;font-display:swap;src:url("/pitwall/assets/exo-2-latin-900-italic.woff2") format("woff2")}
+:root[data-look="pitwall"]{color-scheme:dark;--bg:#060708;--card:#0a0c0e;--fg:#e4e8ec;--mut:#7f8892;--ln:#22262b;--you:#ffb23f;--ref:#3fd0ff;--bad:#ff3b3b;--good:#19d15a;--rear:#b43cf0;--acc:#ffb23f;--blue:#3fd0ff;--warn:#ffb23f;--bezel:#16181b;--purple:#b43cf0;--seg:"DSEG7 digits",var(--title),var(--num,monospace)}
+:root[data-look="pitwall"] body{background:repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.35) 0 2px,transparent 2px 4px),#0d0f11!important;font-family:"Barlow Semi Condensed","Segoe UI",system-ui,sans-serif!important;color:var(--fg)}
+:root[data-look="pitwall"] .lk-hud{position:sticky;top:0;z-index:20;display:flex;align-items:stretch;margin:0 0 14px;background:#000;border-bottom:3px solid var(--you);font-family:var(--title);box-shadow:0 6px 18px rgba(0,0,0,.6);overflow:hidden}
+:root[data-look="pitwall"] .lk-hud>div{padding:6px 12px;border-right:1px solid #1e2226;display:flex;flex-direction:column;justify-content:center;white-space:nowrap;min-width:0}
+:root[data-look="pitwall"] .lk-hud small{font:600 11px/1 var(--num);color:var(--mut);letter-spacing:.06em}
+:root[data-look="pitwall"] .lk-hud b{font:600 18px/1.1 var(--title);color:#fff;overflow:hidden;text-overflow:ellipsis}
+:root[data-look="pitwall"] .lk-hud .plate{background:var(--you);color:#000;font:700 28px/1 var(--title);padding:4px 14px;border:0;justify-content:center}
+:root[data-look="pitwall"] .lk-hud .seg{font:700 18px/1 var(--seg);color:var(--you);letter-spacing:.02em}
+:root[data-look="pitwall"] .lk-hud .seg.p{color:var(--purple)}
+:root[data-look="pitwall"] .lk-hud .seg.bad{color:var(--bad)}
+:root[data-look="pitwall"] .lk-hud .seg.good{color:var(--good)}
+:root[data-look="pitwall"] .lk-hud .grow{flex:1;border-right:0}
+:root[data-look="pitwall"] .lk-hud .radio{flex-direction:row;align-items:center;gap:10px;color:#cfd5db;font:600 15px var(--num)}
+:root[data-look="pitwall"] .lk-hud .radio i{width:9px;height:9px;border-radius:50%;background:var(--mut)}
+:root[data-look="pitwall"] .lk-hud .radio.on i{background:var(--good);box-shadow:0 0 8px var(--good)}
+:root[data-look="pitwall"] .views a{border-radius:0!important;border:0!important;border-bottom:3px solid transparent!important;background:transparent!important;color:var(--mut)!important}
+:root[data-look="pitwall"] .views a.on{color:#fff!important;border-bottom-color:var(--you)!important}
+:root[data-look="pitwall"] .views .theme{border-radius:0!important}
+:root[data-look="pitwall"] .card{position:relative;background:var(--card)!important;border:6px solid var(--bezel)!important;border-bottom-width:12px!important;border-radius:4px!important;padding:12px 14px!important;margin-bottom:16px;box-shadow:inset 0 0 0 1px #000,0 0 0 1px #24282d,0 8px 20px rgba(0,0,0,.55)}
+:root[data-look="pitwall"] .card::after{content:"";position:absolute;right:8px;bottom:-9px;width:5px;height:5px;border-radius:50%;background:var(--good);box-shadow:0 0 6px var(--good)}
+:root[data-look="pitwall"] .card .card{border:0!important;box-shadow:none;padding:0!important}
+:root[data-look="pitwall"] .card .card::after{display:none}
+:root[data-look="pitwall"] #start,:root[data-look="pitwall"] .dz{border-radius:2px!important;background:#000!important;border-color:#2a2f35!important}
+:root[data-look="pitwall"] h3,:root[data-look="pitwall"] .comap>b{font-family:var(--title)!important;color:#fff;border-left:4px solid var(--you);padding-left:9px}
+:root[data-look="pitwall"] .tile,:root[data-look="pitwall"] .cothing{background:#000!important;border:1px solid #1f2328!important;border-radius:0!important}
+:root[data-look="pitwall"] .cothing{border-left:4px solid var(--bad)!important}
+:root[data-look="pitwall"] .cothing-n{font:700 30px/1 var(--seg)!important;color:var(--you)!important}
+:root[data-look="pitwall"] b[style*="font-size:22px"]{font-family:var(--seg)!important;font-size:24px!important;font-weight:700!important;letter-spacing:.02em}
+:root[data-look="pitwall"] button,:root[data-look="pitwall"] select,:root[data-look="pitwall"] .chip{border-radius:2px!important}
+:root[data-look="pitwall"] button{background:#15181c!important;border:1px solid #2c3137!important;color:#dfe4e9!important;font-family:var(--title)!important;letter-spacing:.02em}
+:root[data-look="pitwall"] button:hover{border-color:var(--you)!important}
+:root[data-look="pitwall"] .cotabs button.on,:root[data-look="pitwall"] .tl-lay button.on{background:var(--you)!important;color:#000!important;border-color:var(--you)!important}
+:root[data-look="pitwall"] table th{color:var(--mut);font-family:var(--title);font-weight:600}
+:root[data-look="pitwall"] a{color:var(--ref)}
+:root[data-look="pitwall"] .tl-t{background:#000!important;border:1px solid #1f2328!important;border-radius:0!important}
+:root[data-look="pitwall"] #tlSpd,:root[data-look="pitwall"] #tlGear,:root[data-look="pitwall"] #tlRpm,:root[data-look="pitwall"] #tlCur,:root[data-look="pitwall"] #tlLast,:root[data-look="pitwall"] #tlBest,:root[data-look="pitwall"] #tlFuel,:root[data-look="pitwall"] #tlDelta{font-family:var(--seg)!important;font-weight:700!important}
+:root[data-look="pitwall"] #tlGear{color:var(--you)!important}
+:root[data-look="pitwall"] #tlRpmBar{background:linear-gradient(90deg,var(--good) 0 60%,var(--you) 60% 85%,var(--bad) 85%)!important}
+:root[data-look="pitwall"] .tl-box{background:#000!important;border-radius:0!important;border:1px solid #1f2328!important}
+:root[data-look="pitwall"] .wrap{max-width:1180px}
+:root[data-look="pitwall"] header{border-bottom:0!important}
+:root[data-look="pitwall"] .app{background:#000!important;border:6px solid var(--bezel)!important;border-bottom-width:12px!important;border-radius:4px!important;box-shadow:0 0 0 1px #24282d,0 10px 24px rgba(0,0,0,.6);position:relative}
+:root[data-look="pitwall"] .app::after{content:"";position:absolute;right:8px;bottom:-9px;width:5px;height:5px;border-radius:50%;background:var(--good);box-shadow:0 0 6px var(--good)}
+:root[data-look="pitwall"] .app .ico{border-radius:2px!important;background:transparent!important;border:1px solid var(--c)}
+:root[data-look="pitwall"] .app h2{color:#fff}
+:root[data-look="pitwall"] .app .open{color:var(--c)!important;font-family:var(--title);font-size:17px}
+:root[data-look="pitwall"] .tag.ok{border-radius:0!important;background:transparent!important;border:1px solid var(--good);color:var(--good)!important}
+:root[data-look="pitwall"] .status,:root[data-look="pitwall"] .last,:root[data-look="pitwall"] .rcard,:root[data-look="pitwall"] .share,:root[data-look="pitwall"] .rec,:root[data-look="pitwall"] .miles li{background:#000!important;border:1px solid #23272c!important;border-radius:0!important}
+:root[data-look="pitwall"] .status{border-left:6px solid var(--ref)!important}
+:root[data-look="pitwall"] .ctx a{border-radius:0!important;background:#000!important}
+:root[data-look="pitwall"] .gl b,:root[data-look="pitwall"] .last .st b,:root[data-look="pitwall"] .rcard .rb{font-family:var(--seg)!important;color:var(--you)}
+:root[data-look="pitwall"] footer{border-top:1px solid #1d2125;padding-top:12px}
+:root[data-look="arcade"]{color-scheme:dark;
+  --bg:#07070a;--card:#0e0e13;--fg:#ffffff;--mut:#a7a3b5;--ln:#2a2833;
+  --you:#ffe600;--ref:#19e6ff;--bad:#ff1e3c;--good:#39ff6a;--rear:#ff3df2;--acc:#ffe600;--blue:#19e6ff;--warn:#ffe600;
+  --title:"Russo One",system-ui,sans-serif;--num:"Exo 2",system-ui,sans-serif;--pop:"Bungee",system-ui,sans-serif;
+  --hz:repeating-linear-gradient(-45deg,#ffe600 0 10px,#0a0a0a 10px 20px);
+  --chrome:linear-gradient(180deg,#ffffff 0%,#fff6a8 38%,#ffb000 52%,#ff3b00 53%,#ffe600 100%)}
+:root[data-look="arcade"] body{font-family:"Exo 2",system-ui,sans-serif!important;font-weight:500;color:#fff;background:
+  radial-gradient(closest-side at 50% 45%,transparent 60%,rgba(0,0,0,.75) 100%),
+  repeating-conic-gradient(from 0deg at 110% -10%,rgba(255,30,60,.16) 0 2deg,transparent 2deg 7deg),
+  radial-gradient(900px 600px at 100% 0%,rgba(255,30,60,.35),transparent 70%),
+  radial-gradient(700px 500px at 0% 100%,rgba(25,230,255,.18),transparent 70%),
+  #07070a!important;background-attachment:fixed!important}
+:root[data-look="arcade"] body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
+:root[data-look="arcade"] body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(rgba(255,230,0,.22) 1.2px,transparent 1.6px) 0 0/9px 9px;
+  -webkit-mask:radial-gradient(600px 400px at 0% 0%,#000,transparent 70%),radial-gradient(500px 400px at 100% 100%,#000,transparent 70%);mask:radial-gradient(600px 400px at 0% 0%,#000,transparent 70%),radial-gradient(500px 400px at 100% 100%,#000,transparent 70%)}
+:root[data-look="arcade"] .lk-hud{position:relative;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;margin:0 0 22px;padding:8px 0}
+:root[data-look="arcade"] .lk-hud .side{display:flex;flex-direction:column;gap:6px}
+:root[data-look="arcade"] .lk-hud .side.r{align-items:flex-end}
+:root[data-look="arcade"] .lk-hud .bar{width:100%;height:26px;background:#2a0007;border:3px solid #fff;transform:skewX(-20deg);box-shadow:5px 5px 0 #000;position:relative;overflow:hidden}
+:root[data-look="arcade"] .lk-hud .side.r .bar{transform:skewX(20deg)}
+:root[data-look="arcade"] .lk-hud .bar i{position:absolute;top:0;bottom:0;left:0;width:var(--p);background:linear-gradient(180deg,#fff79a,#ffe600 40%,#ff9d00)}
+:root[data-look="arcade"] .lk-hud .side.r .bar i{left:auto;right:0;background:linear-gradient(180deg,#9df6ff,#19e6ff 40%,#0077ff)}
+:root[data-look="arcade"] .lk-hud .bar i::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 18px,rgba(0,0,0,.25) 18px 20px)}
+:root[data-look="arcade"] .lk-hud .nm{display:flex;align-items:center;gap:10px;font:24px/1 var(--title);text-transform:uppercase;font-style:italic;text-shadow:3px 3px 0 #000}
+:root[data-look="arcade"] .lk-hud .nm small{font:800 italic 14px var(--num);color:var(--mut);text-shadow:none}
+:root[data-look="arcade"] .lk-hud .plate{background:var(--you);color:#000;font:26px/1 var(--title);padding:4px 12px;transform:skewX(-14deg);box-shadow:4px 4px 0 var(--bad)}
+:root[data-look="arcade"] .lk-hud .clock{min-width:150px;text-align:center;font:44px/1 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;filter:drop-shadow(4px 4px 0 #000) drop-shadow(0 0 14px rgba(255,30,60,.7))}
+:root[data-look="arcade"] .lk-hud .clock small{display:block;font:12px var(--title);color:#fff;-webkit-text-stroke:0;letter-spacing:.2em;background:none;margin-top:4px}
+:root[data-look="arcade"] .lk-hud .rank{font:56px/1 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;filter:drop-shadow(4px 4px 0 var(--bad))}
+:root[data-look="arcade"] .card{position:relative;z-index:1;background:linear-gradient(180deg,#121218,#0b0b0f)!important;border:2px solid #34313f!important;border-radius:0!important;padding:16px 20px!important;margin:0 8px 22px 0;box-shadow:8px 8px 0 rgba(255,30,60,.85)}
+:root[data-look="arcade"] .card::before{content:"";position:absolute;left:-2px;top:-2px;width:90px;height:8px;background:var(--hz)}
+:root[data-look="arcade"] .card .card{background:transparent!important;border:0!important;box-shadow:none;padding:0!important;margin:0}
+:root[data-look="arcade"] .card .card::before{display:none}
+:root[data-look="arcade"] #start,:root[data-look="arcade"] .dz{border-radius:0!important;background:#0b0b0f!important;border:2px dashed #ffe60066!important}
+:root[data-look="arcade"] h3,:root[data-look="arcade"] .comap>b{font:24px/1.1 var(--title)!important;text-transform:uppercase;font-style:italic;color:#fff;text-shadow:3px 3px 0 var(--bad)}
+:root[data-look="arcade"] .tile,:root[data-look="arcade"] .cothing{background:#0a0a0e!important;border:2px solid #2d2a37!important;border-radius:0!important}
+:root[data-look="arcade"] .cothing{position:relative;border-left:6px solid var(--you)!important}
+:root[data-look="arcade"] .cothings{counter-reset:lkr}
+:root[data-look="arcade"] .cothing{counter-increment:lkr}
+:root[data-look="arcade"] .cothing::after{content:"ROUND " counter(lkr);position:absolute;right:14px;top:-14px;font:16px/1 var(--pop);color:#000;background:var(--you);padding:6px 12px;transform:rotate(-4deg) skewX(-10deg);box-shadow:4px 4px 0 var(--bad)}
+:root[data-look="arcade"] .lk-unused{position:absolute;right:14px;top:-14px;font:16px/1 var(--pop);color:#000;background:var(--you);padding:6px 12px;transform:rotate(-4deg) skewX(-10deg);box-shadow:4px 4px 0 var(--bad)}
+:root[data-look="arcade"] .cothing-n{font:44px/1 var(--pop)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #000}
+:root[data-look="arcade"] .cothing-t>div:nth-child(2){font:22px var(--title)!important;font-style:italic}
+:root[data-look="arcade"] b[style*="font-size:22px"]{font:900 italic 38px/1.05 var(--num)!important;text-shadow:3px 3px 0 #000}
+:root[data-look="arcade"] .views{gap:8px!important;position:relative;z-index:2}
+:root[data-look="arcade"] .views a{transform:skewX(-18deg);border-radius:0!important;border:2px solid #3b3846!important;background:#0e0e13!important;color:#fff!important;font:17px var(--title)!important;padding:8px 22px!important;font-style:italic}
+:root[data-look="arcade"] .views a.on{background:var(--you)!important;color:#000!important;border-color:#fff!important;box-shadow:5px 5px 0 var(--bad);position:relative}
+:root[data-look="arcade"] .views a.on::after{content:"P1";position:absolute;top:-12px;right:-8px;font:11px var(--pop);background:var(--bad);color:#fff;padding:2px 6px;transform:skewX(18deg)}
+:root[data-look="arcade"] .views a.home{border:0!important;background:transparent!important;transform:none}
+:root[data-look="arcade"] .views .theme{border-radius:0!important;background:transparent!important}
+:root[data-look="arcade"] button,:root[data-look="arcade"] select{border-radius:0!important}
+:root[data-look="arcade"] button{background:#1a1a22!important;border:2px solid #fff!important;color:#fff!important;font:15px var(--title)!important;transform:skewX(-12deg);box-shadow:3px 3px 0 #000}
+:root[data-look="arcade"] button:hover{background:var(--you)!important;color:#000!important;box-shadow:4px 4px 0 var(--bad)}
+:root[data-look="arcade"] .cotabs button.on,:root[data-look="arcade"] .tl-lay button.on{background:var(--ref)!important;color:#000!important}
+:root[data-look="arcade"] table th{color:var(--you);font:13px var(--title);text-transform:uppercase}
+:root[data-look="arcade"] td{font-variant-numeric:tabular-nums}
+:root[data-look="arcade"] a{color:var(--ref)}
+:root[data-look="arcade"] .bad{color:var(--bad)!important}
+:root[data-look="arcade"] .good{color:var(--good)!important}
+:root[data-look="arcade"] .tl-t{background:#0a0a0e!important;border:2px solid #2d2a37!important;border-radius:0!important}
+:root[data-look="arcade"] .tl-t .big,:root[data-look="arcade"] .tl-t b{font:900 italic 46px/1 var(--num)!important;text-shadow:3px 3px 0 #000}
+:root[data-look="arcade"] #tlSpd{font-size:76px!important}
+:root[data-look="arcade"] #tlGear{font:96px/1 var(--pop)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;filter:drop-shadow(5px 5px 0 var(--bad))}
+:root[data-look="arcade"] #tlCur,:root[data-look="arcade"] #tlLast,:root[data-look="arcade"] #tlBest{font-size:34px!important}
+:root[data-look="arcade"] #tlRpmBar{background:repeating-linear-gradient(90deg,#000 0 3px,transparent 3px 14px),linear-gradient(90deg,var(--good),var(--you) 70%,var(--bad))!important;height:14px!important;transform:skewX(-25deg)}
+:root[data-look="arcade"] .tl-box{background:#0a0a0e!important;border-radius:0!important;border:2px solid #2d2a37!important}
+:root[data-look="arcade"] .wrap{max-width:1180px;position:relative;z-index:1}
+:root[data-look="arcade"] header{border-bottom:0!important}
+:root[data-look="arcade"] h1{font:52px/1 var(--pop)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;filter:drop-shadow(5px 5px 0 var(--bad));text-transform:uppercase}
+:root[data-look="arcade"] h1 span{color:transparent!important}
+:root[data-look="arcade"] .apps{gap:22px!important}
+:root[data-look="arcade"] .app{background:linear-gradient(160deg,#16151d,#09090c 70%)!important;border:2px solid #3a3746!important;border-radius:0!important;position:relative;overflow:hidden;padding:22px 24px!important;box-shadow:8px 8px 0 color-mix(in srgb,var(--c) 85%,#000);transition:transform .12s,box-shadow .12s}
+:root[data-look="arcade"] .app::before{content:"";position:absolute;left:0;top:0;width:100%;height:6px;background:repeating-linear-gradient(-45deg,var(--c) 0 10px,#0a0a0a 10px 20px)}
+:root[data-look="arcade"] .app::after{content:"";position:absolute;right:-40px;bottom:-60px;width:260px;height:260px;background:repeating-conic-gradient(from 0deg at 100% 100%,color-mix(in srgb,var(--c) 30%,transparent) 0 3deg,transparent 3deg 9deg);pointer-events:none}
+:root[data-look="arcade"] a.app:hover,:root[data-look="arcade"] .app.link:hover{transform:translate(-3px,-3px);box-shadow:12px 12px 0 var(--c)}
+:root[data-look="arcade"] .app h2{font:30px/1 var(--title)!important;text-transform:uppercase;font-style:italic;text-shadow:3px 3px 0 #000}
+:root[data-look="arcade"] .app .ico{border-radius:0!important;transform:skewX(-14deg);background:var(--c)!important;color:#000!important;box-shadow:3px 3px 0 #000}
+:root[data-look="arcade"] .app .open{font:18px var(--pop)!important;background:var(--c);color:#000!important;align-self:flex-start;padding:6px 16px;transform:skewX(-14deg);box-shadow:4px 4px 0 #000;position:relative;z-index:1}
+:root[data-look="arcade"] .tag.ok{border-radius:0!important;background:#000!important;color:var(--good)!important;border:2px solid var(--good);font:12px var(--title)}
+:root[data-look="arcade"] .status{position:relative;z-index:1;background:#0b0b0f!important;border:2px solid #fff!important;border-radius:0!important;box-shadow:8px 8px 0 var(--ref)}
+:root[data-look="arcade"] .ctx a{border-radius:0!important;transform:skewX(-12deg);background:#0e0e13!important;border:2px solid var(--c)!important}
+:root[data-look="arcade"] .gl b{font:900 italic 32px var(--num)!important;color:var(--you);text-shadow:3px 3px 0 #000}
+:root[data-look="arcade"] footer{color:var(--mut);position:relative;z-index:1}
+:root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none}
+:root[data-look="arcade"] .lk-pop .band{position:absolute;left:-10%;right:-10%;height:190px;top:calc(50% - 95px);background:linear-gradient(90deg,transparent,rgba(0,0,0,.92) 15% 85%,transparent);transform:skewY(-6deg);border-top:6px solid var(--k,#ffe600);border-bottom:6px solid var(--k,#ffe600);animation:lkBand 2.2s cubic-bezier(.2,.9,.2,1) both}
+:root[data-look="arcade"] .lk-pop .t{position:relative;font:96px/1 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:3px #000;filter:drop-shadow(6px 6px 0 #000) drop-shadow(0 0 30px var(--k,#ff1e3c));transform:rotate(-6deg);animation:lkSlam 2.2s cubic-bezier(.2,1.6,.4,1) both;white-space:nowrap}
+:root[data-look="arcade"] .lk-pop .s{position:absolute;top:calc(50% + 70px);font:900 italic 30px var(--num);color:#fff;text-shadow:3px 3px 0 #000;transform:rotate(-6deg);animation:lkSub 2.2s ease both}
+:root[data-look="arcade"] .lk-pop.red{--k:#ff1e3c}
+:root[data-look="arcade"] .lk-pop.purple{--k:#c13dff}
+:root[data-look="arcade"] .lk-pop.cyan{--k:#19e6ff}
+:root[data-look="arcade"] .lk-pop.green{--k:#39ff6a}
+@keyframes lkBand{0%{transform:skewY(-6deg) scaleY(0);opacity:1}12%,85%{transform:skewY(-6deg) scaleY(1);opacity:1}100%{opacity:0;transform:skewY(-6deg) scaleY(.2)}}
+@keyframes lkSlam{0%{transform:rotate(-6deg) scale(4);opacity:0}14%{transform:rotate(-6deg) scale(.92);opacity:1}20%{transform:rotate(-6deg) scale(1.04);opacity:1}26%,82%{transform:rotate(-6deg) scale(1);opacity:1}100%{transform:rotate(-6deg) translateX(120vw) skewX(-30deg);opacity:0}}
+@keyframes lkSub{0%,18%{opacity:0;transform:rotate(-6deg) translateX(-60px)}30%,82%{opacity:1;transform:rotate(-6deg)}100%{opacity:0}}
+:root[data-look="arcade"] .lk-shake{animation:lkShake .35s linear}
+@keyframes lkShake{20%{transform:translate(-8px,4px)}40%{transform:translate(7px,-5px)}60%{transform:translate(-5px,3px)}80%{transform:translate(4px,-2px)}}
+:root[data-look="arcade"] .lk-vs{position:fixed;inset:0;z-index:9500;overflow:hidden;background:#000;animation:lkVsOut 3.4s ease both}
+:root[data-look="arcade"] .lk-vs .half{position:absolute;top:0;bottom:0;width:58%;display:flex;flex-direction:column;justify-content:center;padding:0 7%}
+:root[data-look="arcade"] .lk-vs .l{left:0;background:linear-gradient(135deg,#ff1e3c,#5a0010);clip-path:polygon(0 0,100% 0,82% 100%,0 100%);animation:lkInL .5s cubic-bezier(.2,1.2,.4,1) both}
+:root[data-look="arcade"] .lk-vs .r{right:0;align-items:flex-end;text-align:right;background:linear-gradient(225deg,#19a8ff,#001a5a);clip-path:polygon(18% 0,100% 0,100% 100%,0 100%);animation:lkInR .5s cubic-bezier(.2,1.2,.4,1) both}
+:root[data-look="arcade"] .lk-vs .half::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(-60deg,rgba(255,255,255,.07) 0 3px,transparent 3px 18px)}
+:root[data-look="arcade"] .lk-vs small{font:20px var(--title);letter-spacing:.2em;opacity:.85;position:relative;z-index:1}
+:root[data-look="arcade"] .lk-vs .half>*{max-width:34vw}
+:root[data-look="arcade"] .lk-vs b{font:clamp(28px,3.6vw,64px)/1.05 var(--title);overflow-wrap:anywhere;font-style:italic;text-transform:uppercase;text-shadow:5px 5px 0 #000;position:relative;z-index:1}
+:root[data-look="arcade"] .lk-vs em{font:900 italic 64px/1.1 var(--num);font-style:italic;color:#ffe600;text-shadow:4px 4px 0 #000;position:relative;z-index:1}
+:root[data-look="arcade"] .lk-vs .vs{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-8deg);font:220px/1 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:5px #000;filter:drop-shadow(10px 10px 0 #000) drop-shadow(0 0 40px #fff);animation:lkVs 3.4s cubic-bezier(.2,1.7,.4,1) both;z-index:3}
+:root[data-look="arcade"] .lk-vs .go{position:absolute;left:0;right:0;bottom:9%;text-align:center;font:30px var(--pop);color:#fff;text-shadow:4px 4px 0 #000;animation:lkBlink .5s steps(2) infinite;z-index:3}
+@keyframes lkInL{from{transform:translateX(-100%)}}
+@keyframes lkInR{from{transform:translateX(100%)}}
+@keyframes lkVs{0%,12%{transform:translate(-50%,-50%) rotate(-8deg) scale(6);opacity:0}24%{transform:translate(-50%,-50%) rotate(-8deg) scale(.9);opacity:1}30%,100%{transform:translate(-50%,-50%) rotate(-8deg) scale(1)}}
+@keyframes lkVsOut{0%,86%{opacity:1}100%{opacity:0;visibility:hidden}}
+@keyframes lkBlink{50%{opacity:0}}
+:root[data-look="arcade"] .lk-combo{position:fixed;right:28px;top:40%;z-index:50;text-align:right;transform:rotate(-4deg)}
+:root[data-look="arcade"] .lk-combo b{display:block;font:84px/0.9 var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;filter:drop-shadow(5px 5px 0 var(--bad))}
+:root[data-look="arcade"] .lk-combo span{font:22px var(--title);font-style:italic;text-shadow:3px 3px 0 #000}
+@media (prefers-reduced-motion:reduce){:root[data-look="arcade"] .lk-pop *,:root[data-look="arcade"] .lk-vs,:root[data-look="arcade"] .lk-vs *{animation-duration:.01s!important}}
+:root[data-look="arcade"] .lk-hud .plate{text-shadow:none}
+:root[data-look="arcade"] .lk-pop .band{background:linear-gradient(90deg,transparent,#000 12% 88%,transparent)}
+:root[data-look="arcade"] .lk-spark{position:absolute;left:50%;top:50%;width:10px;height:10px;background:hsl(var(--h) 100% 60%);box-shadow:0 0 12px hsl(var(--h) 100% 60%);transform:rotate(45deg);animation:lkSpark 1.1s cubic-bezier(.1,.8,.3,1) both}
+@keyframes lkSpark{0%{transform:translate(0,0) rotate(45deg) scale(1.4);opacity:1}100%{transform:translate(var(--x),var(--y)) rotate(400deg) scale(.2);opacity:0}}
+:root[data-look="arcade"] .lk-in{animation:lkIn .45s cubic-bezier(.2,1.5,.4,1) both}
+@keyframes lkIn{0%{opacity:0;transform:translateX(-80px) skewX(-12deg)}60%{opacity:1}100%{transform:none}}
+:root[data-look="arcade"] .lk-punch{animation:lkPunch .25s cubic-bezier(.2,2,.4,1)}
+@keyframes lkPunch{0%{transform:scale(1.6) rotate(-6deg)}100%{transform:none}}
+:root[data-look="arcade"] .lk-hud .bar i{transition:width .5s cubic-bezier(.2,1.4,.4,1)}
+:root[data-look="arcade"] .lk-hud .clock{animation:lkPulse 1.6s ease-in-out infinite}
+@keyframes lkPulse{50%{filter:drop-shadow(4px 4px 0 #000) drop-shadow(0 0 26px rgba(255,30,60,1))}}
+:root[data-look="arcade"] .app:hover .ico{animation:lkWiggle .4s}
+@keyframes lkWiggle{25%{transform:skewX(-14deg) rotate(-8deg)}75%{transform:skewX(-14deg) rotate(8deg)}}
+:root[data-look="arcade"] .lk-combo.lk-bump b{animation:lkBump .35s cubic-bezier(.2,2,.4,1)}
+@keyframes lkBump{0%{transform:scale(1.8)}100%{transform:none}}
+:root[data-look="arcade"] .lk-hud .clock small{min-height:12px}
+/* ---- /LOOKS ---- */
 </style></head><body>
 <h1 id="appTitle">Lap Analyzer</h1>
 <nav class="views" id="views"></nav>
@@ -149,6 +340,130 @@ try{if(typeof viewShown==='function')viewShown(document.body.dataset.view)}catch
 <details class="fold"><summary>Every channel, lap against lap</summary><div class="card"><div id="ro"></div><div id="charts"></div></div></details></div>
 </div>
 <script>
+// ---- Looks (Basic / Pit wall / Arcade): one setting for the suite (suite:look), same on every page. ----
+// Pit wall and Arcade only restyle the page and add a bar across the top (lkHud); the words stay the same.
+// Arcade adds a game layer: pop-up banners, the VS screen, a clean-lap streak and sound effects (suite:sfx,
+// off until switched on). Every number in the bar is one the page already shows.
+const LK = { look: 'basic', streak: 0, pos: null, flags: 0, gear: null, AC: null };
+function lkGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v } catch (e) { return d } }
+function lkLook() { const v = lkGet('suite:look', 'basic'); return v === 'pitwall' || v === 'arcade' ? v : 'basic' }
+function lkApply() {
+  LK.look = lkLook(); const R = document.documentElement; R.dataset.look = LK.look;
+  if (LK.look !== 'basic') R.setAttribute('data-theme', 'dark');
+  try { lkHud() } catch (e) { console.error('look bar', e) }
+}
+// pure: a lap time as the page shows it (m:ss.mmm, or s.mmm under a minute)
+function lkTime(s) { if (s == null || !isFinite(s) || s <= 0) return '–'; const m = Math.floor(s / 60), r = s - m * 60; return m ? m + ':' + r.toFixed(3).padStart(6, '0') : r.toFixed(3) }
+// pure: iRacing adds digits to repeated names ("Andrew Brooks6"); the bar shows "A. Brooks"
+function lkShort(n) { n = String(n || '').replace(/\d+$/, '').trim(); if (!n) return ''; const p = n.split(/\s+/); return p.length > 1 ? p[0][0] + '. ' + p.slice(1).join(' ') : n }
+// pure: how full each fight bar is: your best lap is the full bar, your average lap loses 10 % of the bar per 1 % slower
+function lkBars(avg, best) { if (!(avg > 0 && best > 0)) return [100, 100]; const pct = (avg - best) / best * 100; return [Math.max(8, Math.min(100, 100 - pct * 10)), 100] }
+function lkHud() {
+  if (LK.look === 'basic') { document.querySelectorAll('.lk-hud').forEach(x => x.remove()); return }
+  if (typeof lkData !== 'function') return;
+  const d = lkData() || {}, team = lkGet('suite:team', '').trim(), plate = lkGet('suite:plate', '').trim().slice(0, 4);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const who = lkShort(d.name), h = document.createElement('div'); h.className = 'lk-hud'; h.setAttribute('aria-hidden', 'true');
+  const gap = d.avg > 0 && d.best > 0 ? d.avg - d.best : null, mid = d.midLabel || 'your average lap';
+  if (LK.look === 'pitwall') {
+    h.innerHTML = (plate ? '<div class="plate">' + esc(plate) + '</div>' : '') +
+      (who || team ? '<div><small>' + (team ? esc(team) : 'Driver') + '</small><b>' + esc(who || team) + '</b></div>' : '') +
+      (d.car || d.track ? '<div><small>Car · circuit</small><b>' + esc([d.car, d.track].filter(Boolean).join(' · ')) + '</b></div>' : '') + '<div class="grow"></div>' +
+      '<div class="radio' + (d.live ? ' on' : '') + '"><i></i>' + esc(d.status || (d.live ? 'Live' : 'Not live')) + '</div>' +
+      (d.best ? '<div><small>Your best lap</small><span class="seg p">' + lkTime(d.best) + '</span></div>' : '') +
+      (d.avg ? '<div><small>' + esc(mid[0].toUpperCase() + mid.slice(1)) + '</small><span class="seg">' + lkTime(d.avg) + '</span></div>' : '') +
+      (gap != null ? '<div><small>Gap</small><span class="seg bad">+' + gap.toFixed(3) + '</span></div>' : '');
+  } else {
+    const [pa, pb] = lkBars(d.avg, d.best);
+    h.innerHTML = '<div class="side"><div class="nm">' + (plate ? '<span class="plate">' + esc(plate) + '</span>' : '') + esc(who || team || 'You') +
+      (d.avg ? ' <small>' + esc(mid) + ' ' + lkTime(d.avg) + '</small>' : '') + '</div><div class="bar"><i style="--p:' + pa + '%"></i></div></div>' +
+      '<div class="clock">' + (gap != null ? '+' + gap.toFixed(3) : (d.live ? 'LIVE' : 'READY')) + '<small>' + (gap != null ? 'GAP' : esc(d.car || '')) + '</small></div>' +
+      '<div class="side r"><div class="nm">' + (d.best ? '<small>' + lkTime(d.best) + '</small> ' : '') + 'Your best lap</div><div class="bar"><i style="--p:' + pb + '%"></i></div></div>';
+  }
+  const old = document.querySelector('.lk-hud'); if (old && old.dataset.look === LK.look && old.innerHTML === h.innerHTML) return;
+  h.dataset.look = LK.look; if (old) old.replaceWith(h); else (document.querySelector('.wrap') || document.body).prepend(h);
+}
+// ---- Arcade's game layer ----
+function lkArcade() { return LK.look === 'arcade' }
+function lkPop(t, s, kind) {
+  if (!lkArcade()) return; const p = document.createElement('div'); p.className = 'lk-pop ' + (kind || ''); p.setAttribute('role', 'status');
+  p.innerHTML = '<div class="band"></div><div class="t"></div>' + (s ? '<div class="s"></div>' : '');
+  p.querySelector('.t').textContent = t; if (s) p.querySelector('.s').textContent = s;
+  document.body.prepend(p); document.body.classList.remove('lk-shake'); void document.body.offsetWidth; document.body.classList.add('lk-shake');
+  lkSfx('slam'); if (kind === 'purple') { setTimeout(() => lkSfx('fanfare'), 180); lkSparks(p) } if (kind === 'red') setTimeout(() => lkSfx('buzz'), 120); if (kind === 'cyan') lkSfx('zap');
+  setTimeout(() => lkSfx('whoosh'), 1700); setTimeout(() => p.remove(), 2300);
+}
+function lkSparks(p) { for (let i = 0; i < 46; i++) { const e = document.createElement('i'); e.className = 'lk-spark'; const a = Math.random() * Math.PI * 2, d = 200 + Math.random() * 520;
+  e.style.cssText = '--x:' + Math.cos(a) * d + 'px;--y:' + Math.sin(a) * d * .6 + 'px;--h:' + [50, 280, 190][i % 3] + ';animation-delay:' + (.1 + Math.random() * .15) + 's'; p.appendChild(e) } }
+// the VS screen: your average lap against the lap it is measured against (Coaching)
+function lkVs(a, b) {
+  if (!lkArcade() || !a || !b) return; document.querySelectorAll('.lk-vs').forEach(x => x.remove());
+  const v = document.createElement('div'); v.className = 'lk-vs'; v.setAttribute('role', 'status');
+  v.innerHTML = '<div class="half l"><small></small><b></b><em></em></div><div class="half r"><small></small><b></b><em></em></div><div class="vs">VS</div><div class="go">Click to skip</div>';
+  [[a, '.l'], [b, '.r']].forEach(([x, s]) => { const H = v.querySelector(s); H.querySelector('small').textContent = x.label; H.querySelector('b').textContent = x.name; H.querySelector('em').textContent = lkTime(x.time) });
+  v.onclick = () => v.remove(); document.body.prepend(v); setTimeout(() => v.remove(), 3500); lkSfx('whoosh'); setTimeout(() => lkSfx('vs'), 380);
+}
+function lkCombo(n) { let c = document.querySelector('.lk-combo'); if (!lkArcade() || !n) { if (c) c.remove(); return } if (!c) { c = document.createElement('div'); c.className = 'lk-combo'; document.body.prepend(c) }
+  c.innerHTML = '<b>' + n + '</b><span>clean lap' + (n === 1 ? '' : 's') + ' in a row</span>'; c.classList.remove('lk-bump'); void c.offsetWidth; c.classList.add('lk-bump') }
+// panels slam in one after another when a view opens (Arcade only; one motion per view)
+function lkEnter() { if (!lkArcade() || matchMedia('(prefers-reduced-motion: reduce)').matches) return; let i = 0;
+  document.querySelectorAll('.card,.app').forEach(c => { if (c.offsetParent === null) return; c.classList.remove('lk-in'); void c.offsetWidth; c.style.animationDelay = Math.min(i++, 8) * .07 + 's'; c.classList.add('lk-in') }) }
+// pure: what a finished live lap means in the game: a personal best, a clean lap or a lap that won't count
+function lkLapEvent(rec, prior) {
+  if (!rec) return null; const best = Math.min(...prior.filter(x => x.valid && x.time > 0).map(x => x.time));
+  if (rec.valid && rec.time > 0) return isFinite(best) && rec.time < best ? { kind: 'pb', gain: best - rec.time } : { kind: 'clean', first: !isFinite(best) };
+  if (/off track|incident/.test(rec.why || '')) return { kind: 'off', why: rec.why };
+  return null;
+}
+function lkLap(rec, prior) {
+  const e = lkLapEvent(rec, prior || []); if (!e) return;
+  if (e.kind === 'pb') { LK.streak++; lkPop('PERSONAL BEST!', lkTime(rec.time) + ' · lap ' + rec.lap + ' · −' + e.gain.toFixed(3) + ' s', 'purple') }
+  else if (e.kind === 'clean') { LK.streak++; if (e.first) lkPop('CLEAN LAP', lkTime(rec.time) + ' · lap ' + rec.lap, 'green') }
+  else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red') }
+  lkCombo(LK.streak);
+}
+// every telemetry tick: places gained, the white and checkered flags, gear changes
+function lkTick(v) {
+  if (!lkArcade() || !v) return;
+  const pos = v.PlayerCarClassPosition > 0 ? v.PlayerCarClassPosition : v.PlayerCarPosition > 0 ? v.PlayerCarPosition : null;
+  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' → P' + pos, 'cyan');
+  LK.pos = pos || LK.pos;
+  const f = v.SessionFlags || 0; if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', ''); if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'purple'); LK.flags = f;
+  if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } lkSfx('clack') }
+  LK.gear = v.Gear;
+}
+// ---- sound: made here in the browser (no sound files); only in Arcade, only when switched on (suite:sfx) ----
+const LK_SFX = {
+  blip(c, t, o) { const g = c.createGain(); g.connect(o); const v = c.createOscillator(); v.type = 'square'; v.frequency.setValueAtTime(880, t); v.frequency.exponentialRampToValueAtTime(1760, t + .05); g.gain.setValueAtTime(.08, t); g.gain.exponentialRampToValueAtTime(.001, t + .08); v.connect(g); v.start(t); v.stop(t + .09) },
+  select(c, t, o) { [0, .07].forEach((d, i) => { const g = c.createGain(); g.connect(o); const v = c.createOscillator(); v.type = 'square'; v.frequency.value = [988, 1480][i]; g.gain.setValueAtTime(.1, t + d); g.gain.exponentialRampToValueAtTime(.001, t + d + .1); v.connect(g); v.start(t + d); v.stop(t + d + .11) }) },
+  slam(c, t, o) { const g = c.createGain(); g.connect(o); const v = c.createOscillator(); v.type = 'sine'; v.frequency.setValueAtTime(140, t); v.frequency.exponentialRampToValueAtTime(38, t + .45); g.gain.setValueAtTime(.9, t); g.gain.exponentialRampToValueAtTime(.001, t + .6); v.connect(g); v.start(t); v.stop(t + .62);
+    const n = lkNoise(c, .25), ng = c.createGain(), f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1800; n.connect(f); f.connect(ng); ng.connect(o); ng.gain.setValueAtTime(.5, t); ng.gain.exponentialRampToValueAtTime(.001, t + .2); n.start(t) },
+  whoosh(c, t, o) { const n = lkNoise(c, .7), f = c.createBiquadFilter(), g = c.createGain(); f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(5000, t + .35); f.frequency.exponentialRampToValueAtTime(900, t + .65);
+    g.gain.setValueAtTime(.001, t); g.gain.exponentialRampToValueAtTime(.5, t + .25); g.gain.exponentialRampToValueAtTime(.001, t + .65); n.connect(f); f.connect(g); g.connect(o); n.start(t) },
+  fanfare(c, t, o) { const N = [523.25, 659.25, 783.99, 1046.5, 1318.5]; N.forEach((fq, i) => { const d = i * .085, len = i === N.length - 1 ? .55 : .12; ['square', 'sawtooth'].forEach((ty, k) => { const g = c.createGain(); g.connect(o); const v = c.createOscillator(); v.type = ty; v.frequency.value = fq * (k ? 1.005 : 1);
+    g.gain.setValueAtTime(k ? .05 : .09, t + d); g.gain.setValueAtTime(k ? .05 : .09, t + d + len * .7); g.gain.exponentialRampToValueAtTime(.001, t + d + len); v.connect(g); v.start(t + d); v.stop(t + d + len + .02) }) }) },
+  buzz(c, t, o) { const g = c.createGain(); g.connect(o); [0, .22].forEach(d => { const v = c.createOscillator(); v.type = 'sawtooth'; v.frequency.setValueAtTime(220, t + d); v.frequency.exponentialRampToValueAtTime(110, t + d + .18); v.connect(g); v.start(t + d); v.stop(t + d + .19) }); g.gain.setValueAtTime(.2, t); g.gain.setValueAtTime(.2, t + .4); g.gain.exponentialRampToValueAtTime(.001, t + .45) },
+  vs(c, t, o) { LK_SFX.slam(c, t, o); const g = c.createGain(); g.connect(o); const v = c.createOscillator(); v.type = 'sawtooth'; v.frequency.setValueAtTime(300, t); v.frequency.exponentialRampToValueAtTime(2400, t + .5); g.gain.setValueAtTime(.001, t); g.gain.exponentialRampToValueAtTime(.12, t + .3); g.gain.exponentialRampToValueAtTime(.001, t + .7); v.connect(g); v.start(t); v.stop(t + .72) },
+  clack(c, t, o) { const n = lkNoise(c, .05), f = c.createBiquadFilter(), g = c.createGain(); f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 3; n.connect(f); f.connect(g); g.connect(o); g.gain.setValueAtTime(.4, t); g.gain.exponentialRampToValueAtTime(.001, t + .05); n.start(t) },
+  zap(c, t, o) { const g = c.createGain(); g.connect(o); const v = c.createOscillator(); v.type = 'square'; v.frequency.setValueAtTime(200, t); v.frequency.exponentialRampToValueAtTime(2000, t + .18); g.gain.setValueAtTime(.12, t); g.gain.exponentialRampToValueAtTime(.001, t + .25); v.connect(g); v.start(t); v.stop(t + .26) }
+};
+function lkNoise(c, len) { const b = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const s = c.createBufferSource(); s.buffer = b; return s }
+function lkSfx(name) {
+  if (!lkArcade() || lkGet('suite:sfx', 'off') !== 'on' || !LK_SFX[name]) return;
+  try { LK.AC = LK.AC || new (window.AudioContext || window.webkitAudioContext)(); if (LK.AC.state === 'suspended') LK.AC.resume(); const o = LK.AC.createGain(); o.gain.value = .7; o.connect(LK.AC.destination); LK_SFX[name](LK.AC, LK.AC.currentTime + .01, o) } catch (e) {}
+}
+document.addEventListener('mouseover', e => { if (!lkArcade()) return; const t = e.target.closest && e.target.closest('.views a,.app,button'); if (t && t !== LK.hov) { LK.hov = t; lkSfx('blip') } });
+document.addEventListener('click', e => { if (lkArcade() && e.target.closest && e.target.closest('.views a,button,.app')) lkSfx('select') }, true);
+addEventListener('storage', e => { if (e.key === 'suite:look' || e.key === 'suite:team' || e.key === 'suite:plate') lkApply() });
+// The bar's numbers on these pages: Coaching's average and best lap once Coaching has run, the car and track
+// from your file or the live car, and whether the live car is connected.
+function lkData(){const X=typeof COACH!=='undefined'&&COACH.last,m=(typeof LIVE!=='undefined'&&LIVE.meta)||{},ib=typeof IB!=='undefined'&&IB.a,live=!!(typeof LIVE!=='undefined'&&LIVE.ws&&LIVE.v&&Date.now()-(LIVE.at||0)<5000);
+const name=m.who||(typeof F!=='undefined'&&F.a&&F.a.who)||'';
+return{name,car:(live&&m.carName)||(ib&&ib.carName)||m.carName||'',track:(live&&m.track)||(ib&&ib.track)||m.track||'',avg:X?X.avg.lap:null,best:X?X.best.lap:null,live,status:live?'Car on track':ib?'Your file':'Not live'}}
+// Coaching opened with a new result: the VS screen (Arcade), once per result
+function lkCoach(){const X=COACH.last;if(!X||LK.look!=='arcade')return;const k=X.avg.lap.toFixed(3)+'|'+X.best.lap.toFixed(3);if(LK.vsKey===k)return;LK.vsKey=k;
+const name=lkShort(lkData().name)||'You';lkVs({label:'Your average lap',name,time:X.avg.lap},{label:'Against',name:(X.bestLab||'your best lap').replace(/ \([^)]*\)$/,''),time:X.best.lap})}
+// ---- /looks ----
 //CORE
 const N=1000;
 function parse(txt,name){const L=txt.trim().split(/\r?\n/),h=L[0].split(','),m=L.length-1,K={Speed:'Speed',D:'LapDistPct',Lat:'Lat',Lon:'Lon',Brake:'Brake',Throttle:'Throttle',Steer:'SteeringWheelAngle',Gear:'Gear',RPM:'RPM',ABS:'ABSActive',LatG:'LatAccel',LonG:'LongAccel',VertG:'VertAccel',YawRate:'YawRate'},o={n:m},ix={};
@@ -1105,7 +1420,7 @@ const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tr
 if(LIVE.meta.carPath)try{libRecord({carPath:LIVE.meta.carPath,carName:LIVE.meta.carName,setup:t},'live|'+(LIVE.meta.sid||'session')+'|'+LIVE.vers.length)}catch(e){}
 LIVE.setup=t;if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}else{LIVE.setup=t;if(first){if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}}}
 function liveNewLap(lap,v){if(v.OnPitRoad)LIVE.stint=0;return{lap,st0:v.SessionTime,f0:v.FuelLevel!=null?v.FuelLevel:null,tt:v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp!=null?v.TrackTemp:null,stint:(LIVE.stint=(LIVE.stint||0)+1),d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
-function liveTick(v){LIVE.v=v;LIVE.at=Date.now();try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
+function liveTick(v){LIVE.v=v;LIVE.at=Date.now();try{lkTick(v)}catch(e){}try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
 const p=LIVE.pend;if(p&&v.LapLastLapTime>0&&v.LapLastLapTime!==p.stale){const d=v.LapLastLapTime-p.time;if(d>-0.1&&d<1)p.time=v.LapLastLapTime;LIVE.pend=null;liveRender()}
 if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFinish(LIVE.cur,v);LIVE.cur=liveNewLap(v.Lap,v)}
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
@@ -1127,7 +1442,7 @@ const why=valid?'':c.reset?'active reset':span!=null&&c.lastT>0&&Math.abs(c.last
 const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,stats:teleStatsOut(c),sx:full&&c.sx&&LIVE.secs&&c.sx.length===LIVE.secs.length?c.sx.slice():null,fuel:c.f0!=null&&v.FuelLevel!=null&&!c.pit&&!c.reset&&full&&c.f0>v.FuelLevel?c.f0-v.FuelLevel:null,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb),tt:c.tt!=null?c.tt:null,at:v.AirTemp!=null?v.AirTemp:null};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR),LatG:pick(b.LatG),yaw:pick(b.yaw)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
-LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{coachLater()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
+try{lkLap(rec,LIVE.laps)}catch(e){}LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{coachLater()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
 const liveMm=v=>v==null?'—':suNum(Math.round(v*10)/10,'mm'),liveTemp=v=>v==null?'—':(SETUP_UNITS==='imperial'?(v*1.8+32).toFixed(0)+'°F':v.toFixed(0)+'°C'),liveSpd=ms=>(ms*3.6*U().s[0]).toFixed(0)+' '+U().s[1];
 const liveMed=a=>{const s=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q);return s.length?s[Math.floor((s.length-1)/2)]:null};
 function liveGauges(barsOnly){const el=$('liveNow');if(!el)return;const v=LIVE.v;if(!v){el.innerHTML='<span class="m">Waiting for data...</span>';el.dataset.g='';return}
@@ -1967,7 +2282,7 @@ h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-t
 '<label>against <select id="coTo"><option value="best"'+(COACH.to==='best'?' selected':'')+'>your best lap</option>'+(COACH.g61.length?'<option value="g61best"'+(COACH.to==='g61best'?' selected':'')+'>the fastest Garage 61 lap here</option><option value="g61near"'+(COACH.to==='g61near'?' selected':'')+'>a Garage 61 lap a little quicker than yours</option>':'')+(F.b&&!SELF?'<option value="ref"'+(COACH.to==='ref'?' selected':'')+'>the reference lap (right box)</option>':'')+(srcs.length&&coachBefore(srcs.find(x=>x.id===COACH.src)||srcs[0])?'<option value="before"'+(COACH.to==='before'?' selected':'')+'>your best before today</option>':'')+'</select></label>'+
 '<label class="dz" id="coDrop" style="padding:6px 10px;min-height:0"><input type="file" accept=".csv" multiple hidden><span>'+(COACH.g61.length?COACH.g61.length+' Garage 61 lap'+(COACH.g61.length===1?'':'s')+' added · drop more or click':'Drop Garage 61 laps (.csv) here')+'</span></label>'+(COACH.g61.length?'<button type="button" id="coClr" class="clr" style="display:inline-block;margin:0">Clear Garage 61 laps</button>':'')+'</div>'+(COACH.g61.length?'<div class="m" style="font-size:13px;margin-top:4px">Garage 61 laps here, fastest first: '+COACH.g61.map((g,i)=>({g,i})).sort((p,q)=>p.g.lap-q.g.lap).map(({g,i})=>'<span style="white-space:nowrap"><b>'+ft(g.lap)+'</b> '+plain(g.who||'')+' <a href="#" data-g61rm="'+i+'" title="Take this lap out">✕</a></span>').join(' · ')+'</div>':'');
 if(!srcs.length)return h+'<p class="m" style="margin-top:8px">Needs at least 2 clean laps: drop an .ibt file above, drive a few clean laps live (they are kept automatically, per car and track), or add several Garage 61 laps of your own here.</p>';
-let X=null;try{X=coachRun()}catch(e){console.error('coach',e)}if(!X)return h+'<p class="m">Could not build an average from these laps.</p>';COACH.last=X;
+let X=null;try{X=coachRun()}catch(e){console.error('coach',e)}if(!X)return h+'<p class="m">Could not build an average from these laps.</p>';COACH.last=X;if(document.body.dataset.view==='coach')setTimeout(()=>{try{lkHud();lkCoach()}catch(e){}},0);
 return h+coachBody(X)}
 // ---- Coaching page: what the data says, in reading order ----
 // 1 summary, 2 where the time goes (delta trace, map, causes), 3 priorities (driving and setup merged,
@@ -2703,9 +3018,10 @@ const n=$('err');if(n&&!n.textContent)n.innerHTML='<span class="m">Your files fr
 catch(e){console.warn('keep restore',e)}finally{KEEP.restoring=false}}
 
 // a view shown without a reload: draw what it shows (canvases sized while hidden draw at zero width)
-function viewShown(v){if(v==='live'){try{teleBuild(true)}catch(e){console.error('live view',e)}}else if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0)}
+function viewShown(v){if(v==='live'){try{teleBuild(true)}catch(e){console.error('live view',e)}}else if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0);try{lkHud();lkEnter();if(v==='coach')lkCoach()}catch(e){}}
 try{renderSetup()}catch(e){}
 try{keepRestore()}catch(e){}
+try{lkApply();setInterval(()=>{try{lkHud()}catch(e){}},2000)}catch(e){}
 // ---- Calm: a long grey explanation right after a heading folds behind a small (i) button.
 // Only plain text folds (nothing to click inside); what was opened stays open when the section redraws.
 const HINT_OPEN=new Set();

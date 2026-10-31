@@ -33,6 +33,13 @@ Hard rules
   time limit shows laps to go on the big display. Race control lists by event time, not arrival.
   The spotter list is ordered by side, not distance: cars ahead always above the followed car, cars
   behind always below, nearest next to it, three places each side (empty places kept).
+- Looks (suite:look = basic | pitwall | arcade, home Settings > Style): one setting for the home page, the Lap Analyzer
+  and PitWall. Pit wall and Arcade only restyle (CSS under `:root[data-look=...]`, the same generated block in the home
+  page and the analyzer) and add a bar across the top (lkHud) whose numbers are ones the page already shows; the words
+  never change with the look. In PitWall, Pit wall is the booth look and Arcade sits on top of it (Look button: booth,
+  arcade, classic). Arcade's game layer (lkPop banners, lkVs, the clean-lap streak) follows real events only: a finished
+  live lap (lkLapEvent), places gained, the white and checkered flags; its sounds are made in the browser (LK_SFX) and
+  play only with suite:sfx on (off by default). Fonts: Bungee, Russo One, Exo 2 in client/assets (OFL).
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).
 
 Verification status

@@ -1,4 +1,4 @@
-# Assets used by the PitWall dashboard's booth look
+# Assets used by the PitWall dashboard's booth look and the suite's Arcade look
 
 All free to use and to ship with the app. The page works without them (it falls back to
 system fonts).
@@ -8,9 +8,12 @@ system fonts).
 | `dseg7-classic-bold.woff2` | DSEG7 Classic Bold, a 7-segment display font, for the LED race clock. Copyright (c) 2017 keshikan (http://www.keshikan.net), Reserved Font Name "DSEG". From the `dseg` npm package 0.46.0. | SIL Open Font License 1.1 |
 | `barlow-semi-condensed-latin-400-normal.woff2`, `barlow-semi-condensed-latin-600-normal.woff2` | Barlow Semi Condensed, the timing-screen text. Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow). From `@fontsource/barlow-semi-condensed` 5.3.0. | SIL Open Font License 1.1 |
 | `barlow-condensed-latin-600-normal.woff2` | Barlow Condensed SemiBold, monitor title bars. Same authors. From `@fontsource/barlow-condensed` 5.3.0. | SIL Open Font License 1.1 |
+| `bungee-latin-400-normal.woff2` | Bungee, the Arcade look's pop-ups and big numbers. Copyright 2023 The Bungee Project Authors (https://github.com/djrrb/Bungee). From `@fontsource/bungee` 5.3.0. | SIL Open Font License 1.1 |
+| `russo-one-latin-400-normal.woff2` | Russo One, the Arcade look's headings. Copyright (c) 2011-2012 Jovanny Lemonad, Reserved Font Name "Russo". From `@fontsource/russo-one` 5.3.0. | SIL Open Font License 1.1 |
+| `exo-2-latin-500-normal.woff2`, `exo-2-latin-900-italic.woff2` | Exo 2, the Arcade look's text and italic numbers. Copyright 2013 The Exo 2 Project Authors (https://github.com/NDISCOVER/Exo-2.0). From `@fontsource/exo-2` 5.0.20. | SIL Open Font License 1.1 |
 | icons inside `client/index.html` (`ICON`) | Tabler Icons (outline): flag, gas-station, alert-triangle, cloud-rain, volume, volume-3, file-download, clock-hour-4, car, alert-octagon, users. Copyright (c) 2020-2026 Paweł Kuna. From `@tabler/icons`. | MIT |
 
-The licence texts are in `DSEG-OFL.txt` and `BARLOW-OFL.txt` (SIL Open Font License 1.1). The fonts are shipped
+The licence texts are in `DSEG-OFL.txt`, `BARLOW-OFL.txt`, `BUNGEE-OFL.txt`, `RUSSO-OFL.txt` and `EXO2-OFL.txt` (SIL Open Font License 1.1). The fonts are shipped
 unmodified and are not sold on their own.
 
 ## Tabler Icons licence
