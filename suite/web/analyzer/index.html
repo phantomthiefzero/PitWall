@@ -96,12 +96,12 @@ body:not([data-view=setup]) #liveNow{display:none}
 @media(hover:hover){#own .sjb{opacity:0;transition:opacity .1s}#own tr:hover .sjb,#own .sjb:focus{opacity:1}}
 .sjb{font:inherit;font-size:12px;padding:2px 8px;cursor:pointer}
 /* ---- LOOKS (generated from one source for the home page and the Lap Analyzer; same text in both): Pit wall and Arcade, set by suite:look on :root[data-look]. Basic is the page as it is. ---- */
-@font-face{font-family:"DSEG7";font-weight:700;font-display:swap;src:url("/pitwall/assets/dseg7-classic-bold.woff2") format("woff2")}
+@font-face{font-family:"DSEG7 digits";font-weight:400 900;font-display:swap;unicode-range:U+0020,U+002B-002E,U+0030-003A;src:url("/pitwall/assets/dseg7-classic-bold.woff2") format("woff2")}
 @font-face{font-family:"Bungee";font-display:swap;src:url("/pitwall/assets/bungee-latin-400-normal.woff2") format("woff2")}
 @font-face{font-family:"Russo One";font-display:swap;src:url("/pitwall/assets/russo-one-latin-400-normal.woff2") format("woff2")}
 @font-face{font-family:"Exo 2";font-weight:400 600;font-display:swap;src:url("/pitwall/assets/exo-2-latin-500-normal.woff2") format("woff2")}
 @font-face{font-family:"Exo 2";font-weight:700 900;font-style:italic;font-display:swap;src:url("/pitwall/assets/exo-2-latin-900-italic.woff2") format("woff2")}
-:root[data-look="pitwall"]{color-scheme:dark;--bg:#060708;--card:#0a0c0e;--fg:#e4e8ec;--mut:#7f8892;--ln:#22262b;--you:#ffb23f;--ref:#3fd0ff;--bad:#ff3b3b;--good:#19d15a;--rear:#b43cf0;--acc:#ffb23f;--blue:#3fd0ff;--warn:#ffb23f;--bezel:#16181b;--purple:#b43cf0;--seg:"DSEG7",var(--num,monospace)}
+:root[data-look="pitwall"]{color-scheme:dark;--bg:#060708;--card:#0a0c0e;--fg:#e4e8ec;--mut:#7f8892;--ln:#22262b;--you:#ffb23f;--ref:#3fd0ff;--bad:#ff3b3b;--good:#19d15a;--rear:#b43cf0;--acc:#ffb23f;--blue:#3fd0ff;--warn:#ffb23f;--bezel:#16181b;--purple:#b43cf0;--seg:"DSEG7 digits",var(--title),var(--num,monospace)}
 :root[data-look="pitwall"] body{background:repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.35) 0 2px,transparent 2px 4px),#0d0f11!important;font-family:"Barlow Semi Condensed","Segoe UI",system-ui,sans-serif!important;color:var(--fg)}
 :root[data-look="pitwall"] .lk-hud{position:sticky;top:0;z-index:20;display:flex;align-items:stretch;margin:0 0 14px;background:#000;border-bottom:3px solid var(--you);font-family:var(--title);box-shadow:0 6px 18px rgba(0,0,0,.6);overflow:hidden}
 :root[data-look="pitwall"] .lk-hud>div{padding:6px 12px;border-right:1px solid #1e2226;display:flex;flex-direction:column;justify-content:center;white-space:nowrap;min-width:0}
