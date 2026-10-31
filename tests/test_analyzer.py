@@ -2113,3 +2113,37 @@ console.log(JSON.stringify({ rising, first: u[0], last: u[n - 1], fresh: ok2, fr
         self.assertTrue(r["fresh"])
         self.assertAlmostEqual(r["freshLast"], 84, delta=0.5)
         self.assertEqual(r["same"], [0, 1, 2])                       # a good clock is left alone
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class LooksTest(unittest.TestCase):
+    """The Pit wall and Arcade looks: the bar's numbers and what a finished live lap means in Arcade."""
+
+    def test_bar_and_lap_events(self):
+        js = r"""
+const P = [{ valid: true, time: 84.2 }, { valid: false, time: 83.0 }, { valid: true, time: 84.033 }];
+console.log(JSON.stringify({
+  t: [lkTime(84.033), lkTime(52.329), lkTime(null), lkTime(0)],
+  n: [lkShort('Andrew Brooks6'), lkShort('Tyler D Adkins'), lkShort('Madonna'), lkShort('')],
+  bars: [lkBars(84.870, 84.033), lkBars(84.033, 84.033), lkBars(100, 50), lkBars(null, 84)],
+  pb: lkLapEvent({ valid: true, time: 83.9, lap: 9 }, P),            // quicker than every valid lap (the invalid 83.0 does not count)
+  clean: lkLapEvent({ valid: true, time: 84.5, lap: 10 }, P),
+  first: lkLapEvent({ valid: true, time: 84.5, lap: 1 }, []),
+  off: lkLapEvent({ valid: false, why: 'off track', lap: 11 }, P),
+  pit: lkLapEvent({ valid: false, why: 'pit lane', lap: 12 }, P),
+  look: lkLook() }));
+"""
+        r = run_js(js)
+        self.assertEqual(r["t"], ["1:24.033", "52.329", "–", "–"])
+        self.assertEqual(r["n"], ["A. Brooks", "T. D Adkins", "Madonna", ""])
+        self.assertAlmostEqual(r["bars"][0][0], 100 - (84.870 - 84.033) / 84.033 * 1000, places=3)   # 1 % slower: 10 % of the bar gone
+        self.assertEqual(r["bars"][1], [100, 100])
+        self.assertEqual(r["bars"][2][0], 8)                                  # never empty
+        self.assertEqual(r["bars"][3], [100, 100])                            # nothing to compare: both full
+        self.assertEqual(r["pb"]["kind"], "pb")
+        self.assertAlmostEqual(r["pb"]["gain"], 0.133, places=3)
+        self.assertEqual(r["clean"], {"kind": "clean", "first": False})
+        self.assertEqual(r["first"], {"kind": "clean", "first": True})
+        self.assertEqual(r["off"]["kind"], "off")
+        self.assertIsNone(r["pit"])                                           # a pit lap is not a failure
+        self.assertEqual(r["look"], "basic")                                  # Basic unless the setting says otherwise

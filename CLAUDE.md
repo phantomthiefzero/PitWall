@@ -33,6 +33,13 @@ Hard rules
   time limit shows laps to go on the big display. Race control lists by event time, not arrival.
   The spotter list is ordered by side, not distance: cars ahead always above the followed car, cars
   behind always below, nearest next to it, three places each side (empty places kept).
+- Looks (suite:look = basic | pitwall | arcade, home Settings > Style): one setting for the home page, the Lap Analyzer
+  and PitWall. Pit wall and Arcade only restyle (CSS under `:root[data-look=...]`, the same generated block in the home
+  page and the analyzer) and add a bar across the top (lkHud) whose numbers are ones the page already shows; the words
+  never change with the look. In PitWall, Pit wall is the booth look and Arcade sits on top of it (Look button: booth,
+  arcade, classic). Arcade's game layer (lkPop banners, lkVs, the clean-lap streak) follows real events only: a finished
+  live lap (lkLapEvent), places gained, the white and checkered flags; its sounds are made in the browser (LK_SFX) and
+  play only with suite:sfx on (off by default). Fonts: Bungee, Russo One, Exo 2 in client/assets (OFL).
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).
 
 Verification status
@@ -172,6 +179,11 @@ Broadcast (broadcast/)
 - One owner of the camera at a time (director.py): you / director / grid walk / followed battle.
   A producer `camera` command always takes it back (bridge._consumer calls Director.manual()).
   Anything new that moves the camera must go through the Director's owner, not around it.
+- Looks on air: the producer's look presets Pit wall and Arcade restyle the graphics (overlay CSS under `:root[data-look]`),
+  not just the colours. The driver card shows the driver's picture (gfx.photos by iRacing user id, uploaded in the
+  producer's Liveries tab; else the helmet on the race suit, drawn from HelmetDesignStr / SuitDesignStr) and the helmet
+  (carrender's pk_helmet.png when iRacing gives one -- unverified, VARIABLES_TO_VERIFY "Helmets" -- else drawn). Arcade's
+  sound effects (gfx sound.on, off by default) never play with the master switch off.
 - `tests/test_broadcast.py` and `tests/test_broadcast2.py` must pass with the others.
 - Graphics state ("gfx") lives in the relay, not the bridge. Camera/replay commands go
   through the bridge under `--allow-camera` and the producer token, separate from pit.

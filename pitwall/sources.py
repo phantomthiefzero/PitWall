@@ -584,6 +584,7 @@ class FakeSource(TelemetrySource):
                 "CarClassEstLapTime": 1.0 if getattr(self, "replay_shape", False) else c.cls["lap"],
                 "CarDesignStr": ["0,ff3b30,ffffff,111111", "3,1c6dd0,f2c200,ffffff", "7,0b8f4d,ffffff,000000"][c.idx % 3],
                 "HelmetDesignStr": "1,ffffff,ff3b30,111111",
+                "SuitDesignStr": "0,111111,ff3b30,ffffff",
                 "CarID": 100 + c.cls["id"], "UserID": 300000 + c.idx + (500 if second else 0),
                 "TeamID": (900 + c.idx) if self.team else 0,
                 # Spread licences across classes with iRacing's own colours, so the
