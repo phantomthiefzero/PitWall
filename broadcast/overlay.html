@@ -319,6 +319,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
 :root[data-look="arcade"] .pn-head b{font-family:var(--pop);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #000}
 :root[data-look="arcade"] .fs-h,:root[data-look="arcade"] .bt-head{background:var(--accent);color:#000}
 :root[data-look="arcade"] .rp b{font-family:var(--pop)}
+:root[data-look="arcade"] .lk-hit .inner::after{content:"";position:absolute;inset:-20px;background:radial-gradient(closest-side,rgba(255,255,255,.95),rgba(255,230,0,.5) 40%,transparent 75%);mix-blend-mode:screen;pointer-events:none;animation:lkHitFlash .45s ease-out both}
+:root[data-look="arcade"] .lk-hit .inner{animation:lkHitShake .35s cubic-bezier(.2,.8,.3,1)}
+:root[data-look="arcade"] .layer .inner{position:relative}
+@keyframes lkHitFlash{0%{opacity:1;transform:scale(.6)}100%{opacity:0;transform:scale(1.4)}}
+@keyframes lkHitShake{15%{transform:translate(-10px,4px)}35%{transform:translate(8px,-4px)}60%{transform:translate(-4px,2px)}100%{transform:none}}
 /* ---------- /LOOKS ---------- */
 </style>
 </head>
@@ -399,21 +404,25 @@ body.bc-off>*:not(script){visibility:hidden!important}
   })();
   const assetUrl = n => n ? ASSET_BASE + encodeURIComponent(n) : "";
 
-  // Sound (Arcade look only, gfx sound.on, never while the broadcast is off). Made here; OBS carries it when the
-  // browser source has "Control audio via OBS".
-  let AC = null;
-  const noise = (c, len) => { const b = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const s = c.createBufferSource(); s.buffer = b; return s; };
-  const SFX = {
-    slam(c, t, o) { const g = c.createGain(); g.connect(o); const v = c.createOscillator(); v.type = "sine"; v.frequency.setValueAtTime(140, t); v.frequency.exponentialRampToValueAtTime(38, t + .45); g.gain.setValueAtTime(.9, t); g.gain.exponentialRampToValueAtTime(.001, t + .6); v.connect(g); v.start(t); v.stop(t + .62);
-      const n = noise(c, .25), ng = c.createGain(), f = c.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 1800; n.connect(f); f.connect(ng); ng.connect(o); ng.gain.setValueAtTime(.5, t); ng.gain.exponentialRampToValueAtTime(.001, t + .2); n.start(t); },
-    whoosh(c, t, o) { const n = noise(c, .7), f = c.createBiquadFilter(), g = c.createGain(); f.type = "bandpass"; f.Q.value = 1.2; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(5000, t + .35); f.frequency.exponentialRampToValueAtTime(900, t + .65);
-      g.gain.setValueAtTime(.001, t); g.gain.exponentialRampToValueAtTime(.5, t + .25); g.gain.exponentialRampToValueAtTime(.001, t + .65); n.connect(f); f.connect(g); g.connect(o); n.start(t); },
-    vs(c, t, o) { SFX.slam(c, t, o); const g = c.createGain(); g.connect(o); const v = c.createOscillator(); v.type = "sawtooth"; v.frequency.setValueAtTime(300, t); v.frequency.exponentialRampToValueAtTime(2400, t + .5); g.gain.setValueAtTime(.001, t); g.gain.exponentialRampToValueAtTime(.12, t + .3); g.gain.exponentialRampToValueAtTime(.001, t + .7); v.connect(g); v.start(t); v.stop(t + .72); },
-  };
-  function bcSfx(name) {
-    if (document.documentElement.dataset.look !== "arcade" || !G("sound.on", false) || document.body.classList.contains("bc-off")) return;
-    try { AC = AC || new AudioContext(); if (AC.state === "suspended") AC.resume(); const o = AC.createGain(); o.gain.value = .7; o.connect(AC.destination); SFX[name](AC, AC.currentTime + .01, o); } catch (e) {}
+  // Sound (Arcade look only, gfx sound.on, never while the broadcast is off): the suite's recorded effects and
+  // announcer (client/assets/sfx-*.mp3, CC0), from the relay. OBS carries it when the browser source has
+  // "Control audio via OBS"; the announcer can be switched off on its own (gfx sound.voice).
+  const SFX_BASE = (() => { const r = Q.get("relay"); if (location.protocol.startsWith("http") && !r) return location.origin + "/pitwall/assets/";
+    if (r) return r.replace(/^ws/, "http").replace(/\/+$/, "") + "/pitwall/assets/"; return "http://127.0.0.1:8765/pitwall/assets/"; })();
+  let AC = null, BUS = null;
+  const BUF = {};
+  function audio() { if (!AC) { try { AC = new AudioContext(); BUS = AC.createDynamicsCompressor(); BUS.threshold.value = -10; BUS.ratio.value = 4; BUS.connect(AC.destination); } catch (e) { return null; } }
+    if (AC.state === "suspended") AC.resume(); return AC; }
+  function load(n) { if (BUF[n]) return BUF[n]; const ac = audio(); if (!ac) return Promise.resolve(null);
+    return BUF[n] = fetch(SFX_BASE + "sfx-" + n + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null); }
+  function soundOn() { return document.documentElement.dataset.look === "arcade" && G("sound.on", false) && !document.body.classList.contains("bc-off"); }
+  function bcSfx(name, delay, voice) {
+    if (!soundOn() || (voice && !G("sound.voice", true))) return;
+    const ac = audio(); if (!ac) return;
+    load(name).then(buf => { if (!buf) return; const s = ac.createBufferSource(), g = ac.createGain(); s.buffer = buf; g.gain.value = .9; s.connect(g); g.connect(BUS); s.start(ac.currentTime + (delay || 0)); });
   }
+  // the moment a graphic lands: a white flash on it (Arcade look; CSS class lk-hit)
+  function hit(el) { if (!el || document.documentElement.dataset.look !== "arcade") return; el.classList.remove("lk-hit"); void el.offsetWidth; el.classList.add("lk-hit"); }
 
   function fit() {
     const k = Math.min(innerWidth / 1920, innerHeight / 1080) || 1;
@@ -813,7 +822,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const k = b.gapsS.length - 1;
     const gapTxt = (cars[1].derived && cars[1].derived.liveClassIntervalS != null) ? cars[1].derived.liveClassIntervalS : b.gapsS[k];
     const side = c => `<div class="bt-car"><span class="pos">${esc(m ? c.classPos : c.pos)}</span>${plate(c)}${G("card.photo", true) ? `<div class="ph">${photoHtml(c)}</div>` : ""}<span class="nm">${nameHtml(c.name)}</span><div class="lv" style="position:relative">${liveryHtml(c)}</div></div>`;
-    const bk = b.cars.slice(-2).join("|"); if (bk !== lastBattle.key && $("battle").classList.contains("on")) { lastBattle.key = bk; bcSfx("whoosh"); setTimeout(() => bcSfx("vs"), 350); }
+    const bk = b.cars.slice(-2).join("|"); // a new battle: the VS hit and FIGHT!, at most every 15 s, and the same pair not again for a minute
+    if (bk !== lastBattle.key && $("battle").classList.contains("on")) { lastBattle.key = bk; const now = performance.now(), seen = lastBattle.seen || (lastBattle.seen = {});
+      if (now - (lastBattle.at || -1e9) > 15000 && now - (seen[bk] || -1e9) > 60000) { lastBattle.at = seen[bk] = now; bcSfx("vs"); bcSfx("v_fight", 1.1, true); setTimeout(() => hit($("battle")), 360); } }
     $("btCars").innerHTML = side(cars[0]) + `<div class="bt-gap"><b>${gapTxt != null ? gapTxt.toFixed(gapTxt < 10 ? 3 : 1) : "–"}</b><span>gap</span></div>` + side(cars[1]);
     const rate = k >= 0 ? b.closingSPerLap[k] : null, laps = k >= 0 ? b.catchLaps[k] : null;
     let foot = "Within a second";
@@ -925,7 +936,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("cdLv").innerHTML = liveryHtml(c);
     $("cdPh").innerHTML = G("card.photo", true) ? photoHtml(c) : "";
     $("cdHel").innerHTML = G("card.helmet", true) ? helmetHtml(c, 84) : "";
-    if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; bcSfx("whoosh"); setTimeout(() => bcSfx("slam"), 260); }
+    // a new car on the card: whoosh and slam, at most every 6 s (the camera can hop between cars)
+    if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; bcSfx("whoosh"); bcSfx("slam", .3); setTimeout(() => hit($("card")), 300); } }
     const d = c.derived || {};
     // the class position is on the number; in a multi-class field this is the overall one
     const stats = [[m ? "Overall" : "Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];
