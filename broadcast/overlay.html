@@ -146,6 +146,15 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .cd .stats span{display:block;color:var(--muted);font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
 .cd .stats b{display:block;font:700 21px/1.1 var(--display);font-variant-numeric:tabular-nums;margin-top:3px}
 
+
+/* ---------- the driver's picture and helmet (driver card, battle) ---------- */
+.cd .ph{width:118px;flex:none;background:var(--ink2);position:relative;overflow:hidden}
+.cd .ph:empty,.cd .hel:empty{display:none}
+.cd .ph img,.cd .ph svg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.cd .hel{width:96px;flex:none;background:var(--ink);display:grid;place-items:center}
+.cd .hel img,.cd .hel svg{width:84px;height:84px;object-fit:contain;display:block;filter:drop-shadow(0 4px 6px rgba(0,0,0,.4))}
+.bt-car .ph{width:44px;height:44px;flex:none;border-radius:var(--r);overflow:hidden;background:var(--ink2);position:relative}
+.bt-car .ph img,.bt-car .ph svg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .lv:empty{display:none}
 .livery{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .livery.render{object-fit:contain;inset:4% 3%;width:94%;height:92%;filter:drop-shadow(0 6px 8px rgba(0,0,0,.45))}
@@ -227,6 +236,96 @@ small{margin-right:4px}
 @media (prefers-reduced-motion: reduce){.row,.layer,.tk,.inner{transition:none!important;animation:none!important}}
 /* The broadcast's master switch is off (the producer panel's "Broadcast off"): nothing on air */
 body.bc-off>*:not(script){visibility:hidden!important}
+
+/* ---------- LOOKS: the Pit wall and Arcade presets restyle the graphics, not just their colours (data-look) ---------- */
+@font-face{font-family:"DSEG7 digits";font-weight:400 900;font-display:swap;unicode-range:U+0020,U+002B-002E,U+0030-003A;src:url("/pitwall/assets/dseg7-classic-bold.woff2") format("woff2")}
+@font-face{font-family:"Russo One";font-display:swap;src:url("/pitwall/assets/russo-one-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Exo 2";font-weight:400 600;font-display:swap;src:url("/pitwall/assets/exo-2-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:"Exo 2";font-weight:700 900;font-style:italic;font-display:swap;src:url("/pitwall/assets/exo-2-latin-900-italic.woff2") format("woff2")}
+:root[data-look="pitwall"]{--seg:"DSEG7 digits",var(--display)}
+:root[data-look="pitwall"] .tw-head,:root[data-look="pitwall"] .bn,:root[data-look="pitwall"] .bt,:root[data-look="pitwall"] .cd,:root[data-look="pitwall"] .pn,:root[data-look="pitwall"] .fs,:root[data-look="pitwall"] .tk,:root[data-look="pitwall"] .rp{box-shadow:0 0 0 5px #16181b,0 0 0 6px #2a2e33,0 14px 30px rgba(0,0,0,.55)}
+:root[data-look="pitwall"] .tw-head{border-bottom:3px solid var(--accent)}
+:root[data-look="pitwall"] .tw-foot{background:#16181b}
+:root[data-look="pitwall"] .row .val,:root[data-look="pitwall"] .bt-gap b,:root[data-look="pitwall"] .cd .stats b,:root[data-look="pitwall"] .bn .main b,:root[data-look="pitwall"] .fs-big,:root[data-look="pitwall"] .fs-car .tm{font-family:var(--seg)!important;font-weight:700;letter-spacing:.02em}
+:root[data-look="pitwall"] .row .val{font-size:15px}
+:root[data-look="pitwall"] .bt-gap b{font-size:22px}
+:root[data-look="pitwall"] .cd .stats b{font-size:18px}
+:root[data-look="pitwall"] .bn .main b{font-size:22px}
+:root[data-look="pitwall"] .fs-big{font-size:40px}
+:root[data-look="pitwall"] .fs-car .tm{font-size:20px}
+:root[data-look="pitwall"] .row.cam{background:linear-gradient(90deg,rgba(180,60,240,.28),transparent 70%)}
+:root[data-look="pitwall"] .row.cam .pos{background:var(--fl);color:#fff}
+:root[data-look="pitwall"] .cd .num{box-shadow:inset -1px 0 0 #000}
+:root[data-look="pitwall"] .bt-head,:root[data-look="pitwall"] .fs-h{background:#000;color:var(--accent);border-bottom:3px solid var(--accent)}
+:root[data-look="pitwall"] .tk i{background:#000;color:var(--accent);border-right:3px solid var(--accent)}
+:root[data-look="pitwall"] .cd .ph,:root[data-look="pitwall"] .cd .hel{background:#000}
+:root[data-look="arcade"]{--num:"Exo 2",var(--body);--chkg:conic-gradient(#fff 0 25%,#0b0d12 0 50%,#fff 0 75%,#0b0d12 0);
+  --chrome:linear-gradient(180deg,#ffffff 0%,#fff3b0 40%,#ffb000 54%,#ff5a1f 55%,#ffd400 100%);
+  --trail:-5px 0 0 rgba(255,90,31,.5),-12px 0 0 rgba(255,90,31,.22)}
+:root[data-look="arcade"] .tw-head,:root[data-look="arcade"] .bn,:root[data-look="arcade"] .cd,:root[data-look="arcade"] .pn,:root[data-look="arcade"] .fs,:root[data-look="arcade"] .rp{box-shadow:0 14px 40px rgba(0,0,0,.55);border:1px solid #2b3549}
+:root[data-look="arcade"] .tw-head{transform:skewX(-8deg);position:relative;border-bottom:3px solid var(--accent)}
+:root[data-look="arcade"] .tw-head::after{content:"";position:absolute;left:0;right:0;bottom:-11px;height:8px;background:var(--chkg) 0 0/8px 8px;opacity:.9}
+:root[data-look="arcade"] .tw-head .ttl,:root[data-look="arcade"] .tw-head .st{font-style:italic}
+:root[data-look="arcade"] .tw-head .st{font:900 italic 1em var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
+:root[data-look="arcade"] .tw-flag,:root[data-look="arcade"] .tw-foot{display:none}
+:root[data-look="arcade"] .tw-body{background:transparent;margin-top:10px}
+:root[data-look="arcade"] .row{background:linear-gradient(90deg,rgba(17,23,37,.94),rgba(10,14,22,.94))!important;border-left:3px solid transparent;margin-top:0}
+:root[data-look="arcade"] .row .nm{font-style:italic}
+:root[data-look="arcade"] .row .pos{font:900 italic 1.05em var(--num);color:var(--accent)}
+:root[data-look="arcade"] .row .val{font:900 italic 18px var(--num)}
+:root[data-look="arcade"] .row.cam{border-left-color:var(--accent);background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 30%,#0c1018),rgba(10,14,22,.94) 70%)!important;box-shadow:0 0 24px color-mix(in srgb,var(--accent) 25%,transparent)}
+:root[data-look="arcade"] .row.cam .pos{background:var(--accent);color:#000}
+:root[data-look="arcade"] .bn .main b{font:900 italic 30px var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
+:root[data-look="arcade"] .bn{transform:skewX(-8deg)}
+:root[data-look="arcade"] #card.on .cd{animation:lkCard .6s cubic-bezier(.15,.9,.25,1) both}
+:root[data-look="arcade"] .cd{height:132px;clip-path:polygon(0 0,100% 0,98% 100%,0 100%);border-top:3px solid var(--accent)}
+:root[data-look="arcade"] .cd .ph{width:160px;background:linear-gradient(135deg,#1a2234,#0a0e16)}
+:root[data-look="arcade"] .cd .num b{font:900 italic 60px/.9 var(--num);text-shadow:0 3px 0 rgba(0,0,0,.6)}
+:root[data-look="arcade"] .cd .name{font-style:italic;text-shadow:var(--trail)}
+:root[data-look="arcade"] .cd .stats b{font:900 italic 24px var(--num);color:var(--accent)}
+:root[data-look="arcade"] #card.on .cd .hel{animation:lkHel .45s .4s cubic-bezier(.2,1.5,.4,1) both}
+:root[data-look="arcade"] #card.on .cd .lv{animation:lkLv .7s .2s cubic-bezier(.15,.9,.25,1) both}
+:root[data-look="arcade"] .cd .lv{width:250px;background:transparent}
+@keyframes lkCard{0%{transform:translateX(520px) skewX(-24deg);filter:blur(8px);opacity:0}70%{transform:translateX(-10px) skewX(-2deg);filter:none;opacity:1}100%{transform:none}}
+@keyframes lkHel{from{transform:scale(1.5) translateX(40px);opacity:0}}
+@keyframes lkLv{0%{transform:translateX(480px) skewX(-28deg);filter:blur(8px);opacity:0}75%{transform:translateX(-8px);filter:none;opacity:1}100%{transform:none}}
+:root[data-look="arcade"] #battle{width:900px;margin-left:-450px}
+:root[data-look="arcade"] .bt{overflow:visible;border-radius:0}
+:root[data-look="arcade"] .bt-head{display:inline-flex;gap:14px;transform:skewX(-14deg);margin-bottom:8px;font-style:italic}
+:root[data-look="arcade"] .bt-cars{display:grid;grid-template-columns:1fr auto 1fr;background:linear-gradient(180deg,rgba(17,23,37,.95),rgba(8,11,17,.95));align-items:stretch;position:relative;overflow:hidden;
+  border:1px solid #2b3549;border-top:3px solid var(--accent);transform:skewX(-8deg);box-shadow:0 14px 40px rgba(0,0,0,.55)}
+:root[data-look="arcade"] .bt-cars::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.6;
+  background:repeating-linear-gradient(180deg,transparent 0 13px,rgba(255,255,255,.06) 13px 14px,transparent 14px 31px,rgba(255,212,0,.08) 31px 33px,transparent 33px 52px);
+  -webkit-mask:repeating-linear-gradient(90deg,#000 0 140px,transparent 140px 200px,#000 200px 260px,transparent 260px 380px);mask:repeating-linear-gradient(90deg,#000 0 140px,transparent 140px 200px,#000 200px 260px,transparent 260px 380px);animation:lkLines .4s linear infinite}
+:root[data-look="arcade"] #battle.on .bt-cars{animation:lkBattle .55s cubic-bezier(.15,.9,.25,1) both}
+@keyframes lkBattle{0%{transform:translateX(600px) skewX(-28deg);filter:blur(8px);opacity:0}70%{transform:translateX(-10px) skewX(-6deg);filter:none;opacity:1}100%{transform:skewX(-8deg)}}
+@keyframes lkLines{to{-webkit-mask-position:-380px 0;mask-position:-380px 0}}
+:root[data-look="arcade"] .bt-car{flex-direction:column;align-items:flex-start;gap:6px;padding:14px 18px;height:160px;box-sizing:border-box;position:relative;z-index:1}
+:root[data-look="arcade"] .bt-car:last-child{align-items:flex-end;text-align:right}
+:root[data-look="arcade"] .bt-car:first-child{border-left:6px solid var(--accent)}
+:root[data-look="arcade"] .bt-car:last-child{border-right:6px solid #19d9ff}
+:root[data-look="arcade"] .bt-car .pos{font:900 italic 30px var(--num);color:var(--accent)}
+:root[data-look="arcade"] .bt-car:last-child .pos{color:#19d9ff}
+:root[data-look="arcade"] .bt-car .nm{font-style:italic;font-size:28px;max-width:100%}
+:root[data-look="arcade"] .bt-car .lv{width:220px;height:80px;background:transparent}
+:root[data-look="arcade"] .bt-car .ph{position:absolute;top:14px;width:64px;height:64px;border:2px solid #fff;border-radius:50%;overflow:hidden}
+:root[data-look="arcade"] .bt-car:first-child .ph{right:20px}
+:root[data-look="arcade"] .bt-car:last-child .ph{left:20px}
+:root[data-look="arcade"] .bt-gap{background:transparent;z-index:2;justify-content:center;padding:0 22px;position:relative}
+:root[data-look="arcade"] .bt-gap::before{content:"";position:absolute;inset:14px 0;background:rgba(0,0,0,.55);border-left:1px solid #2b3549;border-right:1px solid #2b3549;z-index:-1}
+:root[data-look="arcade"] .bt-gap b{font:900 italic 46px var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
+:root[data-look="arcade"] .bt-gap span{color:#fff;letter-spacing:.3em;font-style:italic}
+:root[data-look="arcade"] .bt-foot{background:#06080d;border:1px solid #2b3549;margin-top:10px;transform:skewX(-8deg);font-style:italic}
+:root[data-look="arcade"] .tk{border:1px solid #2b3549;border-left:4px solid var(--accent);transform:skewX(-8deg);box-shadow:0 10px 30px rgba(0,0,0,.5)}
+:root[data-look="arcade"] .tk p b{font-style:italic}
+:root[data-look="arcade"] .pn-head b{font:900 italic 1em var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
+:root[data-look="arcade"] .fs-h,:root[data-look="arcade"] .bt-head{background:var(--accent);color:#000}
+:root[data-look="arcade"] .rp{transform:skewX(-10deg)}
+:root[data-look="arcade"] .rp b{font-style:italic}
+:root[data-look="arcade"] .lk-hit .inner::after{content:"";position:absolute;inset:-10px;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 48%,rgba(255,243,176,.25) 54%,transparent 66%) no-repeat;background-size:250% 100%;mix-blend-mode:screen;animation:lkSweep .6s cubic-bezier(.3,0,.5,1) both}
+:root[data-look="arcade"] .layer .inner{position:relative}
+@keyframes lkSweep{from{background-position:120% 0}to{background-position:-30% 0}}
+/* ---------- /LOOKS ---------- */
 </style>
 </head>
 <body class="bc-off">
@@ -260,6 +359,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   </div></div></section>
 
   <section class="layer" id="card"><div class="inner"><div class="cd">
+    <div class="ph" id="cdPh"></div>
     <div class="lv" id="cdLv"></div>
     <div class="num" id="cdNumBox"><b id="cdNum">–</b><span id="cdPos"></span></div>
     <div class="main">
@@ -267,6 +367,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       <div class="sub" id="cdSub"></div>
       <div class="stats" id="cdStats"></div>
     </div>
+    <div class="hel" id="cdHel"></div>
   </div></div></section>
 
   <section class="layer" id="map"><div class="inner"><canvas id="mapCv" width="720" height="720"></canvas></div></section>
@@ -303,6 +404,27 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return "http://127.0.0.1:8765/broadcast/assets/";
   })();
   const assetUrl = n => n ? ASSET_BASE + encodeURIComponent(n) : "";
+
+  // The announcer (Arcade look only, gfx sound.on, never while the broadcast is off): the suite's voice lines
+  // (client/assets/voice-<f|m>-*.mp3, Kokoro TTS, Apache 2.0) from the relay; no sound effects, the sim has those.
+  // A man's voice with gfx sound.man, else a woman's. OBS carries it when the browser source has "Control audio via OBS".
+  const SFX_BASE = (() => { const r = Q.get("relay"); if (location.protocol.startsWith("http") && !r) return location.origin + "/pitwall/assets/";
+    if (r) return r.replace(/^ws/, "http").replace(/\/+$/, "") + "/pitwall/assets/"; return "http://127.0.0.1:8765/pitwall/assets/"; })();
+  let AC = null, SAID = null;
+  const BUF = {};
+  function audio() { if (!AC) { try { AC = new AudioContext(); } catch (e) { return null; } }
+    if (AC.state === "suspended") AC.resume(); return AC; }
+  function load(n) { if (BUF[n]) return BUF[n]; const ac = audio(); if (!ac) return Promise.resolve(null);
+    return BUF[n] = fetch(SFX_BASE + "voice-" + n + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null); }
+  function soundOn() { return document.documentElement.dataset.look === "arcade" && G("sound.on", false) && !document.body.classList.contains("bc-off"); }
+  function bcSay(line, delay) {
+    if (!soundOn()) return;
+    const ac = audio(); if (!ac) return;
+    load((G("sound.man", false) ? "m-" : "f-") + line).then(buf => { if (!buf) return; try { if (SAID) SAID.stop(); } catch (e) {}
+      const s = ac.createBufferSource(); s.buffer = buf; s.connect(ac.destination); s.start(ac.currentTime + (delay || 0)); SAID = s; });
+  }
+  const lastFlag = {};
+  function hit(el) { if (!el || document.documentElement.dataset.look !== "arcade") return; el.classList.remove("lk-hit"); void el.offsetWidth; el.classList.add("lk-hit"); }
 
   function fit() {
     const k = Math.min(innerWidth / 1920, innerHeight / 1080) || 1;
@@ -451,12 +573,20 @@ body.bc-off>*:not(script){visibility:hidden!important}
     heritage: { colors: { ink: "#0f2a1d", ink2: "#143425", head: "#e9e2c9", headText: "#0f2a1d", text: "#f3eedb", muted: "#a8b5a0",
                           accent: "#d4a017", accentText: "#0f2a1d", fl: "#b58cff", plate: "#1d4430" },
                 fonts: { display: "Oswald", body: "Barlow" }, caps: true, radius: 0, names: "initial" },
+    // The suite's looks: these also change the graphics' shape (CSS under :root[data-look])
+    pitwall: { colors: { ink: "#050607", ink2: "#0b0d10", head: "#000000", headText: "#ffffff", text: "#e4e8ec", muted: "#7f8892",
+                         accent: "#ffb23f", accentText: "#000000", fl: "#b43cf0", plate: "#16181b" },
+               fonts: { display: "Barlow Condensed", body: "Barlow Semi Condensed" }, caps: true, radius: 0, names: "initial" },
+    arcade: { colors: { ink: "#0c1018", ink2: "#141b2a", head: "#06080d", headText: "#ffffff", text: "#ffffff", muted: "#9aa4b8",
+                        accent: "#ffd400", accentText: "#000000", fl: "#b45cff", plate: "#273044" },
+              fonts: { display: "Russo One", body: "Exo 2" }, caps: true, radius: 0, names: "initial" },
   };
   let fontKey = "";
   const fontFaces = new Set();
   function applyTheme() {
     const th = S.gfx.theme || {};
     const base = PRESETS[th.preset] || PRESETS.imsa;
+    document.documentElement.dataset.look = th.preset === "pitwall" || th.preset === "arcade" ? th.preset : "basic";
     const colors = Object.assign({}, base.colors, th.colors || {});
     const fonts = Object.assign({}, base.fonts, th.fonts || {});
     const root = document.documentElement.style;
@@ -500,6 +630,29 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // Each car's picture: iRacing's own render with the driver's paint (Trading
   // Paints included), or a photo taken from the broadcast through OBS. Which
   // one leads is a choice in the Look tab; nothing is drawn in their place.
+  // The driver's picture: a photo the producer added for this driver (gfx.photos by iRacing user id), else their
+  // helmet on their race suit, drawn in their own iRacing colours (HelmetDesignStr, SuitDesignStr).
+  const designCols = s => { const a = String(s || "").split(","); return { pat: +a[0] || 0, c: [1, 2, 3].map(i => "#" + String(a[i] || "888888").split(/[;.]/)[0].slice(0, 6)) }; };
+  let svgN = 0;
+  function helmetSvg(design, size) {
+    const p = designCols(design), [c1, c2, c3] = p.c, id = "hm" + (++svgN);
+    return `<svg viewBox="0 0 100 100" width="${size}" height="${size}"><defs><clipPath id="${id}"><path d="M14 62 C10 30 34 10 58 12 C82 14 94 34 92 56 L90 74 L60 80 L22 80 Z"/></clipPath></defs>` +
+      `<g clip-path="url(#${id})"><rect width="100" height="100" fill="${c1}"/><path d="M0 ${40 + p.pat % 4 * 4} Q50 ${20 + p.pat % 3 * 6} 100 36 L100 48 Q50 ${32 + p.pat % 3 * 6} 0 ${52 + p.pat % 4 * 4}Z" fill="${c2}"/><circle cx="${30 + p.pat % 5 * 5}" cy="30" r="${8 + p.pat % 4 * 2}" fill="${c3}"/></g>` +
+      `<path d="M14 62 C10 30 34 10 58 12 C82 14 94 34 92 56 L90 74 L60 80 L22 80 Z" fill="none" stroke="rgba(0,0,0,.55)" stroke-width="2"/><path d="M48 40 L92 42 L92 58 L52 60 Z" fill="#0b0f16"/><path d="M54 44 L90 45" stroke="rgba(255,255,255,.35)" stroke-width="2"/></svg>`;
+  }
+  function helmetHtml(c, size) {
+    const l = S.liveries[liveryKey(c)] || {};
+    if (l.helmet) return `<img src="${l.helmet}" alt="">`;
+    return c.helmetDesign ? helmetSvg(c.helmetDesign, size) : "";
+  }
+  function photoHtml(c) {
+    const ph = (S.gfx.photos || {})[String(c.userId)];
+    if (ph) return `<img src="${assetUrl(ph)}" alt="">`;
+    if (!c.helmetDesign && !c.suitDesign) return "";
+    const s = designCols(c.suitDesign).c;
+    return `<svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid slice"><path d="M20 200 C24 150 56 130 100 128 C144 130 176 150 180 200Z" fill="${s[0]}"/><path d="M88 128 L100 200 L112 128Z" fill="${s[1]}"/>` +
+      `<path d="M40 160 L70 140 L74 200 L52 200Z" fill="${s[2]}" opacity=".9"/>` + helmetSvg(c.helmetDesign, 124).replace("<svg ", `<svg x="38" y="22" `) + `</svg>`;
+  }
   function liveryHtml(c) {
     const l = S.liveries[liveryKey(c)] || {};
     const order = T("livery.source", "render") === "photo" ? ["photo", "render"] : ["render", "photo"];
@@ -639,6 +792,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Checkered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
     $("bnSub").textContent = [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · ");
     $("bnFlag").style.background = f ? FLAG_BG[f] : "var(--muted)";
+    // the announcer calls the flags in a race
+    if (f !== lastFlag.f) { if (lastFlag.f !== undefined && isRace()) { const L = { white: "final", checkered: "checkered", caution: "caution", yellow: "yellow", red: "red" }[f] || (f === "green" && lastFlag.f ? "green" : null); if (L) bcSay(L); } lastFlag.f = f; }
     // replay bug: behind live, paused, slow or fast
     const cam = S.state.camera || {}, sp = cam.replaySpeed;
     const behind = !live() || (sp != null && (sp !== 1 || cam.replaySlowMotion));
@@ -670,7 +825,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("btLap").textContent = b.cars.length > 2 ? b.cars.length + " cars" : (lead.lap != null ? "Lap " + lead.lap : "");
     const k = b.gapsS.length - 1;
     const gapTxt = (cars[1].derived && cars[1].derived.liveClassIntervalS != null) ? cars[1].derived.liveClassIntervalS : b.gapsS[k];
-    const side = c => `<div class="bt-car"><span class="pos">${esc(m ? c.classPos : c.pos)}</span>${plate(c)}<span class="nm">${nameHtml(c.name)}</span><div class="lv" style="position:relative">${liveryHtml(c)}</div></div>`;
+    const side = c => `<div class="bt-car"><span class="pos">${esc(m ? c.classPos : c.pos)}</span>${plate(c)}${G("card.photo", true) ? `<div class="ph">${photoHtml(c)}</div>` : ""}<span class="nm">${nameHtml(c.name)}</span><div class="lv" style="position:relative">${liveryHtml(c)}</div></div>`;
+    const bk = b.cars.slice(-2).join("|"); // a new battle: the VS hit and FIGHT!, at most every 15 s, and the same pair not again for a minute
+    if (bk !== lastBattle.key && $("battle").classList.contains("on")) { lastBattle.key = bk; const now = performance.now(), seen = lastBattle.seen || (lastBattle.seen = {});
+      if (now - (lastBattle.at || -1e9) > 15000 && now - (seen[bk] || -1e9) > 60000) { lastBattle.at = seen[bk] = now; bcSay("battle"); setTimeout(() => hit($("battle")), 300); } }
     $("btCars").innerHTML = side(cars[0]) + `<div class="bt-gap"><b>${gapTxt != null ? gapTxt.toFixed(gapTxt < 10 ? 3 : 1) : "–"}</b><span>gap</span></div>` + side(cars[1]);
     const rate = k >= 0 ? b.closingSPerLap[k] : null, laps = k >= 0 ? b.catchLaps[k] : null;
     let foot = "Within a second";
@@ -780,6 +938,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
       (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
     $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
     $("cdLv").innerHTML = liveryHtml(c);
+    $("cdPh").innerHTML = G("card.photo", true) ? photoHtml(c) : "";
+    $("cdHel").innerHTML = G("card.helmet", true) ? helmetHtml(c, 84) : "";
+    // a new car on the card: whoosh and slam, at most every 6 s (the camera can hop between cars)
+    if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; setTimeout(() => hit($("card")), 300); } }
     const d = c.derived || {};
     // the class position is on the number; in a multi-class field this is the overall one
     const stats = [[m ? "Overall" : "Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];
@@ -794,6 +956,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("cdStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
   }
 
+  const lastCard = { idx: null }, lastBattle = { key: null };
   function renderGridCard(c) {
     const rows = (S.session && S.session.grid && S.session.grid.rows) || [];
     const r = rows.find(x => x.idx === c.idx) || {};

@@ -1096,3 +1096,50 @@ def test_stretch_timed_best_laps_match_iracings_own_on_a_real_race():
     assert len(diffs) >= 15
     assert statistics.median(diffs) < 0.01 and max(diffs) < 0.05, (statistics.median(diffs), max(diffs))
     assert len(cars["derived"]["faster"]) >= 15
+
+
+def test_helmets_are_rendered_once_and_a_refusal_is_not_retried():
+    """iRacing's helmet picture (pk_helmet.png, not yet seen working): the design and the driver's own helmet
+    paint go in; a server that refuses it is asked once per design, and the overlay draws its own helmet."""
+    import time as _t
+    from pitwall.carrender import CarRenderer, helmet_params, find_helmet_paint
+    assert helmet_params({"HelmetDesignStr": "65,005eb8,950002,000000"}, None) == {"size": 2, "hlmtPat": "65", "hlmtCol": "005eb8,950002,000000"}
+    calls, out = [], []
+
+    def fetch(url):
+        calls.append(url)
+        if "pk_helmet" in url:
+            return (404, "text/html", b"no") if "UserID" not in url and "hlmtCustPaint" not in url and len(calls) < 99 and "refuse" in state else (200, "image/png", b"\x89PNG h")
+        return 200, "image/png", b"\x89PNG c"
+    state = set()
+    with tempfile.TemporaryDirectory() as d:
+        root = os.path.join(d, "paint")
+        os.makedirs(os.path.join(root, "gr86"))
+        with open(os.path.join(root, "helmet_1.tga"), "wb") as f:
+            f.write(b"tga")
+        assert find_helmet_paint(1, root).endswith("helmet_1.tga") and find_helmet_paint(2, root) is None
+        r = CarRenderer(d, out.append, fetch=fetch, root=root)
+        drivers = [{"CarPath": "gr86", "CarID": 5, "UserID": 1, "TeamID": 0, "CarNumber": "1", "HelmetDesignStr": "1,ffffff,ff0000,000000"}]
+        r.request(drivers)
+        deadline = _t.time() + 3
+        while len(out) < 2 and _t.time() < deadline:
+            _t.sleep(0.05)
+        kinds = sorted(m["kind"] for m in out)
+        assert kinds == ["helmet", "render"]
+        h = [m for m in out if m["kind"] == "helmet"][0]
+        assert h["key"] == "5_1:helmet" and h["custom"] is True
+        assert any("pk_helmet.png" in u and "hlmtCustPaint=" in u for u in calls)
+        n = len(calls)
+        r.request(drivers)
+        _t.sleep(0.3)
+        assert len(calls) == n, "an unchanged helmet is not asked for again"
+        # a server that refuses helmets: asked once, never again for the same design
+        state.add("refuse")
+        drivers2 = [{"CarPath": "gr86", "CarID": 5, "UserID": 2, "TeamID": 0, "CarNumber": "2", "HelmetDesignStr": "2,000000,ffffff,ff0000"}]
+        r.request(drivers2)
+        _t.sleep(0.5)
+        hc = [u for u in calls if "pk_helmet" in u and "hlmtPat=2" in u]
+        r.request(drivers2)
+        _t.sleep(0.3)
+        assert len([u for u in calls if "pk_helmet" in u and "hlmtPat=2" in u]) == len(hc) == 1
+        assert not any(m["key"] == "5_2:helmet" for m in out)

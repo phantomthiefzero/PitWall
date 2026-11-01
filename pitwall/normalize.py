@@ -3166,6 +3166,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             # Not the Trading Paints livery, which only exists as a texture.
             "carDesign": d.get("CarDesignStr") if d else None,
             "helmetDesign": d.get("HelmetDesignStr") if d else None,
+            "suitDesign": d.get("SuitDesignStr") if d else None,
             "carId": d.get("CarID") if d else None,
             "userId": d.get("UserID") if d else None,
             "teamId": d.get("TeamID") if d else None,

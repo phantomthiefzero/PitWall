@@ -28,6 +28,10 @@ import urllib.parse
 import urllib.request
 
 RENDER_URL = "http://127.0.0.1:32034/pk_car.png"
+# The helmet, from the same server. NOT YET SEEN WORKING against the sim (VARIABLES_TO_VERIFY.md, "Helmets"):
+# the parameters follow pk_car.png's (hlmtPat/hlmtCol like carPat/carCol). If the server refuses it, the
+# broadcast draws the helmet itself in the driver's iRacing helmet colours.
+HELMET_URL = "http://127.0.0.1:32034/pk_helmet.png"
 RENDER_VIEW = 1
 RENDER_SIZE = 2          # 0 small, 1 medium, 2 large
 
@@ -75,6 +79,31 @@ def find_paint(car_path: str, user_id, team_id=None, root: str | None = None) ->
             if os.path.isfile(p):
                 return p
     return None
+
+
+def find_helmet_paint(user_id, root: str | None = None) -> str | None:
+    """A driver's custom helmet: Trading Paints puts it at the top of the paint folder."""
+    if not user_id or user_id in (0, -1):
+        return None
+    p = os.path.join(root or paint_root(), f"helmet_{user_id}.tga")
+    return p if os.path.isfile(p) else None
+
+
+def helmet_params(d: dict, paint_path: str | None) -> dict:
+    """A DriverInfo/Drivers entry -> /pk_helmet.png query parameters."""
+    p = {"size": RENDER_SIZE}
+    design = [x.strip() for x in str(d.get("HelmetDesignStr") or "").split(",")] if d.get("HelmetDesignStr") else []
+    if design and design[0]:
+        p["hlmtPat"] = design[0]
+    if len(design) >= 4:
+        p["hlmtCol"] = ",".join(design[1:4])
+    if paint_path:
+        p["hlmtCustPaint"] = paint_path
+    return p
+
+
+def helmet_url(d: dict, paint_path: str | None) -> str:
+    return HELMET_URL + "?" + urllib.parse.urlencode(helmet_params(d, paint_path), quote_via=urllib.parse.quote)
 
 
 def render_params(d: dict, paint_path: str | None) -> dict:
@@ -172,10 +201,17 @@ class CarRenderer:
                 continue
             paint = find_paint(d.get("CarPath"), d.get("UserID"), d.get("TeamID"), self.root)
             sig = self.signature(d, paint)
-            if self._sig.get(key) == sig:
-                continue
-            with self._lock:
-                self._queue[key] = (d, paint, sig)
+            if self._sig.get(key) != sig:
+                with self._lock:
+                    self._queue[key] = (d, paint, sig)
+            # the driver's helmet (the driver's own, so by user, not team)
+            hp = find_helmet_paint(d.get("UserID"), self.root)
+            hsig = (d.get("HelmetDesignStr"), hp, os.path.getmtime(hp) if hp else None)
+            if d.get("HelmetDesignStr") or hp:
+                hk = key + "|helmet"
+                if self._sig.get(hk) != hsig:
+                    with self._lock:
+                        self._queue[hk] = (d, hp, hsig)
         self._wake.set()
 
     def cached_message(self, key: str) -> dict | None:
@@ -202,6 +238,9 @@ class CarRenderer:
 
     def _render_one(self, key, d, paint, sig):
         import base64
+        if key.endswith("|helmet"):
+            self._render_helmet(key, d, paint, sig)
+            return
         for url in render_urls(d, paint):
             try:
                 status, ctype, body = self.fetch(url)
@@ -235,6 +274,25 @@ class CarRenderer:
                 return
         self._sig[key] = sig      # every form refused: do not hammer it
         self.status["error"] = f"no picture for {d.get('CarPath')}"
+
+
+    def _render_helmet(self, key, d, paint, sig):
+        """One try per helmet design: a refusal is remembered (the overlay draws its own helmet then);
+        only a server that is not answering at all is tried again later."""
+        import base64
+        car_key = key[:-len("|helmet")]
+        try:
+            status, ctype, body = self.fetch(helmet_url(d, paint))
+        except Exception as e:  # noqa: BLE001
+            self._down_until = time.monotonic() + self.RETRY_DOWN_S
+            with self._lock:
+                self._queue.setdefault(key, (d, paint, sig))
+            self.status["error"] = f"{type(e).__name__}: {e}"
+            return
+        self._sig[key] = sig
+        if status == 200 and ctype.lower().startswith("image/") and body:
+            self.emit(livery_message(car_key, "helmet", f"data:{ctype.split(';')[0]};base64," + base64.b64encode(body).decode(),
+                                     custom=bool(paint)))
 
 
 def render_key(d: dict) -> str | None:

@@ -206,7 +206,7 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
 - `assets` (relay): `{files: [{name, bytes, type}]}`; served at `/broadcast/assets/<name>`.
 - `asset_put` / `asset_del` (producer -> relay): `{name, data: base64}` / `{name}`; 30 MB cap,
   images, video, fonts only.
-- cars carry `classEstLapS`, `carDesign` (CarDesignStr), `helmetDesign`, `carId`, `userId`, `teamId`;
+- cars carry `classEstLapS`, `carDesign` (CarDesignStr), `helmetDesign`, `suitDesign` (SuitDesignStr), `carId`, `userId`, `teamId`;
   session drivers also carry CarNumberDesignStr, CarSponsor_1/2 and ClubID for the car renders.
 
 ### Following a car (spectator first)
