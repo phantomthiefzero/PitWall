@@ -405,24 +405,24 @@ body.bc-off>*:not(script){visibility:hidden!important}
   })();
   const assetUrl = n => n ? ASSET_BASE + encodeURIComponent(n) : "";
 
-  // Sound (Arcade look only, gfx sound.on, never while the broadcast is off): the suite's recorded racing effects and
-  // announcer (client/assets/sfx-*.mp3, CC0), from the relay: a car passing for a battle, the bell, the finish. OBS carries it when the browser source has
-  // "Control audio via OBS"; the announcer can be switched off on its own (gfx sound.voice).
+  // The announcer (Arcade look only, gfx sound.on, never while the broadcast is off): the suite's voice lines
+  // (client/assets/voice-<f|m>-*.mp3, Kokoro TTS, Apache 2.0) from the relay; no sound effects, the sim has those.
+  // A man's voice with gfx sound.man, else a woman's. OBS carries it when the browser source has "Control audio via OBS".
   const SFX_BASE = (() => { const r = Q.get("relay"); if (location.protocol.startsWith("http") && !r) return location.origin + "/pitwall/assets/";
     if (r) return r.replace(/^ws/, "http").replace(/\/+$/, "") + "/pitwall/assets/"; return "http://127.0.0.1:8765/pitwall/assets/"; })();
-  let AC = null, BUS = null;
+  let AC = null, SAID = null;
   const BUF = {};
-  function audio() { if (!AC) { try { AC = new AudioContext(); BUS = AC.createDynamicsCompressor(); BUS.threshold.value = -10; BUS.ratio.value = 4; BUS.connect(AC.destination); } catch (e) { return null; } }
+  function audio() { if (!AC) { try { AC = new AudioContext(); } catch (e) { return null; } }
     if (AC.state === "suspended") AC.resume(); return AC; }
   function load(n) { if (BUF[n]) return BUF[n]; const ac = audio(); if (!ac) return Promise.resolve(null);
-    return BUF[n] = fetch(SFX_BASE + "sfx-" + n + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null); }
+    return BUF[n] = fetch(SFX_BASE + "voice-" + n + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null); }
   function soundOn() { return document.documentElement.dataset.look === "arcade" && G("sound.on", false) && !document.body.classList.contains("bc-off"); }
-  function bcSfx(name, delay, voice) {
-    if (!soundOn() || (voice && !G("sound.voice", true))) return;
+  function bcSay(line, delay) {
+    if (!soundOn()) return;
     const ac = audio(); if (!ac) return;
-    load(name).then(buf => { if (!buf) return; const s = ac.createBufferSource(), g = ac.createGain(); s.buffer = buf; g.gain.value = .9; s.connect(g); g.connect(BUS); s.start(ac.currentTime + (delay || 0)); });
+    load((G("sound.man", false) ? "m-" : "f-") + line).then(buf => { if (!buf) return; try { if (SAID) SAID.stop(); } catch (e) {}
+      const s = ac.createBufferSource(); s.buffer = buf; s.connect(ac.destination); s.start(ac.currentTime + (delay || 0)); SAID = s; });
   }
-  // the moment a graphic lands: a light sweeps across it (Arcade look; CSS class lk-hit)
   const lastFlag = {};
   function hit(el) { if (!el || document.documentElement.dataset.look !== "arcade") return; el.classList.remove("lk-hit"); void el.offsetWidth; el.classList.add("lk-hit"); }
 
@@ -792,8 +792,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Checkered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
     $("bnSub").textContent = [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · ");
     $("bnFlag").style.background = f ? FLAG_BG[f] : "var(--muted)";
-    // Arcade sound for the flags in a race: the bell for the last lap, the fanfare and the announcer at the finish
-    if (f !== lastFlag.f) { if (lastFlag.f !== undefined && isRace()) { if (f === "white") bcSfx("lastlap"); else if (f === "checkered") { bcSfx("finish"); bcSfx("v_congrats", 1.1, true); } else if (f === "green" && lastFlag.f) bcSfx("green"); } lastFlag.f = f; }
+    // the announcer calls the flags in a race
+    if (f !== lastFlag.f) { if (lastFlag.f !== undefined && isRace()) { const L = { white: "final", checkered: "checkered", caution: "caution", yellow: "yellow", red: "red" }[f] || (f === "green" && lastFlag.f ? "green" : null); if (L) bcSay(L); } lastFlag.f = f; }
     // replay bug: behind live, paused, slow or fast
     const cam = S.state.camera || {}, sp = cam.replaySpeed;
     const behind = !live() || (sp != null && (sp !== 1 || cam.replaySlowMotion));
@@ -828,7 +828,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const side = c => `<div class="bt-car"><span class="pos">${esc(m ? c.classPos : c.pos)}</span>${plate(c)}${G("card.photo", true) ? `<div class="ph">${photoHtml(c)}</div>` : ""}<span class="nm">${nameHtml(c.name)}</span><div class="lv" style="position:relative">${liveryHtml(c)}</div></div>`;
     const bk = b.cars.slice(-2).join("|"); // a new battle: the VS hit and FIGHT!, at most every 15 s, and the same pair not again for a minute
     if (bk !== lastBattle.key && $("battle").classList.contains("on")) { lastBattle.key = bk; const now = performance.now(), seen = lastBattle.seen || (lastBattle.seen = {});
-      if (now - (lastBattle.at || -1e9) > 15000 && now - (seen[bk] || -1e9) > 60000) { lastBattle.at = seen[bk] = now; bcSfx("passby"); setTimeout(() => hit($("battle")), 300); } }
+      if (now - (lastBattle.at || -1e9) > 15000 && now - (seen[bk] || -1e9) > 60000) { lastBattle.at = seen[bk] = now; bcSay("battle"); setTimeout(() => hit($("battle")), 300); } }
     $("btCars").innerHTML = side(cars[0]) + `<div class="bt-gap"><b>${gapTxt != null ? gapTxt.toFixed(gapTxt < 10 ? 3 : 1) : "–"}</b><span>gap</span></div>` + side(cars[1]);
     const rate = k >= 0 ? b.closingSPerLap[k] : null, laps = k >= 0 ? b.catchLaps[k] : null;
     let foot = "Within a second";
@@ -941,7 +941,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("cdPh").innerHTML = G("card.photo", true) ? photoHtml(c) : "";
     $("cdHel").innerHTML = G("card.helmet", true) ? helmetHtml(c, 84) : "";
     // a new car on the card: whoosh and slam, at most every 6 s (the camera can hop between cars)
-    if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; bcSfx("whoosh"); setTimeout(() => hit($("card")), 300); } }
+    if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; setTimeout(() => hit($("card")), 300); } }
     const d = c.derived || {};
     // the class position is on the number; in a multi-class field this is the overall one
     const stats = [[m ? "Overall" : "Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];

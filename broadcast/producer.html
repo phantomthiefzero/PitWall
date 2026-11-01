@@ -468,8 +468,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, results at the finish)") +
     sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
-    sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Sound effects (Arcade look; in OBS tick Control audio via OBS)") +
-    sw("sw-voice", G("sound.voice", true), `data-gflag="sound.voice" data-gdef="1"`, "Announcer (at the checkered flag)");
+    sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles and flags (Arcade look; in OBS tick Control audio via OBS)") +
+    sw("sw-voice", G("sound.man", false), `data-gflag="sound.man"`, "Announcer: a man's voice (off: a woman's)");
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
     const prod = canProduce(), dis = prod ? "" : "disabled";
