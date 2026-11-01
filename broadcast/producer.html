@@ -952,14 +952,20 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const uid = e.target && e.target.dataset && e.target.dataset.photo; if (!uid) return;
     const f = e.target.files[0]; if (!f) return;
     if (f.size > 8 * 1024 * 1024) { toast(f.name + " is over 8 MB", true); return; }
-    const ext = (f.name.match(/\.(png|jpe?g|webp)$/i) || [".jpg"])[0].toLowerCase(), name = "photo_" + uid + ext;
+    // a new name for each photo: the same name again would keep showing the old picture (the browser's copy)
+    const ext = (f.name.match(/\.(png|jpe?g|webp)$/i) || [".jpg"])[0].toLowerCase(), name = "photo_" + uid + "_" + Date.now().toString(36) + ext;
     const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+    const old = (S.gfx.photos || {})[uid];
     send({ type: "asset_put", name, data });
     setGfx({ photos: { [uid]: name } });
+    if (old && old !== name) send({ type: "asset_del", name: old });
+    e.target.value = "";                                   // the same file can be picked again
   });
   document.addEventListener("click", e => {
     const b = e.target.closest && e.target.closest("[data-photodel]"); if (!b) return;
+    const old = (S.gfx.photos || {})[b.dataset.photodel];
     setGfx({ photos: { [b.dataset.photodel]: null } });
+    if (old) send({ type: "asset_del", name: old });
   });
 
   // ------------------------------------------------------------- Liveries tab

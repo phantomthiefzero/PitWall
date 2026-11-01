@@ -40,7 +40,9 @@ Hard rules
   arcade, classic). Arcade is an arcade RACER, not a fighting game (the user's call): call-outs that drive in and
   brake (lkPop), five start lights before Coaching's result (lkStart), the clean-lap streak, checkered flags, speed
   lines, kerbs and gravel drawn on screen; no VS, rounds or fighter voices. It follows real events only: a finished live
-  lap (lkLapEvent), places gained, the white and checkered flags. Sound is an ANNOUNCER only, never sound effects (the
+  lap (lkLapEvent), places gained in a race while racing (lkTickEvents: not in practice or qualifying, where the
+  order is by lap time; the first tick of a session only sets the scene), the white and checkered flags. A flag is
+  called at most once a minute, green only after a caution or a red (local yellows come and go all race). Sound is an ANNOUNCER only, never sound effects (the
   user's call: the sim makes the racing sounds): lkSay plays client/assets/voice-<f|m>-<line>.mp3 (LK_LINES; Kokoro TTS,
   Apache 2.0, see LICENSES.md), one line at a time, in Arcade only, when suite:announcer is 'f' or 'm' (off by
   default). Effects are drawn on one canvas (lkFx) only while something moves. Fonts: Exo 2 (italic 900
@@ -114,6 +116,9 @@ iRacing Suite app (suite/)
   Coaching's map replay: a live lap's clock is cleaned when saved (coachCompact) and repaired when read (coFixT);
   a new live lap waits while a replay plays, pauses or is zoomed (coachLater). Anything zoomed (a corner on the map,
   a chart in the zoom box) goes back to normal with a second click.
+  Speed: "your laps" (renderOwn) and Coaching (renderCoach) are drawn only while their view is on screen, and once
+  after kept files are opened again (KEEP.restoring), never for a hidden view (they took seconds each and froze every
+  page load); Coaching's result is kept while its inputs are the same (coachRun memo, coachKey).
   Which card shows where is the `body[data-view=...]` CSS at the top of the page. Switching views happens in
   the page (showView / viewShown, history.pushState): no reload, so nothing loaded is lost. The files in the
   two boxes, the lap picked from each and Coaching's Garage 61 laps are kept in IndexedDB (KEEP) and opened
@@ -146,6 +151,9 @@ iRacing Suite app (suite/)
   named by what they are (read from the header and last sample, cached). Only the suite's own server serves
   them, by an id from the last listing, never a path from the page; over one WebSocket (/api/library/stream),
   with 96 KB pieces (/api/library/file) as the fallback. The relay never serves them.
+- Your last session (home page, `library.session_summary`): a lap's time is the first new LapLastLapTime after
+  its OWN last sample (iRacing updates it after the line), and clean laps are counted as the Lap Analyzer counts
+  them (lap_band = lapBand, then within 7%): the two pages must give the same numbers for the same file.
 - Home page (`suite/web/index.html`): its /ws asks for no telemetry (`?ticks=0`); Hub.send_all sends to
   every client at once, so one slow client cannot hold the pump. Buttons are built when what they offer
   changes, never on every message (a rebuilt button lost the click), and answer a click at once (disabled,

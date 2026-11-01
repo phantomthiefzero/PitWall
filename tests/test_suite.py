@@ -1050,12 +1050,26 @@ class LastSessionTest(unittest.TestCase):
         self.assertEqual((s["timed"], s["clean"], s["best"], s["median"], s["bestIsClean"]), (6, 4, 84.2, 84.9, True))
         self.assertAlmostEqual(s["spreadS"], 0.37, places=3)       # sample standard deviation of 84.2, 84.5, 84.9, 85.0
 
+    def test_unusual_times_left_out_like_the_lap_analyzer(self):
+        from suite.library import summarize_laps, lap_band
+        # a slow clean lap (traffic) inside 7 % of the best but far outside the usual times is not counted
+        laps = [{"lap": i, "t": t, "clean": True} for i, t in enumerate([84.0, 84.3, 84.1, 84.4, 84.2, 84.35, 88.9])]
+        lo, hi = lap_band([x["t"] for x in laps])
+        self.assertTrue(lo < 84.0 and hi < 88.9)
+        self.assertEqual(summarize_laps(laps)["clean"], 6)
+
     @unittest.skipUnless(os.path.exists(REAL_IBT_PATH), "needs the real Indianapolis .ibt")
     def test_a_real_session(self):
         from suite.library import session_summary, summarize_laps
-        s = summarize_laps(session_summary(REAL_IBT_PATH))
+        laps = session_summary(REAL_IBT_PATH)
+        s = summarize_laps(laps)
+        t = {x["lap"]: x["t"] for x in laps}
+        # each lap carries its OWN time (iRacing updates LapLastLapTime after the line: reading it from the lap's
+        # first sample gave every lap the one before's): the same laps and times as the Lap Analyzer shows
+        self.assertEqual((t[2], t[3], t[5], t[6]), (86.361, 84.866, 84.033, 84.452))
         self.assertEqual(s["best"], 84.033)                   # iRacing's own best lap in the file
-        self.assertGreaterEqual(s["clean"], 18)
+        self.assertEqual(s["clean"], 22)                      # the Lap Analyzer's "Clean laps in your .ibt (22)"
+        self.assertEqual(s["spreadS"], 0.419)                 # and its consistency, ± 0.419 s
 
 
 class GlanceTest(unittest.TestCase):

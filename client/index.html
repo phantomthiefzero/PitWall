@@ -702,6 +702,22 @@
 :root[data-look="arcade"] .lk-punch{animation:lkPunch .22s cubic-bezier(.2,1.6,.4,1)}
 @keyframes lkPunch{0%{transform:scale(1.25) translateX(-6px)}100%{transform:none}}
 @media (prefers-reduced-motion:reduce){:root[data-look="arcade"] .lk-pop *,:root[data-look="arcade"] .lk-start,:root[data-look="arcade"] .lk-start *{animation-duration:.01s!important}}
+@media (max-width:640px){:root[data-look="arcade"] .lk-start{gap:22px;padding:0 12px}
+:root[data-look="arcade"] .lk-start .gantry{gap:7px;padding:10px}
+:root[data-look="arcade"] .lk-start .pod{gap:7px;padding:7px}
+:root[data-look="arcade"] .lk-start .pod i{width:32px;height:32px}
+:root[data-look="arcade"] .lk-start .grid{grid-template-columns:1fr auto;min-width:0;width:100%;transform:skewX(-6deg)}
+:root[data-look="arcade"] .lk-start .row small{grid-column:1/-1;padding-bottom:4px}
+:root[data-look="arcade"] .lk-start .row b{font-size:20px}
+:root[data-look="arcade"] .lk-start .row em{font-size:24px}
+:root[data-look="arcade"] .lk-start .word{font-size:110px;top:18%}
+:root[data-look="arcade"] .lk-start .gap b{font-size:30px}
+:root[data-look="arcade"] .lk-pop .t{font-size:clamp(28px,8.6vw,112px)}
+:root[data-look="arcade"] .lk-pop .s{font-size:20px;top:calc(50% + 46px)}
+:root[data-look="arcade"] .lk-pop .band{height:130px;top:calc(50% - 65px)}
+:root[data-look="arcade"] .lk-combo{right:10px;top:auto;bottom:16px;padding:8px 10px 6px}
+:root[data-look="arcade"] .lk-combo b{font-size:44px}
+:root[data-look="arcade"] .lk-combo span{font-size:12px}}
 /* ---- /LOOKS ---- */
 </style>
 </head>
@@ -949,7 +965,7 @@
 // Pit wall and Arcade only restyle the page and add a bar across the top (lkHud); the words stay the same.
 // Arcade adds an arcade racer's layer: call-outs, the start lights, a clean-lap streak and an announcer (suite:announcer,
 // off until a voice is picked; no sound effects: the sim has the racing sounds). Every number in the bar is one the page already shows.
-const LK = { look: 'basic', streak: 0, pos: null, flags: 0, gear: null, AC: null };
+const LK = { look: 'basic', streak: 0, tick: null, gear: null, AC: null };
 function lkGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v } catch (e) { return d } }
 function lkLook() { const v = lkGet('suite:look', 'basic'); return v === 'pitwall' || v === 'arcade' ? v : 'basic' }
 function lkApply() {
@@ -1086,7 +1102,7 @@ function lkStart(a, b) {
     T.push(setTimeout(() => lkSay('set', 0), 350 + 3 * 330));
     T.push(setTimeout(() => { v.classList.add('go'); pods.forEach(p => p.classList.remove('on')); lkSay('go', 0); lkFx('go') }, 350 + 4 * 330 + 650));
     T.push(setTimeout(end, 4300)) };
-  const wait = now => { if (!v.isConnected) return; calm = now - last < 50 ? calm + 1 : 0; last = now; if (calm >= 5 || now - t0 > 4000) go(); else requestAnimationFrame(wait) };
+  const wait = now => { if (!v.isConnected) return; calm = now - last < 70 ? calm + 1 : 0; last = now; if (calm >= 3 || now - t0 > 1500) go(); else requestAnimationFrame(wait) };
   requestAnimationFrame(wait);
 }
 // the streak counter on the side, bumped on every clean lap
@@ -1110,16 +1126,28 @@ function lkLap(rec, prior) {
   else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red', { say: e.why === 'incident' ? 'incident' : 'off', fx: 'off' }) }
   lkCombo(LK.streak);
 }
-// every telemetry tick: places gained, the white and checkered flags, gear changes
-function lkTick(v) {
-  if (!lkArcade() || !v) return;
+// pure: what a telemetry tick means in the game, against the last one seen (prev, null at first): places gained in a
+// race while racing (in practice and qualifying the order is by lap time, so a quicker lap is not an overtake), and the
+// white and checkered flags. The first tick of a session only sets the scene: opening the page mid-race calls nothing.
+// race: true in a race session, false in any other, null when not known (then no places are called).
+function lkTickEvents(prev, v, race) {
   const pos = v.PlayerCarClassPosition > 0 ? v.PlayerCarClassPosition : v.PlayerCarPosition > 0 ? v.PlayerCarPosition : null;
-  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { say: pos === 1 ? 'lead' : 'overtake', fx: 'pass' });
-  LK.pos = pos || LK.pos;
-  const f = v.SessionFlags || 0;
-  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
-  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'white chk', { say: pos === 1 ? 'win' : 'checkered', fx: 'pb' });
-  LK.flags = f;
+  const f = v.SessionFlags || 0, same = !!prev && prev.sess === v.SessionNum, out = [];
+  if (same) {
+    if (race === true && v.SessionState === 4 && pos && prev.pos && pos < prev.pos && !v.OnPitRoad) out.push({ kind: 'pass', from: prev.pos, to: pos });
+    if ((f & 0x2) && !(prev.flags & 0x2)) out.push({ kind: 'white' });
+    if ((f & 0x1) && !(prev.flags & 0x1)) out.push({ kind: 'checkered', pos, win: race === true && pos === 1 });
+  }
+  return { out, next: { sess: v.SessionNum, pos: pos || (same ? prev.pos : null), flags: f } };
+}
+// every telemetry tick: the events above as call-outs, and the gear display's punch
+function lkTick(v, race) {
+  if (!v) return; const r = lkTickEvents(LK.tick, v, race == null ? null : race); LK.tick = r.next; if (!lkArcade()) return;
+  for (const e of r.out) {
+    if (e.kind === 'pass') lkPop('OVERTAKE!', 'P' + e.from + ' \u2192 P' + e.to, 'cyan', { say: e.to === 1 ? 'lead' : 'overtake', fx: 'pass' });
+    if (e.kind === 'white') lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
+    if (e.kind === 'checkered') lkPop('FINISH!', e.pos ? 'P' + e.pos : '', 'white chk', { say: e.win ? 'win' : 'checkered', fx: 'pb' });
+  }
   if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } }
   LK.gear = v.Gear;
 }
@@ -1146,10 +1174,14 @@ function lkPreload() { const w = lkWho(); if (w) LK_LINES.forEach(l => lkLoad(w 
 document.addEventListener('click', lkPreload, true);
 addEventListener('storage', e => { if (e.key === 'suite:look' || e.key === 'suite:team' || e.key === 'suite:plate') lkApply() });
 // PitWall: the Arcade banners for the flags (no top bar here: the header already is one)
-function lkFlag(f) {
+// The same flag is called at most once a minute (local yellows come and go all race), and green only
+// after a full-course caution or a red, not every time a local yellow clears.
+function lkFlag(f, prev) {
   const W = { green: ["GREEN FLAG", "green", { say: "green", fx: "go" }], yellow: ["YELLOW FLAG", "", { say: "yellow" }], caution: ["CAUTION", "", { say: "caution" }],
     white: ["FINAL LAP", "white", { say: "final" }], checkered: ["FINISH!", "white chk", { say: "checkered", fx: "pb" }], red: ["RED FLAG", "red", { say: "red" }] }[f];
-  if (W) lkPop(W[0], "", W[1], W[2]);
+  if (!W || (f === "green" && prev !== "caution" && prev !== "red")) return;
+  const now = Date.now(), at = (LK.flagAt = LK.flagAt || {})[f]; if (at && now - at < 60000) return; LK.flagAt[f] = now;
+  lkPop(W[0], "", W[1], W[2]);
 }
 LK.look = document.documentElement.dataset.look || "basic";
 // ---- /looks ----
@@ -1389,7 +1421,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     const inferred = !flags.length && !!(cau && cau.active && cau.inferred);
     const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || (inferred ? "caution" : "");
     const el = $("flag"); el.dataset.flag = f; document.body.dataset.flag = f;
-    if (LK.flag !== undefined && f !== LK.flag) lkFlag(f);
+    if (LK.flag !== undefined && f !== LK.flag) lkFlag(f, LK.flag);
     LK.flag = f;
     if (f !== renderHeader.lastFlag) {
       if (renderHeader.lastFlag !== undefined && typeof say === "function")
@@ -3916,6 +3948,7 @@ LK.look = document.documentElement.dataset.look || "basic";
   });
   // Another page of the suite changed a shared setting: follow it here too.
   addEventListener("storage", e => {
+    if (e.key === "suite:look") { const R = document.documentElement; if (R.dataset.look === "arcade") R.dataset.skin = "booth"; skinLabel(); readColors(); chartDirty = true; }
     if (e.key === "suite:speed" && e.newValue) { U = e.newValue === "kmh" ? UNITS.metric : UNITS.imperial; applyUnits(); }
     if (e.key === "suite:dots" && e.newValue && typeof dotMode !== "undefined") { dotMode = e.newValue === "paint" ? "paint" : "class"; const b = $("dotToggle"); if (b) b.textContent = dotMode === "paint" ? "car's paint" : "class colour"; }
   });

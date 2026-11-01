@@ -233,7 +233,10 @@ def records(files, me=None):
 def session_summary(path, step=6):
     """Your laps in one .ibt (read at every `step`th sample): each lap's time as iRacing gave it
     (LapLastLapTime once it updates after the line) and whether it was clean (driven from the line,
-    no pit road, never off track, no new incident points). Raises ValueError for a file it cannot read."""
+    no pit road, never off track, no new incident points). Raises ValueError for a file it cannot read.
+    iRacing updates LapLastLapTime a moment AFTER the line: at the start of a lap it still holds the lap
+    before last. So a lap's time is the first new value after its own last sample, not after its first one
+    (that gave every lap the previous lap's time)."""
     import mmap
     size = os.path.getsize(path)
     with open(path, "rb") as f:
@@ -264,6 +267,7 @@ def session_summary(path, step=6):
                 lt = rd(r, "LapLastLapTime")
                 if cur is not None and lap is not None and lap == cur["lap"] + 1:
                     cur["end"] = r
+                    cur["lt_last"] = last_lt
                     laps.append(cur)
                     cur = None
                 if cur is None and lap is not None:
@@ -275,13 +279,14 @@ def session_summary(path, step=6):
                     if rd(r, "PlayerTrackSurface") == 0:
                         cur["off"] = True
                     cur["inc1"] = rd(r, "PlayerCarMyIncidentCount")
+                    last_lt = lt
             out = []
             for L in laps:
                 # the lap's time: LapLastLapTime once it changes, within 4 s after the line
                 t = None
                 for r in range(L["end"], min(rows, L["end"] + int(4 * tick)), 3):
                     v = rd(r, "LapLastLapTime")
-                    if v and v > 0 and v != L["lt_before"]:
+                    if v and v > 0 and v != L["lt_last"]:
                         t = v
                         break
                 if not t or not (20 < t < 3600):
@@ -294,9 +299,25 @@ def session_summary(path, step=6):
             mm.close()
 
 
+def lap_band(times):
+    """The Lap Analyzer's lapBand: the usual lap times, from the median and a robust spread (MAD).
+    Returns (lo, hi); with fewer than 4 times every time is usual."""
+    t = sorted(x for x in times if x and x > 0)
+    n = len(t)
+    if n < 4:
+        return float("-inf"), float("inf")
+    med = lambda a: a[len(a) // 2] if len(a) % 2 else (a[len(a) // 2 - 1] + a[len(a) // 2]) / 2
+    m = med(t)
+    rsd = 1.4826 * med(sorted(abs(x - m) for x in t))
+    return m - max(4 * rsd, 0.05 * m), m + max(3 * rsd, 0.01 * m)
+
+
 def summarize_laps(laps):
-    """Best, median and spread of the clean laps that are usual (within 7% of the quickest clean lap)."""
+    """Best, median and spread of the clean laps, as the Lap Analyzer counts them (CLAUDE.md, "clean laps"):
+    clean, a usual time (lap_band), and within 7% of the quickest of those."""
     clean = [x["t"] for x in laps if x["clean"]]
+    lo, hi = lap_band(clean)
+    clean = [t for t in clean if lo <= t <= hi]
     if clean:
         f = min(clean)
         clean = [t for t in clean if t <= f * 1.07]

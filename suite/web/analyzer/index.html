@@ -152,6 +152,7 @@ body:not([data-view=setup]) #liveNow{display:none}
 :root[data-look="pitwall"] .ctx a{border-radius:0!important;background:#000!important}
 :root[data-look="pitwall"] .gl b,:root[data-look="pitwall"] .last .st b,:root[data-look="pitwall"] .rcard .rb{font-family:var(--seg)!important;color:var(--you)}
 :root[data-look="pitwall"] footer{border-top:1px solid #1d2125;padding-top:12px}
+:root[data-look="pitwall"] #themeBtn,:root[data-look="pitwall"] .views .theme{display:none!important}
 :root[data-look="arcade"]{color-scheme:dark;
   --bg:#06080d;--card:#0c1018;--fg:#ffffff;--mut:#9aa4b8;--ln:#232a38;
   --you:#ffd400;--ref:#19d9ff;--bad:#ff3a2a;--good:#38f07a;--rear:#ff4fd8;--acc:#ffd400;--blue:#19d9ff;--warn:#ffb000;--pb:#b45cff;
@@ -193,9 +194,6 @@ body:not([data-view=setup]) #liveNow{display:none}
 :root[data-look="arcade"] h3,:root[data-look="arcade"] .comap>b{font:900 italic 23px/1.1 var(--num)!important;text-transform:uppercase;color:#fff;letter-spacing:.01em;text-shadow:var(--trail)}
 :root[data-look="arcade"] .tile,:root[data-look="arcade"] .cothing{background:#0a0e16!important;border:1px solid #273044!important;border-radius:2px!important}
 :root[data-look="arcade"] .cothing{position:relative;border-left:5px solid var(--you)!important}
-:root[data-look="arcade"] .cothings{counter-reset:lkr}
-:root[data-look="arcade"] .cothing{counter-increment:lkr}
-:root[data-look="arcade"] .cothing::after{content:counter(lkr);position:absolute;right:14px;top:-14px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#fff;color:#000;font:900 italic 20px/1 var(--num);box-shadow:0 0 0 3px #000,0 0 0 5px var(--you)}
 :root[data-look="arcade"] .cothing-n{font:900 italic 44px/1 var(--num)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
 :root[data-look="arcade"] .cothing-t>div:nth-child(2){font:800 italic 22px var(--num)!important}
 :root[data-look="arcade"] b[style*="font-size:22px"]{font:900 italic 38px/1.05 var(--num)!important;text-shadow:var(--trail)}
@@ -243,6 +241,13 @@ body:not([data-view=setup]) #liveNow{display:none}
 @keyframes lkIn{0%{opacity:0;transform:translateX(90px) skewX(-10deg);filter:blur(6px)}70%{opacity:1;filter:none}100%{transform:none}}
 :root[data-look="arcade"] .lk-hud .bar i{transition:width .5s cubic-bezier(.2,1,.3,1)}
 @media (prefers-reduced-motion:reduce){:root[data-look="arcade"] body::before{animation:none}}
+@media (max-width:640px){:root[data-look="arcade"] .lk-hud{grid-template-columns:1fr 1fr;gap:6px 12px;padding:8px 10px 10px}
+:root[data-look="arcade"] .lk-hud .clock{grid-column:1/-1;grid-row:1;font-size:34px;min-width:0}
+:root[data-look="arcade"] .lk-hud .nm{font-size:16px;gap:6px}
+:root[data-look="arcade"] .lk-hud .nm small{display:none}
+:root[data-look="arcade"] .lk-hud .plate{min-width:30px;height:30px;font-size:16px;border-radius:15px}
+:root[data-look="arcade"] .lk-hud .bar{height:12px}}
+:root[data-look="arcade"] #themeBtn,:root[data-look="arcade"] .views .theme{display:none!important}
 :root[data-look="arcade"] .lk-fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8990}
 :root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none;overflow:hidden;--k:#ffd400}
 :root[data-look="arcade"] .lk-pop .band{position:absolute;left:-12%;right:-12%;height:190px;top:calc(50% - 95px);transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(4,6,10,.92) 14% 86%,transparent);
@@ -315,6 +320,22 @@ body:not([data-view=setup]) #liveNow{display:none}
 :root[data-look="arcade"] .lk-punch{animation:lkPunch .22s cubic-bezier(.2,1.6,.4,1)}
 @keyframes lkPunch{0%{transform:scale(1.25) translateX(-6px)}100%{transform:none}}
 @media (prefers-reduced-motion:reduce){:root[data-look="arcade"] .lk-pop *,:root[data-look="arcade"] .lk-start,:root[data-look="arcade"] .lk-start *{animation-duration:.01s!important}}
+@media (max-width:640px){:root[data-look="arcade"] .lk-start{gap:22px;padding:0 12px}
+:root[data-look="arcade"] .lk-start .gantry{gap:7px;padding:10px}
+:root[data-look="arcade"] .lk-start .pod{gap:7px;padding:7px}
+:root[data-look="arcade"] .lk-start .pod i{width:32px;height:32px}
+:root[data-look="arcade"] .lk-start .grid{grid-template-columns:1fr auto;min-width:0;width:100%;transform:skewX(-6deg)}
+:root[data-look="arcade"] .lk-start .row small{grid-column:1/-1;padding-bottom:4px}
+:root[data-look="arcade"] .lk-start .row b{font-size:20px}
+:root[data-look="arcade"] .lk-start .row em{font-size:24px}
+:root[data-look="arcade"] .lk-start .word{font-size:110px;top:18%}
+:root[data-look="arcade"] .lk-start .gap b{font-size:30px}
+:root[data-look="arcade"] .lk-pop .t{font-size:clamp(28px,8.6vw,112px)}
+:root[data-look="arcade"] .lk-pop .s{font-size:20px;top:calc(50% + 46px)}
+:root[data-look="arcade"] .lk-pop .band{height:130px;top:calc(50% - 65px)}
+:root[data-look="arcade"] .lk-combo{right:10px;top:auto;bottom:16px;padding:8px 10px 6px}
+:root[data-look="arcade"] .lk-combo b{font-size:44px}
+:root[data-look="arcade"] .lk-combo span{font-size:12px}}
 /* ---- /LOOKS ---- */
 </style></head><body>
 <h1 id="appTitle">Lap Analyzer</h1>
@@ -374,7 +395,7 @@ try{if(typeof viewShown==='function')viewShown(document.body.dataset.view)}catch
 // Pit wall and Arcade only restyle the page and add a bar across the top (lkHud); the words stay the same.
 // Arcade adds an arcade racer's layer: call-outs, the start lights, a clean-lap streak and an announcer (suite:announcer,
 // off until a voice is picked; no sound effects: the sim has the racing sounds). Every number in the bar is one the page already shows.
-const LK = { look: 'basic', streak: 0, pos: null, flags: 0, gear: null, AC: null };
+const LK = { look: 'basic', streak: 0, tick: null, gear: null, AC: null };
 function lkGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v } catch (e) { return d } }
 function lkLook() { const v = lkGet('suite:look', 'basic'); return v === 'pitwall' || v === 'arcade' ? v : 'basic' }
 function lkApply() {
@@ -511,7 +532,7 @@ function lkStart(a, b) {
     T.push(setTimeout(() => lkSay('set', 0), 350 + 3 * 330));
     T.push(setTimeout(() => { v.classList.add('go'); pods.forEach(p => p.classList.remove('on')); lkSay('go', 0); lkFx('go') }, 350 + 4 * 330 + 650));
     T.push(setTimeout(end, 4300)) };
-  const wait = now => { if (!v.isConnected) return; calm = now - last < 50 ? calm + 1 : 0; last = now; if (calm >= 5 || now - t0 > 4000) go(); else requestAnimationFrame(wait) };
+  const wait = now => { if (!v.isConnected) return; calm = now - last < 70 ? calm + 1 : 0; last = now; if (calm >= 3 || now - t0 > 1500) go(); else requestAnimationFrame(wait) };
   requestAnimationFrame(wait);
 }
 // the streak counter on the side, bumped on every clean lap
@@ -535,16 +556,28 @@ function lkLap(rec, prior) {
   else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red', { say: e.why === 'incident' ? 'incident' : 'off', fx: 'off' }) }
   lkCombo(LK.streak);
 }
-// every telemetry tick: places gained, the white and checkered flags, gear changes
-function lkTick(v) {
-  if (!lkArcade() || !v) return;
+// pure: what a telemetry tick means in the game, against the last one seen (prev, null at first): places gained in a
+// race while racing (in practice and qualifying the order is by lap time, so a quicker lap is not an overtake), and the
+// white and checkered flags. The first tick of a session only sets the scene: opening the page mid-race calls nothing.
+// race: true in a race session, false in any other, null when not known (then no places are called).
+function lkTickEvents(prev, v, race) {
   const pos = v.PlayerCarClassPosition > 0 ? v.PlayerCarClassPosition : v.PlayerCarPosition > 0 ? v.PlayerCarPosition : null;
-  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { say: pos === 1 ? 'lead' : 'overtake', fx: 'pass' });
-  LK.pos = pos || LK.pos;
-  const f = v.SessionFlags || 0;
-  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
-  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'white chk', { say: pos === 1 ? 'win' : 'checkered', fx: 'pb' });
-  LK.flags = f;
+  const f = v.SessionFlags || 0, same = !!prev && prev.sess === v.SessionNum, out = [];
+  if (same) {
+    if (race === true && v.SessionState === 4 && pos && prev.pos && pos < prev.pos && !v.OnPitRoad) out.push({ kind: 'pass', from: prev.pos, to: pos });
+    if ((f & 0x2) && !(prev.flags & 0x2)) out.push({ kind: 'white' });
+    if ((f & 0x1) && !(prev.flags & 0x1)) out.push({ kind: 'checkered', pos, win: race === true && pos === 1 });
+  }
+  return { out, next: { sess: v.SessionNum, pos: pos || (same ? prev.pos : null), flags: f } };
+}
+// every telemetry tick: the events above as call-outs, and the gear display's punch
+function lkTick(v, race) {
+  if (!v) return; const r = lkTickEvents(LK.tick, v, race == null ? null : race); LK.tick = r.next; if (!lkArcade()) return;
+  for (const e of r.out) {
+    if (e.kind === 'pass') lkPop('OVERTAKE!', 'P' + e.from + ' \u2192 P' + e.to, 'cyan', { say: e.to === 1 ? 'lead' : 'overtake', fx: 'pass' });
+    if (e.kind === 'white') lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
+    if (e.kind === 'checkered') lkPop('FINISH!', e.pos ? 'P' + e.pos : '', 'white chk', { say: e.win ? 'win' : 'checkered', fx: 'pb' });
+  }
   if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } }
   LK.gear = v.Gear;
 }
@@ -575,8 +608,8 @@ addEventListener('storage', e => { if (e.key === 'suite:look' || e.key === 'suit
 function lkData(){const X=typeof COACH!=='undefined'&&COACH.last,m=(typeof LIVE!=='undefined'&&LIVE.meta)||{},ib=typeof IB!=='undefined'&&IB.a,live=!!(typeof LIVE!=='undefined'&&LIVE.ws&&LIVE.v&&Date.now()-(LIVE.at||0)<5000);
 const name=m.who||(typeof F!=='undefined'&&F.a&&F.a.who)||'';
 return{name,car:(live&&m.carName)||(ib&&ib.carName)||m.carName||'',track:(live&&m.track)||(ib&&ib.track)||m.track||'',avg:X?X.avg.lap:null,best:X?X.best.lap:null,live,status:live?'Car on track':ib?'Your file':'Not live'}}
-// Coaching opened with a new result: the start lights (Arcade), once per result
-function lkCoach(){const X=COACH.last;if(!X||LK.look!=='arcade')return;const k=X.avg.lap.toFixed(3)+'|'+X.best.lap.toFixed(3);if(LK.vsKey===k)return;LK.vsKey=k;
+// Coaching opened: the start lights (Arcade), once each time the view opens (not again for each new lap)
+function lkCoach(){const X=COACH.last;if(!X||LK.look!=='arcade')return;if(LK.started)return;LK.started=true;
 const name=lkShort(lkData().name)||'You';lkStart({label:'Your average lap',name,time:X.avg.lap},{label:'Against',name:(X.bestLab||'your best lap').replace(/ \([^)]*\)$/,''),time:X.best.lap})}
 // ---- /looks ----
 //CORE
@@ -1460,8 +1493,12 @@ tiles+chartGrid+`<div style="overflow-x:auto"><table>${head}${body}</table></div
 function renderSession(){const el=$('sess');if(!el)return;const prev=el.querySelector('details'),open=prev?prev.open:true;const h=IB.a?sessionHtml():'';
 el.innerHTML=h?`<details ${open?'open':''} style="margin:0"><summary style="cursor:pointer;margin-bottom:8px"><b>Session</b> <span class="m">every lap in your file</span></summary>${h}</details>`:'';el.hidden=!h;
 el.querySelectorAll('[data-sj]').forEach(b=>b.onclick=()=>{pick('a',$('za'),+b.dataset.sj);run();renderOwn()})}
-let OWN_CORNERS_OPEN=false;
-function renderOwn(){renderSession();try{renderFiles()}catch(e){}try{renderCoach()}catch(e){}const st=$('start');if(st)st.hidden=!!(IB.a||(F.a&&F.b));const el=$('own');const prev=el.querySelector('details.ownWrap'),open=prev?prev.open:true;// One list of your laps: the session table (every lap, sectors), then how they compare corner by corner.
+let OWN_CORNERS_OPEN=false,OWN_STALE=false;
+// Views not on screen are drawn when they open (viewShown), and nothing is drawn while kept files are opened again:
+// "your laps" and Coaching each took seconds, and were drawn several times on every page load.
+const onView=v=>document.body.dataset.view===v,restoring=()=>{try{return KEEP.restoring}catch(e){return false}};
+function renderOwn(){renderSession();try{renderFiles()}catch(e){}try{renderCoach()}catch(e){}const st=$('start');if(st)st.hidden=!!(IB.a||(F.a&&F.b));
+if(restoring()||!onView('laps')){OWN_STALE=true;if(!restoring()){renderSetup();try{if(onView('setup'))renderBalance()}catch(e){console.error('balance',e)}}return}OWN_STALE=false;const el=$('own');const prev=el.querySelector('details.ownWrap'),open=prev?prev.open:true;// One list of your laps: the session table (every lap, sectors), then how they compare corner by corner.
 const sh=IB.a?(()=>{try{return sessionHtml()}catch(e){return ''}})():'',oh=ownHtml(),h=sh+(oh?(sh?'<details class="ownCorners" style="margin-top:14px"'+(OWN_CORNERS_OPEN?' open':'')+'><summary style="cursor:pointer"><b>Corner by corner, lap after lap</b> <span class="m">where each lap lost time, consistency, traces and your test log</span></summary>'+oh+'</details>':oh):'');
 el.innerHTML=h?`<details class="ownWrap" ${open?'open':''} style="margin:0"><summary style="cursor:pointer;margin-bottom:8px"><b>Your laps</b> <span class="m">every lap in your file</span></summary>${h}</details>`:'';el.hidden=!h;
 el.querySelectorAll('[data-sj]').forEach(b=>b.onclick=()=>{pick('a',$('za'),+b.dataset.sj);run();renderOwn()});
@@ -1529,13 +1566,16 @@ else if(was==='connecting')LIVE.err='No bridge answered at '+liveUrl()+'. Make s
 ws.onerror=()=>{}}
 function liveDisconnect(){LIVE.userOff=true;if(LIVE.ws)LIVE.ws.close()}
 function liveMsg(m){if(m.type==='hello'){LIVE.mode=m.mode;LIVE.remote=!!m.remote;liveRender()}else if(m.type==='status'){LIVE.sim=!!m.connected;liveRender()}else if(m.type==='session'&&typeof m.yaml==='string')liveSession(m.yaml);else if(m.type==='tick'&&m.v)liveTick(m.v)}
-function liveSession(y){if(!LIVE.startedAt)LIVE.startedAt=Date.now();try{LIVE.secs=[...String(y).matchAll(/SectorStartPct:\s*([\d.]+)/g)].map(m=>+m[1]).filter(p=>p>0&&p<1).sort((a,b)=>a-b);const il=/IncidentLimit:\s*(\d+)/.exec(y);LIVE.incLimit=il?+il[1]:null}catch(e){}try{ghSession(y)}catch(e){console.error('driver laps',e)}y=plain(y);LIVE.yaml=y;LIVE.meta=liveMeta(y);const t=setupTree(y);if(!t)return;const s=liveSig(t),first=!LIVE.setup;
+function liveSession(y){if(!LIVE.startedAt)LIVE.startedAt=Date.now();try{LIVE.race=liveRaceSessions(y)}catch(e){}try{LIVE.secs=[...String(y).matchAll(/SectorStartPct:\s*([\d.]+)/g)].map(m=>+m[1]).filter(p=>p>0&&p<1).sort((a,b)=>a-b);const il=/IncidentLimit:\s*(\d+)/.exec(y);LIVE.incLimit=il?+il[1]:null}catch(e){}try{ghSession(y)}catch(e){console.error('driver laps',e)}y=plain(y);LIVE.yaml=y;LIVE.meta=liveMeta(y);const t=setupTree(y);if(!t)return;const s=liveSig(t),first=!LIVE.setup;
 if(s!==LIVE.sig){if(LIVE.setup&&LIVE.cur)LIVE.cur.pit=true;   /* a setup only changes in the garage: the lap in progress is not a clean lap of either run */
 const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tree:t,diff:prev?liveDiff(prev.tree,t):[],at:Date.now()});LIVE.sig=s;
 if(LIVE.meta.carPath)try{libRecord({carPath:LIVE.meta.carPath,carName:LIVE.meta.carName,setup:t},'live|'+(LIVE.meta.sid||'session')+'|'+LIVE.vers.length)}catch(e){}
 LIVE.setup=t;if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}else{LIVE.setup=t;if(first){if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}}}
 function liveNewLap(lap,v){if(v.OnPitRoad)LIVE.stint=0;return{lap,st0:v.SessionTime,f0:v.FuelLevel!=null?v.FuelLevel:null,tt:v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp!=null?v.TrackTemp:null,stint:(LIVE.stint=(LIVE.stint||0)+1),d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
-function liveTick(v){LIVE.v=v;LIVE.at=Date.now();try{lkTick(v)}catch(e){}try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
+// pure: which sessions of the weekend are races ({SessionNum: true|false}), from the session YAML (Arcade's
+// overtake call-outs are for races only: elsewhere the order is by lap time)
+function liveRaceSessions(y){const out={},s=String(y),i=s.indexOf('Sessions:');if(i<0)return out;const re=/SessionNum:\s*(\d+)[\s\S]*?SessionType:\s*([^\n]+)/g;re.lastIndex=i;let m;while((m=re.exec(s)))out[+m[1]]=/race/i.test(m[2]);return out}
+function liveTick(v){LIVE.v=v;LIVE.at=Date.now();try{lkTick(v,LIVE.race?(v.SessionNum in LIVE.race?LIVE.race[v.SessionNum]:null):null)}catch(e){}try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
 const p=LIVE.pend;if(p&&v.LapLastLapTime>0&&v.LapLastLapTime!==p.stale){const d=v.LapLastLapTime-p.time;if(d>-0.1&&d<1)p.time=v.LapLastLapTime;LIVE.pend=null;liveRender()}
 if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFinish(LIVE.cur,v);LIVE.cur=liveNewLap(v.Lap,v)}
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
@@ -1553,7 +1593,8 @@ function liveFrame(){if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE
 function liveFinish(c,v){const b=c.b,n=b.Speed.length,span=v.SessionTime!=null&&c.st0!=null?v.SessionTime-c.st0:null,full=c.d0<0.05&&c.lastD>0.95&&(c.cov||0)>0.9&&(span==null||Math.abs(c.lastT-span)<1.5),valid=full&&!c.pit&&!c.away&&!c.inc&&!c.off&&!c.reset&&n>=50&&c.lastT>0;
 const mean=a=>{const x=a.filter(y=>y!=null);return x.length?x.reduce((s,y)=>s+y,0)/x.length:null};let st=null;
 if(LIVE_TIRES.every(k=>b.rh[k].every(x=>x!=null))){const ext={};LIVE_TIRES.forEach(k=>ext[k+'rideHeight']=Float64Array.from(b.rh[k]));st=aeroRhStats({n,Speed:Float64Array.from(b.Speed),Brake:Float64Array.from(b.Brake),LatG:Float64Array.from(b.LatG),ext,lapNum:c.lap})}
-const why=valid?'':c.reset?'active reset':span!=null&&c.lastT>0&&Math.abs(c.lastT-span)>=1.5?'lap clock off (start or formation lap)':c.inc?'incident':c.off?'off track':c.pit?'pit lane':c.away?'not on track':'not a full lap';
+const covered=c.d0<0.05&&c.lastD>0.95&&(c.cov||0)>0.9;   /* a lap joined part-way (the page opened mid-lap) is not a full lap, whatever its clock says */
+const why=valid?'':c.reset?'active reset':covered&&span!=null&&c.lastT>0&&Math.abs(c.lastT-span)>=1.5?'lap clock off (start or formation lap)':c.inc?'incident':c.off?'off track':c.pit?'pit lane':c.away?'not on track':'not a full lap';
 const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,stats:teleStatsOut(c),sx:full&&c.sx&&LIVE.secs&&c.sx.length===LIVE.secs.length?c.sx.slice():null,fuel:c.f0!=null&&v.FuelLevel!=null&&!c.pit&&!c.reset&&full&&c.f0>v.FuelLevel?c.f0-v.FuelLevel:null,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb),tt:c.tt!=null?c.tt:null,at:v.AirTemp!=null?v.AirTemp:null};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR),LatG:pick(b.LatG),yaw:pick(b.yaw)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
@@ -2280,7 +2321,15 @@ if(S.length>=4){cold=c=>c.stint!=null&&c.stint<=2;add('cold','Cold tyres','the f
 const mx=Math.max(...S),from=Math.max(6,Math.ceil(mx*2/3));late=c=>c.stint!=null&&c.stint>=from;add('late','Late in the stint','lap '+from+' or later of a stint (tyre wear)',late)}
 if(T.length>=4){const lo=Math.min(...T),hi=Math.max(...T);if(hi-lo>=3){const m=(lo+hi)/2;add('hot','Hot track','track above '+m.toFixed(0)+' C',c=>c.tt!=null&&c.tt>m);add('cool','Cool track','track below '+m.toFixed(0)+' C',c=>c.tt!=null&&c.tt<=m)}}
 if(Object.keys(G).length)add('optimal','Optimal conditions','warm tyres, not heavy fuel, not late in the stint',c=>!heavy(c)&&!cold(c)&&!late(c));return G}
-function coachRun(){const srcs=coachSources(),S=srcs.find(x=>x.id===COACH.src)||srcs[0];if(!S)return null;COACH.src=S.id;const laps=S.laps();if(laps.length<2)return null;
+// Coaching's result is kept while nothing it is built from changes: a click on the map's tabs, a corner name or a
+// visit to another view no longer redoes seconds of work (every lap read from the file and compared again).
+const OID=new WeakMap();let oidN=0;const oid=o=>o&&typeof o==='object'?(OID.get(o)||(OID.set(o,++oidN),oidN)):0;
+function coachKey(S){const lv=S.key?(coachLiveLoad()[S.key]||[]):null,g=COACH.g61;
+return [S.id,S.id==='ibt'?oid(IB.a):'',lv?lv.length+':'+(lv.length?lv[lv.length-1].lap:''):'',g.length+':'+oid(g[g.length-1]),COACH.grp||'',COACH.to||'',COACH.to==='ref'?oid(F.b)+':'+!!SELF:'',JSON.stringify(U())].join('|')}
+function coachRun(){const srcs=coachSources(),S=srcs.find(x=>x.id===COACH.src)||srcs[0];if(!S)return null;COACH.src=S.id;
+const M=COACH.memo,k0=coachKey(S);if(M&&M.key===k0){try{nameCorners(M.X.C.R.cs,coTrack(S))}catch(e){}return M.X}
+const X=coachRun0(S);COACH.memo=X?{key:coachKey(S),X}:null;return X}
+function coachRun0(S){const laps=S.laps();if(laps.length<2)return null;
 const G=coachConditions(laps.map(l=>l.cond)),pick=id=>id&&G[id]?G[id].idx.map(i=>laps[i]):null;COACH.groups=G;if(COACH.grp&&!G[COACH.grp])COACH.grp='';
 const mine=pick(COACH.grp)||laps,own=mine.slice().sort((p,q)=>p.lap-q.lap);let best=own[0],bestLab='your best lap ('+ft(best.lap)+')';
 if(COACH.to.startsWith('grp:')){const g=G[COACH.to.slice(4)],L=pick(COACH.to.slice(4));if(g&&L&&COACH.to.slice(4)!==COACH.grp){const A=avgLap(L,'Average of '+g.lab.toLowerCase()+' laps ('+L.length+')');const C=coachCompare(avgLap(own),A,own);nameCorners(C.R.cs,coTrack(S));return{S,laps:own,avg:avgLap(own),best:A,bestLab:'your average on '+g.lab.toLowerCase()+' laps ('+L.length+' laps, '+ft(A.lap)+')',C,n:own.length,G}}COACH.to='best'}
@@ -2331,6 +2380,8 @@ return '<svg id="coTrace" data-w="'+W+'" viewBox="0 0 '+W+' '+H+'" style="width:
 // A new live lap rebuilds Coaching, which would stop a replay and drop a zoomed corner. While one is
 // playing, paused or zoomed in, the new lap waits; it is shown when the replay ends or you go back to the lap.
 function ghBusy(){return GHOST.on||GHOST.pos>0||GHOST.mode!=='lap'}
+// off the Coaching view, only the top bar (Pit wall and Arcade looks) uses Coaching's result: work it out once, after a pause
+function coachSoon(){if(typeof LK==='undefined'||LK.look==='basic')return;clearTimeout(COACH.soon);COACH.soon=setTimeout(()=>{if(onView('coach')||restoring())return;try{const X=coachRun();if(X)COACH.last=X;lkHud()}catch(e){console.error('coach',e)}},1500)}
 function coachLater(){if(typeof GHOST!=='undefined'&&ghBusy()){COACH.waiting=true;const g=document.getElementById('coGap');if(g&&!/new lap/.test(g.title))g.title='A new lap is in: the map takes it when this replay ends.';return}COACH.waiting=false;renderCoach()}
 function ghFlush(){if(COACH.waiting&&!ghBusy())setTimeout(()=>{if(COACH.waiting&&!ghBusy()){COACH.waiting=false;renderCoach()}},0)}
 function ghStop(done){GHOST.on=false;cancelAnimationFrame(GHOST.raf);GHOST.pos=done?0:GHOST.pos;if(done)ghFlush();const b=document.getElementById('coPlay');if(b)b.textContent=done?(GHOST.mode==='corner'?'▶ Replay the corner':'▶ Play again'):'▶ Carry on'}
@@ -2697,7 +2748,7 @@ const all=$('flGAll');if(all)all.onclick=()=>flOpenAll(gSame.map(f=>f.id));const
 const pk=$('flPick');if(pk)pk.onclick=()=>flFolder('pick');const ad=$('flAdd');if(ad)ad.onclick=()=>flFolder('add',$('flPath').value);el.querySelectorAll('[data-flrm]').forEach(a=>a.onclick=e=>{e.preventDefault();flFolder('remove',a.dataset.flrm)})}
 // Switch view from inside the page (e.g. Coaching's 'open these laps in the Lap Analyzer'): the same path as the tabs.
 function viewGo(v){try{const q=new URLSearchParams(location.search);if(v)q.set('view',v);else q.delete('view');history.pushState(null,'',location.pathname+(q.toString()?'?'+q:''))}catch(e){}if(window.showView)window.showView(v||'')}
-function renderCoach(){try{keepG61()}catch(e){}const el=$('coach');if(!el)return;try{el.innerHTML=coachHtml2()}catch(e){console.error('coach',e);el.innerHTML=''}el.hidden=false;el.querySelectorAll('[data-mapmode]').forEach(b=>b.onclick=()=>{COACH.mapMode=b.dataset.mapmode;renderCoach()});try{wireCornerNames(el)}catch(e){console.error('corner names',e)}try{wireGhost(el)}catch(e){console.error('ghost',e)}
+function renderCoach(){try{keepG61()}catch(e){}const el=$('coach');if(!el)return;if(restoring())return;if(!onView('coach')){COACH.stale=true;coachSoon();return}COACH.stale=false;try{el.innerHTML=coachHtml2()}catch(e){console.error('coach',e);el.innerHTML=''}el.hidden=false;el.querySelectorAll('[data-mapmode]').forEach(b=>b.onclick=()=>{COACH.mapMode=b.dataset.mapmode;renderCoach()});try{wireCornerNames(el)}catch(e){console.error('corner names',e)}try{wireGhost(el)}catch(e){console.error('ghost',e)}
 const s=$('coSrc'),t=$('coTo'),d=$('coDrop'),cl=$('coClr'),op=$('coOpen');if(s)s.onchange=()=>{COACH.src=s.value;renderCoach()};if(t)t.onchange=()=>{COACH.to=t.value;renderCoach()};
 const cg=$('coGrp'),cv=$('coVs');if(cg)cg.onchange=()=>{COACH.grp=cg.value;renderCoach()};if(cv)cv.onchange=()=>{COACH.to=cv.value||'best';renderCoach()};
 el.querySelectorAll('[data-prac]').forEach(b=>b.onclick=()=>pracToggle(+b.dataset.prac));renderPractice();{const cd=$('coCorners');if(cd)cd.ontoggle=()=>{COACH.cornersOpen=cd.open}}
@@ -3128,12 +3179,12 @@ KEEP.restoring=true;try{
 if(a&&a.files&&a.files[0]){await load(keepFile(a.files[0]),'a',$('za'));if(a.idx!=null&&IB.a&&IB.a.laps[a.idx])pick('a',$('za'),a.idx)}
 if(b&&b.files&&b.files.length){await goMany(b.files.map(keepFile));if(b.idx!=null&&IB.b&&IB.b.laps[b.idx])pick('b',$('zb'),b.idx)}
 if(g&&g.length){COACH.g61=g.map(x=>{const l=parse(new TextDecoder().decode(x.buf),x.name);l._src=x;return l});KEEP.g61sig=g.map(x=>x.name+'|'+x.buf.byteLength).join(',')}
-run();renderOwn();try{renderCoach()}catch(e){}
+KEEP.restoring=false;run();renderOwn();try{renderCoach()}catch(e){}
 const n=$('err');if(n&&!n.textContent)n.innerHTML='<span class="m">Your files from earlier are open again. Clear a box to start over.</span>'}
 catch(e){console.warn('keep restore',e)}finally{KEEP.restoring=false}}
 
 // a view shown without a reload: draw what it shows (canvases sized while hidden draw at zero width)
-function viewShown(v){if(v==='live'){try{teleBuild(true)}catch(e){console.error('live view',e)}}else if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0);try{lkHud();lkEnter();if(v==='coach')lkCoach()}catch(e){}}
+function viewShown(v){if(v==='live'){try{teleBuild(true)}catch(e){console.error('live view',e)}}else if(v==='coach'){if(typeof LK!=='undefined')LK.started=false;try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0);try{lkHud();lkEnter();if(v==='coach')lkCoach()}catch(e){}}
 try{renderSetup()}catch(e){}
 try{keepRestore()}catch(e){}
 try{lkApply();setInterval(()=>{try{lkHud()}catch(e){}},2000)}catch(e){}

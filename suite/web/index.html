@@ -126,6 +126,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 :root[data-look="pitwall"] .ctx a{border-radius:0!important;background:#000!important}
 :root[data-look="pitwall"] .gl b,:root[data-look="pitwall"] .last .st b,:root[data-look="pitwall"] .rcard .rb{font-family:var(--seg)!important;color:var(--you)}
 :root[data-look="pitwall"] footer{border-top:1px solid #1d2125;padding-top:12px}
+:root[data-look="pitwall"] #themeBtn,:root[data-look="pitwall"] .views .theme{display:none!important}
 :root[data-look="arcade"]{color-scheme:dark;
   --bg:#06080d;--card:#0c1018;--fg:#ffffff;--mut:#9aa4b8;--ln:#232a38;
   --you:#ffd400;--ref:#19d9ff;--bad:#ff3a2a;--good:#38f07a;--rear:#ff4fd8;--acc:#ffd400;--blue:#19d9ff;--warn:#ffb000;--pb:#b45cff;
@@ -167,9 +168,6 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 :root[data-look="arcade"] h3,:root[data-look="arcade"] .comap>b{font:900 italic 23px/1.1 var(--num)!important;text-transform:uppercase;color:#fff;letter-spacing:.01em;text-shadow:var(--trail)}
 :root[data-look="arcade"] .tile,:root[data-look="arcade"] .cothing{background:#0a0e16!important;border:1px solid #273044!important;border-radius:2px!important}
 :root[data-look="arcade"] .cothing{position:relative;border-left:5px solid var(--you)!important}
-:root[data-look="arcade"] .cothings{counter-reset:lkr}
-:root[data-look="arcade"] .cothing{counter-increment:lkr}
-:root[data-look="arcade"] .cothing::after{content:counter(lkr);position:absolute;right:14px;top:-14px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#fff;color:#000;font:900 italic 20px/1 var(--num);box-shadow:0 0 0 3px #000,0 0 0 5px var(--you)}
 :root[data-look="arcade"] .cothing-n{font:900 italic 44px/1 var(--num)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
 :root[data-look="arcade"] .cothing-t>div:nth-child(2){font:800 italic 22px var(--num)!important}
 :root[data-look="arcade"] b[style*="font-size:22px"]{font:900 italic 38px/1.05 var(--num)!important;text-shadow:var(--trail)}
@@ -217,6 +215,13 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 @keyframes lkIn{0%{opacity:0;transform:translateX(90px) skewX(-10deg);filter:blur(6px)}70%{opacity:1;filter:none}100%{transform:none}}
 :root[data-look="arcade"] .lk-hud .bar i{transition:width .5s cubic-bezier(.2,1,.3,1)}
 @media (prefers-reduced-motion:reduce){:root[data-look="arcade"] body::before{animation:none}}
+@media (max-width:640px){:root[data-look="arcade"] .lk-hud{grid-template-columns:1fr 1fr;gap:6px 12px;padding:8px 10px 10px}
+:root[data-look="arcade"] .lk-hud .clock{grid-column:1/-1;grid-row:1;font-size:34px;min-width:0}
+:root[data-look="arcade"] .lk-hud .nm{font-size:16px;gap:6px}
+:root[data-look="arcade"] .lk-hud .nm small{display:none}
+:root[data-look="arcade"] .lk-hud .plate{min-width:30px;height:30px;font-size:16px;border-radius:15px}
+:root[data-look="arcade"] .lk-hud .bar{height:12px}}
+:root[data-look="arcade"] #themeBtn,:root[data-look="arcade"] .views .theme{display:none!important}
 :root[data-look="arcade"] .lk-fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8990}
 :root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none;overflow:hidden;--k:#ffd400}
 :root[data-look="arcade"] .lk-pop .band{position:absolute;left:-12%;right:-12%;height:190px;top:calc(50% - 95px);transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(4,6,10,.92) 14% 86%,transparent);
@@ -289,6 +294,22 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 :root[data-look="arcade"] .lk-punch{animation:lkPunch .22s cubic-bezier(.2,1.6,.4,1)}
 @keyframes lkPunch{0%{transform:scale(1.25) translateX(-6px)}100%{transform:none}}
 @media (prefers-reduced-motion:reduce){:root[data-look="arcade"] .lk-pop *,:root[data-look="arcade"] .lk-start,:root[data-look="arcade"] .lk-start *{animation-duration:.01s!important}}
+@media (max-width:640px){:root[data-look="arcade"] .lk-start{gap:22px;padding:0 12px}
+:root[data-look="arcade"] .lk-start .gantry{gap:7px;padding:10px}
+:root[data-look="arcade"] .lk-start .pod{gap:7px;padding:7px}
+:root[data-look="arcade"] .lk-start .pod i{width:32px;height:32px}
+:root[data-look="arcade"] .lk-start .grid{grid-template-columns:1fr auto;min-width:0;width:100%;transform:skewX(-6deg)}
+:root[data-look="arcade"] .lk-start .row small{grid-column:1/-1;padding-bottom:4px}
+:root[data-look="arcade"] .lk-start .row b{font-size:20px}
+:root[data-look="arcade"] .lk-start .row em{font-size:24px}
+:root[data-look="arcade"] .lk-start .word{font-size:110px;top:18%}
+:root[data-look="arcade"] .lk-start .gap b{font-size:30px}
+:root[data-look="arcade"] .lk-pop .t{font-size:clamp(28px,8.6vw,112px)}
+:root[data-look="arcade"] .lk-pop .s{font-size:20px;top:calc(50% + 46px)}
+:root[data-look="arcade"] .lk-pop .band{height:130px;top:calc(50% - 65px)}
+:root[data-look="arcade"] .lk-combo{right:10px;top:auto;bottom:16px;padding:8px 10px 6px}
+:root[data-look="arcade"] .lk-combo b{font-size:44px}
+:root[data-look="arcade"] .lk-combo span{font-size:12px}}
 /* ---- /LOOKS ---- */
 </style></head><body><div class="wrap">
 <header><h1>iRacing <span>Suite</span></h1><span class="ver"><span id="ver"></span><span id="verBuild"></span></span><details class="sets" id="sets"><summary>⚙ Settings</summary><div class="sets-body">
@@ -301,7 +322,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <label>Announcer <select id="setVoice"><option value="off">off</option><option value="f">a woman's voice</option><option value="m">a man's voice</option></select></label>
 <label>Team name <input id="setTeam" maxlength="40" placeholder="optional"></label>
 <label>Car number <input id="setPlate" maxlength="4" placeholder="optional" style="width:70px"></label>
-<p class="sets-note">Style: Pit wall and Arcade restyle every page of the suite (Arcade adds pop-ups and, if switched on, sounds). Team name and car number show in their bar.</p>
+<p class="sets-note">Style: Pit wall and Arcade restyle every page of the suite (Arcade adds call-outs and, if you pick a voice, an announcer). Team name and car number show in their bar.</p>
 </div></details><button class="theme" id="themeBtn" type="button"></button></header>
 <div class="status wait" id="status"><div class="dot"></div><div class="st-main"><div class="st-title" id="stTitle">Starting...</div><div class="st-sub" id="stSub"></div></div><div id="stBtns"></div></div>
 <div class="ctx hidden" id="ctx"></div>
@@ -331,7 +352,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 // Pit wall and Arcade only restyle the page and add a bar across the top (lkHud); the words stay the same.
 // Arcade adds an arcade racer's layer: call-outs, the start lights, a clean-lap streak and an announcer (suite:announcer,
 // off until a voice is picked; no sound effects: the sim has the racing sounds). Every number in the bar is one the page already shows.
-const LK = { look: 'basic', streak: 0, pos: null, flags: 0, gear: null, AC: null };
+const LK = { look: 'basic', streak: 0, tick: null, gear: null, AC: null };
 function lkGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v } catch (e) { return d } }
 function lkLook() { const v = lkGet('suite:look', 'basic'); return v === 'pitwall' || v === 'arcade' ? v : 'basic' }
 function lkApply() {
@@ -468,7 +489,7 @@ function lkStart(a, b) {
     T.push(setTimeout(() => lkSay('set', 0), 350 + 3 * 330));
     T.push(setTimeout(() => { v.classList.add('go'); pods.forEach(p => p.classList.remove('on')); lkSay('go', 0); lkFx('go') }, 350 + 4 * 330 + 650));
     T.push(setTimeout(end, 4300)) };
-  const wait = now => { if (!v.isConnected) return; calm = now - last < 50 ? calm + 1 : 0; last = now; if (calm >= 5 || now - t0 > 4000) go(); else requestAnimationFrame(wait) };
+  const wait = now => { if (!v.isConnected) return; calm = now - last < 70 ? calm + 1 : 0; last = now; if (calm >= 3 || now - t0 > 1500) go(); else requestAnimationFrame(wait) };
   requestAnimationFrame(wait);
 }
 // the streak counter on the side, bumped on every clean lap
@@ -492,16 +513,28 @@ function lkLap(rec, prior) {
   else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red', { say: e.why === 'incident' ? 'incident' : 'off', fx: 'off' }) }
   lkCombo(LK.streak);
 }
-// every telemetry tick: places gained, the white and checkered flags, gear changes
-function lkTick(v) {
-  if (!lkArcade() || !v) return;
+// pure: what a telemetry tick means in the game, against the last one seen (prev, null at first): places gained in a
+// race while racing (in practice and qualifying the order is by lap time, so a quicker lap is not an overtake), and the
+// white and checkered flags. The first tick of a session only sets the scene: opening the page mid-race calls nothing.
+// race: true in a race session, false in any other, null when not known (then no places are called).
+function lkTickEvents(prev, v, race) {
   const pos = v.PlayerCarClassPosition > 0 ? v.PlayerCarClassPosition : v.PlayerCarPosition > 0 ? v.PlayerCarPosition : null;
-  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { say: pos === 1 ? 'lead' : 'overtake', fx: 'pass' });
-  LK.pos = pos || LK.pos;
-  const f = v.SessionFlags || 0;
-  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
-  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'white chk', { say: pos === 1 ? 'win' : 'checkered', fx: 'pb' });
-  LK.flags = f;
+  const f = v.SessionFlags || 0, same = !!prev && prev.sess === v.SessionNum, out = [];
+  if (same) {
+    if (race === true && v.SessionState === 4 && pos && prev.pos && pos < prev.pos && !v.OnPitRoad) out.push({ kind: 'pass', from: prev.pos, to: pos });
+    if ((f & 0x2) && !(prev.flags & 0x2)) out.push({ kind: 'white' });
+    if ((f & 0x1) && !(prev.flags & 0x1)) out.push({ kind: 'checkered', pos, win: race === true && pos === 1 });
+  }
+  return { out, next: { sess: v.SessionNum, pos: pos || (same ? prev.pos : null), flags: f } };
+}
+// every telemetry tick: the events above as call-outs, and the gear display's punch
+function lkTick(v, race) {
+  if (!v) return; const r = lkTickEvents(LK.tick, v, race == null ? null : race); LK.tick = r.next; if (!lkArcade()) return;
+  for (const e of r.out) {
+    if (e.kind === 'pass') lkPop('OVERTAKE!', 'P' + e.from + ' \u2192 P' + e.to, 'cyan', { say: e.to === 1 ? 'lead' : 'overtake', fx: 'pass' });
+    if (e.kind === 'white') lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
+    if (e.kind === 'checkered') lkPop('FINISH!', e.pos ? 'P' + e.pos : '', 'white chk', { say: e.win ? 'win' : 'checkered', fx: 'pb' });
+  }
   if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } }
   LK.gear = v.Gear;
 }
@@ -529,7 +562,7 @@ document.addEventListener('click', lkPreload, true);
 addEventListener('storage', e => { if (e.key === 'suite:look' || e.key === 'suite:team' || e.key === 'suite:plate') lkApply() });
 // The bar's numbers on this page: your last session (best and median lap), and the car and track when iRacing is running
 function lkData(){const S=LK.last||{},live=!!(typeof info!=='undefined'&&info.connected),m=typeof meta!=='undefined'&&meta||{};
-return{name:S.driver||'',car:(live&&m.car)||S.car||'',track:(live&&m.track)||S.track||'',best:S.best||null,avg:S.median||null,midLabel:'median lap',live,status:live?(info.mode==='replay'?'Replaying a file':'iRacing running'):'Your last session'}}
+return{name:S.driver||'',car:(live&&m.car)||S.car||'',track:(live&&m.track)||S.track||'',best:S.bestIsClean&&S.best||null,avg:S.median||null,midLabel:'median lap',live,status:live?(info.mode==='replay'?'Replaying a file':'iRacing running'):'Your last session'}}
 // ---- /looks ----
 const $=id=>document.getElementById(id);let info={mode:'live',connected:false},meta=null,lastTick=0;
 const esc=s=>String(s||'').replace(/[<>&"]/g,'');

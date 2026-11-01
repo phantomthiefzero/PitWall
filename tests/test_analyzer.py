@@ -1052,6 +1052,9 @@ function lap(no, secs, opt) {
     T += 1 / 60; fuel -= opt.burn / n;
   }
 }
+// the page opens mid-lap: lap -1 is seen from 60 % with 40 s already on its clock
+for (let i = 0; i < 1440; i++) liveTick({ Lap: -1, LapDistPct: 0.6 + i / 3600, LapCurrentLapTime: 40 + i / 60, LapLastLapTime: -1, Speed: 50, Throttle: 1, OnPitRoad: false, SessionTime: T + i / 60, PlayerTrackSurface: 3, PlayerCarMyIncidentCount: 0, IsOnTrack: true });
+T += 24;
 lap(0, 70, { clockFrom: 66, burn: 1.5 });       // formation: the clock runs only for the last 4 s
 lap(1, 60, { burn: 2.0 });
 lap(2, 60.5, { burn: 2.0, off: true });
@@ -1073,6 +1076,7 @@ class LiveLapsTest(unittest.TestCase):
 
     def test_which_laps_count(self):
         laps = {l[0]: (l[1], l[2]) for l in self.r["laps"]}
+        self.assertEqual(laps[-1], (False, "not a full lap"))         # joined at 60 %: not a "clock off" lap
         self.assertFalse(laps[0][0])                                  # formation: 4 s on the clock
         self.assertEqual(laps[0][1], "lap clock off (start or formation lap)")
         self.assertEqual(laps[1], (True, ""))
@@ -2147,3 +2151,28 @@ console.log(JSON.stringify({
         self.assertEqual(r["off"]["kind"], "off")
         self.assertIsNone(r["pit"])                                           # a pit lap is not a failure
         self.assertEqual(r["look"], "basic")                                  # Basic unless the setting says otherwise
+
+    def test_tick_events_race_only_and_not_on_opening(self):
+        js = r"""
+const t = (pos, flags, o) => Object.assign({ SessionNum: 2, SessionState: 4, PlayerCarClassPosition: pos, SessionFlags: flags, OnPitRoad: false }, o || {});
+const run = (ticks, race) => { let prev = null; const ev = []; for (const v of ticks) { const r = lkTickEvents(prev, v, race); prev = r.next; ev.push(...r.out.map(e => e.kind + (e.to ? e.to : '') + (e.win ? '!' : ''))) } return ev };
+const Y = `WeekendInfo:\n SessionInfo:\n Sessions:\n - SessionNum: 0\n   SessionLaps: unlimited\n   SessionType: Practice\n - SessionNum: 1\n   SessionType: Lone Qualify\n - SessionNum: 2\n   SessionType: Race\n`;
+console.log(JSON.stringify({
+  open: run([t(3, 0x2)], true),                                        // page opened on the final lap: nothing
+  race: run([t(5, 0), t(4, 0), t(4, 0x2), t(1, 0x3)], true),           // a pass, the white flag, a win at the flag
+  prac: run([t(5, 0), t(4, 0), t(4, 0x1)], false),                      // practice: a quicker lap is not a pass, no win
+  pit: run([t(5, 0), t(4, 0, { OnPitRoad: true })], true),
+  pace: run([t(5, 0, { SessionState: 3 }), t(4, 0, { SessionState: 3 })], true),   // the field forming up
+  newSess: run([t(9, 0, { SessionNum: 1 }), t(3, 0)], true),            // a new session: its first tick sets the scene
+  unknown: run([t(5, 0), t(4, 0)], null),
+  sessions: liveRaceSessions(Y) }));
+"""
+        r = run_js(js)
+        self.assertEqual(r["open"], [])
+        self.assertEqual(r["race"], ["pass4", "white", "pass1", "checkered!"])
+        self.assertEqual(r["prac"], ["checkered"])
+        self.assertEqual(r["pit"], [])
+        self.assertEqual(r["pace"], [])
+        self.assertEqual(r["newSess"], [])
+        self.assertEqual(r["unknown"], [])
+        self.assertEqual(r["sessions"], {"0": False, "1": False, "2": True})
