@@ -368,7 +368,7 @@ def glance(values):
 
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png",
-         ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2"}
+         ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2", ".mp3": "audio/mpeg"}
 
 
 # Text replies are compressed for any browser that accepts it. Besides being

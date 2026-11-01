@@ -132,7 +132,7 @@ def page_response(request, body: bytes) -> Response:
 CLIENT_PATHS = ("/pitwall/", "/pitwall", "/pitwall/index.html")
 # The dashboard's fonts (client/assets): served by exact name, nothing else in that folder.
 CLIENT_ASSETS = os.path.join(os.path.dirname(CLIENT_PAGE), "assets")
-CLIENT_ASSET_TYPES = {".woff2": "font/woff2"}
+CLIENT_ASSET_TYPES = {".woff2": "font/woff2", ".mp3": "audio/mpeg"}
 
 
 def client_asset(path: str):

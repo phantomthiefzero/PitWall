@@ -9,7 +9,9 @@
   // "/pitwall" becomes "/pitwall/" so the fonts' relative addresses resolve.
   (function () {
     var k = null; try { k = localStorage.getItem("pitwall.skin"); } catch (e) {}
-    document.documentElement.dataset.skin = k === "classic" ? "classic" : "booth";
+    var lk = null; try { lk = localStorage.getItem("suite:look"); } catch (e) {}
+    document.documentElement.dataset.skin = k === "classic" && lk !== "arcade" ? "classic" : "booth";
+    document.documentElement.dataset.look = lk === "arcade" ? "arcade" : lk === "pitwall" ? "pitwall" : "basic";
     if (/\/pitwall$/.test(location.pathname)) location.replace(location.pathname + "/" + location.search + location.hash);
   })();
 </script>
@@ -598,6 +600,109 @@
   .storyin { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; max-width: min(1240px, 100%); }
   .storyin canvas { width: 100%; height: auto; display: block; border-radius: 8px; }
   .storyrow { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+/* ---- LOOKS: the suite's Arcade look (suite:look) on top of the booth look; Pit wall and Basic are the booth. ---- */
+@font-face{font-family:"Russo One";font-display:swap;src:url("assets/russo-one-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Exo 2";font-weight:400 600;font-display:swap;src:url("assets/exo-2-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:"Exo 2";font-weight:700 900;font-style:italic;font-display:swap;src:url("assets/exo-2-latin-900-italic.woff2") format("woff2")}
+:root[data-look="arcade"]{--bg:#06080d;--panel:#0c1018;--line:#273044;--text:#fff;--muted:#9aa4b8;--dim:#66708a;
+  --green:#38f07a;--yellow:#ffd400;--red:#ff3a2a;--blue:#19d9ff;--purple:#b45cff;--orange:#ffb000;--led:#ffd400;--bezel:#273044;--stand:#06080d;
+  --ui:"Exo 2","Segoe UI",system-ui,sans-serif;--title:"Exo 2",system-ui,sans-serif;--num:"Exo 2",system-ui,sans-serif;--canvas-font:"Exo 2",system-ui,sans-serif;
+  --you:#ffd400;--warn:#ffb000;
+  --chkg:conic-gradient(#fff 0 25%,#0b0d12 0 50%,#fff 0 75%,#0b0d12 0);--chk:var(--chkg) 0 0/12px 12px;
+  --chrome:linear-gradient(180deg,#ffffff 0%,#fff3b0 40%,#ffb000 54%,#ff5a1f 55%,#ffd400 100%);
+  --trail:-6px 0 0 rgba(255,90,31,.55),-14px 0 0 rgba(255,90,31,.28),-24px 0 0 rgba(255,90,31,.12)}
+:root[data-look="arcade"] body{font-family:var(--ui)!important;background:radial-gradient(1100px 520px at 85% -8%,rgba(255,90,31,.26),transparent 70%),radial-gradient(900px 600px at 0% 110%,rgba(25,217,255,.14),transparent 70%),linear-gradient(180deg,#0a0d16,#05070b 60%)!important;background-attachment:fixed!important}
+:root[data-look="arcade"] section{background:linear-gradient(180deg,#111725,#0a0e16)!important;border:1px solid #273044!important;border-radius:2px!important;box-shadow:0 12px 30px rgba(0,0,0,.5)!important;padding:0 10px 10px!important}
+:root[data-look="arcade"] section::before{content:"";position:absolute;left:-1px;right:-1px;top:-1px;height:10px;z-index:1;pointer-events:none;background:
+  linear-gradient(100deg,var(--yellow),var(--orange) 92%,transparent 92%) left top/100px 4px no-repeat,
+  repeating-linear-gradient(90deg,#fff 0 5px,#0b0d12 5px 10px) right top/40px 5px no-repeat,
+  repeating-linear-gradient(90deg,#0b0d12 0 5px,#fff 5px 10px) right 0 top 5px/40px 5px no-repeat}
+:root[data-look="arcade"] details.panel>summary{font:900 italic 17px var(--ui)!important;text-transform:uppercase;letter-spacing:.01em}
+:root[data-look="arcade"] header{background:linear-gradient(180deg,#0b0f18,#06080d)!important;border-bottom:2px solid #2b3446!important;position:relative}
+:root[data-look="arcade"] header .track{font:900 italic 24px var(--ui)!important;text-transform:uppercase;text-shadow:var(--trail)}
+:root[data-look="arcade"] header .flag{font:900 italic 20px var(--ui)!important;text-transform:uppercase;border-radius:0!important;transform:skewX(-14deg)}
+:root[data-look="arcade"] #remain{font-family:var(--ui)!important;font-style:italic!important;font-weight:900!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
+:root[data-look="arcade"] th{font:800 italic 13px var(--ui)!important;color:var(--yellow)!important;text-transform:uppercase}
+:root[data-look="arcade"] td{font-weight:500}
+:root[data-look="arcade"] tbody tr.me>td,:root[data-look="arcade"] tbody tr.focus>td{background:rgba(255,212,0,.12)!important}
+:root[data-look="arcade"] .bb-gap,:root[data-look="arcade"] .fp-big{font:900 italic 32px var(--ui)!important;color:var(--yellow)!important;text-shadow:var(--trail)}
+:root[data-look="arcade"] button,:root[data-look="arcade"] .unittoggle,:root[data-look="arcade"] select{border-radius:0!important}
+:root[data-look="arcade"] .unittoggle{font:800 italic 13px var(--ui)!important;background:linear-gradient(180deg,#1a2234,#111827)!important;border:1px solid #3a4762!important;transform:skewX(-14deg)}
+:root[data-look="arcade"] footer{background:#06080d!important;border-top:2px solid #2b3446!important}
+:root[data-look="arcade"] .alarm{border-radius:0!important;transform:skewX(-10deg)}
+:root[data-look="arcade"] .lk-fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8990}
+:root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none;overflow:hidden;--k:#ffd400}
+:root[data-look="arcade"] .lk-pop .band{position:absolute;left:-12%;right:-12%;height:190px;top:calc(50% - 95px);transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(4,6,10,.92) 14% 86%,transparent);
+  border-top:5px solid var(--k);border-bottom:5px solid var(--k);box-shadow:0 0 50px color-mix(in srgb,var(--k) 40%,transparent);overflow:hidden;animation:lkBand 2.2s cubic-bezier(.2,.9,.2,1) both}
+:root[data-look="arcade"] .lk-pop .band::before{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(180deg,transparent 0 9px,rgba(255,255,255,.10) 9px 10px,transparent 10px 23px,color-mix(in srgb,var(--k) 22%,transparent) 23px 25px,transparent 25px 41px);
+  -webkit-mask:repeating-linear-gradient(90deg,#000 0 160px,transparent 160px 220px,#000 220px 300px,transparent 300px 420px);mask:repeating-linear-gradient(90deg,#000 0 160px,transparent 160px 220px,#000 220px 300px,transparent 300px 420px);animation:lkLines .35s linear infinite}
+:root[data-look="arcade"] .lk-pop.chk .band{border:0;padding:12px 0}
+:root[data-look="arcade"] .lk-pop.chk .band::after{content:"";position:absolute;inset:0;background:var(--chkg) 0 0/14px 14px;
+  -webkit-mask:linear-gradient(#000 0 14px,transparent 14px calc(100% - 14px),#000 0);mask:linear-gradient(#000 0 14px,transparent 14px calc(100% - 14px),#000 0)}
+:root[data-look="arcade"] .lk-pop .t{position:relative;font:900 italic 112px/1 var(--num);letter-spacing:-.02em;text-transform:uppercase;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #1a0d00;
+  filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));white-space:nowrap;animation:lkDrive 2.2s both}
+:root[data-look="arcade"] .lk-pop .t::before,:root[data-look="arcade"] .lk-pop .t::after{content:attr(data-t);position:absolute;inset:0;-webkit-text-stroke:0;background:none;color:var(--k);z-index:-1}
+:root[data-look="arcade"] .lk-pop .t::before{opacity:.45;animation:lkGhostA 2.2s both}
+:root[data-look="arcade"] .lk-pop .t::after{opacity:.22;animation:lkGhostB 2.2s both}
+:root[data-look="arcade"] .lk-pop .s{position:absolute;top:calc(50% + 68px);font:800 italic 30px var(--num);color:#fff;text-shadow:0 2px 0 #000,0 0 14px rgba(0,0,0,.8);animation:lkSub 2.2s ease both}
+:root[data-look="arcade"] .lk-pop.red{--k:#ff3a2a}
+:root[data-look="arcade"] .lk-pop.purple{--k:#b45cff}
+:root[data-look="arcade"] .lk-pop.cyan{--k:#19d9ff}
+:root[data-look="arcade"] .lk-pop.green{--k:#38f07a}
+:root[data-look="arcade"] .lk-pop.white{--k:#ffffff}
+@keyframes lkLines{to{background-position:0 0;-webkit-mask-position:-420px 0;mask-position:-420px 0}}
+@keyframes lkBand{0%{clip-path:inset(0 0 0 100%);opacity:1}9%,84%{clip-path:inset(0 0 0 0);opacity:1}100%{clip-path:inset(0 100% 0 0);opacity:.6}}
+@keyframes lkDrive{0%{transform:translateX(70vw) skewX(-34deg) scaleX(1.5);filter:blur(10px) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:0;animation-timing-function:cubic-bezier(.3,0,.6,1)}
+  11%{transform:translateX(-3vw) skewX(-4deg) scaleX(.97);filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:1;animation-timing-function:cubic-bezier(.2,1.3,.4,1)}
+  18%,84%{transform:translateX(0) skewX(-10deg);filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:1;animation-timing-function:cubic-bezier(.6,0,.9,.5)}
+  100%{transform:translateX(-90vw) skewX(-36deg) scaleX(1.7);filter:blur(10px) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:0}}
+@keyframes lkGhostA{0%,4%{transform:translateX(90px);opacity:0}9%{transform:translateX(70px);opacity:.5}20%,84%{transform:translateX(0);opacity:0}92%{transform:translateX(80px);opacity:.45}100%{transform:translateX(160px);opacity:0}}
+@keyframes lkGhostB{0%,4%{transform:translateX(170px);opacity:0}9%{transform:translateX(140px);opacity:.3}22%,84%{transform:translateX(0);opacity:0}92%{transform:translateX(160px);opacity:.25}100%{transform:translateX(300px);opacity:0}}
+@keyframes lkSub{0%,16%{opacity:0;transform:translateX(120px) skewX(-10deg)}26%,82%{opacity:1;transform:skewX(-10deg)}100%{opacity:0;transform:translateX(-200px) skewX(-10deg)}}
+:root[data-look="arcade"] .lk-shake{animation:lkRumble .5s linear}
+@keyframes lkRumble{0%,100%{transform:none}10%{transform:translateY(calc(var(--sh,6px)*-1))}20%{transform:translateY(var(--sh,6px))}30%{transform:translateY(calc(var(--sh,6px)*-.8))}
+  40%{transform:translateY(calc(var(--sh,6px)*.7))}50%{transform:translateY(calc(var(--sh,6px)*-.5))}60%{transform:translateY(calc(var(--sh,6px)*.4))}75%{transform:translateY(calc(var(--sh,6px)*-.2))}}
+:root[data-look="arcade"] .lk-start{position:fixed;inset:0;z-index:9500;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;
+  background:radial-gradient(900px 500px at 50% 30%,rgba(255,58,42,.18),transparent 70%),rgba(4,6,10,.95);animation:lkFade .25s ease both}
+:root[data-look="arcade"] .lk-start.go{background:radial-gradient(900px 500px at 50% 30%,rgba(56,240,122,.22),transparent 70%),rgba(4,6,10,.95)}
+:root[data-look="arcade"] .lk-start.out{animation:lkAway .45s cubic-bezier(.6,0,.9,.5) both}
+:root[data-look="arcade"] .lk-start .gantry{display:flex;gap:18px;padding:16px 22px;background:linear-gradient(180deg,#1a1f2a,#0a0d13);border:2px solid #2e3647;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,.7);position:relative}
+:root[data-look="arcade"] .lk-start .gantry::before{content:"";position:absolute;left:50%;top:-60px;width:16px;height:60px;margin-left:-8px;background:linear-gradient(90deg,#11151d,#262d3b,#11151d)}
+:root[data-look="arcade"] .lk-start .pod{display:flex;flex-direction:column;gap:12px;padding:12px;background:#050608;border-radius:6px;box-shadow:inset 0 0 0 2px #1c2230}
+:root[data-look="arcade"] .lk-start .pod i{width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#3a1414,#140707 70%);box-shadow:inset 0 3px 8px rgba(0,0,0,.8);transition:background .05s,box-shadow .05s}
+:root[data-look="arcade"] .lk-start .pod.on i{background:radial-gradient(circle at 40% 35%,#ffd6c8,#ff3a2a 35%,#a00e04 75%);box-shadow:0 0 26px 6px rgba(255,58,42,.75),inset 0 -3px 6px rgba(0,0,0,.4)}
+:root[data-look="arcade"] .lk-start.go .pod i{background:radial-gradient(circle at 40% 35%,#d9ffe6,#38f07a 35%,#0a8a37 75%);box-shadow:0 0 26px 6px rgba(56,240,122,.7)}
+:root[data-look="arcade"] .lk-start .grid{display:grid;grid-template-columns:auto 1fr auto;gap:0;min-width:min(760px,90vw);transform:skewX(-10deg)}
+:root[data-look="arcade"] .lk-start .row{display:contents}
+:root[data-look="arcade"] .lk-start .row>*{padding:12px 18px;background:linear-gradient(90deg,rgba(17,23,37,.95),rgba(10,14,22,.95));border-top:1px solid #273044;display:flex;align-items:center}
+:root[data-look="arcade"] .lk-start .row small{font:800 italic 15px var(--num);text-transform:uppercase;letter-spacing:.06em;color:var(--mut);border-left:6px solid var(--k);white-space:nowrap}
+:root[data-look="arcade"] .lk-start .row b{font:900 italic clamp(22px,2.6vw,40px)/1.05 var(--num);text-transform:uppercase;overflow-wrap:anywhere}
+:root[data-look="arcade"] .lk-start .row em{font:900 italic clamp(28px,3.2vw,52px)/1 var(--num);color:var(--k);justify-content:flex-end;font-variant-numeric:tabular-nums}
+:root[data-look="arcade"] .lk-start .row:nth-child(1){--k:var(--you)}
+:root[data-look="arcade"] .lk-start .row:nth-child(2){--k:var(--ref)}
+:root[data-look="arcade"] .lk-start .row>*{animation:lkRowIn .45s cubic-bezier(.15,.9,.25,1) both}
+:root[data-look="arcade"] .lk-start .row:nth-child(2)>*{animation-delay:.12s}
+:root[data-look="arcade"] .lk-start .gap{font:800 italic 18px var(--num);text-transform:uppercase;letter-spacing:.3em;color:#fff;opacity:.8}
+:root[data-look="arcade"] .lk-start .gap b{font:900 italic 40px var(--num);letter-spacing:0;margin-left:14px;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
+:root[data-look="arcade"] .lk-start .word{position:absolute;left:50%;top:22%;font:900 italic 230px/1 var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:3px #1a0d00;
+  filter:drop-shadow(0 6px 0 #000) drop-shadow(0 0 40px rgba(56,240,122,.7));transform:translate(-50%,-50%) skewX(-12deg);opacity:0;pointer-events:none;white-space:nowrap}
+:root[data-look="arcade"] .lk-start.go .word{animation:lkGo 1.3s both}
+:root[data-look="arcade"] .lk-start .skip{position:absolute;left:0;right:0;bottom:6%;text-align:center;font:700 italic 16px var(--num);color:var(--mut);letter-spacing:.08em}
+@keyframes lkFade{from{opacity:0}}
+@keyframes lkAway{to{opacity:0;transform:translateX(-12vw) skewX(-8deg);filter:blur(8px)}}
+@keyframes lkRowIn{from{opacity:0;transform:translateX(120px)}}
+@keyframes lkGo{0%{opacity:0;transform:translate(-30%,-50%) skewX(-30deg) scaleX(1.5);filter:blur(8px)}14%{opacity:1;transform:translate(-52%,-50%) skewX(-8deg)}24%,70%{opacity:1;transform:translate(-50%,-50%) skewX(-12deg)}100%{opacity:0;transform:translate(-110%,-50%) skewX(-34deg) scaleX(1.6);filter:blur(8px)}}
+:root[data-look="arcade"] .lk-combo{position:fixed;right:24px;top:40%;z-index:50;text-align:right;padding:12px 16px 10px;background:linear-gradient(180deg,rgba(17,23,37,.94),rgba(8,11,17,.94));border:1px solid #2b3549;transform:skewX(-10deg);box-shadow:0 14px 34px rgba(0,0,0,.6)}
+:root[data-look="arcade"] .lk-combo::before{content:"";position:absolute;left:0;right:0;top:-1px;height:10px;background:var(--chk);background-size:10px 10px}
+:root[data-look="arcade"] .lk-combo b{display:block;margin-top:6px;font:900 italic 76px/.9 var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #1a0d00}
+:root[data-look="arcade"] .lk-combo span{font:800 italic 17px var(--num);text-transform:uppercase;letter-spacing:.04em}
+:root[data-look="arcade"] .lk-combo.lk-bump b{animation:lkBump .4s cubic-bezier(.2,1.6,.4,1)}
+@keyframes lkBump{0%{transform:translateX(40px) scale(1.25);filter:blur(3px)}100%{transform:none}}
+:root[data-look="arcade"] .lk-punch{animation:lkPunch .22s cubic-bezier(.2,1.6,.4,1)}
+@keyframes lkPunch{0%{transform:scale(1.25) translateX(-6px)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){:root[data-look="arcade"] .lk-pop *,:root[data-look="arcade"] .lk-start,:root[data-look="arcade"] .lk-start *{animation-duration:.01s!important}}
+/* ---- /LOOKS ---- */
 </style>
 </head>
 <body>
@@ -840,6 +945,214 @@
 </div>
 
 <script>
+// ---- Looks (Basic / Pit wall / Arcade): one setting for the suite (suite:look), same on every page. ----
+// Pit wall and Arcade only restyle the page and add a bar across the top (lkHud); the words stay the same.
+// Arcade adds an arcade racer's layer: call-outs, the start lights, a clean-lap streak and an announcer (suite:announcer,
+// off until a voice is picked; no sound effects: the sim has the racing sounds). Every number in the bar is one the page already shows.
+const LK = { look: 'basic', streak: 0, pos: null, flags: 0, gear: null, AC: null };
+function lkGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v } catch (e) { return d } }
+function lkLook() { const v = lkGet('suite:look', 'basic'); return v === 'pitwall' || v === 'arcade' ? v : 'basic' }
+function lkApply() {
+  LK.look = lkLook(); const R = document.documentElement; R.dataset.look = LK.look;
+  if (LK.look !== 'basic') R.setAttribute('data-theme', 'dark');
+  try { lkHud() } catch (e) { console.error('look bar', e) }
+}
+// pure: a lap time as the page shows it (m:ss.mmm, or s.mmm under a minute)
+function lkTime(s) { if (s == null || !isFinite(s) || s <= 0) return '–'; const m = Math.floor(s / 60), r = s - m * 60; return m ? m + ':' + r.toFixed(3).padStart(6, '0') : r.toFixed(3) }
+// pure: iRacing adds digits to repeated names ("Andrew Brooks6"); the bar shows "A. Brooks"
+function lkShort(n) { n = String(n || '').replace(/\d+$/, '').trim(); if (!n) return ''; const p = n.split(/\s+/); return p.length > 1 ? p[0][0] + '. ' + p.slice(1).join(' ') : n }
+// pure: how full each LED bar in the Arcade bar is: your best lap is the full bar, your average lap loses 10 % of the bar per 1 % slower
+function lkBars(avg, best) { if (!(avg > 0 && best > 0)) return [100, 100]; const pct = (avg - best) / best * 100; return [Math.max(8, Math.min(100, 100 - pct * 10)), 100] }
+function lkHud() {
+  if (LK.look === 'basic') { document.querySelectorAll('.lk-hud').forEach(x => x.remove()); return }
+  if (typeof lkData !== 'function') return;
+  const d = lkData() || {}, team = lkGet('suite:team', '').trim(), plate = lkGet('suite:plate', '').trim().slice(0, 4);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const who = lkShort(d.name), h = document.createElement('div'); h.className = 'lk-hud'; h.setAttribute('aria-hidden', 'true');
+  const gap = d.avg > 0 && d.best > 0 ? d.avg - d.best : null, mid = d.midLabel || 'your average lap';
+  if (LK.look === 'pitwall') {
+    h.innerHTML = (plate ? '<div class="plate">' + esc(plate) + '</div>' : '') +
+      (who || team ? '<div><small>' + (team ? esc(team) : 'Driver') + '</small><b>' + esc(who || team) + '</b></div>' : '') +
+      (d.car || d.track ? '<div><small>Car · circuit</small><b>' + esc([d.car, d.track].filter(Boolean).join(' · ')) + '</b></div>' : '') + '<div class="grow"></div>' +
+      '<div class="radio' + (d.live ? ' on' : '') + '"><i></i>' + esc(d.status || (d.live ? 'Live' : 'Not live')) + '</div>' +
+      (d.best ? '<div><small>Your best lap</small><span class="seg p">' + lkTime(d.best) + '</span></div>' : '') +
+      (d.avg ? '<div><small>' + esc(mid[0].toUpperCase() + mid.slice(1)) + '</small><span class="seg">' + lkTime(d.avg) + '</span></div>' : '') +
+      (gap != null ? '<div><small>Gap</small><span class="seg bad">+' + gap.toFixed(3) + '</span></div>' : '');
+  } else {
+    const [pa, pb] = lkBars(d.avg, d.best);
+    h.innerHTML = '<div class="side"><div class="nm">' + (plate ? '<span class="plate">' + esc(plate) + '</span>' : '') + esc(who || team || 'You') +
+      (d.avg ? ' <small>' + esc(mid) + ' ' + lkTime(d.avg) + '</small>' : '') + '</div><div class="bar"><i style="--p:' + pa + '%"></i></div></div>' +
+      '<div class="clock">' + (gap != null ? '+' + gap.toFixed(3) : (d.live ? 'LIVE' : 'READY')) + '<small>' + (gap != null ? 'GAP' : esc(d.car || '')) + '</small></div>' +
+      '<div class="side r"><div class="nm">' + (d.best ? '<small>' + lkTime(d.best) + '</small> ' : '') + 'Your best lap</div><div class="bar"><i style="--p:' + pb + '%"></i></div></div>';
+  }
+  const old = document.querySelector('.lk-hud'); if (old && old.dataset.look === LK.look && old.innerHTML === h.innerHTML) return;
+  h.dataset.look = LK.look; if (old) old.replaceWith(h); else (document.querySelector('.wrap') || document.body).prepend(h);
+}
+// ---- Arcade's racing layer ----
+function lkArcade() { return LK.look === 'arcade' }
+const LK_CALM = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches } catch (e) { return false } };
+// A call-out: it comes in from the right like a car, brakes past its mark, settles, then pulls away to the left.
+// kind: a colour (red, purple, cyan, green, white) and 'chk' for a checkered edge.
+// opts: say (an announcer line, LK_LINES), sayAt (s), fx ('pb' | 'streak' | 'off' | 'pass' | 'go')
+function lkPop(t, s, kind, opts) {
+  if (!lkArcade()) return; opts = opts || {};
+  const p = document.createElement('div'); p.className = 'lk-pop ' + (kind || ''); p.setAttribute('role', 'status');
+  p.innerHTML = '<div class="band"></div><div class="t"></div>' + (s ? '<div class="s"></div>' : '');
+  const T = p.querySelector('.t'); T.textContent = t; T.dataset.t = t; if (s) p.querySelector('.s').textContent = s;
+  document.querySelectorAll('.lk-pop').forEach(x => x.remove());
+  document.body.prepend(p); if (opts.fx === 'off') lkShake(6);
+  if (opts.say) lkSay(opts.say, opts.sayAt == null ? .2 : opts.sayAt);
+  lkFx(opts.fx || 'streak', getComputedStyle(p).getPropertyValue('--k').trim() || '#ffd400');
+  setTimeout(() => p.remove(), 2300);
+}
+// the page rumbles like a car on the kerbs (one transform on the body, no layout)
+function lkShake(px) { if (LK_CALM()) return; const b = document.body; b.style.setProperty('--sh', px + 'px'); b.classList.remove('lk-shake'); void b.offsetWidth; b.classList.add('lk-shake') }
+// ---- effects layer: one canvas over the page, drawn only while something is moving ----
+// speed lines, a light sweep for a pass, checkered flag pieces for a personal best, dust and gravel off the track
+const FX = { cv: null, g: null, parts: [], sweeps: [], flash: 0, flashCol: '#fff', raf: 0, last: 0 };
+function lkFx(kind, col) {
+  if (LK_CALM()) return;
+  if (!FX.cv) { FX.cv = document.createElement('canvas'); FX.cv.className = 'lk-fx'; FX.cv.setAttribute('aria-hidden', 'true'); document.body.appendChild(FX.cv); FX.g = FX.cv.getContext('2d') }
+  if (!FX.cv.isConnected) document.body.appendChild(FX.cv);
+  const W = innerWidth, H = innerHeight, cy = H / 2, R = Math.random, P = FX.parts;
+  const lines = kind === 'off' ? 0 : kind === 'pb' || kind === 'go' ? 70 : 46;
+  for (let i = 0; i < lines; i++) { const y = cy + (R() - .5) * H * (R() < .6 ? .35 : .95);
+    P.push({ k: 'line', x: W + R() * W * .8, y, vx: -(2600 + R() * 3200), len: 80 + R() * 420, w: R() < .2 ? 3 : 1.2, life: 1.2, age: R() * -.25, col: R() < .3 ? col : '#ffffff', a: .35 + R() * .5 }) }
+  if (kind === 'pass' || kind === 'go' || kind === 'pb') FX.sweeps.push({ x: -W * .3, v: W * (kind === 'pass' ? 3.2 : 2.4), col: kind === 'go' ? '#38f07a' : col, w: W * .22 });
+  if (kind === 'go') { FX.flash = .28; FX.flashCol = '#38f07a' }
+  if (kind === 'pb') { FX.flash = .18; FX.flashCol = col;
+    for (let i = 0; i < 150; i++) { const a = -Math.PI / 2 + (R() - .5) * 2.6, sp = 600 + R() * 900, x = W / 2 + (R() - .5) * W * .5;
+      P.push({ k: 'chk', x, y: cy + 60, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 2.3 + R() * 1.1, age: 0, rot: R() * 6, vr: (R() - .5) * 14, s: 9 + R() * 9 }) }
+    for (let i = 0; i < 60; i++) { const sp = 900 + R() * 1600, a = Math.PI + (R() - .5) * .5;
+      P.push({ k: 'spark', x: W / 2 + (R() - .5) * 500, y: cy + (R() - .5) * 140, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .5 + R() * .5, age: 0, col: R() < .5 ? '#fff3b0' : col, w: 1.5 + R() * 2 }) } }
+  if (kind === 'off') { FX.flash = .3; FX.flashCol = 'vignette';
+    for (let i = 0; i < 26; i++) { const x = W * (.2 + R() * .6);
+      P.push({ k: 'dust', x, y: cy + 110 + R() * 60, vx: (R() - .5) * 160, vy: -40 - R() * 90, r: 30 + R() * 50, gr: 90 + R() * 120, life: 1.6 + R() * 1, age: R() * -.3, a: .25 + R() * .25 }) }
+    for (let i = 0; i < 90; i++) { const a = -Math.PI / 2 + (R() - .5) * 2, sp = 300 + R() * 800;
+      P.push({ k: 'stone', x: W * (.3 + R() * .4), y: cy + 120, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1.4 + R() * .5, age: 0, s: 2 + R() * 4, col: ['#6d6150', '#8a7c66', '#4a4136', '#a39478'][i % 4] }) } }
+  if (!FX.raf) { FX.last = performance.now(); FX.raf = requestAnimationFrame(lkFxFrame) }
+}
+function lkFxFrame(now) {
+  const dt = Math.min(.05, (now - FX.last) / 1000); FX.last = now;
+  const cv = FX.cv, g = FX.g, dpr = Math.min(2, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr) }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  if (FX.flash > 0) { g.globalAlpha = FX.flash;
+    if (FX.flashCol === 'vignette') { const v = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .3, W / 2, H / 2, Math.max(W, H) * .75); v.addColorStop(0, 'rgba(255,58,42,0)'); v.addColorStop(1, 'rgba(255,58,42,1)'); g.fillStyle = v }
+    else g.fillStyle = FX.flashCol;
+    g.fillRect(0, 0, W, H); FX.flash = Math.max(0, FX.flash - dt * 1.6) }
+  g.globalAlpha = 1;
+  // dust under everything
+  for (const p of FX.parts) { if (p.k !== 'dust') continue; p.age += dt; if (p.age < 0 || p.age > p.life) continue; const f = 1 - p.age / p.life;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy *= Math.pow(.4, dt); p.r += p.gr * dt;
+    const d = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r); d.addColorStop(0, 'rgba(150,130,104,' + (p.a * f) + ')'); d.addColorStop(1, 'rgba(150,130,104,0)'); g.fillStyle = d; g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fill() }
+  g.globalCompositeOperation = 'lighter';
+  for (const s of FX.sweeps) { s.x += s.v * dt; const gr = g.createLinearGradient(s.x - s.w, 0, s.x + s.w, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(.5, s.col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = .22; g.fillStyle = gr; g.setTransform(dpr, 0, -.35 * dpr, dpr, 0, 0); g.fillRect(s.x - s.w, -H, s.w * 2, H * 3); g.setTransform(dpr, 0, 0, dpr, 0, 0) }
+  FX.sweeps = FX.sweeps.filter(s => s.x - s.w < W * 1.6);
+  for (const p of FX.parts) { if (p.k !== 'line' && p.k !== 'spark') continue; p.age += dt; if (p.age < 0 || p.age > p.life) continue;
+    if (p.k === 'line') { p.x += p.vx * dt; if (p.x + p.len < 0) { p.age = p.life + 1; continue }
+      const gr = g.createLinearGradient(p.x, 0, p.x + p.len, 0); gr.addColorStop(0, p.col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.globalAlpha = p.a; g.strokeStyle = gr; g.lineWidth = p.w; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + p.len, p.y); g.stroke() }
+    else { const f = 1 - p.age / p.life, px = p.x, py = p.y; p.vx *= Math.pow(.1, dt); p.vy = p.vy * Math.pow(.1, dt) + 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      g.globalAlpha = f; g.strokeStyle = p.col; g.lineWidth = p.w; g.lineCap = 'round'; g.beginPath(); g.moveTo(px - (p.x - px) * 3, py - (p.y - py) * 3); g.lineTo(p.x, p.y); g.stroke() } }
+  g.globalCompositeOperation = 'source-over';
+  for (const p of FX.parts) { if (p.k !== 'chk' && p.k !== 'stone') continue; p.age += dt; if (p.age > p.life) continue; const f = Math.min(1, (p.life - p.age) * 2);
+    if (p.k === 'chk') { p.vx *= Math.pow(.25, dt); p.vy = p.vy * Math.pow(.25, dt) + 480 * dt; p.x += p.vx * dt + Math.sin(p.age * 8 + p.rot) * 50 * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+      g.save(); g.globalAlpha = f; g.translate(p.x, p.y); g.rotate(p.rot); g.scale(1, Math.abs(Math.cos(p.age * 6 + p.rot)) * .9 + .1); const h = p.s / 2;
+      g.fillStyle = '#ffffff'; g.fillRect(-h, -h, p.s, p.s); g.fillStyle = '#0b0d12'; g.fillRect(-h, -h, h, h); g.fillRect(0, 0, h, h); g.restore() }
+    else { p.vx *= Math.pow(.6, dt); p.vy += 1700 * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.y > H * .5 + 190 && p.vy > 0) { p.vy *= -.35; p.vx *= .6 }
+      g.globalAlpha = f; g.fillStyle = p.col; g.beginPath(); g.arc(p.x, p.y, p.s, 0, Math.PI * 2); g.fill() } }
+  g.globalAlpha = 1;
+  FX.parts = FX.parts.filter(p => p.age <= p.life);
+  if (FX.parts.length || FX.sweeps.length || FX.flash > 0) FX.raf = requestAnimationFrame(lkFxFrame); else { FX.raf = 0; g.clearRect(0, 0, W, H) }
+}
+// The start (Coaching): your average lap and the lap it is measured against line up on the grid under five
+// red lights; the lights come on one by one and go out, and the call is GO. Click to skip.
+function lkStart(a, b) {
+  if (!lkArcade() || !a || !b) return; document.querySelectorAll('.lk-start').forEach(x => x.remove());
+  const v = document.createElement('div'); v.className = 'lk-start'; v.setAttribute('role', 'status');
+  const gap = a.time > 0 && b.time > 0 ? a.time - b.time : null;
+  v.innerHTML = '<div class="gantry">' + '<div class="pod"><i></i><i></i></div>'.repeat(5) + '</div>' +
+    '<div class="grid"><div class="row"><small></small><b></b><em></em></div><div class="row"><small></small><b></b><em></em></div></div>' +
+    (gap != null ? '<div class="gap">Gap<b>' + (gap >= 0 ? '+' : '−') + Math.abs(gap).toFixed(3) + '</b></div>' : '') + '<div class="word">GO!</div><div class="skip">Click to skip</div>';
+  v.querySelectorAll('.row').forEach((r, i) => { const x = i ? b : a; r.querySelector('small').textContent = x.label; r.querySelector('b').textContent = x.name; r.querySelector('em').textContent = lkTime(x.time) });
+  const T = [], end = () => { T.forEach(clearTimeout); v.classList.add('out'); setTimeout(() => v.remove(), 450) };
+  v.onclick = end; document.body.prepend(v);
+  // the lights wait for the page to settle (a big result is still being drawn), so they come on one at a time
+  const pods = v.querySelectorAll('.pod'); let last = performance.now(), calm = 0; const t0 = last;
+  const go = () => { lkSay('ready', 0);
+    pods.forEach((p, i) => T.push(setTimeout(() => p.classList.add('on'), 350 + i * 330)));
+    T.push(setTimeout(() => lkSay('set', 0), 350 + 3 * 330));
+    T.push(setTimeout(() => { v.classList.add('go'); pods.forEach(p => p.classList.remove('on')); lkSay('go', 0); lkFx('go') }, 350 + 4 * 330 + 650));
+    T.push(setTimeout(end, 4300)) };
+  const wait = now => { if (!v.isConnected) return; calm = now - last < 50 ? calm + 1 : 0; last = now; if (calm >= 5 || now - t0 > 4000) go(); else requestAnimationFrame(wait) };
+  requestAnimationFrame(wait);
+}
+// the streak counter on the side, bumped on every clean lap
+function lkCombo(n) { let c = document.querySelector('.lk-combo'); if (!lkArcade() || !n) { if (c) c.remove(); return } if (!c) { c = document.createElement('div'); c.className = 'lk-combo'; document.body.prepend(c) }
+  c.innerHTML = '<b>' + n + '</b><span>clean lap' + (n === 1 ? '' : 's') + ' in a row</span>'; c.classList.remove('lk-bump'); void c.offsetWidth; c.classList.add('lk-bump') }
+// panels drive in one after another when a view opens (Arcade only; one motion per view)
+function lkEnter() { if (!lkArcade() || matchMedia('(prefers-reduced-motion: reduce)').matches) return; let i = 0;
+  document.querySelectorAll('.card,.app').forEach(c => { if (c.offsetParent === null) return; c.classList.remove('lk-in'); void c.offsetWidth; c.style.animationDelay = Math.min(i++, 8) * .06 + 's'; c.classList.add('lk-in') }) }
+// pure: what a finished live lap means in the game: a personal best, a clean lap or a lap that won't count
+function lkLapEvent(rec, prior) {
+  if (!rec) return null; const best = Math.min(...prior.filter(x => x.valid && x.time > 0).map(x => x.time));
+  if (rec.valid && rec.time > 0) return isFinite(best) && rec.time < best ? { kind: 'pb', gain: best - rec.time } : { kind: 'clean', first: !isFinite(best) };
+  if (/off track|incident/.test(rec.why || '')) return { kind: 'off', why: rec.why };
+  return null;
+}
+function lkLap(rec, prior) {
+  const e = lkLapEvent(rec, prior || []); if (!e) return;
+  if (e.kind === 'pb') { LK.streak++; lkPop('PERSONAL BEST!', lkTime(rec.time) + ' · lap ' + rec.lap + ' · −' + e.gain.toFixed(3) + ' s', 'purple chk', { say: 'pb', fx: 'pb' }) }
+  else if (e.kind === 'clean') { LK.streak++; if (e.first) lkPop('CLEAN LAP', lkTime(rec.time) + ' · lap ' + rec.lap, 'green', { say: 'clean' });
+    else if ([3, 5, 10, 15, 20].includes(LK.streak)) lkPop(LK.streak + ' IN A ROW', 'clean laps · ' + lkTime(rec.time), 'green', { say: 'row' + LK.streak }) }
+  else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red', { say: e.why === 'incident' ? 'incident' : 'off', fx: 'off' }) }
+  lkCombo(LK.streak);
+}
+// every telemetry tick: places gained, the white and checkered flags, gear changes
+function lkTick(v) {
+  if (!lkArcade() || !v) return;
+  const pos = v.PlayerCarClassPosition > 0 ? v.PlayerCarClassPosition : v.PlayerCarPosition > 0 ? v.PlayerCarPosition : null;
+  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { say: pos === 1 ? 'lead' : 'overtake', fx: 'pass' });
+  LK.pos = pos || LK.pos;
+  const f = v.SessionFlags || 0;
+  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
+  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'white chk', { say: pos === 1 ? 'win' : 'checkered', fx: 'pb' });
+  LK.flags = f;
+  if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } }
+  LK.gear = v.Gear;
+}
+// ---- the announcer: a voice calls the moments (client/assets/voice-f-*.mp3 and voice-m-*.mp3, made for the suite with
+// the Kokoro text-to-speech model, Apache 2.0; LICENSES.md). Only in Arcade, only with suite:announcer set to a voice
+// ('f' or 'm'; off by default). No sound effects: the sim already makes the racing sounds. One line at a time.
+const LK_LINES = ['ready', 'set', 'go', 'pb', 'clean', 'row3', 'row5', 'row10', 'row15', 'row20', 'off', 'incident', 'overtake', 'lead', 'final', 'checkered', 'win', 'green', 'yellow', 'caution', 'red'];
+const LK_BUF = {}, LK_ASSET = /^\/pitwall(\/|$)/.test(location.pathname) ? 'assets/' : '/pitwall/assets/';
+function lkAudio() { if (!LK.AC) { try { LK.AC = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { return null } }
+  if (LK.AC.state === 'suspended') LK.AC.resume(); return LK.AC }
+function lkLoad(name) {
+  if (LK_BUF[name]) return LK_BUF[name]; const ac = lkAudio(); if (!ac) return Promise.resolve(null);
+  return LK_BUF[name] = fetch(LK_ASSET + 'voice-' + name + '.mp3').then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null);
+}
+// which voice: 'f' or 'm', or null when the announcer is off (or the look isn't Arcade, unless asked for a sample)
+function lkWho(any) { const w = lkGet('suite:announcer', 'off'); return (w === 'f' || w === 'm') && (any || lkArcade()) ? w : null }
+function lkSay(line, delay, sample) {
+  const w = lkWho(sample), ac = w && LK_LINES.includes(line) && lkAudio(); if (!ac) return;
+  lkLoad(w + '-' + line).then(buf => { if (!buf) return; try { if (LK.said) LK.said.stop() } catch (e) {}
+    const s = ac.createBufferSource(); s.buffer = buf; s.connect(ac.destination); s.start(ac.currentTime + (delay || 0)); LK.said = s });
+}
+// load the voice's lines once it is on, so a call lands on time
+function lkPreload() { const w = lkWho(); if (w) LK_LINES.forEach(l => lkLoad(w + '-' + l)) }
+document.addEventListener('click', lkPreload, true);
+addEventListener('storage', e => { if (e.key === 'suite:look' || e.key === 'suite:team' || e.key === 'suite:plate') lkApply() });
+// PitWall: the Arcade banners for the flags (no top bar here: the header already is one)
+function lkFlag(f) {
+  const W = { green: ["GREEN FLAG", "green", { say: "green", fx: "go" }], yellow: ["YELLOW FLAG", "", { say: "yellow" }], caution: ["CAUTION", "", { say: "caution" }],
+    white: ["FINAL LAP", "white", { say: "final" }], checkered: ["FINISH!", "white chk", { say: "checkered", fx: "pb" }], red: ["RED FLAG", "red", { say: "red" }] }[f];
+  if (W) lkPop(W[0], "", W[1], W[2]);
+}
+LK.look = document.documentElement.dataset.look || "basic";
+// ---- /looks ----
 (function () {
   "use strict";
   // ---------------------------------------------------------------- state
@@ -1076,6 +1389,8 @@
     const inferred = !flags.length && !!(cau && cau.active && cau.inferred);
     const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || (inferred ? "caution" : "");
     const el = $("flag"); el.dataset.flag = f; document.body.dataset.flag = f;
+    if (LK.flag !== undefined && f !== LK.flag) lkFlag(f);
+    LK.flag = f;
     if (f !== renderHeader.lastFlag) {
       if (renderHeader.lastFlag !== undefined && typeof say === "function")
         say({ green: "Green flag, green flag", white: "White flag, last lap", checkered: "Checkered flag", red: "Red flag, red flag" }[f] || "");
@@ -2512,12 +2827,19 @@
     drawStory($("storyCv"), D);
   }
   $("storyBtn").addEventListener("click", () => { if (document.fonts && document.fonts.ready) document.fonts.ready.then(storyOpen); else storyOpen(); });
-  function skinLabel() { $("skinToggle").textContent = document.documentElement.dataset.skin === "classic" ? "classic" : "booth"; }
+  // booth -> arcade -> classic: Arcade is the suite's look (suite:look), so every page of the suite follows it
+  function skinLabel() { $("skinToggle").textContent = document.documentElement.dataset.look === "arcade" ? "arcade" : document.documentElement.dataset.skin === "classic" ? "classic" : "booth"; }
   skinLabel();
   $("skinToggle").addEventListener("click", () => {
-    const next = document.documentElement.dataset.skin === "classic" ? "booth" : "classic";
-    document.documentElement.dataset.skin = next;
-    try { localStorage.setItem("pitwall.skin", next); } catch (e) {}
+    const R = document.documentElement, cur = R.dataset.look === "arcade" ? "arcade" : R.dataset.skin;
+    const next = cur === "booth" ? "arcade" : cur === "arcade" ? "classic" : "booth";
+    R.dataset.skin = next === "classic" ? "classic" : "booth";
+    try {
+      localStorage.setItem("pitwall.skin", R.dataset.skin);
+      if (next === "arcade") localStorage.setItem("suite:look", "arcade");
+      else if (R.dataset.look === "arcade") localStorage.setItem("suite:look", "basic");
+    } catch (e) {}
+    R.dataset.look = next === "arcade" ? "arcade" : "basic"; LK.look = R.dataset.look;
     skinLabel(); readColors(); chartDirty = true;
   });
   // the canvases are drawn with the fonts' names: redraw once the fonts have arrived

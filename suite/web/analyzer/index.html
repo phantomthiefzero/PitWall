@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><script>(function(){var t=null;try{t=localStorage.getItem('suite:theme')}catch(e){}if(!t&&/^\/analyzer/.test(location.pathname))t='dark';if(t)document.documentElement.setAttribute('data-theme',t)})()</script><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Lap Analyzer</title><!-- v78 2026-10-15: setup Suggestions tab: balance by corner phase (braking in, mid, throttle out) for slow and fast corners from steering vs yaw rate, opposite lock and slip, plus bottoming, tyre temperatures across the tread and ABS, mapped to this car's settings with limits; v77 2026-10-15: racing line overlay per corner from GPS, with how far your line is from the reference (inside/outside) at turn-in, apex and exit; v76 2026-10-15: session review (every lap: iRacing sectors, theoretical best, consistency, fuel, incidents, tyre pressure and temperature trends); v75 2026-10-12: live view redraws every frame (was 4 per second), restarts the lap trace when the car jumps (reset to pits/tow), steady live numbers, ride height front/rear by color; v74 2026-10-12: live graphs (speed, pedals, steering, ride heights, delta) against best or last lap; v73: live telemetry via the local iRacing bridge: live setup, gauges, runs by setup; v72: imperial labels match iRacing (lbs, lbs/in, ft-lbs); v71: setup panel collapsible, open state remembered; v70: setup tools available without a file, using the last recorded setup per car; v69: measured ride heights at speed from telemetry, aero calculator explained; v68: setup panel mirrors the iRacing garage tabs and sections; v67: compact setup layout: corner grid, front/rear grid, info on demand; v66: per-car setup library: ranges you enter, values seen in your files, export/import; v65: iRacing setup notes, damper and ARB ranges for the 296, downforce trim guide, setup units; earlier v60: lap times matched to the right lap; setup tools; single-file comparison; clear buttons; wording and spelling cleanup -->
+<!DOCTYPE html><html lang="en"><head><script>(function(){var t=null;try{t=localStorage.getItem('suite:theme')}catch(e){}if(!t&&/^\/analyzer/.test(location.pathname))t='dark';if(t)document.documentElement.setAttribute('data-theme',t);var k=null;try{k=localStorage.getItem('suite:look')}catch(e){}if(k==='pitwall'||k==='arcade'){document.documentElement.setAttribute('data-look',k);document.documentElement.setAttribute('data-theme','dark')}})()</script><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Lap Analyzer</title><!-- v78 2026-10-15: setup Suggestions tab: balance by corner phase (braking in, mid, throttle out) for slow and fast corners from steering vs yaw rate, opposite lock and slip, plus bottoming, tyre temperatures across the tread and ABS, mapped to this car's settings with limits; v77 2026-10-15: racing line overlay per corner from GPS, with how far your line is from the reference (inside/outside) at turn-in, apex and exit; v76 2026-10-15: session review (every lap: iRacing sectors, theoretical best, consistency, fuel, incidents, tyre pressure and temperature trends); v75 2026-10-12: live view redraws every frame (was 4 per second), restarts the lap trace when the car jumps (reset to pits/tow), steady live numbers, ride height front/rear by color; v74 2026-10-12: live graphs (speed, pedals, steering, ride heights, delta) against best or last lap; v73: live telemetry via the local iRacing bridge: live setup, gauges, runs by setup; v72: imperial labels match iRacing (lbs, lbs/in, ft-lbs); v71: setup panel collapsible, open state remembered; v70: setup tools available without a file, using the last recorded setup per car; v69: measured ride heights at speed from telemetry, aero calculator explained; v68: setup panel mirrors the iRacing garage tabs and sections; v67: compact setup layout: corner grid, front/rear grid, info on demand; v66: per-car setup library: ranges you enter, values seen in your files, export/import; v65: iRacing setup notes, damper and ARB ranges for the 296, downforce trim guide, setup units; earlier v60: lap times matched to the right lap; setup tools; single-file comparison; clear buttons; wording and spelling cleanup -->
 <style>
 :root{--bg:#f6f6f4;--fg:#1d2024;--mut:#6a7079;--card:#fff;--ln:#dcdde0;--you:#e8710a;--ref:#2f6fed;--bad:#d6333a;--good:#1a8f4c;--rear:#7b4fd6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15171a;--fg:#e7e9ec;--mut:#9aa1ab;--card:#1e2126;--ln:#33373d;--you:#ff9a3d;--ref:#6ea0ff;--bad:#ff6b72;--good:#4fd68a;--rear:#b48cff}}
@@ -95,6 +95,227 @@ body:not([data-view=setup]) #liveNow{display:none}
 .clr[hidden]{display:none!important}#own tr.nt{opacity:.55}
 @media(hover:hover){#own .sjb{opacity:0;transition:opacity .1s}#own tr:hover .sjb,#own .sjb:focus{opacity:1}}
 .sjb{font:inherit;font-size:12px;padding:2px 8px;cursor:pointer}
+/* ---- LOOKS (generated from one source for the home page and the Lap Analyzer; same text in both): Pit wall and Arcade, set by suite:look on :root[data-look]. Basic is the page as it is. ---- */
+@font-face{font-family:"DSEG7 digits";font-weight:400 900;font-display:swap;unicode-range:U+0020,U+002B-002E,U+0030-003A;src:url("/pitwall/assets/dseg7-classic-bold.woff2") format("woff2")}
+@font-face{font-family:"Russo One";font-display:swap;src:url("/pitwall/assets/russo-one-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Exo 2";font-weight:400 600;font-display:swap;src:url("/pitwall/assets/exo-2-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:"Exo 2";font-weight:700 900;font-style:italic;font-display:swap;src:url("/pitwall/assets/exo-2-latin-900-italic.woff2") format("woff2")}
+:root[data-look="pitwall"]{color-scheme:dark;--bg:#060708;--card:#0a0c0e;--fg:#e4e8ec;--mut:#7f8892;--ln:#22262b;--you:#ffb23f;--ref:#3fd0ff;--bad:#ff3b3b;--good:#19d15a;--rear:#b43cf0;--acc:#ffb23f;--blue:#3fd0ff;--warn:#ffb23f;--bezel:#16181b;--purple:#b43cf0;--seg:"DSEG7 digits",var(--title),var(--num,monospace)}
+:root[data-look="pitwall"] body{background:repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.35) 0 2px,transparent 2px 4px),#0d0f11!important;font-family:"Barlow Semi Condensed","Segoe UI",system-ui,sans-serif!important;color:var(--fg)}
+:root[data-look="pitwall"] .lk-hud{position:sticky;top:0;z-index:20;display:flex;align-items:stretch;margin:0 0 14px;background:#000;border-bottom:3px solid var(--you);font-family:var(--title);box-shadow:0 6px 18px rgba(0,0,0,.6);overflow:hidden}
+:root[data-look="pitwall"] .lk-hud>div{padding:6px 12px;border-right:1px solid #1e2226;display:flex;flex-direction:column;justify-content:center;white-space:nowrap;min-width:0}
+:root[data-look="pitwall"] .lk-hud small{font:600 11px/1 var(--num);color:var(--mut);letter-spacing:.06em}
+:root[data-look="pitwall"] .lk-hud b{font:600 18px/1.1 var(--title);color:#fff;overflow:hidden;text-overflow:ellipsis}
+:root[data-look="pitwall"] .lk-hud .plate{background:var(--you);color:#000;font:700 28px/1 var(--title);padding:4px 14px;border:0;justify-content:center}
+:root[data-look="pitwall"] .lk-hud .seg{font:700 18px/1 var(--seg);color:var(--you);letter-spacing:.02em}
+:root[data-look="pitwall"] .lk-hud .seg.p{color:var(--purple)}
+:root[data-look="pitwall"] .lk-hud .seg.bad{color:var(--bad)}
+:root[data-look="pitwall"] .lk-hud .seg.good{color:var(--good)}
+:root[data-look="pitwall"] .lk-hud .grow{flex:1;border-right:0}
+:root[data-look="pitwall"] .lk-hud .radio{flex-direction:row;align-items:center;gap:10px;color:#cfd5db;font:600 15px var(--num)}
+:root[data-look="pitwall"] .lk-hud .radio i{width:9px;height:9px;border-radius:50%;background:var(--mut)}
+:root[data-look="pitwall"] .lk-hud .radio.on i{background:var(--good);box-shadow:0 0 8px var(--good)}
+:root[data-look="pitwall"] .views a{border-radius:0!important;border:0!important;border-bottom:3px solid transparent!important;background:transparent!important;color:var(--mut)!important}
+:root[data-look="pitwall"] .views a.on{color:#fff!important;border-bottom-color:var(--you)!important}
+:root[data-look="pitwall"] .views .theme{border-radius:0!important}
+:root[data-look="pitwall"] .card{position:relative;background:var(--card)!important;border:6px solid var(--bezel)!important;border-bottom-width:12px!important;border-radius:4px!important;padding:12px 14px!important;margin-bottom:16px;box-shadow:inset 0 0 0 1px #000,0 0 0 1px #24282d,0 8px 20px rgba(0,0,0,.55)}
+:root[data-look="pitwall"] .card::after{content:"";position:absolute;right:8px;bottom:-9px;width:5px;height:5px;border-radius:50%;background:var(--good);box-shadow:0 0 6px var(--good)}
+:root[data-look="pitwall"] .card .card{border:0!important;box-shadow:none;padding:0!important}
+:root[data-look="pitwall"] .card .card::after{display:none}
+:root[data-look="pitwall"] #start,:root[data-look="pitwall"] .dz{border-radius:2px!important;background:#000!important;border-color:#2a2f35!important}
+:root[data-look="pitwall"] h3,:root[data-look="pitwall"] .comap>b{font-family:var(--title)!important;color:#fff;border-left:4px solid var(--you);padding-left:9px}
+:root[data-look="pitwall"] .tile,:root[data-look="pitwall"] .cothing{background:#000!important;border:1px solid #1f2328!important;border-radius:0!important}
+:root[data-look="pitwall"] .cothing{border-left:4px solid var(--bad)!important}
+:root[data-look="pitwall"] .cothing-n{font:700 30px/1 var(--seg)!important;color:var(--you)!important}
+:root[data-look="pitwall"] b[style*="font-size:22px"]{font-family:var(--seg)!important;font-size:24px!important;font-weight:700!important;letter-spacing:.02em}
+:root[data-look="pitwall"] button,:root[data-look="pitwall"] select,:root[data-look="pitwall"] .chip{border-radius:2px!important}
+:root[data-look="pitwall"] button{background:#15181c!important;border:1px solid #2c3137!important;color:#dfe4e9!important;font-family:var(--title)!important;letter-spacing:.02em}
+:root[data-look="pitwall"] button:hover{border-color:var(--you)!important}
+:root[data-look="pitwall"] .cotabs button.on,:root[data-look="pitwall"] .tl-lay button.on{background:var(--you)!important;color:#000!important;border-color:var(--you)!important}
+:root[data-look="pitwall"] table th{color:var(--mut);font-family:var(--title);font-weight:600}
+:root[data-look="pitwall"] a{color:var(--ref)}
+:root[data-look="pitwall"] .tl-t{background:#000!important;border:1px solid #1f2328!important;border-radius:0!important}
+:root[data-look="pitwall"] #tlSpd,:root[data-look="pitwall"] #tlGear,:root[data-look="pitwall"] #tlRpm,:root[data-look="pitwall"] #tlCur,:root[data-look="pitwall"] #tlLast,:root[data-look="pitwall"] #tlBest,:root[data-look="pitwall"] #tlFuel,:root[data-look="pitwall"] #tlDelta{font-family:var(--seg)!important;font-weight:700!important}
+:root[data-look="pitwall"] #tlGear{color:var(--you)!important}
+:root[data-look="pitwall"] #tlRpmBar{background:linear-gradient(90deg,var(--good) 0 60%,var(--you) 60% 85%,var(--bad) 85%)!important}
+:root[data-look="pitwall"] .tl-box{background:#000!important;border-radius:0!important;border:1px solid #1f2328!important}
+:root[data-look="pitwall"] .wrap{max-width:1180px}
+:root[data-look="pitwall"] header{border-bottom:0!important}
+:root[data-look="pitwall"] .app{background:#000!important;border:6px solid var(--bezel)!important;border-bottom-width:12px!important;border-radius:4px!important;box-shadow:0 0 0 1px #24282d,0 10px 24px rgba(0,0,0,.6);position:relative}
+:root[data-look="pitwall"] .app::after{content:"";position:absolute;right:8px;bottom:-9px;width:5px;height:5px;border-radius:50%;background:var(--good);box-shadow:0 0 6px var(--good)}
+:root[data-look="pitwall"] .app .ico{border-radius:2px!important;background:transparent!important;border:1px solid var(--c)}
+:root[data-look="pitwall"] .app h2{color:#fff}
+:root[data-look="pitwall"] .app .open{color:var(--c)!important;font-family:var(--title);font-size:17px}
+:root[data-look="pitwall"] .tag.ok{border-radius:0!important;background:transparent!important;border:1px solid var(--good);color:var(--good)!important}
+:root[data-look="pitwall"] .status,:root[data-look="pitwall"] .last,:root[data-look="pitwall"] .rcard,:root[data-look="pitwall"] .share,:root[data-look="pitwall"] .rec,:root[data-look="pitwall"] .miles li{background:#000!important;border:1px solid #23272c!important;border-radius:0!important}
+:root[data-look="pitwall"] .status{border-left:6px solid var(--ref)!important}
+:root[data-look="pitwall"] .ctx a{border-radius:0!important;background:#000!important}
+:root[data-look="pitwall"] .gl b,:root[data-look="pitwall"] .last .st b,:root[data-look="pitwall"] .rcard .rb{font-family:var(--seg)!important;color:var(--you)}
+:root[data-look="pitwall"] footer{border-top:1px solid #1d2125;padding-top:12px}
+:root[data-look="arcade"]{color-scheme:dark;
+  --bg:#06080d;--card:#0c1018;--fg:#ffffff;--mut:#9aa4b8;--ln:#232a38;
+  --you:#ffd400;--ref:#19d9ff;--bad:#ff3a2a;--good:#38f07a;--rear:#ff4fd8;--acc:#ffd400;--blue:#19d9ff;--warn:#ffb000;--pb:#b45cff;
+  --title:"Exo 2",system-ui,sans-serif;--num:"Exo 2",system-ui,sans-serif;--pop:"Exo 2",system-ui,sans-serif;
+  --chkg:conic-gradient(#fff 0 25%,#0b0d12 0 50%,#fff 0 75%,#0b0d12 0);--chk:var(--chkg) 0 0/12px 12px;
+  --chrome:linear-gradient(180deg,#ffffff 0%,#fff3b0 40%,#ffb000 54%,#ff5a1f 55%,#ffd400 100%);
+  --trail:-6px 0 0 rgba(255,90,31,.55),-14px 0 0 rgba(255,90,31,.28),-24px 0 0 rgba(255,90,31,.12)}
+:root[data-look="arcade"] body{font-family:"Exo 2",system-ui,sans-serif!important;font-weight:500;color:#fff;background:
+  radial-gradient(1100px 520px at 85% -8%,rgba(255,90,31,.30),transparent 70%),
+  radial-gradient(900px 600px at 0% 110%,rgba(25,217,255,.16),transparent 70%),
+  repeating-linear-gradient(90deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px),
+  linear-gradient(180deg,#0a0d16,#05070b 60%)!important;background-attachment:fixed!important}
+:root[data-look="arcade"] body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:repeating-linear-gradient(180deg,transparent 0 37px,rgba(255,212,0,.07) 37px 39px,transparent 39px 83px,rgba(255,255,255,.05) 83px 84px,transparent 84px 131px);
+  -webkit-mask:linear-gradient(90deg,#000,transparent 9%,transparent 91%,#000);mask:linear-gradient(90deg,#000,transparent 9%,transparent 91%,#000);animation:lkRoad 1.1s linear infinite}
+@keyframes lkRoad{to{background-position:0 131px}}
+:root[data-look="arcade"] .lk-hud{position:relative;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;margin:0 0 22px;padding:10px 14px 12px;
+  background:linear-gradient(180deg,rgba(6,8,13,.92),rgba(12,16,24,.92));border-bottom:2px solid #2b3446}
+:root[data-look="arcade"] .lk-hud::after{content:"";position:absolute;left:0;right:0;bottom:-8px;height:6px;background:var(--chk);opacity:.85}
+:root[data-look="arcade"] .lk-hud .side{display:flex;flex-direction:column;gap:7px;min-width:0}
+:root[data-look="arcade"] .lk-hud .side.r{align-items:flex-end}
+:root[data-look="arcade"] .lk-hud .bar{width:100%;height:16px;background:repeating-linear-gradient(90deg,#1a2130 0 14px,transparent 14px 17px);transform:skewX(-24deg);position:relative;overflow:hidden}
+:root[data-look="arcade"] .lk-hud .bar i{position:absolute;top:0;bottom:0;left:0;width:var(--p);background:linear-gradient(90deg,var(--good),var(--you) 70%,var(--bad));
+  -webkit-mask:repeating-linear-gradient(90deg,#000 0 14px,transparent 14px 17px);mask:repeating-linear-gradient(90deg,#000 0 14px,transparent 14px 17px);filter:drop-shadow(0 0 6px rgba(255,212,0,.6))}
+:root[data-look="arcade"] .lk-hud .side.r .bar i{left:auto;right:0;background:linear-gradient(270deg,var(--pb),#7d8cff);filter:drop-shadow(0 0 6px rgba(180,92,255,.7))}
+:root[data-look="arcade"] .lk-hud .nm{display:flex;align-items:center;gap:10px;font:900 italic 24px/1 var(--num);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:root[data-look="arcade"] .lk-hud .nm small{font:700 italic 14px var(--num);color:var(--mut);text-transform:none}
+:root[data-look="arcade"] .lk-hud .plate{display:inline-grid;place-items:center;min-width:44px;height:44px;padding:0 6px;box-sizing:border-box;border-radius:22px;background:#fff;color:#000;font:900 italic 24px/1 var(--num);box-shadow:0 0 0 3px #000,0 0 0 5px var(--you)}
+:root[data-look="arcade"] .lk-hud .clock{min-width:170px;text-align:center;font:900 italic 46px/1 var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #1a0d00;
+  filter:drop-shadow(0 0 16px rgba(255,90,31,.55));letter-spacing:-.01em}
+:root[data-look="arcade"] .lk-hud .clock small{display:block;font:700 italic 12px var(--num);color:#fff;-webkit-text-stroke:0;letter-spacing:.3em;background:none;margin-top:4px;min-height:12px}
+:root[data-look="arcade"] .card{position:relative;z-index:1;background:linear-gradient(180deg,#111725,#0a0e16)!important;border:1px solid #273044!important;border-radius:2px!important;padding:16px 20px!important;margin:0 0 22px;
+  box-shadow:0 14px 34px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.05)}
+:root[data-look="arcade"] .card::before{content:"";position:absolute;left:-1px;top:-1px;width:120px;height:5px;background:linear-gradient(90deg,var(--you),var(--warn));clip-path:polygon(0 0,100% 0,calc(100% - 6px) 100%,0 100%)}
+:root[data-look="arcade"] .card::after{content:"";position:absolute;right:-1px;top:-1px;width:48px;height:12px;background:var(--chk);opacity:.9;clip-path:polygon(8px 0,100% 0,100% 100%,0 100%)}
+:root[data-look="arcade"] .card .card{background:transparent!important;border:0!important;box-shadow:none;padding:0!important;margin:0}
+:root[data-look="arcade"] .card .card::before,:root[data-look="arcade"] .card .card::after{display:none}
+:root[data-look="arcade"] #start,:root[data-look="arcade"] .dz{border-radius:2px!important;background:#0a0e16!important;border:2px dashed rgba(255,212,0,.35)!important}
+:root[data-look="arcade"] h3,:root[data-look="arcade"] .comap>b{font:900 italic 23px/1.1 var(--num)!important;text-transform:uppercase;color:#fff;letter-spacing:.01em;text-shadow:var(--trail)}
+:root[data-look="arcade"] .tile,:root[data-look="arcade"] .cothing{background:#0a0e16!important;border:1px solid #273044!important;border-radius:2px!important}
+:root[data-look="arcade"] .cothing{position:relative;border-left:5px solid var(--you)!important}
+:root[data-look="arcade"] .cothings{counter-reset:lkr}
+:root[data-look="arcade"] .cothing{counter-increment:lkr}
+:root[data-look="arcade"] .cothing::after{content:counter(lkr);position:absolute;right:14px;top:-14px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#fff;color:#000;font:900 italic 20px/1 var(--num);box-shadow:0 0 0 3px #000,0 0 0 5px var(--you)}
+:root[data-look="arcade"] .cothing-n{font:900 italic 44px/1 var(--num)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
+:root[data-look="arcade"] .cothing-t>div:nth-child(2){font:800 italic 22px var(--num)!important}
+:root[data-look="arcade"] b[style*="font-size:22px"]{font:900 italic 38px/1.05 var(--num)!important;text-shadow:var(--trail)}
+:root[data-look="arcade"] .views{gap:6px!important;position:relative;z-index:2}
+:root[data-look="arcade"] .views a{transform:skewX(-20deg);border-radius:0!important;border:1px solid #2f3a50!important;background:linear-gradient(180deg,#151c2b,#0c111b)!important;color:#dfe6f3!important;font:800 italic 16px var(--num)!important;padding:8px 22px!important;text-transform:uppercase;letter-spacing:.02em}
+:root[data-look="arcade"] .views a.on{background:linear-gradient(180deg,#ffe24d,var(--you))!important;color:#000!important;border-color:var(--you)!important;position:relative;box-shadow:0 0 18px rgba(255,212,0,.35)}
+:root[data-look="arcade"] .views a.on::after{content:"";position:absolute;left:0;right:0;bottom:-7px;height:4px;background:var(--chk);background-size:8px 8px}
+:root[data-look="arcade"] .views a.home{border:0!important;background:transparent!important;transform:none}
+:root[data-look="arcade"] .views .theme{border-radius:0!important;background:transparent!important}
+:root[data-look="arcade"] button,:root[data-look="arcade"] select{border-radius:0!important}
+:root[data-look="arcade"] button{background:linear-gradient(180deg,#1a2234,#111827)!important;border:1px solid #3a4762!important;color:#fff!important;font:800 italic 14px var(--num)!important;transform:skewX(-14deg);letter-spacing:.02em}
+:root[data-look="arcade"] button:hover{background:linear-gradient(180deg,#ffe24d,var(--you))!important;color:#000!important;border-color:var(--you)!important}
+:root[data-look="arcade"] .cotabs button.on,:root[data-look="arcade"] .tl-lay button.on{background:var(--ref)!important;color:#000!important;border-color:var(--ref)!important}
+:root[data-look="arcade"] table th{color:var(--you);font:800 italic 13px var(--num);text-transform:uppercase;letter-spacing:.04em}
+:root[data-look="arcade"] td{font-variant-numeric:tabular-nums}
+:root[data-look="arcade"] a{color:var(--ref)}
+:root[data-look="arcade"] .bad{color:var(--bad)!important}
+:root[data-look="arcade"] .good{color:var(--good)!important}
+:root[data-look="arcade"] .tl-t{background:#0a0e16!important;border:1px solid #273044!important;border-radius:2px!important}
+:root[data-look="arcade"] .tl-t .big,:root[data-look="arcade"] .tl-t b{font:900 italic 46px/1 var(--num)!important}
+:root[data-look="arcade"] #tlSpd{font-size:76px!important;text-shadow:var(--trail)}
+:root[data-look="arcade"] #tlGear{font:900 italic 96px/1 var(--num)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #1a0d00;filter:drop-shadow(0 0 18px rgba(255,90,31,.6))}
+:root[data-look="arcade"] #tlCur,:root[data-look="arcade"] #tlLast,:root[data-look="arcade"] #tlBest{font-size:34px!important}
+:root[data-look="arcade"] #tlRpmBar{background:linear-gradient(90deg,var(--good),var(--you) 70%,var(--bad))!important;height:14px!important;transform:skewX(-24deg);
+  -webkit-mask:repeating-linear-gradient(90deg,#000 0 10px,transparent 10px 13px);mask:repeating-linear-gradient(90deg,#000 0 10px,transparent 10px 13px);filter:drop-shadow(0 0 6px rgba(255,212,0,.6))}
+:root[data-look="arcade"] .tl-box{background:#0a0e16!important;border-radius:2px!important;border:1px solid #273044!important}
+:root[data-look="arcade"] .wrap{max-width:1180px;position:relative;z-index:1}
+:root[data-look="arcade"] header{border-bottom:0!important}
+:root[data-look="arcade"] h1{font:900 italic 54px/1 var(--num)!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #1a0d00;text-transform:uppercase;letter-spacing:-.01em;filter:drop-shadow(-8px 0 0 rgba(255,90,31,.35)) drop-shadow(-16px 0 0 rgba(255,90,31,.15))}
+:root[data-look="arcade"] h1 span{color:transparent!important}
+:root[data-look="arcade"] .apps{gap:22px!important}
+:root[data-look="arcade"] .app{background:linear-gradient(160deg,#141b2a,#090c13 72%)!important;border:1px solid #2b3549!important;border-radius:2px!important;position:relative;overflow:hidden;padding:22px 24px!important;box-shadow:0 14px 34px rgba(0,0,0,.55);transition:transform .15s,box-shadow .15s}
+:root[data-look="arcade"] .app::before{content:"";position:absolute;left:0;top:0;width:100%;height:5px;background:linear-gradient(90deg,var(--c),transparent 80%)}
+:root[data-look="arcade"] .app::after{content:"";position:absolute;right:0;bottom:0;width:120px;height:24px;background:var(--chk);opacity:.16;clip-path:polygon(24px 0,100% 0,100% 100%,0 100%)}
+:root[data-look="arcade"] a.app:hover,:root[data-look="arcade"] .app.link:hover{transform:translateX(6px);box-shadow:-10px 0 0 color-mix(in srgb,var(--c) 40%,transparent),-20px 0 0 color-mix(in srgb,var(--c) 18%,transparent),0 14px 34px rgba(0,0,0,.55)}
+:root[data-look="arcade"] .app h2{font:900 italic 30px/1 var(--num)!important;text-transform:uppercase}
+:root[data-look="arcade"] .app .ico{border-radius:2px!important;transform:skewX(-14deg);background:var(--c)!important;color:#000!important}
+:root[data-look="arcade"] .app .open{font:900 italic 17px var(--num)!important;text-transform:uppercase;background:var(--c);color:#000!important;align-self:flex-start;padding:6px 18px;transform:skewX(-16deg);position:relative;z-index:1}
+:root[data-look="arcade"] .tag.ok{border-radius:0!important;background:#000!important;color:var(--good)!important;border:1px solid var(--good);font:800 italic 12px var(--num)}
+:root[data-look="arcade"] .status{position:relative;z-index:1;background:#0a0e16!important;border:1px solid #2b3549!important;border-left:5px solid var(--ref)!important;border-radius:2px!important}
+:root[data-look="arcade"] .ctx a{border-radius:0!important;transform:skewX(-12deg);background:#0e1420!important;border:1px solid var(--c)!important}
+:root[data-look="arcade"] .gl b{font:900 italic 32px var(--num)!important;color:var(--you)}
+:root[data-look="arcade"] footer{color:var(--mut);position:relative;z-index:1}
+:root[data-look="arcade"] .lk-in{animation:lkIn .5s cubic-bezier(.15,.9,.25,1) both}
+@keyframes lkIn{0%{opacity:0;transform:translateX(90px) skewX(-10deg);filter:blur(6px)}70%{opacity:1;filter:none}100%{transform:none}}
+:root[data-look="arcade"] .lk-hud .bar i{transition:width .5s cubic-bezier(.2,1,.3,1)}
+@media (prefers-reduced-motion:reduce){:root[data-look="arcade"] body::before{animation:none}}
+:root[data-look="arcade"] .lk-fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8990}
+:root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none;overflow:hidden;--k:#ffd400}
+:root[data-look="arcade"] .lk-pop .band{position:absolute;left:-12%;right:-12%;height:190px;top:calc(50% - 95px);transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(4,6,10,.92) 14% 86%,transparent);
+  border-top:5px solid var(--k);border-bottom:5px solid var(--k);box-shadow:0 0 50px color-mix(in srgb,var(--k) 40%,transparent);overflow:hidden;animation:lkBand 2.2s cubic-bezier(.2,.9,.2,1) both}
+:root[data-look="arcade"] .lk-pop .band::before{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(180deg,transparent 0 9px,rgba(255,255,255,.10) 9px 10px,transparent 10px 23px,color-mix(in srgb,var(--k) 22%,transparent) 23px 25px,transparent 25px 41px);
+  -webkit-mask:repeating-linear-gradient(90deg,#000 0 160px,transparent 160px 220px,#000 220px 300px,transparent 300px 420px);mask:repeating-linear-gradient(90deg,#000 0 160px,transparent 160px 220px,#000 220px 300px,transparent 300px 420px);animation:lkLines .35s linear infinite}
+:root[data-look="arcade"] .lk-pop.chk .band{border:0;padding:12px 0}
+:root[data-look="arcade"] .lk-pop.chk .band::after{content:"";position:absolute;inset:0;background:var(--chkg) 0 0/14px 14px;
+  -webkit-mask:linear-gradient(#000 0 14px,transparent 14px calc(100% - 14px),#000 0);mask:linear-gradient(#000 0 14px,transparent 14px calc(100% - 14px),#000 0)}
+:root[data-look="arcade"] .lk-pop .t{position:relative;font:900 italic 112px/1 var(--num);letter-spacing:-.02em;text-transform:uppercase;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #1a0d00;
+  filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));white-space:nowrap;animation:lkDrive 2.2s both}
+:root[data-look="arcade"] .lk-pop .t::before,:root[data-look="arcade"] .lk-pop .t::after{content:attr(data-t);position:absolute;inset:0;-webkit-text-stroke:0;background:none;color:var(--k);z-index:-1}
+:root[data-look="arcade"] .lk-pop .t::before{opacity:.45;animation:lkGhostA 2.2s both}
+:root[data-look="arcade"] .lk-pop .t::after{opacity:.22;animation:lkGhostB 2.2s both}
+:root[data-look="arcade"] .lk-pop .s{position:absolute;top:calc(50% + 68px);font:800 italic 30px var(--num);color:#fff;text-shadow:0 2px 0 #000,0 0 14px rgba(0,0,0,.8);animation:lkSub 2.2s ease both}
+:root[data-look="arcade"] .lk-pop.red{--k:#ff3a2a}
+:root[data-look="arcade"] .lk-pop.purple{--k:#b45cff}
+:root[data-look="arcade"] .lk-pop.cyan{--k:#19d9ff}
+:root[data-look="arcade"] .lk-pop.green{--k:#38f07a}
+:root[data-look="arcade"] .lk-pop.white{--k:#ffffff}
+@keyframes lkLines{to{background-position:0 0;-webkit-mask-position:-420px 0;mask-position:-420px 0}}
+@keyframes lkBand{0%{clip-path:inset(0 0 0 100%);opacity:1}9%,84%{clip-path:inset(0 0 0 0);opacity:1}100%{clip-path:inset(0 100% 0 0);opacity:.6}}
+@keyframes lkDrive{0%{transform:translateX(70vw) skewX(-34deg) scaleX(1.5);filter:blur(10px) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:0;animation-timing-function:cubic-bezier(.3,0,.6,1)}
+  11%{transform:translateX(-3vw) skewX(-4deg) scaleX(.97);filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:1;animation-timing-function:cubic-bezier(.2,1.3,.4,1)}
+  18%,84%{transform:translateX(0) skewX(-10deg);filter:blur(0) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:1;animation-timing-function:cubic-bezier(.6,0,.9,.5)}
+  100%{transform:translateX(-90vw) skewX(-36deg) scaleX(1.7);filter:blur(10px) drop-shadow(0 4px 0 #000) drop-shadow(0 0 30px color-mix(in srgb,var(--k) 70%,transparent));opacity:0}}
+@keyframes lkGhostA{0%,4%{transform:translateX(90px);opacity:0}9%{transform:translateX(70px);opacity:.5}20%,84%{transform:translateX(0);opacity:0}92%{transform:translateX(80px);opacity:.45}100%{transform:translateX(160px);opacity:0}}
+@keyframes lkGhostB{0%,4%{transform:translateX(170px);opacity:0}9%{transform:translateX(140px);opacity:.3}22%,84%{transform:translateX(0);opacity:0}92%{transform:translateX(160px);opacity:.25}100%{transform:translateX(300px);opacity:0}}
+@keyframes lkSub{0%,16%{opacity:0;transform:translateX(120px) skewX(-10deg)}26%,82%{opacity:1;transform:skewX(-10deg)}100%{opacity:0;transform:translateX(-200px) skewX(-10deg)}}
+:root[data-look="arcade"] .lk-shake{animation:lkRumble .5s linear}
+@keyframes lkRumble{0%,100%{transform:none}10%{transform:translateY(calc(var(--sh,6px)*-1))}20%{transform:translateY(var(--sh,6px))}30%{transform:translateY(calc(var(--sh,6px)*-.8))}
+  40%{transform:translateY(calc(var(--sh,6px)*.7))}50%{transform:translateY(calc(var(--sh,6px)*-.5))}60%{transform:translateY(calc(var(--sh,6px)*.4))}75%{transform:translateY(calc(var(--sh,6px)*-.2))}}
+:root[data-look="arcade"] .lk-start{position:fixed;inset:0;z-index:9500;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;
+  background:radial-gradient(900px 500px at 50% 30%,rgba(255,58,42,.18),transparent 70%),rgba(4,6,10,.95);animation:lkFade .25s ease both}
+:root[data-look="arcade"] .lk-start.go{background:radial-gradient(900px 500px at 50% 30%,rgba(56,240,122,.22),transparent 70%),rgba(4,6,10,.95)}
+:root[data-look="arcade"] .lk-start.out{animation:lkAway .45s cubic-bezier(.6,0,.9,.5) both}
+:root[data-look="arcade"] .lk-start .gantry{display:flex;gap:18px;padding:16px 22px;background:linear-gradient(180deg,#1a1f2a,#0a0d13);border:2px solid #2e3647;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,.7);position:relative}
+:root[data-look="arcade"] .lk-start .gantry::before{content:"";position:absolute;left:50%;top:-60px;width:16px;height:60px;margin-left:-8px;background:linear-gradient(90deg,#11151d,#262d3b,#11151d)}
+:root[data-look="arcade"] .lk-start .pod{display:flex;flex-direction:column;gap:12px;padding:12px;background:#050608;border-radius:6px;box-shadow:inset 0 0 0 2px #1c2230}
+:root[data-look="arcade"] .lk-start .pod i{width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#3a1414,#140707 70%);box-shadow:inset 0 3px 8px rgba(0,0,0,.8);transition:background .05s,box-shadow .05s}
+:root[data-look="arcade"] .lk-start .pod.on i{background:radial-gradient(circle at 40% 35%,#ffd6c8,#ff3a2a 35%,#a00e04 75%);box-shadow:0 0 26px 6px rgba(255,58,42,.75),inset 0 -3px 6px rgba(0,0,0,.4)}
+:root[data-look="arcade"] .lk-start.go .pod i{background:radial-gradient(circle at 40% 35%,#d9ffe6,#38f07a 35%,#0a8a37 75%);box-shadow:0 0 26px 6px rgba(56,240,122,.7)}
+:root[data-look="arcade"] .lk-start .grid{display:grid;grid-template-columns:auto 1fr auto;gap:0;min-width:min(760px,90vw);transform:skewX(-10deg)}
+:root[data-look="arcade"] .lk-start .row{display:contents}
+:root[data-look="arcade"] .lk-start .row>*{padding:12px 18px;background:linear-gradient(90deg,rgba(17,23,37,.95),rgba(10,14,22,.95));border-top:1px solid #273044;display:flex;align-items:center}
+:root[data-look="arcade"] .lk-start .row small{font:800 italic 15px var(--num);text-transform:uppercase;letter-spacing:.06em;color:var(--mut);border-left:6px solid var(--k);white-space:nowrap}
+:root[data-look="arcade"] .lk-start .row b{font:900 italic clamp(22px,2.6vw,40px)/1.05 var(--num);text-transform:uppercase;overflow-wrap:anywhere}
+:root[data-look="arcade"] .lk-start .row em{font:900 italic clamp(28px,3.2vw,52px)/1 var(--num);color:var(--k);justify-content:flex-end;font-variant-numeric:tabular-nums}
+:root[data-look="arcade"] .lk-start .row:nth-child(1){--k:var(--you)}
+:root[data-look="arcade"] .lk-start .row:nth-child(2){--k:var(--ref)}
+:root[data-look="arcade"] .lk-start .row>*{animation:lkRowIn .45s cubic-bezier(.15,.9,.25,1) both}
+:root[data-look="arcade"] .lk-start .row:nth-child(2)>*{animation-delay:.12s}
+:root[data-look="arcade"] .lk-start .gap{font:800 italic 18px var(--num);text-transform:uppercase;letter-spacing:.3em;color:#fff;opacity:.8}
+:root[data-look="arcade"] .lk-start .gap b{font:900 italic 40px var(--num);letter-spacing:0;margin-left:14px;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
+:root[data-look="arcade"] .lk-start .word{position:absolute;left:50%;top:22%;font:900 italic 230px/1 var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:3px #1a0d00;
+  filter:drop-shadow(0 6px 0 #000) drop-shadow(0 0 40px rgba(56,240,122,.7));transform:translate(-50%,-50%) skewX(-12deg);opacity:0;pointer-events:none;white-space:nowrap}
+:root[data-look="arcade"] .lk-start.go .word{animation:lkGo 1.3s both}
+:root[data-look="arcade"] .lk-start .skip{position:absolute;left:0;right:0;bottom:6%;text-align:center;font:700 italic 16px var(--num);color:var(--mut);letter-spacing:.08em}
+@keyframes lkFade{from{opacity:0}}
+@keyframes lkAway{to{opacity:0;transform:translateX(-12vw) skewX(-8deg);filter:blur(8px)}}
+@keyframes lkRowIn{from{opacity:0;transform:translateX(120px)}}
+@keyframes lkGo{0%{opacity:0;transform:translate(-30%,-50%) skewX(-30deg) scaleX(1.5);filter:blur(8px)}14%{opacity:1;transform:translate(-52%,-50%) skewX(-8deg)}24%,70%{opacity:1;transform:translate(-50%,-50%) skewX(-12deg)}100%{opacity:0;transform:translate(-110%,-50%) skewX(-34deg) scaleX(1.6);filter:blur(8px)}}
+:root[data-look="arcade"] .lk-combo{position:fixed;right:24px;top:40%;z-index:50;text-align:right;padding:12px 16px 10px;background:linear-gradient(180deg,rgba(17,23,37,.94),rgba(8,11,17,.94));border:1px solid #2b3549;transform:skewX(-10deg);box-shadow:0 14px 34px rgba(0,0,0,.6)}
+:root[data-look="arcade"] .lk-combo::before{content:"";position:absolute;left:0;right:0;top:-1px;height:10px;background:var(--chk);background-size:10px 10px}
+:root[data-look="arcade"] .lk-combo b{display:block;margin-top:6px;font:900 italic 76px/.9 var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #1a0d00}
+:root[data-look="arcade"] .lk-combo span{font:800 italic 17px var(--num);text-transform:uppercase;letter-spacing:.04em}
+:root[data-look="arcade"] .lk-combo.lk-bump b{animation:lkBump .4s cubic-bezier(.2,1.6,.4,1)}
+@keyframes lkBump{0%{transform:translateX(40px) scale(1.25);filter:blur(3px)}100%{transform:none}}
+:root[data-look="arcade"] .lk-punch{animation:lkPunch .22s cubic-bezier(.2,1.6,.4,1)}
+@keyframes lkPunch{0%{transform:scale(1.25) translateX(-6px)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){:root[data-look="arcade"] .lk-pop *,:root[data-look="arcade"] .lk-start,:root[data-look="arcade"] .lk-start *{animation-duration:.01s!important}}
+/* ---- /LOOKS ---- */
 </style></head><body>
 <h1 id="appTitle">Lap Analyzer</h1>
 <nav class="views" id="views"></nav>
@@ -149,6 +370,215 @@ try{if(typeof viewShown==='function')viewShown(document.body.dataset.view)}catch
 <details class="fold"><summary>Every channel, lap against lap</summary><div class="card"><div id="ro"></div><div id="charts"></div></div></details></div>
 </div>
 <script>
+// ---- Looks (Basic / Pit wall / Arcade): one setting for the suite (suite:look), same on every page. ----
+// Pit wall and Arcade only restyle the page and add a bar across the top (lkHud); the words stay the same.
+// Arcade adds an arcade racer's layer: call-outs, the start lights, a clean-lap streak and an announcer (suite:announcer,
+// off until a voice is picked; no sound effects: the sim has the racing sounds). Every number in the bar is one the page already shows.
+const LK = { look: 'basic', streak: 0, pos: null, flags: 0, gear: null, AC: null };
+function lkGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v } catch (e) { return d } }
+function lkLook() { const v = lkGet('suite:look', 'basic'); return v === 'pitwall' || v === 'arcade' ? v : 'basic' }
+function lkApply() {
+  LK.look = lkLook(); const R = document.documentElement; R.dataset.look = LK.look;
+  if (LK.look !== 'basic') R.setAttribute('data-theme', 'dark');
+  try { lkHud() } catch (e) { console.error('look bar', e) }
+}
+// pure: a lap time as the page shows it (m:ss.mmm, or s.mmm under a minute)
+function lkTime(s) { if (s == null || !isFinite(s) || s <= 0) return '–'; const m = Math.floor(s / 60), r = s - m * 60; return m ? m + ':' + r.toFixed(3).padStart(6, '0') : r.toFixed(3) }
+// pure: iRacing adds digits to repeated names ("Andrew Brooks6"); the bar shows "A. Brooks"
+function lkShort(n) { n = String(n || '').replace(/\d+$/, '').trim(); if (!n) return ''; const p = n.split(/\s+/); return p.length > 1 ? p[0][0] + '. ' + p.slice(1).join(' ') : n }
+// pure: how full each LED bar in the Arcade bar is: your best lap is the full bar, your average lap loses 10 % of the bar per 1 % slower
+function lkBars(avg, best) { if (!(avg > 0 && best > 0)) return [100, 100]; const pct = (avg - best) / best * 100; return [Math.max(8, Math.min(100, 100 - pct * 10)), 100] }
+function lkHud() {
+  if (LK.look === 'basic') { document.querySelectorAll('.lk-hud').forEach(x => x.remove()); return }
+  if (typeof lkData !== 'function') return;
+  const d = lkData() || {}, team = lkGet('suite:team', '').trim(), plate = lkGet('suite:plate', '').trim().slice(0, 4);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const who = lkShort(d.name), h = document.createElement('div'); h.className = 'lk-hud'; h.setAttribute('aria-hidden', 'true');
+  const gap = d.avg > 0 && d.best > 0 ? d.avg - d.best : null, mid = d.midLabel || 'your average lap';
+  if (LK.look === 'pitwall') {
+    h.innerHTML = (plate ? '<div class="plate">' + esc(plate) + '</div>' : '') +
+      (who || team ? '<div><small>' + (team ? esc(team) : 'Driver') + '</small><b>' + esc(who || team) + '</b></div>' : '') +
+      (d.car || d.track ? '<div><small>Car · circuit</small><b>' + esc([d.car, d.track].filter(Boolean).join(' · ')) + '</b></div>' : '') + '<div class="grow"></div>' +
+      '<div class="radio' + (d.live ? ' on' : '') + '"><i></i>' + esc(d.status || (d.live ? 'Live' : 'Not live')) + '</div>' +
+      (d.best ? '<div><small>Your best lap</small><span class="seg p">' + lkTime(d.best) + '</span></div>' : '') +
+      (d.avg ? '<div><small>' + esc(mid[0].toUpperCase() + mid.slice(1)) + '</small><span class="seg">' + lkTime(d.avg) + '</span></div>' : '') +
+      (gap != null ? '<div><small>Gap</small><span class="seg bad">+' + gap.toFixed(3) + '</span></div>' : '');
+  } else {
+    const [pa, pb] = lkBars(d.avg, d.best);
+    h.innerHTML = '<div class="side"><div class="nm">' + (plate ? '<span class="plate">' + esc(plate) + '</span>' : '') + esc(who || team || 'You') +
+      (d.avg ? ' <small>' + esc(mid) + ' ' + lkTime(d.avg) + '</small>' : '') + '</div><div class="bar"><i style="--p:' + pa + '%"></i></div></div>' +
+      '<div class="clock">' + (gap != null ? '+' + gap.toFixed(3) : (d.live ? 'LIVE' : 'READY')) + '<small>' + (gap != null ? 'GAP' : esc(d.car || '')) + '</small></div>' +
+      '<div class="side r"><div class="nm">' + (d.best ? '<small>' + lkTime(d.best) + '</small> ' : '') + 'Your best lap</div><div class="bar"><i style="--p:' + pb + '%"></i></div></div>';
+  }
+  const old = document.querySelector('.lk-hud'); if (old && old.dataset.look === LK.look && old.innerHTML === h.innerHTML) return;
+  h.dataset.look = LK.look; if (old) old.replaceWith(h); else (document.querySelector('.wrap') || document.body).prepend(h);
+}
+// ---- Arcade's racing layer ----
+function lkArcade() { return LK.look === 'arcade' }
+const LK_CALM = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches } catch (e) { return false } };
+// A call-out: it comes in from the right like a car, brakes past its mark, settles, then pulls away to the left.
+// kind: a colour (red, purple, cyan, green, white) and 'chk' for a checkered edge.
+// opts: say (an announcer line, LK_LINES), sayAt (s), fx ('pb' | 'streak' | 'off' | 'pass' | 'go')
+function lkPop(t, s, kind, opts) {
+  if (!lkArcade()) return; opts = opts || {};
+  const p = document.createElement('div'); p.className = 'lk-pop ' + (kind || ''); p.setAttribute('role', 'status');
+  p.innerHTML = '<div class="band"></div><div class="t"></div>' + (s ? '<div class="s"></div>' : '');
+  const T = p.querySelector('.t'); T.textContent = t; T.dataset.t = t; if (s) p.querySelector('.s').textContent = s;
+  document.querySelectorAll('.lk-pop').forEach(x => x.remove());
+  document.body.prepend(p); if (opts.fx === 'off') lkShake(6);
+  if (opts.say) lkSay(opts.say, opts.sayAt == null ? .2 : opts.sayAt);
+  lkFx(opts.fx || 'streak', getComputedStyle(p).getPropertyValue('--k').trim() || '#ffd400');
+  setTimeout(() => p.remove(), 2300);
+}
+// the page rumbles like a car on the kerbs (one transform on the body, no layout)
+function lkShake(px) { if (LK_CALM()) return; const b = document.body; b.style.setProperty('--sh', px + 'px'); b.classList.remove('lk-shake'); void b.offsetWidth; b.classList.add('lk-shake') }
+// ---- effects layer: one canvas over the page, drawn only while something is moving ----
+// speed lines, a light sweep for a pass, checkered flag pieces for a personal best, dust and gravel off the track
+const FX = { cv: null, g: null, parts: [], sweeps: [], flash: 0, flashCol: '#fff', raf: 0, last: 0 };
+function lkFx(kind, col) {
+  if (LK_CALM()) return;
+  if (!FX.cv) { FX.cv = document.createElement('canvas'); FX.cv.className = 'lk-fx'; FX.cv.setAttribute('aria-hidden', 'true'); document.body.appendChild(FX.cv); FX.g = FX.cv.getContext('2d') }
+  if (!FX.cv.isConnected) document.body.appendChild(FX.cv);
+  const W = innerWidth, H = innerHeight, cy = H / 2, R = Math.random, P = FX.parts;
+  const lines = kind === 'off' ? 0 : kind === 'pb' || kind === 'go' ? 70 : 46;
+  for (let i = 0; i < lines; i++) { const y = cy + (R() - .5) * H * (R() < .6 ? .35 : .95);
+    P.push({ k: 'line', x: W + R() * W * .8, y, vx: -(2600 + R() * 3200), len: 80 + R() * 420, w: R() < .2 ? 3 : 1.2, life: 1.2, age: R() * -.25, col: R() < .3 ? col : '#ffffff', a: .35 + R() * .5 }) }
+  if (kind === 'pass' || kind === 'go' || kind === 'pb') FX.sweeps.push({ x: -W * .3, v: W * (kind === 'pass' ? 3.2 : 2.4), col: kind === 'go' ? '#38f07a' : col, w: W * .22 });
+  if (kind === 'go') { FX.flash = .28; FX.flashCol = '#38f07a' }
+  if (kind === 'pb') { FX.flash = .18; FX.flashCol = col;
+    for (let i = 0; i < 150; i++) { const a = -Math.PI / 2 + (R() - .5) * 2.6, sp = 600 + R() * 900, x = W / 2 + (R() - .5) * W * .5;
+      P.push({ k: 'chk', x, y: cy + 60, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 2.3 + R() * 1.1, age: 0, rot: R() * 6, vr: (R() - .5) * 14, s: 9 + R() * 9 }) }
+    for (let i = 0; i < 60; i++) { const sp = 900 + R() * 1600, a = Math.PI + (R() - .5) * .5;
+      P.push({ k: 'spark', x: W / 2 + (R() - .5) * 500, y: cy + (R() - .5) * 140, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .5 + R() * .5, age: 0, col: R() < .5 ? '#fff3b0' : col, w: 1.5 + R() * 2 }) } }
+  if (kind === 'off') { FX.flash = .3; FX.flashCol = 'vignette';
+    for (let i = 0; i < 26; i++) { const x = W * (.2 + R() * .6);
+      P.push({ k: 'dust', x, y: cy + 110 + R() * 60, vx: (R() - .5) * 160, vy: -40 - R() * 90, r: 30 + R() * 50, gr: 90 + R() * 120, life: 1.6 + R() * 1, age: R() * -.3, a: .25 + R() * .25 }) }
+    for (let i = 0; i < 90; i++) { const a = -Math.PI / 2 + (R() - .5) * 2, sp = 300 + R() * 800;
+      P.push({ k: 'stone', x: W * (.3 + R() * .4), y: cy + 120, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1.4 + R() * .5, age: 0, s: 2 + R() * 4, col: ['#6d6150', '#8a7c66', '#4a4136', '#a39478'][i % 4] }) } }
+  if (!FX.raf) { FX.last = performance.now(); FX.raf = requestAnimationFrame(lkFxFrame) }
+}
+function lkFxFrame(now) {
+  const dt = Math.min(.05, (now - FX.last) / 1000); FX.last = now;
+  const cv = FX.cv, g = FX.g, dpr = Math.min(2, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr) }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  if (FX.flash > 0) { g.globalAlpha = FX.flash;
+    if (FX.flashCol === 'vignette') { const v = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .3, W / 2, H / 2, Math.max(W, H) * .75); v.addColorStop(0, 'rgba(255,58,42,0)'); v.addColorStop(1, 'rgba(255,58,42,1)'); g.fillStyle = v }
+    else g.fillStyle = FX.flashCol;
+    g.fillRect(0, 0, W, H); FX.flash = Math.max(0, FX.flash - dt * 1.6) }
+  g.globalAlpha = 1;
+  // dust under everything
+  for (const p of FX.parts) { if (p.k !== 'dust') continue; p.age += dt; if (p.age < 0 || p.age > p.life) continue; const f = 1 - p.age / p.life;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy *= Math.pow(.4, dt); p.r += p.gr * dt;
+    const d = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r); d.addColorStop(0, 'rgba(150,130,104,' + (p.a * f) + ')'); d.addColorStop(1, 'rgba(150,130,104,0)'); g.fillStyle = d; g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fill() }
+  g.globalCompositeOperation = 'lighter';
+  for (const s of FX.sweeps) { s.x += s.v * dt; const gr = g.createLinearGradient(s.x - s.w, 0, s.x + s.w, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(.5, s.col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = .22; g.fillStyle = gr; g.setTransform(dpr, 0, -.35 * dpr, dpr, 0, 0); g.fillRect(s.x - s.w, -H, s.w * 2, H * 3); g.setTransform(dpr, 0, 0, dpr, 0, 0) }
+  FX.sweeps = FX.sweeps.filter(s => s.x - s.w < W * 1.6);
+  for (const p of FX.parts) { if (p.k !== 'line' && p.k !== 'spark') continue; p.age += dt; if (p.age < 0 || p.age > p.life) continue;
+    if (p.k === 'line') { p.x += p.vx * dt; if (p.x + p.len < 0) { p.age = p.life + 1; continue }
+      const gr = g.createLinearGradient(p.x, 0, p.x + p.len, 0); gr.addColorStop(0, p.col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.globalAlpha = p.a; g.strokeStyle = gr; g.lineWidth = p.w; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + p.len, p.y); g.stroke() }
+    else { const f = 1 - p.age / p.life, px = p.x, py = p.y; p.vx *= Math.pow(.1, dt); p.vy = p.vy * Math.pow(.1, dt) + 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      g.globalAlpha = f; g.strokeStyle = p.col; g.lineWidth = p.w; g.lineCap = 'round'; g.beginPath(); g.moveTo(px - (p.x - px) * 3, py - (p.y - py) * 3); g.lineTo(p.x, p.y); g.stroke() } }
+  g.globalCompositeOperation = 'source-over';
+  for (const p of FX.parts) { if (p.k !== 'chk' && p.k !== 'stone') continue; p.age += dt; if (p.age > p.life) continue; const f = Math.min(1, (p.life - p.age) * 2);
+    if (p.k === 'chk') { p.vx *= Math.pow(.25, dt); p.vy = p.vy * Math.pow(.25, dt) + 480 * dt; p.x += p.vx * dt + Math.sin(p.age * 8 + p.rot) * 50 * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+      g.save(); g.globalAlpha = f; g.translate(p.x, p.y); g.rotate(p.rot); g.scale(1, Math.abs(Math.cos(p.age * 6 + p.rot)) * .9 + .1); const h = p.s / 2;
+      g.fillStyle = '#ffffff'; g.fillRect(-h, -h, p.s, p.s); g.fillStyle = '#0b0d12'; g.fillRect(-h, -h, h, h); g.fillRect(0, 0, h, h); g.restore() }
+    else { p.vx *= Math.pow(.6, dt); p.vy += 1700 * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.y > H * .5 + 190 && p.vy > 0) { p.vy *= -.35; p.vx *= .6 }
+      g.globalAlpha = f; g.fillStyle = p.col; g.beginPath(); g.arc(p.x, p.y, p.s, 0, Math.PI * 2); g.fill() } }
+  g.globalAlpha = 1;
+  FX.parts = FX.parts.filter(p => p.age <= p.life);
+  if (FX.parts.length || FX.sweeps.length || FX.flash > 0) FX.raf = requestAnimationFrame(lkFxFrame); else { FX.raf = 0; g.clearRect(0, 0, W, H) }
+}
+// The start (Coaching): your average lap and the lap it is measured against line up on the grid under five
+// red lights; the lights come on one by one and go out, and the call is GO. Click to skip.
+function lkStart(a, b) {
+  if (!lkArcade() || !a || !b) return; document.querySelectorAll('.lk-start').forEach(x => x.remove());
+  const v = document.createElement('div'); v.className = 'lk-start'; v.setAttribute('role', 'status');
+  const gap = a.time > 0 && b.time > 0 ? a.time - b.time : null;
+  v.innerHTML = '<div class="gantry">' + '<div class="pod"><i></i><i></i></div>'.repeat(5) + '</div>' +
+    '<div class="grid"><div class="row"><small></small><b></b><em></em></div><div class="row"><small></small><b></b><em></em></div></div>' +
+    (gap != null ? '<div class="gap">Gap<b>' + (gap >= 0 ? '+' : '−') + Math.abs(gap).toFixed(3) + '</b></div>' : '') + '<div class="word">GO!</div><div class="skip">Click to skip</div>';
+  v.querySelectorAll('.row').forEach((r, i) => { const x = i ? b : a; r.querySelector('small').textContent = x.label; r.querySelector('b').textContent = x.name; r.querySelector('em').textContent = lkTime(x.time) });
+  const T = [], end = () => { T.forEach(clearTimeout); v.classList.add('out'); setTimeout(() => v.remove(), 450) };
+  v.onclick = end; document.body.prepend(v);
+  // the lights wait for the page to settle (a big result is still being drawn), so they come on one at a time
+  const pods = v.querySelectorAll('.pod'); let last = performance.now(), calm = 0; const t0 = last;
+  const go = () => { lkSay('ready', 0);
+    pods.forEach((p, i) => T.push(setTimeout(() => p.classList.add('on'), 350 + i * 330)));
+    T.push(setTimeout(() => lkSay('set', 0), 350 + 3 * 330));
+    T.push(setTimeout(() => { v.classList.add('go'); pods.forEach(p => p.classList.remove('on')); lkSay('go', 0); lkFx('go') }, 350 + 4 * 330 + 650));
+    T.push(setTimeout(end, 4300)) };
+  const wait = now => { if (!v.isConnected) return; calm = now - last < 50 ? calm + 1 : 0; last = now; if (calm >= 5 || now - t0 > 4000) go(); else requestAnimationFrame(wait) };
+  requestAnimationFrame(wait);
+}
+// the streak counter on the side, bumped on every clean lap
+function lkCombo(n) { let c = document.querySelector('.lk-combo'); if (!lkArcade() || !n) { if (c) c.remove(); return } if (!c) { c = document.createElement('div'); c.className = 'lk-combo'; document.body.prepend(c) }
+  c.innerHTML = '<b>' + n + '</b><span>clean lap' + (n === 1 ? '' : 's') + ' in a row</span>'; c.classList.remove('lk-bump'); void c.offsetWidth; c.classList.add('lk-bump') }
+// panels drive in one after another when a view opens (Arcade only; one motion per view)
+function lkEnter() { if (!lkArcade() || matchMedia('(prefers-reduced-motion: reduce)').matches) return; let i = 0;
+  document.querySelectorAll('.card,.app').forEach(c => { if (c.offsetParent === null) return; c.classList.remove('lk-in'); void c.offsetWidth; c.style.animationDelay = Math.min(i++, 8) * .06 + 's'; c.classList.add('lk-in') }) }
+// pure: what a finished live lap means in the game: a personal best, a clean lap or a lap that won't count
+function lkLapEvent(rec, prior) {
+  if (!rec) return null; const best = Math.min(...prior.filter(x => x.valid && x.time > 0).map(x => x.time));
+  if (rec.valid && rec.time > 0) return isFinite(best) && rec.time < best ? { kind: 'pb', gain: best - rec.time } : { kind: 'clean', first: !isFinite(best) };
+  if (/off track|incident/.test(rec.why || '')) return { kind: 'off', why: rec.why };
+  return null;
+}
+function lkLap(rec, prior) {
+  const e = lkLapEvent(rec, prior || []); if (!e) return;
+  if (e.kind === 'pb') { LK.streak++; lkPop('PERSONAL BEST!', lkTime(rec.time) + ' · lap ' + rec.lap + ' · −' + e.gain.toFixed(3) + ' s', 'purple chk', { say: 'pb', fx: 'pb' }) }
+  else if (e.kind === 'clean') { LK.streak++; if (e.first) lkPop('CLEAN LAP', lkTime(rec.time) + ' · lap ' + rec.lap, 'green', { say: 'clean' });
+    else if ([3, 5, 10, 15, 20].includes(LK.streak)) lkPop(LK.streak + ' IN A ROW', 'clean laps · ' + lkTime(rec.time), 'green', { say: 'row' + LK.streak }) }
+  else { LK.streak = 0; lkPop(e.why === 'incident' ? 'INCIDENT' : 'OFF TRACK', 'lap ' + rec.lap + ' won’t count', 'red', { say: e.why === 'incident' ? 'incident' : 'off', fx: 'off' }) }
+  lkCombo(LK.streak);
+}
+// every telemetry tick: places gained, the white and checkered flags, gear changes
+function lkTick(v) {
+  if (!lkArcade() || !v) return;
+  const pos = v.PlayerCarClassPosition > 0 ? v.PlayerCarClassPosition : v.PlayerCarPosition > 0 ? v.PlayerCarPosition : null;
+  if (pos && LK.pos && pos < LK.pos && !v.OnPitRoad) lkPop('OVERTAKE!', 'P' + LK.pos + ' \u2192 P' + pos, 'cyan', { say: pos === 1 ? 'lead' : 'overtake', fx: 'pass' });
+  LK.pos = pos || LK.pos;
+  const f = v.SessionFlags || 0;
+  if ((f & 0x2) && !(LK.flags & 0x2)) lkPop('FINAL LAP', 'white flag', 'white', { say: 'final' });
+  if ((f & 0x1) && !(LK.flags & 0x1)) lkPop('FINISH!', pos ? 'P' + pos : '', 'white chk', { say: pos === 1 ? 'win' : 'checkered', fx: 'pb' });
+  LK.flags = f;
+  if (v.Gear != null && LK.gear != null && v.Gear !== LK.gear) { const g = document.getElementById('tlGear'); if (g) { g.classList.remove('lk-punch'); void g.offsetWidth; g.classList.add('lk-punch') } }
+  LK.gear = v.Gear;
+}
+// ---- the announcer: a voice calls the moments (client/assets/voice-f-*.mp3 and voice-m-*.mp3, made for the suite with
+// the Kokoro text-to-speech model, Apache 2.0; LICENSES.md). Only in Arcade, only with suite:announcer set to a voice
+// ('f' or 'm'; off by default). No sound effects: the sim already makes the racing sounds. One line at a time.
+const LK_LINES = ['ready', 'set', 'go', 'pb', 'clean', 'row3', 'row5', 'row10', 'row15', 'row20', 'off', 'incident', 'overtake', 'lead', 'final', 'checkered', 'win', 'green', 'yellow', 'caution', 'red'];
+const LK_BUF = {}, LK_ASSET = /^\/pitwall(\/|$)/.test(location.pathname) ? 'assets/' : '/pitwall/assets/';
+function lkAudio() { if (!LK.AC) { try { LK.AC = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { return null } }
+  if (LK.AC.state === 'suspended') LK.AC.resume(); return LK.AC }
+function lkLoad(name) {
+  if (LK_BUF[name]) return LK_BUF[name]; const ac = lkAudio(); if (!ac) return Promise.resolve(null);
+  return LK_BUF[name] = fetch(LK_ASSET + 'voice-' + name + '.mp3').then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null);
+}
+// which voice: 'f' or 'm', or null when the announcer is off (or the look isn't Arcade, unless asked for a sample)
+function lkWho(any) { const w = lkGet('suite:announcer', 'off'); return (w === 'f' || w === 'm') && (any || lkArcade()) ? w : null }
+function lkSay(line, delay, sample) {
+  const w = lkWho(sample), ac = w && LK_LINES.includes(line) && lkAudio(); if (!ac) return;
+  lkLoad(w + '-' + line).then(buf => { if (!buf) return; try { if (LK.said) LK.said.stop() } catch (e) {}
+    const s = ac.createBufferSource(); s.buffer = buf; s.connect(ac.destination); s.start(ac.currentTime + (delay || 0)); LK.said = s });
+}
+// load the voice's lines once it is on, so a call lands on time
+function lkPreload() { const w = lkWho(); if (w) LK_LINES.forEach(l => lkLoad(w + '-' + l)) }
+document.addEventListener('click', lkPreload, true);
+addEventListener('storage', e => { if (e.key === 'suite:look' || e.key === 'suite:team' || e.key === 'suite:plate') lkApply() });
+// The bar's numbers on these pages: Coaching's average and best lap once Coaching has run, the car and track
+// from your file or the live car, and whether the live car is connected.
+function lkData(){const X=typeof COACH!=='undefined'&&COACH.last,m=(typeof LIVE!=='undefined'&&LIVE.meta)||{},ib=typeof IB!=='undefined'&&IB.a,live=!!(typeof LIVE!=='undefined'&&LIVE.ws&&LIVE.v&&Date.now()-(LIVE.at||0)<5000);
+const name=m.who||(typeof F!=='undefined'&&F.a&&F.a.who)||'';
+return{name,car:(live&&m.carName)||(ib&&ib.carName)||m.carName||'',track:(live&&m.track)||(ib&&ib.track)||m.track||'',avg:X?X.avg.lap:null,best:X?X.best.lap:null,live,status:live?'Car on track':ib?'Your file':'Not live'}}
+// Coaching opened with a new result: the start lights (Arcade), once per result
+function lkCoach(){const X=COACH.last;if(!X||LK.look!=='arcade')return;const k=X.avg.lap.toFixed(3)+'|'+X.best.lap.toFixed(3);if(LK.vsKey===k)return;LK.vsKey=k;
+const name=lkShort(lkData().name)||'You';lkStart({label:'Your average lap',name,time:X.avg.lap},{label:'Against',name:(X.bestLab||'your best lap').replace(/ \([^)]*\)$/,''),time:X.best.lap})}
+// ---- /looks ----
 //CORE
 const N=1000;
 function parse(txt,name){const L=txt.trim().split(/\r?\n/),h=L[0].split(','),m=L.length-1,K={Speed:'Speed',D:'LapDistPct',Lat:'Lat',Lon:'Lon',Brake:'Brake',Throttle:'Throttle',Steer:'SteeringWheelAngle',Gear:'Gear',RPM:'RPM',ABS:'ABSActive',LatG:'LatAccel',LonG:'LongAccel',VertG:'VertAccel',YawRate:'YawRate'},o={n:m},ix={};
@@ -1105,7 +1535,7 @@ const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tr
 if(LIVE.meta.carPath)try{libRecord({carPath:LIVE.meta.carPath,carName:LIVE.meta.carName,setup:t},'live|'+(LIVE.meta.sid||'session')+'|'+LIVE.vers.length)}catch(e){}
 LIVE.setup=t;if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}else{LIVE.setup=t;if(first){if(LIVE.meta.carPath)gbRecord(LIVE.meta.carPath,t);liveRender();renderSetup()}}}
 function liveNewLap(lap,v){if(v.OnPitRoad)LIVE.stint=0;return{lap,st0:v.SessionTime,f0:v.FuelLevel!=null?v.FuelLevel:null,tt:v.TrackTempCrew!=null?v.TrackTempCrew:v.TrackTemp!=null?v.TrackTemp:null,stint:(LIVE.stint=(LIVE.stint||0)+1),d0:v.LapDistPct,lastD:v.LapDistPct,lastT:v.LapCurrentLapTime,pit:!!v.OnPitRoad,ver:LIVE.vers.length,b:{Speed:[],Brake:[],LatG:[],gear:[],rpm:[],lon:[],yaw:[],abs:[],rh:{LF:[],RF:[],LR:[],RR:[]},tc:{LF:[],RF:[],LR:[],RR:[]},bb:[],d:[],t:[],thr:[],str:[],rhLF:[],rhRF:[],rhLR:[],rhRR:[],dlt:[]}}}
-function liveTick(v){LIVE.v=v;LIVE.at=Date.now();try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
+function liveTick(v){LIVE.v=v;LIVE.at=Date.now();try{lkTick(v)}catch(e){}try{teleRoll(v)}catch(e){}try{teleSide(v)}catch(e){}try{liveRest(v)}catch(e){}try{ghTick(v)}catch(e){console.error('driver laps',e)}if(v.Lap==null)return;
 const p=LIVE.pend;if(p&&v.LapLastLapTime>0&&v.LapLastLapTime!==p.stale){const d=v.LapLastLapTime-p.time;if(d>-0.1&&d<1)p.time=v.LapLastLapTime;LIVE.pend=null;liveRender()}
 if(!LIVE.cur||v.Lap!==LIVE.cur.lap){if(LIVE.cur&&v.Lap===LIVE.cur.lap+1)liveFinish(LIVE.cur,v);LIVE.cur=liveNewLap(v.Lap,v)}
 {const c0=LIVE.cur,d=v.LapDistPct;if(d!=null&&d>=0&&c0.lastD!=null&&c0.lastD>=0){const j=d-c0.lastD;if(Math.abs(j)>0.05&&!(c0.lastD>0.9&&d<0.1)){const n=liveNewLap(v.Lap,v);n.pit=true;n.jump=true;LIVE.cur=n}}}
@@ -1127,7 +1557,7 @@ const why=valid?'':c.reset?'active reset':span!=null&&c.lastT>0&&Math.abs(c.last
 const rec={lap:c.lap,time:c.lastT,stale:v.LapLastLapTime,valid,why,stats:teleStatsOut(c),sx:full&&c.sx&&LIVE.secs&&c.sx.length===LIVE.secs.length?c.sx.slice():null,fuel:c.f0!=null&&v.FuelLevel!=null&&!c.pit&&!c.reset&&full&&c.f0>v.FuelLevel?c.f0-v.FuelLevel:null,ver:c.ver,st,top:n?Math.max(...b.Speed):0,tc:Object.fromEntries(LIVE_TIRES.map(k=>[k,mean(b.tc[k])])),bb:mean(b.bb),tt:c.tt!=null?c.tt:null,at:v.AirTemp!=null?v.AirTemp:null};
 const refOf=()=>{const keep=[];let last=-1;for(let i=0;i<b.d.length;i++){const d=b.d[i],t=b.t[i];if(d==null||t==null||(d>0.5&&t<10)||d<=last)continue;keep.push(i);last=d}const pick=a=>keep.map(i=>a[i]);return{time:c.lastT,d:pick(b.d),t:pick(b.t),Speed:pick(b.Speed),Brake:pick(b.Brake),thr:pick(b.thr),str:pick(b.str),rhLF:pick(b.rhLF),rhRF:pick(b.rhRF),rhLR:pick(b.rhLR),rhRR:pick(b.rhRR),LatG:pick(b.LatG),yaw:pick(b.yaw)}};if(c.d0<0.05&&c.lastD>0.95&&n>=50)LIVE.lastRef=refOf();if(valid&&(!LIVE.bestRef||c.lastT<LIVE.bestRef.time))LIVE.bestRef=refOf();
 if(valid&&c.hs&&c.hs.length){LIVE.runH=LIVE.runH||{};const RH=LIVE.runH[c.ver]||(LIVE.runH[c.ver]=[]);for(const q of c.hs)RH.push(q);if(RH.length>80000)RH.splice(0,RH.length-80000)}
-LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{coachLater()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
+try{lkLap(rec,LIVE.laps)}catch(e){}LIVE.laps.push(rec);if(LIVE.laps.length>300)LIVE.laps.shift();if(valid)rbFromLive();if(valid)engAfterLap();if(valid){const co=coachSaveLive(c);if(co)pracOnLap(co);if(!COACH.src||COACH.src.startsWith('live|'))try{coachLater()}catch(e){}}if(valid&&(SETUP_TAB==='predict'||SETUP_TAB==='build'))try{renderSetup()}catch(e){}LIVE.pend=rec;liveRender()}
 const liveMm=v=>v==null?'—':suNum(Math.round(v*10)/10,'mm'),liveTemp=v=>v==null?'—':(SETUP_UNITS==='imperial'?(v*1.8+32).toFixed(0)+'°F':v.toFixed(0)+'°C'),liveSpd=ms=>(ms*3.6*U().s[0]).toFixed(0)+' '+U().s[1];
 const liveMed=a=>{const s=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q);return s.length?s[Math.floor((s.length-1)/2)]:null};
 function liveGauges(barsOnly){const el=$('liveNow');if(!el)return;const v=LIVE.v;if(!v){el.innerHTML='<span class="m">Waiting for data...</span>';el.dataset.g='';return}
@@ -1967,7 +2397,7 @@ h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-t
 '<label>against <select id="coTo"><option value="best"'+(COACH.to==='best'?' selected':'')+'>your best lap</option>'+(COACH.g61.length?'<option value="g61best"'+(COACH.to==='g61best'?' selected':'')+'>the fastest Garage 61 lap here</option><option value="g61near"'+(COACH.to==='g61near'?' selected':'')+'>a Garage 61 lap a little quicker than yours</option>':'')+(F.b&&!SELF?'<option value="ref"'+(COACH.to==='ref'?' selected':'')+'>the reference lap (right box)</option>':'')+(srcs.length&&coachBefore(srcs.find(x=>x.id===COACH.src)||srcs[0])?'<option value="before"'+(COACH.to==='before'?' selected':'')+'>your best before today</option>':'')+'</select></label>'+
 '<label class="dz" id="coDrop" style="padding:6px 10px;min-height:0"><input type="file" accept=".csv" multiple hidden><span>'+(COACH.g61.length?COACH.g61.length+' Garage 61 lap'+(COACH.g61.length===1?'':'s')+' added · drop more or click':'Drop Garage 61 laps (.csv) here')+'</span></label>'+(COACH.g61.length?'<button type="button" id="coClr" class="clr" style="display:inline-block;margin:0">Clear Garage 61 laps</button>':'')+'</div>'+(COACH.g61.length?'<div class="m" style="font-size:13px;margin-top:4px">Garage 61 laps here, fastest first: '+COACH.g61.map((g,i)=>({g,i})).sort((p,q)=>p.g.lap-q.g.lap).map(({g,i})=>'<span style="white-space:nowrap"><b>'+ft(g.lap)+'</b> '+plain(g.who||'')+' <a href="#" data-g61rm="'+i+'" title="Take this lap out">✕</a></span>').join(' · ')+'</div>':'');
 if(!srcs.length)return h+'<p class="m" style="margin-top:8px">Needs at least 2 clean laps: drop an .ibt file above, drive a few clean laps live (they are kept automatically, per car and track), or add several Garage 61 laps of your own here.</p>';
-let X=null;try{X=coachRun()}catch(e){console.error('coach',e)}if(!X)return h+'<p class="m">Could not build an average from these laps.</p>';COACH.last=X;
+let X=null;try{X=coachRun()}catch(e){console.error('coach',e)}if(!X)return h+'<p class="m">Could not build an average from these laps.</p>';COACH.last=X;if(document.body.dataset.view==='coach')setTimeout(()=>{try{lkHud()}catch(e){}requestAnimationFrame(()=>setTimeout(()=>{try{lkCoach()}catch(e){}},250))},0);
 return h+coachBody(X)}
 // ---- Coaching page: what the data says, in reading order ----
 // 1 summary, 2 where the time goes (delta trace, map, causes), 3 priorities (driving and setup merged,
@@ -2703,9 +3133,10 @@ const n=$('err');if(n&&!n.textContent)n.innerHTML='<span class="m">Your files fr
 catch(e){console.warn('keep restore',e)}finally{KEEP.restoring=false}}
 
 // a view shown without a reload: draw what it shows (canvases sized while hidden draw at zero width)
-function viewShown(v){if(v==='live'){try{teleBuild(true)}catch(e){console.error('live view',e)}}else if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0)}
+function viewShown(v){if(v==='live'){try{teleBuild(true)}catch(e){console.error('live view',e)}}else if(v==='coach'){try{renderCoach()}catch(e){}}else if(v==='setup'){try{renderSetup();renderBalance();renderTyres()}catch(e){}}else{try{if(F.a&&F.b)run();renderOwn()}catch(e){}}try{liveRender()}catch(e){}window.scrollTo(0,0);try{lkHud();lkEnter();if(v==='coach')lkCoach()}catch(e){}}
 try{renderSetup()}catch(e){}
 try{keepRestore()}catch(e){}
+try{lkApply();setInterval(()=>{try{lkHud()}catch(e){}},2000)}catch(e){}
 // ---- Calm: a long grey explanation right after a heading folds behind a small (i) button.
 // Only plain text folds (nothing to click inside); what was opened stays open when the section redraws.
 const HINT_OPEN=new Set();
