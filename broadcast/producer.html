@@ -134,6 +134,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
 #bcLive{font:800 15px/1 var(--txt);padding:9px 16px;border-radius:8px;border:2px solid var(--line);background:var(--panel2);color:var(--mut);cursor:pointer;letter-spacing:.02em}
 #bcLive.on{background:var(--good);border-color:var(--good);color:var(--ink)}
 #bcLive:disabled{opacity:.5;cursor:default}
+body:not(.bc-off) .lookOff{display:none}
 #bcOff{margin:10px 14px 0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--mut);font-size:14px}
 #bcOff b{color:var(--fg,#fff)}
 body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4;pointer-events:none;user-select:none}
@@ -194,6 +195,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     <div data-pane="look" class="hide">
       <section>
         <h2>Style</h2>
+        <p class="note lookOff" style="margin-top:0">The broadcast is off, so the overlay shows nothing yet. What you pick here is kept and goes on air when you switch it on.</p>
         <div class="opts" id="presets"></div>
         <h3>Colours</h3><div class="colors" id="colors"></div>
         <h3>Fonts</h3>
@@ -396,6 +398,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     if (!canProduce()) { toast("This link is view-only", true); return; }
     merge(S.gfx, JSON.parse(JSON.stringify(patch)));
     dirty.ctl = true;
+    if (patch.theme) dirty.look = true;          // your own style change shows in the Look tab too (a preset fills the colours and fonts)
     send({ type: "gfx", set: patch, by: me || undefined });
   }
   const debounced = {};
@@ -458,7 +461,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     try { localStorage.setItem("pw.producer.tab", b.dataset.tab); } catch (e) {}
     if (b.dataset.tab === "look") renderLook();
   });
-  try { const t = localStorage.getItem("pw.producer.tab"); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (e) {}
+  // the tab you were on, once the rest of the page is set up (the Look tab needs the presets defined below)
+  setTimeout(() => { try { const t = localStorage.getItem("pw.producer.tab"); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (e) {} }, 0);
 
   // ------------------------------------------------------------- Show tab
   const LAYERS = [["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
@@ -1082,7 +1086,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     if (dirty.inc) { dirty.inc = false; renderIncidents(); }
     if (dirty.lv) { dirty.lv = false; renderLiveries(); }
     if (dirty.look && !document.querySelector("[data-pane=look]").classList.contains("hide") &&
-        !(document.activeElement && document.activeElement.closest("[data-pane=look]"))) { dirty.look = false; renderLook(); }
+        !(document.activeElement && document.activeElement.closest("[data-pane=look]") && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName))) { dirty.look = false; renderLook(); }
   }, 250);
 
   const home = Q.get("home");
