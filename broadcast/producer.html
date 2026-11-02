@@ -644,7 +644,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     if (MON.src.startsWith("cam:")) {
       try {
         MON.stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: MON.src.slice(4) }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false });
-      } catch (e) { toast("The camera could not be opened: " + (e.message || e.name), true); }
+      } catch (e) { MON.failed = MON.src; toast("The camera could not be opened: " + (e.message || e.name), true); }
     }
     MON.keys = {}; renderScreens();
   }
@@ -667,11 +667,15 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const st = studioOn();
     $("monitor").classList.toggle("min", MON.min); $("monMin").textContent = MON.min ? "Show screens" : "Hide screens";
     $("monScreens").classList.toggle("two", st); $("scrPvw").classList.toggle("hide", !st); $("takeBox").classList.toggle("hide", !st);
-    if (MON.min) return;
+    // A screen that is not shown is emptied: each one is a whole overlay (its own connection, the race at
+    // 30 updates a second) plus the video, too much to keep running out of sight.
     for (const [id, pv] of [["scrPgm", false], ["scrPvw", true]]) {
-      const scr = $(id); if (scr.classList.contains("hide")) continue;
+      const scr = $(id), off = MON.min || scr.classList.contains("hide");
+      if (off) { const v = scr.querySelector(".vid"); v.innerHTML = ""; v.dataset.v = ""; scr.querySelector(".box").querySelectorAll("iframe.ov").forEach(f => f.remove()); continue; }
       screenVideo(scr.querySelector(".vid")); screenOverlay(scr, pv);
     }
+    if (MON.min && MON.stream) { MON.stream.getTracks().forEach(t => t.stop()); MON.stream = null; }
+    else if (!MON.min && !MON.stream && MON.src.startsWith("cam:") && !MON.opening && MON.failed !== MON.src) { MON.opening = true; startVideo().finally(() => { MON.opening = false; }); }
   }
   window.addEventListener("resize", () => renderScreens());
   $("monSrc").addEventListener("change", e => {
@@ -680,7 +684,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       navigator.mediaDevices.getUserMedia({ video: true }).then(s => { s.getTracks().forEach(t => t.stop()); listCams(); }).catch(err => { toast("No camera access: " + (err.message || err.name), true); renderMonSrc(); });
       return;
     }
-    MON.src = v; try { localStorage.setItem("pw.mon.src", v); } catch (e) {}
+    MON.src = v; MON.failed = null; try { localStorage.setItem("pw.mon.src", v); } catch (e) {}
     renderMonSrc(); startVideo();
   });
   $("monLink").addEventListener("change", e => { MON.link = e.target.value.trim(); try { localStorage.setItem("pw.mon.link", MON.link); } catch (x) {} renderScreens(); });
@@ -1404,7 +1408,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
-  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League" };
+  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", strip: "Running order", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League" };
   const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
   function renderLook() {
     const th = S.gfx.theme || {}, preset = th.preset || "imsa";
@@ -1625,7 +1629,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         try { renderPhotos(); } catch (e) {}
         dirty.ctl = dirty.field = true; break;
       }
-      case "gfx_result": if (!m.ok) { toast(m.error, true); log(esc(m.error), true); } break;
+      // a refused change: this panel already showed it, so ask the relay for the real state again
+      case "gfx_result": if (!m.ok) { toast(m.error, true); log(esc(m.error), true); setTimeout(() => send({ type: "resend" }), 300); } break;
       case "cmd_result": {
         const label = pending.shift() || "Command";
         if (m.ok) {

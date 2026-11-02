@@ -328,7 +328,7 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 
 /* ---------- tyres, speed trap ---------- */
 #tyres{left:800px;bottom:190px}
-#trap{right:36px;top:560px;width:360px}
+#trap{left:1000px;bottom:200px;width:360px}
 .mini{background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
 .mini-h{background:var(--head);color:var(--headText);padding:7px 12px 6px;font:800 14px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;display:flex;gap:8px;align-items:center}
 .mini-r{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--line);font:600 18px/1 var(--display);text-transform:var(--caps);white-space:nowrap}
@@ -357,6 +357,7 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 
 /* ---------- picture in picture: a second camera's video (VDO.Ninja link) in a framed window ---------- */
 #pip{right:36px;top:170px;width:640px}
+#pip.with-map{right:412px}      /* the track map keeps the corner; the window sits beside it */
 .pp{border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);background:#000;border:3px solid var(--accent)}
 .pp-v{position:relative;aspect-ratio:16/9;background:#000}
 .pp-v iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
@@ -710,8 +711,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (gap == null || Math.abs(gap) >= 0.5 || now - (AUTO.rest[key] || -1e9) < 120000) return false;
     AUTO.pair = key; AUTO.from = now; return true;
   }
-  // A show screen covers the whole picture: nothing else is on air while one is up (unless it has its own source).
-  const sceneUp = () => !!G("scene.mode", null) && allowed("scene");
+  // A show screen covers the whole picture: nothing else is on air while one is up, on any source (a tower given
+  // its own OBS source would otherwise sit on top of the starting-soon screen).
+  const sceneUp = () => !!G("scene.mode", null);
   const shown = name => allowed(name) && !sceneUp() && (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
     !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
@@ -845,7 +847,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${Number(l.s) || 1})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "100% 0", strip: "50% 100%", league: "50% 0", pip: "100% 0" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -1201,15 +1203,22 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const one = `<span class="so-t">${esc(T("text.series", "") || "Running order")}</span>` + field.map(c => { const d = c.derived || {};
       const g = !race ? fmt.lap(c.bestLapS) : c.pos === 1 ? "Leader" : d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : d.liveGapS != null ? fmt.gap(d.liveGapS) : "";
       return `<span class="so-c${c.idx === cam ? " cam" : ""}"><span class="p">${esc(d.livePos || c.pos)}</span>${plate(c)}<span>${nameHtml(c.name, "last")}</span><span class="g">${esc(g)}</span></span>`; }).join("");
-    return { html: one + one, n: field.length };
+    return { one, n: field.length };
+  }
+  // Two identical halves, each at least a screen wide, so the crawl never shows a gap (a small field is repeated).
+  function soFill(one) {
+    const row = $("soRow"); row.innerHTML = one;
+    const w = row.scrollWidth || 1920, k = Math.max(1, Math.ceil(1920 / w));
+    row.innerHTML = one.repeat(2 * k);
+    return k;
   }
   function renderStrip() {
     const on = shown("strip") && !!S.cars;
     $("strip").classList.toggle("on", on);
     if (!on) { SO.built = false; return; }
     if (!SO.built) {
-      const r = soHtml(); $("soRow").innerHTML = r.html; $("soRow").style.setProperty("--so-dur", Math.max(30, r.n * 3.2) + "s"); SO.built = true;
-      $("soRow").onanimationiteration = () => { const x = soHtml(); $("soRow").innerHTML = x.html; };
+      const r = soHtml(), k = soFill(r.one); $("soRow").style.setProperty("--so-dur", Math.max(30, r.n * k * 3.2) + "s"); SO.built = true;
+      $("soRow").onanimationiteration = () => soFill(soHtml().one);
     }
   }
 
@@ -1257,6 +1266,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function renderPip() {
     const p = G("pip", {}) || {}, url = pipUrl(p.url), on = shown("pip") && !!url, now = performance.now();
     $("pip").classList.toggle("on", on);
+    $("pip").classList.toggle("with-map", $("map").classList.contains("on"));
     if (on) {
       PIP.offAt = 0;
       if (PIP.url !== url) { PIP.url = url; $("ppV").innerHTML = `<iframe src="${esc(url)}" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>`; hit($("pip")); }

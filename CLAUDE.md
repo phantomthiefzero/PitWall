@@ -219,6 +219,11 @@ Broadcast (broadcast/)
   and the Director's owner as for any cut). The producer's G() reads the staged view, so its controls show Preview.
   Saved scenes (gfx scenes) hold every layer's show and the graphics' settings, never the look, files, lists or a
   moment's state; recalling one goes through setGfx, so into Preview in studio mode.
+- The graphics state is capped at 64 KB by the relay (a patch that would pass it is refused; the producer then
+  asks for the real state again) and is never sent to share-link guests. A show screen hides every other graphic on
+  every OBS source, not only the one showing the screen. Default positions keep the graphics that are on together
+  apart (the speed trap above the card's right end, picture in picture beside the map); the producer's Position
+  settings move any of them.
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
