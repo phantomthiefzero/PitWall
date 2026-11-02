@@ -373,13 +373,16 @@ class Relay:
             self._feed_raw = json.dumps(self.feed, separators=(",", ":"))
         return self._feed_raw
 
-    def _queue_snapshot(self, q: asyncio.Queue):
-        """Everything a page needs to start, in the order it needs it."""
+    def _queue_snapshot(self, q: asyncio.Queue, guest: bool = False):
+        """Everything a page needs to start, in the order it needs it. A guest (the share link's
+        PitWall) gets no graphics state: only the broadcast pages use it, and with saved scenes
+        it is tens of KB that would go out over the host's upload with every change."""
         for t in ("hello", "session", "map", "state", "cars", "feed", "director", "livery_status", "carcolors", "refgaps", "camera_packs"):
             raw = self._feed_message() if t == "feed" else self.snapshot.get(t)
             if raw:
                 q.put_nowait(raw)
-        q.put_nowait(self._gfx_message())
+        if not guest:
+            q.put_nowait(self._gfx_message())
         q.put_nowait(self._assets_message())
 
     def _gfx_message(self, by: str | None = None) -> str:
@@ -393,7 +396,7 @@ class Relay:
         # they arrive in order and the writer task is the only thing sending.
         q.put_nowait(json.dumps({"type": "relay", "bridge": "connected" if self.bridge else "disconnected",
                                  "engineer": engineer, "role": role, "viewers": len(self.viewers) + 1}))
-        self._queue_snapshot(q)
+        self._queue_snapshot(q, guest=role == "guest")
         snapshot_at = time.monotonic()
         self.viewers[ws] = q
         if role != "producer":
@@ -455,7 +458,8 @@ class Relay:
                             continue
                         self.gfx = merged
                         self.gfx_rev += 1
-                        await self._fanout(self._gfx_message(by=msg.get("by") if isinstance(msg.get("by"), str) else None))
+                        await self._fanout(self._gfx_message(by=msg.get("by") if isinstance(msg.get("by"), str) else None),
+                                           only=lambda w: w not in self._guests)
                 elif msg.get("type") == "cmd":
                     needs = CMD_ROLE.get(msg.get("cmd"))
                     if role != needs:
@@ -472,7 +476,7 @@ class Relay:
                     if time.monotonic() - snapshot_at >= RESEND_MIN_S:
                         snapshot_at = time.monotonic()
                         try:
-                            self._queue_snapshot(q)
+                            self._queue_snapshot(q, guest=role == "guest")
                         except asyncio.QueueFull:
                             pass       # already being dropped for falling behind
                 elif msg.get("type") == "focus":

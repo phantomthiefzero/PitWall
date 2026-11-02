@@ -444,7 +444,8 @@ Broadcast graphics state, owned by the relay (not the bridge). A producer sends 
 {"type":"gfx","set":{"tower":{"show":true,"mode":"best"}},"by":"Andrew"}
 ```
 The relay deep-merges it (`null` deletes a key) and sends the whole state to everyone:
-`{"type":"gfx","rev":12,"state":{...},"by":"Andrew"}`; new viewers get it on connect. Keys the
+`{"type":"gfx","rev":12,"state":{...},"by":"Andrew"}`; new viewers get it on connect (not share-link guests:
+only the broadcast pages use it). Keys the
 overlay reads: `tower {show, mode: interval|leader|best|last|stops|incidents, class, rows}`,
 `banner {show}`, `card {show, follow: camera|pinned, idx}`, `battle {show, mode: auto|pick, cars}`,
 `map {show}`, `ticker {show, pits, incidents}`, `board {show, class}`,

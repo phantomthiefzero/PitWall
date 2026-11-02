@@ -289,6 +289,43 @@ def test_relay_gfx_state_roles_and_snapshot():
     assert asyncio.run(run())
 
 
+def test_relay_keeps_the_graphics_state_from_share_link_guests():
+    """A guest (the share link's PitWall) never uses the broadcast's graphics state, which with saved scenes
+    is tens of KB: it is neither in a guest's snapshot nor sent to it on each change."""
+    import websockets
+    from websockets.asyncio.server import serve
+    relay_mod = _relay_mod()
+
+    async def run():
+        relay = relay_mod.Relay("B", "V", None, "P")
+        relay.set_guest_token("G")
+        async with serve(relay.handler, "127.0.0.1", 0, process_request=relay.process_request) as server:
+            port = server.sockets[0].getsockname()[1]
+            url = f"ws://127.0.0.1:{port}"
+            async with websockets.connect(url + "/view?token=P") as prod, \
+                    websockets.connect(url + "/view?token=G") as guest:
+                kinds = []
+
+                async def drain(ws, secs):
+                    end = asyncio.get_running_loop().time() + secs
+                    while True:
+                        left = end - asyncio.get_running_loop().time()
+                        if left <= 0:
+                            return
+                        try:
+                            kinds.append(json.loads(await asyncio.wait_for(ws.recv(), left)).get("type"))
+                        except asyncio.TimeoutError:
+                            return
+                await prod.send(json.dumps({"type": "gfx", "set": {"tower": {"show": True}}}))
+                await guest.send(json.dumps({"type": "resend"}))
+                await drain(guest, 1.0)
+                assert "relay" in kinds and "gfx" not in kinds
+                assert relay.gfx == {"tower": {"show": True}}
+        return True
+
+    assert asyncio.run(run())
+
+
 def test_relay_serves_the_broadcast_pages_without_a_token():
     import urllib.request
     from websockets.asyncio.server import serve
