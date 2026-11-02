@@ -457,6 +457,8 @@ plays the transition; the producer sends the camera command at `theme.stinger.cu
 graphic; untilMs is a wall-clock time for the countdown), `straps {list: [{name, role}], idx, at, secs}` (a new
 `at` puts commentator `idx` up for `secs`, 0 = until `idx` is null), `sponsors {show, logos: [asset], every}`, `qlap {show}`, `tyres {show}`, `trap {show}`, `strip {show}`,
 `league {show, title, sub, rows: [{pos, name, points, num, cls, uid}]}`,
+`studio {on, pv, cut: {num, group, label}, transition: cut|stinger, holdCuts}` (studio mode: `pv` is a staged patch
+whose removals are the string "__pw_del__"; Take applies it), `scenes {<name>: {at, g}}` (saved scenes: `g` is a patch),
 `pip {show, url, label, car, shot, want: {num, group, seq}, second: {name, cam: {idx, num, uid, name}, seen}}` (picture in
 picture; `want` asks a second camera to cut, `second` is written by the co-host's suite: suite/second_camera.py), `tower {cut, rotate: [mode, ...]}`,
 `tower {layout: overall|classes|class, perClass, ...,

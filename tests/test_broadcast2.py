@@ -1427,3 +1427,44 @@ def test_league_tables_in_the_usual_shapes():
     rows = _parse_league('{"standings":[{"position":1,"driver":"Ana Lopez","points":101},{"position":2,"driver":"John Smith","points":88}]}')
     assert [(r["pos"], r["name"], r["points"]) for r in rows] == [("1", "Ana Lopez", "101"), ("2", "John Smith", "88")]
     assert _parse_league("   ") == []
+
+
+# --------------------------------------------------------------------- studio mode
+
+def test_studio_preview_and_take_agree_between_the_producer_and_the_overlay():
+    """Staged changes (gfx studio.pv) are laid over what is on air the same way in the producer's controls
+    and in the overlay's Preview screen; a staged removal survives the relay's merge as a marker."""
+    import re
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = {}
+    for page in ("producer", "overlay"):
+        text = open(os.path.join(root, "broadcast", page + ".html"), encoding="utf-8").read()
+        m = re.search(r"\n  function staged\(into, patch\) \{[\s\S]*?\n  \}\n", text)
+        assert m, page
+        src[page] = m.group(0)
+        assert 'const DEL = "__pw_del__"' in text, page
+    assert src["producer"] == src["overlay"], "the two pages must stage alike"
+    prod = open(os.path.join(root, "broadcast", "producer.html"), encoding="utf-8").read()
+    enc = re.search(r"\n  const enc = [^\n]*\n  const dec = [^\n]*\n", prod).group(0)
+    js = 'const DEL = "__pw_del__";' + src["producer"] + enc + """
+const onAir = {tower: {show: true, mode: "interval", rows: 20}, h2h: {cars: [1, 2], show: true}, podium: {show: false}};
+const pv = enc({tower: {mode: "best"}, h2h: {cars: null}, podium: {show: true}, pip: {url: "https://x"}});
+const view = staged(JSON.parse(JSON.stringify(onAir)), JSON.parse(JSON.stringify(pv)));
+const take = dec(JSON.parse(JSON.stringify(pv)));
+console.log(JSON.stringify({pv, view, take}));"""
+    r = subprocess.run([node, "-e", js], capture_output=True, text=True, encoding="utf-8", timeout=30)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["pv"]["h2h"]["cars"] == "__pw_del__", "a staged removal is a marker, not a null the relay would drop"
+    assert out["view"] == {"tower": {"show": True, "mode": "best", "rows": 20}, "h2h": {"show": True},
+                           "podium": {"show": True}, "pip": {"url": "https://x"}}
+    assert out["take"]["h2h"]["cars"] is None, "Take sends the removal as the null the relay understands"
+    # the relay keeps the marker while staging (its merge drops only None)
+    from relay.server import merge_gfx
+    g = merge_gfx({}, {"studio": {"pv": out["pv"]}})
+    assert g["studio"]["pv"]["h2h"]["cars"] == "__pw_del__"

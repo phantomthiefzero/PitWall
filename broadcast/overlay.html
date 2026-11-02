@@ -601,6 +601,19 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const $ = id => document.getElementById(id);
   const Q = new URLSearchParams(location.search);
   const ONLY = Q.get("only");
+  // The producer panel's monitor (&monitor=1): no sound, no stinger. Its Preview screen (&preview=1) shows the
+  // graphics staged in studio mode (gfx studio.pv laid over what is on air), whatever the master switch says.
+  const MONITOR = Q.get("monitor") === "1", PREVIEW = MONITOR && Q.get("preview") === "1";
+  if (PREVIEW) document.body.classList.remove("bc-off");
+  const DEL = "__pw_del__";      // a staged "remove this key" (the relay's merge would drop a plain null)
+  function staged(into, patch) {
+    for (const [k, v] of Object.entries(patch || {})) {
+      if (v === DEL || v === null) delete into[k];
+      else if (v && typeof v === "object" && !Array.isArray(v)) into[k] = staged(into[k] && typeof into[k] === "object" && !Array.isArray(into[k]) ? into[k] : {}, v);
+      else into[k] = v;
+    }
+    return into;
+  }
   const S = { session: null, map: null, state: null, cars: null, feed: { ready: false, seq: 0, events: [] },
               gfx: {}, assets: [], liveries: {}, motion: {} };
   const ASSET_BASE = (() => {
@@ -622,7 +635,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (AC.state === "suspended") AC.resume(); return AC; }
   function load(n) { if (BUF[n]) return BUF[n]; const ac = audio(); if (!ac) return Promise.resolve(null);
     return BUF[n] = fetch(SFX_BASE + "voice-" + n + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? ac.decodeAudioData(b) : null).catch(() => null); }
-  function soundOn() { return document.documentElement.dataset.look === "arcade" && G("sound.on", false) && !document.body.classList.contains("bc-off"); }
+  function soundOn() { return !MONITOR && document.documentElement.dataset.look === "arcade" && G("sound.on", false) && !document.body.classList.contains("bc-off"); }
   function bcSay(line, delay) {
     if (!soundOn()) return;
     const ac = audio(); if (!ac) return;
@@ -1803,7 +1816,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       return;
     }
     const logo = assetUrl(T("stinger.logo", "") || T("logo", ""));
-    $("stMark").innerHTML = logo ? `<img src="${logo}" alt="">` : `<b>${esc(st.dir === "toLive" ? "Live" : "Replay")}</b>`;
+    $("stMark").innerHTML = logo ? `<img src="${logo}" alt="">` : (st.dir === "take" ? "" : `<b>${esc(st.dir === "toLive" ? "Live" : "Replay")}</b>`);
     box.style.setProperty("--dur", dur + "ms");
     box.classList.remove("run"); void box.offsetWidth; box.classList.add("run");
     setTimeout(() => { box.classList.remove("run"); stingerRunning = false; }, dur + 50);
@@ -1841,9 +1854,13 @@ body.bc-off>*:not(script){visibility:hidden!important}
       case "state": if (!m.full && !S.state) return; S.state = m.full ? m : merge(S.state, m); break;
       case "cars": if (!m.full && !S.cars) return; S.cars = m.full ? m : merge(S.cars, m); trackMotion(); break;
       case "feed": handleFeed(m); break;
-      case "gfx": S.gfx = m.state || {}; applyTheme(); maybeStinger(); break;
+      case "gfx": {
+        const st = m.state || {};
+        S.gfx = PREVIEW && st.studio && st.studio.pv ? staged(JSON.parse(JSON.stringify(st)), st.studio.pv) : st;
+        applyTheme(); if (!MONITOR) maybeStinger(); break;
+      }
       case "assets": S.assets = m.files || []; break;
-      case "director": S.director = m; document.body.classList.toggle("bc-off", !m.live); break;
+      case "director": S.director = m; document.body.classList.toggle("bc-off", !m.live && !PREVIEW); break;
       case "livery": {
         if (!m.image) break;
         const car = m.car || String(m.key || "").split(":")[0], kind = m.kind || "photo";
