@@ -141,6 +141,12 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
 #bcLive:disabled{opacity:.5;cursor:default}
 body:not(.bc-off) .lookOff{display:none}
 #monitor{grid-column:1/-1;margin-bottom:0}
+#arrange{position:fixed;inset:0;z-index:50;background:rgba(5,7,11,.94);display:flex;flex-direction:column;align-items:center;padding:12px 16px;gap:10px}
+#arrange .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;max-width:1600px}
+#arrange .bar .sp{flex:1}
+#arrange .stage{position:relative;aspect-ratio:16/9;width:min(100%,calc((100vh - 120px) * 16 / 9));background:#000;border:2px solid var(--line);border-radius:6px;overflow:hidden}
+#arrange .stage .vid,#arrange .stage .vid>*{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0}
+#arrange .stage iframe.ov{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:0 0;background:transparent}
 #monitor .mon-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 #monitor .mon-bar h2{margin:0 6px 0 0}
 #monitor .mon-bar .sp{flex:1}
@@ -200,6 +206,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       <label for="monSrc" class="note" style="margin:0">Video</label><select id="monSrc" style="max-width:240px"></select>
       <input type="text" id="monLink" class="hide" placeholder="VDO.Ninja view link of the game" style="width:240px">
       <span id="monNote" class="note hide" style="margin:0"></span>
+      <button data-arrange="1" title="Move and resize the graphics on the picture itself">Arrange graphics</button>
       <span class="sp"></span>
       <span id="studioCtl" style="display:contents"></span>
     </div>
@@ -455,6 +462,19 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   </div>
 </main>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="arrange" class="hide">
+  <div class="bar">
+    <b style="font-size:17px">Arrange graphics</b>
+    <span class="note" style="margin:0">Drag a graphic to move it. Drag its yellow corner, or scroll over it, to resize. Double-click puts it back.</span>
+    <span class="sp"></span>
+    <label class="note" style="margin:0;display:flex;align-items:center;gap:6px">Graphics size <input type="range" id="arSize" min="60" max="130" step="5" value="100"> <b id="arSizeV">100%</b></label>
+    <button data-arall="1" id="arAll">Show every graphic</button>
+    <button data-arreset="1">Put all back</button>
+    <button data-ardone="1" style="background:var(--acc);color:var(--ink);border-color:var(--acc)">Done</button>
+  </div>
+  <div class="stage" id="arStage"><div class="vid" id="arVid"></div></div>
+  <p class="note" style="margin:0">Only graphics with something to show appear: "Show every graphic" brings up the rest that can. It changes this view only. Positions are part of the look, so every OBS source follows (in studio mode, after Take).</p>
+</div>
 
 <script>
 (function () {
@@ -711,6 +731,36 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     renderMonSrc(); startVideo();
   });
   $("monLink").addEventListener("change", e => { MON.link = e.target.value.trim(); try { localStorage.setItem("pw.mon.link", MON.link); } catch (x) {} renderScreens(); });
+
+  // ------------------------------------------------------------- Arrange graphics
+  // The overlay itself in Arrange mode (overlay.html &edit=1, or &edit=all to show every graphic that can), full
+  // size over this viewer's video. It reports each drag (postMessage) and the panel saves it as theme.layout.
+  const AR = { all: false };
+  function arUrl() { return overlayUrl(true).replace("&monitor=1&preview=1", "") + "&edit=" + (AR.all ? "all" : "1"); }
+  function arOpen() {
+    $("arrange").classList.remove("hide");
+    const vid = $("arVid"); vid.dataset.v = ""; screenVideo(vid);
+    $("arStage").querySelectorAll("iframe.ov").forEach(f => f.remove());
+    const f = document.createElement("iframe"); f.className = "ov"; f.src = arUrl(); $("arStage").appendChild(f);
+    arFit(); arSizeShow();
+  }
+  function arFit() { const f = $("arStage").querySelector("iframe.ov"); if (f) f.style.transform = `scale(${$("arStage").clientWidth / 1920})`; }
+  function arSizeShow() { const v = Math.round((Number(G("theme.size", 1)) || 1) * 100); if (document.activeElement !== $("arSize")) $("arSize").value = v; $("arSizeV").textContent = v + "%"; $("arAll").classList.toggle("on", AR.all); }
+  window.addEventListener("resize", arFit);
+  window.addEventListener("message", e => {
+    const l = e.data && e.data.pwLayout;
+    if (!l || e.source == null || !canProduce() || typeof l.id !== "string" || !POS_LABELS[l.id]) return;
+    setGfx({ theme: { layout: { [l.id]: { x: Number(l.x) || 0, y: Number(l.y) || 0, s: Number(l.s) || 1 } } } });
+  });
+  $("arSize").addEventListener("input", e => { $("arSizeV").textContent = e.target.value + "%"; setGfxSoon("arsize", { theme: { size: Number(e.target.value) / 100 } }); });
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-arrange],[data-ardone],[data-arall],[data-arreset]"); if (!b) return;
+    const ds = b.dataset;
+    if (ds.arrange) arOpen();
+    else if (ds.ardone) { $("arrange").classList.add("hide"); $("arStage").querySelectorAll("iframe.ov").forEach(f => f.remove()); const v = $("arVid"); v.innerHTML = ""; v.dataset.v = ""; }
+    else if (ds.arall) { AR.all = !AR.all; arOpen(); }
+    else if (ds.arreset) { if (confirm("Put every graphic back where it started, at full size?")) setGfx({ theme: { layout: null, size: null } }); }
+  });
 
   // ------------------------------------------------------------- Studio mode: stage, then Take
   function pvCount(o) { let n = 0; const walk = x => { for (const v of Object.values(x || {})) { if (v && typeof v === "object" && !Array.isArray(v)) walk(v); else n++; } }; walk(o); return n; }
@@ -1455,7 +1505,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
-  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", strip: "Running order", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League" };
+  const POS_LABELS = { faster: "Where they're faster", tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", strip: "Running order", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League" };
   const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
   function renderLook() {
     const th = S.gfx.theme || {}, preset = th.preset || "imsa";

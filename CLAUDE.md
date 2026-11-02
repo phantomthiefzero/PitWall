@@ -253,6 +253,13 @@ Broadcast (broadcast/)
   moves the camera or puts something on air must respect it.
   The bridge answers a director command with the new status at once, sim or no sim: its frame loop only runs while
   iRacing ticks, so status left for the next frame never arrived with the sim closed (the switch looked stuck).
+- The race director tells stories (director._stories / _story_step): incidents cut in at once; otherwise lead
+  changes, passes for position (feed events the bridge passes in), battles scored by gap, closing, what they are for
+  and size, each class leader (more the longer off air) and top cars in their box. It stays with a story for
+  SEGMENT_MIN_S..SEGMENT_MAX_S going round its angles; a story just aired scores lower for FATIGUE_S; nothing is
+  picked at random. tests: test_director_tells_stories_and_moves_on.
+- Arrange graphics (producer): the overlay with &edit=1 (or all) is draggable and resizable; it posts each change to
+  the producer (postMessage pwLayout), which saves theme.layout; theme.size scales every graphic but the crawl.
 - One owner of the camera at a time (director.py): you / director / grid walk / followed battle.
   A producer `camera` command always takes it back (bridge._consumer calls Director.manual()).
   Anything new that moves the camera must go through the Director's owner, not around it.
