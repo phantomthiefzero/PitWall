@@ -23,7 +23,7 @@ Recordings needed (each ~10–20 min, `--hz 10` is plenty for classification):
 | `CarIdxEstTime` | live; wet-adjusted since 2024 S2 | | plain |
 | `CarIdxOnPitRoad`, `CarIdxTrackSurface` | live | | plain |
 | `CarIdxLastLapTime`, `CarIdxBestLapTime` | update at S/F crossing | | plain |
-| `CarIdxTireCompound`, `CarIdxFastRepairsUsed`, `CarIdxP2P_*`, `CarIdxSessionFlags` | update on event | | plain |
+| `CarIdxTireCompound`, `CarIdxFastRepairsUsed`, `CarIdxP2P_*`, `CarIdxSessionFlags` | update on event | The user reports (Nov 2026) that penalties and black flags DO reach a spectator; not yet checked which bits of `CarIdxSessionFlags` carry them. | plain |
 | `CarIdxGear`, `CarIdxRPM`, `CarIdxSteer` | live for all cars (nice for spotters) | | plain |
 | `SessionFlags`, `SessionState`, `SessionTimeRemain`, `SessionLapsRemainEx` | live | live. `SessionFlags` decode confirmed against real data: 0x10140200 -> one_lap_to_green, servicible, repair, start_hidden. NB it mixes racing flags with start-light and car-service state; split before showing as a flag banner. | plain |
 | `Speed`, `RPM`, `Gear`, `Throttle`, `Brake`, `Clutch`, `SteeringWheelAngle` | live (player only) | | plain |

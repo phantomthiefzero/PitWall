@@ -1143,3 +1143,91 @@ def test_helmets_are_rendered_once_and_a_refusal_is_not_retried():
         _t.sleep(0.3)
         assert len([u for u in calls if "pk_helmet" in u and "hlmtPat=2" in u]) == len(hc) == 1
         assert not any(m["key"] == "5_2:helmet" for m in out)
+
+
+# --------------------------------------------------------------------- multiclass: traffic and sector colours
+
+def _mc_car(idx, cls, class_pos, u, lap, **kw):
+    c = {"idx": idx, "classId": cls, "classPos": class_pos, "pos": idx, "surface": "on_track", "onPitRoad": False,
+         "estTimeS": u * lap, "classEstLapS": lap, "pct": u, "lapCompleted": 0, "lastLapS": -1.0, "derived": {}}
+    c.update(kw)
+    return c
+
+
+def _pace(d, idx, lap):
+    """Racing laps either side of `lap` seconds, so Deriver.pace() (their median) is `lap`. Each time differs
+    from the one before: iRacing's unchanged LapLastLapTime is a stale time, not a new lap."""
+    t = 0.0
+    d.record_lap({"idx": idx, "lapCompleted": 0, "lastLapS": -1.0, "onPitRoad": False, "derived": {}}, t)
+    for k, lt in enumerate([lap - 0.05, lap + 0.05, lap - 0.05, lap + 0.05], start=1):
+        t += lt
+        for dt in (0.0, 4.0):                       # the lap, then a moment later (its time settles)
+            d.record_lap({"idx": idx, "lapCompleted": k, "lastLapS": lt, "onPitRoad": False, "derived": {}}, t + dt)
+
+
+def test_class_traffic_finds_each_leaders_next_slower_class_pack():
+    d = Deriver()
+    for i, lap in [(1, 100.0), (2, 101.0), (3, 110.0), (4, 110.0), (5, 110.0), (6, 110.0), (7, 110.0), (8, 125.0)]:
+        _pace(d, i, lap)
+
+    def field(t):
+        return [
+            _mc_car(1, 10, 1, 0.10 + t / 100.0, 100.0),            # GTP leader, 100 s laps
+            _mc_car(2, 10, 2, 0.12 + t / 101.0, 101.0),            # its own class: never traffic for it
+            _mc_car(3, 20, 1, 0.150 + t / 110.0, 110.0),           # GTD leader 0.05 lap ahead: 55 s away
+            _mc_car(4, 20, 2, 0.152 + t / 110.0, 110.0),           # 2 s later: the same pack
+            _mc_car(5, 20, 3, 0.40 + t / 110.0, 110.0),            # far up the road: past the horizon
+            _mc_car(6, 20, 4, 0.151 + t / 110.0, 110.0, onPitRoad=True),   # in the pit lane: not traffic
+            _mc_car(7, 20, 5, 0.153 + t / 110.0, 110.0, surface="off_track"),
+            _mc_car(8, 30, 1, 0.50 + t / 125.0, 125.0)]            # a third class, far ahead
+    first = d.class_traffic(field(0.0), 0.0)
+    gtp = next(x for x in first if x["classId"] == 10)
+    assert gtp["idx"] == 1 and gtp["aheadIdx"] == 3 and gtp["aheadClassId"] == 20
+    assert abs(gtp["inS"] - 55.0) < 0.2                            # 0.05 lap at 1/100 - 1/110 a second
+    assert gtp["packN"] == 2 and gtp["packIdx"] == [3, 4]          # car 5 too far, 6 in the pits, 7 off track
+    # the GTD leader would reach the third class, but not within the horizon (0.35 lap at 1/110 - 1/125: 320 s)
+    assert not any(x["classId"] == 20 for x in first)
+    # it counts down, second by second
+    later = next(x for x in d.class_traffic(field(10.0), 10.0) if x["classId"] == 10)
+    assert abs(later["inS"] - 45.0) < 0.5
+    # a leader in the pit lane has no traffic warning
+    f = field(11.0); f[0]["onPitRoad"] = True
+    assert not any(x["classId"] == 10 for x in d.class_traffic(f, 11.0))
+
+
+def test_sector_colours_are_per_class():
+    a = {"idx": 1, "classId": 10, "derived": {"sectorS": [30.0, 40.0, 50.0], "bestSectorS": [30.0, 39.5, 50.0]}}
+    b = {"idx": 2, "classId": 10, "derived": {"sectorS": [31.0, 39.0, 52.0], "bestSectorS": [30.5, 39.0, 51.0]}}
+    c = {"idx": 3, "classId": 20, "derived": {"sectorS": [60.0, 70.0, None], "bestSectorS": [60.0, 70.0, 80.0]}}
+    e = {"idx": 4, "classId": 20, "derived": {}}                     # no sectors timed yet
+    best = Deriver.sector_marks([a, b, c, e])
+    assert best == {"10": [30.0, 39.0, 50.0], "20": [60.0, 70.0, 80.0]}
+    assert a["derived"]["sectorMarks"] == ["p", "y", "p"]           # class best, neither, class best
+    assert b["derived"]["sectorMarks"] == ["y", "p", "y"]           # 31 > its 30.5 best: yellow
+    assert c["derived"]["sectorMarks"] == ["p", "p", None]          # the slower class is purple against its own class
+    assert e["derived"]["sectorMarks"] is None
+
+
+def test_multiclass_derived_values_from_the_fake_race():
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    d = Deriver()
+    sess, saw_traffic, saw_marks = None, 0, 0
+    for k in range(60 * 420):
+        src.tick()
+        if k % 10:
+            continue
+        if sess is None:
+            sess = build_session(src)
+        build_state(src, d)
+        out = build_cars(src, sess, d)
+        by = {c["idx"]: c for c in out["cars"]}
+        for x in out["derived"]["classTraffic"]:
+            saw_traffic += 1
+            assert by[x["idx"]]["classPos"] == 1
+            assert by[x["aheadIdx"]]["classId"] != by[x["idx"]]["classId"]
+            assert 0 <= x["inS"] <= Deriver.CLASS_TRAFFIC_HORIZON_S and x["packN"] >= 1
+        saw_marks += sum(1 for c in out["cars"] if (c["derived"].get("sectorMarks") or []))
+        assert isinstance(out["derived"]["classBestSectorS"], dict)
+    assert saw_traffic > 0, "the fake's classes should meet"
+    assert saw_marks > 0

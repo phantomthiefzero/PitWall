@@ -316,6 +316,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       <p class="note">iRacing keeps other drivers' incident points hidden until the race ends, so these are <span class="d">predicted</span> from what every car's telemetry does: going off, spinning, losing its speed, two cars losing it together, tows and damage flags. The likely points follow iRacing's table. When the official counts appear after the finish, they are compared here car by car.</p>
     </section>
     <section><h2>Battles <small id="btMode"></small></h2><div id="battles"></div></section>
+    <section id="trafficSec" class="hide"><h2>Traffic</h2><div id="trafficList"></div></section>
     <section><h2>Log <small>race news and what changed</small></h2><div class="log" id="log"></div></section>
     <section class="urls">
       <h2>Overlay for OBS</h2>
@@ -466,12 +467,14 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
 
   // ------------------------------------------------------------- Show tab
   const LAYERS = [["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
-    ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false], ["ticker", "Race control ticker", true],
+    ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false],
+    ["traffic", "Traffic warning (class leaders reaching a slower class)", false], ["fastlap", "Fastest-lap alerts (per class)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
   // Not a layer: lets the overlay bring up "where they're faster" in a close battle and the results at the finish.
-  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, results at the finish)") +
+  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, traffic, fastest laps, results at the finish)") +
     sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
+    sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)") +
     sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles and flags (Arcade look; in OBS tick Control audio via OBS)") +
     sw("sw-voice", G("sound.man", false), `data-gflag="sound.man"`, "Announcer: a man's voice (off: a woman's)");
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
@@ -493,7 +496,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       $("twLayoutOpts").innerHTML = `<h3>Rows</h3><div class="opts">${[10, 15, 20, 25, 30].map(n => `<button data-rows="${n}" class="${G("tower.rows", 20) === n ? "on" : ""}" ${dis}>${n}</button>`).join("")}</div>`;
     }
     const mode = G("tower.mode", "interval");
-    $("twMode").innerHTML = [["interval", "Interval"], ["gap", "Gap to leader"], ["best", "Best lap"], ["last", "Last lap"], ["pits", "Pit stops"], ["incidents", "Incidents"]]
+    $("twMode").innerHTML = [["interval", "Interval"], ["gap", "Gap to leader"], ["best", "Best lap"], ["last", "Last lap"], ["sectors", "Sectors"], ["pits", "Pit stops"], ["incidents", "Incidents"]]
       .map(([k, l]) => `<button data-mode="${k}" class="${mode === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
     const follow = G("card.follow", "camera");
     $("cardFollow").innerHTML = `<button data-follow="camera" class="${follow === "camera" ? "on" : ""}" ${dis}>Follow the camera</button>` +
@@ -714,7 +717,20 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     };
     $("field").innerHTML = cars.map(row).join("") + unscored.map(row).join("") || `<p class="note">The field appears once the bridge is streaming.</p>`;
   }
+  // Class leaders about to reach a slower class (normalize.py: cars.derived.classTraffic): what the overlay's
+  // traffic warning would show, for the people running the show.
+  function renderTraffic() {
+    const L = ((S.cars && S.cars.derived && S.cars.derived.classTraffic) || []).filter(x => carByIdx(x.idx) && carByIdx(x.aheadIdx));
+    $("trafficSec").classList.toggle("hide", !multi());
+    if (!multi()) return;
+    const nm = c => "#" + esc(c.num) + " " + esc((c.name || "").split(" ").slice(-1)[0]);
+    const h = L.length ? L.map(x => { const a = carByIdx(x.idx), b = carByIdx(x.aheadIdx);
+      return `<div class="who"><b>${esc(a.className || "")} leader</b> ${nm(a)} reaches ${esc(b.className || "")} ${nm(b)} in ${D(Math.round(x.inS) + " s")}${x.packN > 1 ? ` · ${D(x.packN + " cars")} together` : ""}</div>`; }).join("")
+      : `<p class="note">No class leader is within a minute of a slower class.</p>`;
+    if ($("trafficList").innerHTML !== h) $("trafficList").innerHTML = h;
+  }
   function renderBattles() {
+    try { renderTraffic(); } catch (e) {}
     const list = (S.cars && S.cars.derived && S.cars.derived.battles) || [];
     if (!isRace()) { $("battles").innerHTML = `<p class="note">Battles are found during a race.</p>`; return; }
     if (!list.length) { $("battles").innerHTML = `<p class="note">No two cars of a class are within a second right now.</p>`; return; }
@@ -845,7 +861,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
-  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid" };
+  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap" };
   const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
   function renderLook() {
     const th = S.gfx.theme || {}, preset = th.preset || "imsa";

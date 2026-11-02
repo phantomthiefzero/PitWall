@@ -176,6 +176,9 @@ Broadcast (broadcast/)
   on a stream. The producer panel still marks them for the people running the show.
 - Where they're faster (normalize `lap_splits`, `faster`, `derived.faster`): best laps timed by position over 24
   stretches, every car against the car ahead in class; PitWall's panel and the overlay's `faster` graphic.
+- Multiclass (normalize `class_traffic`, `sector_marks`): the overlay's Traffic warning (a class leader reaching a
+  slower class's pack), fastest-lap alerts per class (from feed fastest_lap events), and sector colours per class
+  (tower "Sectors" mode, the driver card). Sector purple is the class's best, never the overall best.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
 - Race length comes from the leader and SessionLaps (normalize.race_length), never from

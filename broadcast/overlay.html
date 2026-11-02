@@ -139,12 +139,49 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .cd .name small{font-weight:500;color:var(--muted)}
 .cd .lic{margin-left:auto;display:flex;gap:6px;flex:none}
 .cd .lic span{font:700 13px/1 var(--body);padding:4px 7px 3px;border-radius:var(--r)}
-.cd .sub{padding:0 16px 8px;color:var(--muted);font:600 15px/1.2 var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd .sub{padding:0 16px 8px;color:var(--muted);font:600 15px/1.2 var(--body);display:flex;align-items:center;gap:12px;min-width:0;height:18px;box-sizing:content-box}
+.cd .sub #cdSub{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd .stats{margin-top:auto;display:flex;background:var(--ink2)}
 .cd .stats div{flex:1 1 auto;padding:6px 14px 7px;border-right:1px solid var(--line);white-space:nowrap}
 .cd .stats div:last-child{border-right:0}
 .cd .stats span{display:block;color:var(--muted);font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
 .cd .stats b{display:block;font:700 21px/1.1 var(--display);font-variant-numeric:tabular-nums;margin-top:3px}
+/* sector colours (normalize.py Deriver.sector_marks): purple the class's quickest, green the car's own best, yellow neither */
+:root{--sx-p:#a24dff;--sx-g:#22c55e;--sx-y:#f5c518}
+.sxs{display:flex;gap:3px;justify-content:flex-end;align-items:center;height:100%}
+.sxs i{display:block;width:16px;height:12px;border-radius:2px;background:var(--line);opacity:.5}
+.sxs i.p{background:var(--sx-p);opacity:1}.sxs i.g{background:var(--sx-g);opacity:1}.sxs i.y{background:var(--sx-y);opacity:1}
+.sxs i.old{opacity:.4;filter:saturate(.5)}.sxs i.run{outline:2px solid var(--text);outline-offset:-2px;background:transparent;opacity:.7}
+.cd .secs{display:flex;gap:4px;flex:none;align-items:center}
+.cd .secs small{font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+.cd .secs em{font:700 13px/1 var(--display);font-style:normal;font-variant-numeric:tabular-nums;padding:1px 5px 0;border-radius:2px;color:#0b0d12;background:var(--line)}
+.cd .secs em.p{background:var(--sx-p);color:#fff}.cd .secs em.g{background:var(--sx-g)}.cd .secs em.y{background:var(--sx-y)}
+
+/* ---------- traffic warning: a class leader about to reach a slower class ---------- */
+#traffic{left:36px;bottom:54px;width:410px}
+.tr{display:flex;flex-direction:column;border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.tr-h{display:flex;align-items:center;gap:10px;background:var(--head);color:var(--headText);font:800 16px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:8px 14px 7px}
+.tr-h .ic{width:10px;height:10px;border-radius:50%;background:#f5c518;box-shadow:0 0 10px #f5c518}
+.tr-r{display:flex;align-items:center;gap:8px;background:var(--ink);padding:9px 12px}
+.tr-r+.tr-r{border-top:1px solid var(--line)}
+.tr-r .nm{flex:1;min-width:0;font:700 19px/1.1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr-r .cl,.fla .cl{font:800 13px/1 var(--display);padding:4px 7px 3px;border-radius:var(--r);letter-spacing:.04em;text-transform:uppercase;flex:none}
+.tr-r .in{font:800 26px/1 var(--display);font-variant-numeric:tabular-nums;flex:none}
+.tr-r .in small{font:600 13px/1 var(--body);color:var(--muted);margin-left:4px}
+.tr-r .to{color:var(--muted);font:600 15px/1.2 var(--body);flex:none}
+
+/* ---------- fastest-lap alert ---------- */
+#fastlap{right:36px;bottom:250px;width:480px}
+.fla{display:flex;align-items:stretch;border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45);animation:flaIn .45s cubic-bezier(.15,.9,.25,1) both}
+.fla .bar{width:10px;background:var(--fl);flex:none}
+.fla .m{flex:1;background:var(--ink);padding:10px 14px;min-width:0}
+.fla .h{display:flex;align-items:center;gap:8px;font:800 15px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--fl) 55%,var(--text))}
+.fla .w{display:flex;align-items:center;gap:8px;margin-top:6px}
+.fla .w .nm{flex:1;min-width:0;font:700 24px/1.1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fla .t{background:var(--fl);color:#fff;padding:0 14px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;flex:none}
+.fla .t b{font:800 30px/1 var(--display);font-variant-numeric:tabular-nums}
+.fla .t small{font:600 13px/1.2 var(--body);opacity:.85;margin-top:3px}
+@keyframes flaIn{from{transform:translateX(60px);opacity:0}}
 
 
 /* ---------- the driver's picture and helmet (driver card, battle) ---------- */
@@ -364,12 +401,14 @@ body.bc-off>*:not(script){visibility:hidden!important}
     <div class="num" id="cdNumBox"><b id="cdNum">–</b><span id="cdPos"></span></div>
     <div class="main">
       <div class="top"><div class="name" id="cdName">–</div><div class="lic" id="cdLic"></div></div>
-      <div class="sub" id="cdSub"></div>
+      <div class="sub"><span id="cdSub"></span><span class="secs" id="cdSecs"></span></div>
       <div class="stats" id="cdStats"></div>
     </div>
     <div class="hel" id="cdHel"></div>
   </div></div></section>
 
+  <section class="layer" id="traffic"><div class="inner"><div class="tr"><div class="tr-h"><span class="ic"></span>Traffic ahead</div><div id="trRows"></div></div></div></section>
+  <section class="layer" id="fastlap"><div class="inner" id="flaBox"></div></section>
   <section class="layer" id="map"><div class="inner"><canvas id="mapCv" width="720" height="720"></canvas></div></section>
 
   <section class="layer on" id="ticker"></section>
@@ -466,15 +505,18 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return v === undefined ? dflt : v;
   }
   const T = (k, d) => G("theme." + k, d);
-  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false };
+  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
   // Automatic graphics (producer: "Pick graphics for me"): the battle's "where they're faster" when the two
-  // are within half a second, at most 20 s per pair every 2 minutes; the results board at the finish.
+  // are within half a second, at most 20 s per pair every 2 minutes; the results board at the finish; the
+  // traffic warning when a class leader is 20 s from a slower class in a race; every fastest-lap alert.
   const AUTO = { pair: null, from: 0, rest: {} };
   function autoWants(name) {
     if (!G("auto.on", false)) return false;
     if (name === "board") return isRace() && racingFlag() === "checkered";
+    if (name === "traffic") return isRace() && trafficList(20).length > 0;
+    if (name === "fastlap") return true;
     if (name !== "faster") return false;
     const b = currentBattle(); if (!b) { AUTO.pair = null; return false; }
     const c2 = carByIdx(b.cars[b.cars.length - 1]), d = c2 && c2.derived || {};
@@ -488,7 +530,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     AUTO.pair = key; AUTO.from = now; return true;
   }
   const shown = name => allowed(name) && (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
-    !(gridUp && ["tower", "card", "battle", "map", "board", "faster"].includes(name) && G("grid.solo", true));
+    !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
   const gridWalkCar = () => {
@@ -616,11 +658,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const blogo = assetUrl(th.bannerLogo || th.sponsor);
     $("bnLogoBox").classList.toggle("hide", !blogo); if (blogo) $("bnLogo").src = blogo;
     // layout: every graphic can be moved and resized
-    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster"]) {
+    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap"]) {
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${Number(l.s) || 1})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -687,6 +729,15 @@ body.bc-off>*:not(script){visibility:hidden!important}
         return lapsOr(d.liveIntervalS, d.intervalLaps) || (d.intervalS != null ? fmt.gap(d.intervalS) : "–");
       }
     }
+  }
+  // Sectors mode: one block per sector in the car's colour (purple, green, yellow), this lap's sectors bright,
+  // the ones still to come from the lap before dimmed, and the sector the car is in outlined.
+  function sectorBars(c) {
+    const d = c.derived || {}, mk = d.sectorMarks || [], cur = d.sectorIdx, n = Math.max(mk.length, ((S.session && S.session.sectors) || []).length);
+    if (!n) return "";
+    let h = "";
+    for (let i = 0; i < n; i++) h += i === cur ? '<i class="run"></i>' : `<i class="${mk[i] || ""}${cur != null && i > cur ? " old" : ""}"></i>`;
+    return `<span class="sxs">${h}</span>`;
   }
   const predicted = i => ((S.cars && S.cars.derived && S.cars.derived.predictedIncidents) || {})[i] || 0;
   const officialPublished = () => allCars().some(c => c.incidents > 0);
@@ -769,7 +820,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
       el.querySelector(".tag").classList.toggle("hide", !r.onPitRoad);
       el.querySelector(".fl").classList.toggle("hide", !(fl[r.classId] && fl[r.classId].idx === r.idx));
       const mvEl = el.querySelector(".mv"); mvEl.className = "mv" + (mv ? (mv.up ? " up" : " dn") : ""); mvEl.textContent = mv ? (mv.up ? "▲" : "▼") : "";
-      el.querySelector(".val").textContent = towerValue(r, mode, byClass);
+      const vEl = el.querySelector(".val");
+      if (mode === "sectors") { const h = sectorBars(r); if (vEl.innerHTML !== h) vEl.innerHTML = h; }
+      else vEl.textContent = towerValue(r, mode, byClass);
       el.classList.toggle("cam", r.idx === cam);
       el.classList.toggle("alt", n % 2 === 1);
       el.style.height = rowH + "px";
@@ -778,6 +831,52 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     body.style.height = y + "px";
     for (const el of [...body.children]) if (!seen.has(el)) el.remove();
+  }
+
+  // the driver card's sector times, in their colours (this lap's, then the lap before's still to come)
+  function sectorStat(c) {
+    const d = c.derived || {}, mk = d.sectorMarks || [], st = d.sectorS || [];
+    if (!G("card.sectors", true) || !mk.some(Boolean)) return "";
+    return `<small>Sectors</small>${mk.map((x, i) => st[i] ? `<em class="${x || ""}">${st[i].toFixed(1)}</em>` : "").join("")}`;
+  }
+  // ---------------------------------------------------------------- traffic warning
+  // Class leaders about to reach a slower class (normalize.py: cars.derived.classTraffic), soonest first;
+  // one line per class leader (two at most), the picked class only when the tower shows one class.
+  function trafficList(within) {
+    const L = (S.cars && S.cars.derived && S.cars.derived.classTraffic) || [], cls = G("tower.layout", "") === "class" ? G("tower.class", null) : null;
+    return L.filter(x => x.inS <= within && (cls == null || x.classId === cls) && carByIdx(x.idx) && carByIdx(x.aheadIdx));
+  }
+  function renderTraffic() {
+    const L = trafficList(G("traffic.within", 30)).slice(0, 2);
+    $("traffic").classList.toggle("on", shown("traffic") && L.length > 0 && multi());
+    if (!L.length) return;
+    const tag = c => c && c.className ? `<span class="cl" style="background:${css(c.classColor) || "var(--muted)"};color:${inkOn(css(c.classColor))}">${esc(c.className)}</span>` : "";
+    const h = L.map(x => { const a = carByIdx(x.idx), b = carByIdx(x.aheadIdx);
+      return `<div class="tr-r">${tag(a)}${plate(a)}<span class="nm">${nameHtml(a.name)}</span><span class="to">reaches</span>${tag(b)}` +
+        `<span class="in">${Math.max(0, Math.round(x.inS))}<small>s</small></span>${x.packN > 1 ? `<span class="to">${x.packN} cars</span>` : ""}</div>`; }).join("");
+    if ($("trRows").innerHTML !== h) $("trRows").innerHTML = h;
+  }
+  // ---------------------------------------------------------------- fastest-lap alert
+  // From race control's fastest_lap events (normalize.py field_events): per class in a multiclass race,
+  // overall in one class. One at a time, 8 s each; a newer one replaces the waiting one of its class.
+  const FLA = { q: [], cur: null, at: 0, html: null };
+  function queueFastLap(e) {
+    if (!e || e.kind !== "fastest_lap" || (!e.overall && !multi())) return;
+    FLA.q = FLA.q.filter(x => x.classId !== e.classId);
+    if (FLA.cur && FLA.cur.classId === e.classId) { FLA.cur = e; FLA.at = performance.now(); FLA.html = null; } else FLA.q.push(e);
+  }
+  function renderFastLap() {
+    const now = performance.now();
+    if (FLA.cur && now - FLA.at > 8000) FLA.cur = null;
+    if (!FLA.cur && FLA.q.length) { FLA.cur = FLA.q.shift(); FLA.at = now; FLA.html = null; }
+    const e = FLA.cur, c = e && carByIdx(e.idx);
+    $("fastlap").classList.toggle("on", !!c && shown("fastlap"));
+    if (!c || FLA.html != null) return;
+    const m = multi(), gain = e.prevS != null ? e.prevS - e.lapS : null;
+    const tag = c => c && c.className ? `<span class="cl" style="background:${css(c.classColor) || "var(--muted)"};color:${inkOn(css(c.classColor))}">${esc(c.className)}</span>` : "";
+    FLA.html = `<div class="fla"><div class="bar"></div><div class="m"><div class="h">Fastest lap${m ? tag(c) : ""}</div><div class="w">${plate(c)}<span class="nm">${nameHtml(c.name)}</span></div></div>` +
+      `<div class="t"><b>${fmt.lap(e.lapS)}</b>${gain != null && gain > 0 ? `<small>${gain.toFixed(3)} s quicker</small>` : e.lapNum ? `<small>lap ${e.lapNum}</small>` : ""}</div></div>`;
+    $("flaBox").innerHTML = FLA.html; hit($("fastlap"));
   }
 
   // ---------------------------------------------------------------- banner + replay bug
@@ -956,6 +1055,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       stats.push(["Incidents", c.incidents + "x" + (lim > 0 ? " / " + lim : "")]);
     }
     $("cdStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+    { const h = sectorStat(c); if ($("cdSecs").innerHTML !== h) $("cdSecs").innerHTML = h; }
   }
 
   const lastCard = { idx: null }, lastBattle = { key: null };
@@ -978,6 +1078,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     stats.push(["Qualifying", r.timeS ? fmt.lap(r.timeS) : "No time"]);
     if (c.bestLapS > 0 && !r.timeS) stats.push(["Best lap", fmt.lap(c.bestLapS)]);
     $("cdStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+    { const h = sectorStat(c); if ($("cdSecs").innerHTML !== h) $("cdSecs").innerHTML = h; }
   }
 
   // ---------------------------------------------------------------- map (60 fps)
@@ -1047,7 +1148,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const m = multi(), c = carByIdx(e.idx), cls = m && c && c.className ? esc(c.className) + " " : "";
     switch (e.kind) {
       case "fastest_lap":
-        if (!e.overall && !m) return null;
+        if ((!e.overall && !m) || shown("fastlap")) return null;   // the fastest-lap alert has it
         return ["fl", "Fastest lap", `${nm(e.idx)} · ${e.overall ? "" : cls}fastest lap <b>${fmt.lap(e.lapS)}</b>`];
       case "class_lead": return ["lead", "Lead", `${nm(e.idx)} takes the ${m ? cls : ""}lead`];
       case "pit_in": return G("ticker.pits", true) && isRace() ? ["pit", "Pit", `${nm(e.idx)} pits`] : null;
@@ -1075,7 +1176,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     return null;
   }
-  function pushTick(e) { const it = tickerItem(e); if (it) queue.push(it); }
+  function pushTick(e) { queueFastLap(e); const it = tickerItem(e); if (it) queue.push(it); }
   function pumpTicker() {
     const box = $("ticker");
     box.classList.toggle("on", shown("ticker"));
@@ -1272,7 +1373,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster();
+      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap();
     }
     drawMap(); drawFaster(t);
     pumpTicker();

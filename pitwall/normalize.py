@@ -1490,6 +1490,93 @@ class Deriver:
         """The next few meetings (within TRAFFIC_HORIZON_S): the traffic list."""
         return [m for m in self.meetings(cars, player_idx, t) if m["inS"] <= self.TRAFFIC_HORIZON_S][:6]
 
+    # ---- multiclass, for the broadcast ----------------------------------------
+    # The traffic warning: when each class leader reaches the slower classes. The
+    # same idea as meetings() (both cars' current pace, the lap-time fraction from
+    # CarIdxEstTime), for every class leader instead of the followed car.
+    CLASS_TRAFFIC_HORIZON_S = 60.0
+    CLASS_TRAFFIC_PACK_S = 6.0
+
+    def class_traffic(self, cars: list, t=None) -> list:
+        """Each class leader's next meeting with a slower class: the first slower-class car it
+        will reach at both cars' pace (aheadIdx, inS), and every slower-class car it reaches
+        within CLASS_TRAFFIC_PACK_S after that (the pack: packN, packIdx). Only cars on track
+        and out of the pit lane; within CLASS_TRAFFIC_HORIZON_S. Smoothed like meetings(), so
+        the count runs down second by second instead of jumping with each update."""
+        st = self.__dict__.setdefault("_ctraf", {})
+        out, seen = [], set()
+        for lead in cars:
+            if lead.get("classPos") != 1 or lead.get("surface") != "on_track" or lead.get("onPitRoad"):
+                continue
+            ul, pl = self._u(lead), self.pace(lead["idx"])
+            if ul is None or not pl:
+                continue
+            meets = []
+            for c in cars:
+                if c is lead or c.get("classId") == lead.get("classId") or c.get("surface") != "on_track" or c.get("onPitRoad"):
+                    continue
+                uc, pc = self._u(c), self.pace(c["idx"])
+                if uc is None or not pc or pc <= pl + self.TRAFFIC_MIN_DIFF_S:
+                    continue                              # not a slower car: never caught
+                tm = ((uc - ul) % 1.0) / (1.0 / pl - 1.0 / pc)
+                if tm <= self.CLASS_TRAFFIC_HORIZON_S:
+                    meets.append((tm, c))
+            if not meets:
+                continue
+            meets.sort(key=lambda x: x[0])
+            tm, first = meets[0]
+            pack = [c["idx"] for tt, c in meets if tt <= tm + self.CLASS_TRAFFIC_PACK_S]
+            key = lead["idx"]
+            seen.add(key)
+            prev = st.get(key)
+            if prev is not None and t is not None and prev[0] is not None and prev[2] == first["idx"]:
+                k = 1.0 - math.exp(-max(0.0, t - prev[0]) / self.MEET_SMOOTH_S)
+                pred = prev[1] - (t - prev[0])
+                tm = max(0.0, pred + k * (tm - pred) if abs(tm - pred) < 30 else tm)
+            st[key] = (t, tm, first["idx"])
+            out.append({"idx": key, "classId": lead.get("classId"), "aheadIdx": first["idx"],
+                        "aheadClassId": first.get("classId"), "inS": round(tm, 1),
+                        "packN": len(pack), "packIdx": pack})
+        for k in list(st):
+            if k not in seen:
+                del st[k]
+        return sorted(out, key=lambda x: x["inS"])
+
+    @staticmethod
+    def sector_marks(cars: list) -> dict:
+        """F1's sector colours, per class: for each car's latest time in each sector, "p" (purple)
+        when it is its class's quickest that sector among the cars here, "g" (green) when it is the
+        car's own best, "y" (yellow) when neither, None for a sector not timed. Each car gets
+        derived.sectorMarks; returns each class's best sectors (classBestSectorS)."""
+        best: dict = {}
+        for c in cars:
+            b = (c.get("derived") or {}).get("bestSectorS") or []
+            if not b:
+                continue
+            cur = best.setdefault(c.get("classId"), [None] * len(b))
+            if len(cur) != len(b):             # every car of a track has the same sectors; never mix two layouts
+                continue
+            for i, v in enumerate(b):
+                if v and (cur[i] is None or v < cur[i]):
+                    cur[i] = v
+        for c in cars:
+            d = c.get("derived")
+            if d is None:
+                continue
+            s, pb, cb = d.get("sectorS") or [], d.get("bestSectorS") or [], best.get(c.get("classId")) or []
+            marks = []
+            for i, v in enumerate(s):
+                if not v:
+                    marks.append(None)
+                elif i < len(cb) and cb[i] and v <= cb[i] + 5e-4:
+                    marks.append("p")
+                elif i < len(pb) and pb[i] and v <= pb[i] + 5e-4:
+                    marks.append("g")
+                else:
+                    marks.append("y")
+            d["sectorMarks"] = marks if any(marks) else None
+        return {str(k): v for k, v in best.items()}
+
     # ---- events from the field ---------------------------------------------
     CLOSING_EVENT_GAIN = 0.3
     CLOSING_EVENT_GAP = 3.0
@@ -3380,6 +3467,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         if live_edge(g)["atLive"]:
             deriver.lap_splits(cars, now)
         meet = deriver.meetings(cars, player_idx, now)
+        class_best_sectors = Deriver.sector_marks(cars)
         out["derived"] = {
             "caution": caution,
             "strategy": deriver.strategy(cars, player_idx, race, caution, own_idx if own is not None else None)
@@ -3397,6 +3485,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "compoundPace": deriver.compound_pace(cars),
             "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
             "battles": deriver.battles(cars, ahead_of, is_race),
+            "classTraffic": deriver.class_traffic(cars, now),
+            "classBestSectorS": class_best_sectors,
             "faster": deriver.faster_pairs(cars),
             "predictedIncidents": deriver.predicted_incidents(),
             "race": race,
