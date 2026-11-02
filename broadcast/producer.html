@@ -140,6 +140,27 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
 #bcLive.on{background:var(--good);border-color:var(--good);color:var(--ink)}
 #bcLive:disabled{opacity:.5;cursor:default}
 body:not(.bc-off) .lookOff{display:none}
+#monitor{grid-column:1/-1;margin-bottom:0}
+#monitor .mon-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#monitor .mon-bar h2{margin:0 6px 0 0}
+#monitor .mon-bar .sp{flex:1}
+#monScreens{display:grid;grid-template-columns:1fr;gap:12px;margin-top:10px;align-items:center}
+#monScreens.two{grid-template-columns:1fr auto 1fr}
+#monScreens:not(.two) .scr{max-width:720px}
+.scr{position:relative}
+.scr>b{display:block;font:800 13px/1 var(--txt);letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin-bottom:5px}
+.scr.pgm>b{color:var(--bad)}.scr.pvw>b{color:var(--good)}
+.scr .box{position:relative;aspect-ratio:16/9;background:#000;border-radius:6px;overflow:hidden;border:2px solid var(--line)}
+.scr.pgm .box{border-color:var(--bad)}.scr.pvw .box{border-color:var(--good)}
+.scr .box video,.scr .box .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0}
+.scr .box iframe.ov{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:0 0;pointer-events:none;background:transparent}
+.take{display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:130px}
+.take #takeBtn{font:800 20px/1 var(--txt);padding:16px 10px;background:var(--bad);color:#fff;border-color:var(--bad)}
+.take #takeBtn:disabled{opacity:.45}
+.take .note{text-align:center;margin:0}
+#monitor.min #monScreens{display:none}
+.scn{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--line)}
+.scn span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #bcOff{margin:10px 14px 0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--mut);font-size:14px}
 #bcOff b{color:var(--fg,#fff)}
 body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4;pointer-events:none;user-select:none}
@@ -172,6 +193,24 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
 
 <div id="bcOff" class="hide"><b>The broadcast is off.</b> Nothing shows on the overlay and nothing here moves the camera: no director, no grid walk at the pace laps, no cuts or replays. Turn it on with <b>Broadcast off</b> at the top when you are ready to go on air. The Look and Liveries tabs can be set up meanwhile.</div>
 <main id="main" class="hide">
+  <section id="monitor">
+    <div class="mon-bar">
+      <h2>Monitor</h2>
+      <button data-monmin="1" id="monMin" title="Show or hide the screens (just for you)">Hide screens</button>
+      <label for="monSrc" class="note" style="margin:0">Video</label><select id="monSrc" style="max-width:240px"></select>
+      <input type="text" id="monLink" class="hide" placeholder="VDO.Ninja view link of the game" style="width:240px">
+      <span class="sp"></span>
+      <span id="studioCtl" style="display:contents"></span>
+    </div>
+    <div id="monScreens">
+      <div class="scr pvw hide" id="scrPvw"><b>Preview</b><div class="box"><div class="vid"></div></div></div>
+      <div class="take hide" id="takeBox"></div>
+      <div class="scr pgm" id="scrPgm"><b>Program · on air</b><div class="box"><div class="vid"></div></div></div>
+    </div>
+    <details class="note" style="margin-top:8px"><summary>Putting the race video behind the screens</summary>
+      <p>On the PC running OBS: in OBS, next to <b>Start Virtual Camera</b>, open its settings (the gear), set the output to <b>Source</b> and pick your iRacing capture, so the camera carries the game without the overlay. Start it, then choose <b>Find cameras…</b> above and pick <b>OBS Virtual Camera</b>. Your browser asks once to use the camera. Elsewhere (a co-host's PC), use a VDO.Ninja link of the game instead. The video stays in your browser: nothing is sent anywhere.</p>
+      <p>Studio mode: changes wait in Preview until <b>Take</b>, with a cut or the stinger; <b>Camera waits for Take</b> holds a click on a driver until then too. Saved scenes are in the Studio tab.</p></details>
+  </section>
   <div id="colLeft">
     <div class="tabs"><button data-tab="show" class="on">Show</button><button data-tab="look">Look</button><button data-tab="studio">Studio</button><button data-tab="liveries">Liveries</button></div>
     <div data-pane="show">
@@ -281,6 +320,12 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     </div>
 
     <div data-pane="studio" class="hide">
+      <section>
+        <h2>Saved scenes</h2>
+        <p class="note" style="margin-top:0">A scene is which graphics are on and how they are set (tower, card, battle, head to head, picture in picture, show screens…). Recall one to put it on air, or into Preview in studio mode. Your look, files and lists are not part of it.</p>
+        <div class="row" style="display:flex;gap:6px"><input type="text" id="scnName" placeholder="Name, e.g. Battle focus" style="flex:1"><button data-scnsave="1">Save what is on now</button></div>
+        <div id="scnList"></div>
+      </section>
       <section>
         <h2>Show screens</h2>
         <p class="note" style="margin-top:0">A full-screen page in place of the race graphics: before the start, in a break, and at the end.</p>
@@ -438,8 +483,28 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     return [...m.values()].sort((a, b) => b.rel - a.rel);
   }
   const multi = () => classes().length > 1;
+  // Studio mode (gfx studio: {on, pv, cut, transition, holdCuts}): changes are staged in studio.pv and shown in
+  // the Preview screen until Take sends them on air. The panel's own controls show the staged state.
+  const DEL = "__pw_del__";      // a staged "remove this key" (the relay's merge would drop a plain null)
+  function staged(into, patch) {
+    for (const [k, v] of Object.entries(patch || {})) {
+      if (v === DEL || v === null) delete into[k];
+      else if (v && typeof v === "object" && !Array.isArray(v)) into[k] = staged(into[k] && typeof into[k] === "object" && !Array.isArray(into[k]) ? into[k] : {}, v);
+      else into[k] = v;
+    }
+    return into;
+  }
+  const enc = v => v === null ? DEL : v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, enc(x)])) : v;
+  const dec = v => v === DEL ? null : v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, dec(x)])) : v;
+  const studioOn = () => !!(S.gfx.studio && S.gfx.studio.on);
+  let viewKey = null, viewObj = null;
+  function gview() {
+    if (!studioOn() || !S.gfx.studio.pv) return S.gfx;
+    if (viewKey === null) { viewKey = 1; viewObj = staged(JSON.parse(JSON.stringify(S.gfx)), S.gfx.studio.pv); }
+    return viewObj;
+  }
   function G(path, dflt) {
-    let v = S.gfx;
+    let v = gview();
     for (const k of path.split(".")) { if (v == null || typeof v !== "object") return dflt; v = v[k]; }
     return v === undefined ? dflt : v;
   }
@@ -470,9 +535,26 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     if (!ws || ws.readyState !== 1) { toast("Not connected to the relay", true); return false; }
     ws.send(JSON.stringify(obj)); return true;
   }
+  // These never wait for Take: studio mode itself, the stinger, a replay's caption, pictures and saved scenes.
+  const IMMEDIATE = new Set(["studio", "stinger", "replay", "photos", "scenes"]);
+  let straightNext = false;
   function setGfx(patch) {
     if (!canProduce()) { toast("This link is view-only", true); return; }
-    merge(S.gfx, JSON.parse(JSON.stringify(patch)));
+    if (studioOn() && !straightNext) {
+      const now = {}, later = {};
+      for (const [k, v] of Object.entries(patch)) (IMMEDIATE.has(k) ? now : later)[k] = v;
+      if (Object.keys(later).length) {
+        const pv = enc(JSON.parse(JSON.stringify(later)));
+        S.gfx.studio.pv = merge(S.gfx.studio.pv || {}, JSON.parse(JSON.stringify(pv)));
+        dirty.ctl = dirty.mon = true; viewKey = null;
+        if (patch.theme) dirty.look = true;
+        send({ type: "gfx", set: { studio: { pv } }, by: me || undefined });
+      }
+      if (!Object.keys(now).length) return;
+      patch = now;
+    }
+    if (straightNext) { straightNext = false; dirty.mon = true; }
+    merge(S.gfx, JSON.parse(JSON.stringify(patch))); viewKey = null;
     dirty.ctl = true;
     if (patch.theme) dirty.look = true;          // your own style change shows in the Look tab too (a preset fills the colours and fonts)
     send({ type: "gfx", set: patch, by: me || undefined });
@@ -514,6 +596,10 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   }
   function cutToCar(c, group) {
     if (!c || c.num == null) return;
+    if (studioOn() && G("studio.holdCuts", false) && !straightNext) {          // waits for Take, with the graphics
+      setGfx({ studio: { cut: { num: String(c.num), group: group || currentGroup(), label: "#" + c.num + " " + (c.name || "") } } });
+      toast("Camera on #" + c.num + " waits for Take"); return;
+    }
     cmd({ cmd: "camera", action: "car", car: String(c.num), group: group || currentGroup(), camera: 0 }, "Camera on #" + c.num + " " + (c.name || ""));
   }
   // A stinger first, then the camera move at its cut point, so the jump is hidden.
@@ -530,9 +616,157 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   }
   $("toLive").onclick = backToLive;
 
+  // ------------------------------------------------------------- Monitor: Program (and Preview in studio mode)
+  // Each screen is the game's video with the overlay laid on top at 1920x1080, scaled down. The video is this
+  // viewer's choice, kept in this browser only: OBS Virtual Camera (set it to output the game capture without
+  // the overlay), a VDO.Ninja link of the game, or nothing (graphics on black).
+  const MON = { src: "", link: "", stream: null, devs: [], min: false, keys: {} };
+  try { MON.src = localStorage.getItem("pw.mon.src") || ""; MON.link = localStorage.getItem("pw.mon.link") || ""; MON.min = localStorage.getItem("pw.mon.min") === "1"; } catch (e) {}
+  function overlayUrl(preview) {
+    const tok = Q.get("view") || Q.get("token") || "", r = Q.get("relay");
+    const base = location.protocol.startsWith("http") ? location.origin + location.pathname.replace(/producer\.html$/, "") : "";
+    return base ? base + "overlay.html?token=" + encodeURIComponent(tok) + "&monitor=1" + (preview ? "&preview=1" : "") + (r ? "&relay=" + encodeURIComponent(r) : "") : "";
+  }
+  async function listCams() {
+    try { const d = await navigator.mediaDevices.enumerateDevices(); MON.devs = d.filter(x => x.kind === "videoinput"); } catch (e) { MON.devs = []; }
+    renderMonSrc();
+  }
+  function renderMonSrc() {
+    const opts = [["", "None (graphics on black)"], ["link", "A link (VDO.Ninja)"]].concat(
+      MON.devs.map((d, i) => ["cam:" + d.deviceId, d.label || "Camera " + (i + 1)]));
+    if (MON.src.startsWith("cam:") && !opts.some(o => o[0] === MON.src)) opts.push([MON.src, "Camera (allow access to name it)"]);
+    $("monSrc").innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}" ${v === MON.src ? "selected" : ""}>${esc(l)}</option>`).join("") +
+      (navigator.mediaDevices ? `<option value="find">Find cameras… (OBS Virtual Camera)</option>` : "");
+    $("monLink").classList.toggle("hide", MON.src !== "link"); if (document.activeElement !== $("monLink")) $("monLink").value = MON.link;
+  }
+  async function startVideo() {
+    if (MON.stream) { MON.stream.getTracks().forEach(t => t.stop()); MON.stream = null; }
+    if (MON.src.startsWith("cam:")) {
+      try {
+        MON.stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: MON.src.slice(4) }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false });
+      } catch (e) { toast("The camera could not be opened: " + (e.message || e.name), true); }
+    }
+    MON.keys = {}; renderScreens();
+  }
+  function screenVideo(box) {
+    const want = MON.src.startsWith("cam:") && MON.stream ? "cam" : MON.src === "link" && /^https:\/\//.test(MON.link) ? "link:" + MON.link : "";
+    if (box.dataset.v === want) return;
+    box.dataset.v = want;
+    if (want === "cam") { box.innerHTML = '<video autoplay muted playsinline></video>'; box.firstChild.srcObject = MON.stream; }
+    else if (want) box.innerHTML = `<iframe class="bg" src="${esc(MON.link)}" allow="autoplay" referrerpolicy="no-referrer"></iframe>`;
+    else box.innerHTML = "";
+  }
+  function screenOverlay(scr, preview) {
+    const box = scr.querySelector(".box"); let f = box.querySelector("iframe.ov");
+    const url = overlayUrl(preview);
+    if (!url) return;
+    if (!f) { f = document.createElement("iframe"); f.className = "ov"; f.src = url; box.appendChild(f); }
+    f.style.transform = `scale(${box.clientWidth / 1920})`;
+  }
+  function renderScreens() {
+    const st = studioOn();
+    $("monitor").classList.toggle("min", MON.min); $("monMin").textContent = MON.min ? "Show screens" : "Hide screens";
+    $("monScreens").classList.toggle("two", st); $("scrPvw").classList.toggle("hide", !st); $("takeBox").classList.toggle("hide", !st);
+    if (MON.min) return;
+    for (const [id, pv] of [["scrPgm", false], ["scrPvw", true]]) {
+      const scr = $(id); if (scr.classList.contains("hide")) continue;
+      screenVideo(scr.querySelector(".vid")); screenOverlay(scr, pv);
+    }
+  }
+  window.addEventListener("resize", () => renderScreens());
+  $("monSrc").addEventListener("change", e => {
+    const v = e.target.value;
+    if (v === "find") {   // asking once for the camera lets the browser name them
+      navigator.mediaDevices.getUserMedia({ video: true }).then(s => { s.getTracks().forEach(t => t.stop()); listCams(); }).catch(err => { toast("No camera access: " + (err.message || err.name), true); renderMonSrc(); });
+      return;
+    }
+    MON.src = v; try { localStorage.setItem("pw.mon.src", v); } catch (e) {}
+    renderMonSrc(); startVideo();
+  });
+  $("monLink").addEventListener("change", e => { MON.link = e.target.value.trim(); try { localStorage.setItem("pw.mon.link", MON.link); } catch (x) {} renderScreens(); });
+
+  // ------------------------------------------------------------- Studio mode: stage, then Take
+  function pvCount(o) { let n = 0; const walk = x => { for (const v of Object.values(x || {})) { if (v && typeof v === "object" && !Array.isArray(v)) walk(v); else n++; } }; walk(o); return n; }
+  function renderStudioCtl() {
+    const dis = canProduce() ? "" : "disabled", on = studioOn(), stu = S.gfx.studio || {};
+    const tr = stu.transition || "cut", hold = !!stu.holdCuts, n = pvCount(stu.pv), cut = stu.cut;
+    const key = JSON.stringify([on, tr, hold, n, cut && cut.label, straightNext, dis, !!(S.director && S.director.live)]);
+    if (MON.keys.ctl === key) return; MON.keys.ctl = key;
+    $("studioCtl").innerHTML = `<button data-studio="1" class="${on ? "on" : ""}" ${dis} title="Changes wait in Preview until you press Take">Studio mode ${on ? "on" : "off"}</button>`;
+    $("takeBox").innerHTML = on ? `<button id="takeBtn" data-take="1" ${dis || (n || cut ? "" : "disabled")}>Take</button>` +
+      `<p class="note">${n ? n + (n === 1 ? " change" : " changes") : "Nothing staged"}${cut ? "<br>then " + esc(cut.label) : ""}</p>` +
+      `<div class="opts" style="justify-content:center">${[["cut", "Cut"], ["stinger", "Stinger"]].map(([k, l]) => `<button data-trans="${k}" class="${tr === k ? "on" : ""}" ${dis}>${l}</button>`).join("")}</div>` +
+      `<button data-holdcuts="1" class="${hold ? "on" : ""}" ${dis} title="Clicking a driver stages the camera cut for Take instead of cutting now">Camera waits for Take</button>` +
+      `<button data-straight="1" class="${straightNext ? "on" : ""}" ${dis} title="Your next change goes on air at once, skipping Preview">Next change straight to air</button>` +
+      `<button data-clearpv="1" ${dis || (n || cut ? "" : "disabled")}>Clear Preview</button>` : "";
+  }
+  function take() {
+    const stu = S.gfx.studio || {}, patch = dec(JSON.parse(JSON.stringify(stu.pv || {}))), cut = stu.cut;
+    if (!Object.keys(patch).length && !cut) return;
+    const go = () => {
+      merge(S.gfx, JSON.parse(JSON.stringify(patch))); S.gfx.studio.pv = null; S.gfx.studio.cut = null; viewKey = null;
+      send({ type: "gfx", set: { ...patch, studio: { pv: null, cut: null } }, by: me || undefined });
+      if (cut) cmd({ cmd: "camera", action: "car", car: cut.num, group: cut.group, camera: 0 }, "Camera on " + cut.label);
+      dirty.ctl = dirty.mon = true; toast("On air");
+    };
+    if ((stu.transition || "cut") === "stinger") withStinger("take", go); else go();
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-studio],[data-take],[data-trans],[data-holdcuts],[data-straight],[data-clearpv],[data-monmin],[data-scnsave],[data-scnrecall],[data-scndel]");
+    if (!b || b.disabled) return;
+    const ds = b.dataset;
+    if (ds.monmin) { MON.min = !MON.min; try { localStorage.setItem("pw.mon.min", MON.min ? "1" : "0"); } catch (x) {} renderScreens(); return; }
+    if (ds.studio) { const on = !studioOn(); setGfx({ studio: { on, pv: null, cut: null } }); if (!on) straightNext = false; toast(on ? "Studio mode: changes wait in Preview" : "Studio mode off: changes go straight to air"); }
+    else if (ds.take) take();
+    else if (ds.trans) setGfx({ studio: { transition: ds.trans } });
+    else if (ds.holdcuts) setGfx({ studio: { holdCuts: !G("studio.holdCuts", false) } });
+    else if (ds.straight) { straightNext = !straightNext; }
+    else if (ds.clearpv) setGfx({ studio: { pv: null, cut: null } });
+    else if (ds.scnsave) saveScene($("scnName").value);
+    else if (ds.scnrecall) recallScene(ds.scnrecall);
+    else if (ds.scndel) { if (confirm("Delete the scene " + ds.scndel + "?")) setGfx({ scenes: { [ds.scndel]: null } }); }
+    viewKey = null; MON.keys.ctl = null; dirty.ctl = dirty.mon = dirty.studio = true;
+  });
+
+  // ------------------------------------------------------------- Saved scenes
+  // What a scene holds: every layer's on/off, and how the graphics are set. Not the look, files, lists or
+  // anything that belongs to one moment (a replay's caption, the stinger, a second camera's report).
+  const SCENE_SKIP = { theme: 1, photos: 1, scenes: 1, studio: 1, stinger: 1, replay: 1 };
+  const SCENE_SKIP_IN = { pip: ["second", "want", "url"], league: ["rows", "title", "sub"], straps: ["list", "at", "idx"], sponsors: ["logos"], scene: ["untilMs"] };
+  function sceneNow() {
+    const g = JSON.parse(JSON.stringify(gview())), out = {};
+    for (const [k, v] of Object.entries(g)) {
+      if (SCENE_SKIP[k]) continue;
+      if (v && typeof v === "object" && !Array.isArray(v) && SCENE_SKIP_IN[k]) { for (const x of SCENE_SKIP_IN[k]) delete v[x]; }
+      out[k] = v;
+    }
+    for (const [k, , d] of LAYERS) { out[k] = out[k] && typeof out[k] === "object" ? out[k] : {}; if (out[k].show === undefined) out[k].show = !!d; }
+    out.scene = Object.assign({ mode: null }, out.scene || {}); if (out.scene.mode === undefined) out.scene.mode = null;
+    return out;
+  }
+  function saveScene(name) {
+    name = String(name || "").trim().slice(0, 40);
+    if (!name) { toast("Give the scene a name", true); return; }
+    setGfx({ scenes: { [name]: { at: Date.now(), g: sceneNow() } } });
+    $("scnName").value = ""; toast("Saved " + name);
+  }
+  function recallScene(name) {
+    const sc = (S.gfx.scenes || {})[name]; if (!sc || !sc.g) return;
+    const patch = JSON.parse(JSON.stringify(sc.g));
+    if (patch.scene && patch.scene.mode === null) patch.scene.mode = null;
+    setGfx(patch);
+    toast(studioOn() ? name + " is in Preview: Take to put it on air" : name + " is on air");
+  }
+  function renderScenes() {
+    const sc = S.gfx.scenes || {}, names = Object.keys(sc).sort((a, b) => (sc[a].at || 0) - (sc[b].at || 0)), dis = canProduce() ? "" : "disabled";
+    $("scnList").innerHTML = names.length ? names.map(n => `<div class="scn"><span>${esc(n)}</span><button data-scnrecall="${esc(n)}" ${dis}>${studioOn() ? "To Preview" : "Put on air"}</button><button data-scndel="${esc(n)}" ${dis}>Delete</button></div>`).join("")
+      : `<p class="note">No scenes yet. Set the graphics up, name it, Save.</p>`;
+  }
+
   // ------------------------------------------------------------- Studio tab
   const SCENES = [["", "Off"], ["soon", "Starting soon"], ["break", "Intermission"], ["end", "Closing"]];
   function renderStudio() {
+    renderScenes();
     const dis = canProduce() ? "" : "disabled", mode = G("scene.mode", null) || "";
     $("scMode").innerHTML = SCENES.map(([k, l]) => `<button data-scmode="${k}" class="${mode === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
     for (const [id, k] of [["scKickIn", "kick"], ["scTitleIn", "title"], ["scSubIn", "sub"]]) if (document.activeElement !== $(id)) $(id).value = G("scene." + k, "") || "";
@@ -1349,7 +1583,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const base = location.protocol.startsWith("http") ? location.origin + location.pathname.replace(/producer\.html$/, "") : "";
     if (view && base) $("obsUrl").textContent = base + "overlay.html?token=" + encodeURIComponent(view) + (Q.get("relay") ? "&relay=" + encodeURIComponent(relay) : "");
   }
-  const dirty = { ctl: true, field: true, inc: true, cam: true, look: false, lv: true, studio: true };
+  const dirty = { ctl: true, field: true, inc: true, cam: true, look: false, lv: true, studio: true, mon: true };
+  renderMonSrc(); if (MON.src.startsWith("cam:")) listCams().then(startVideo); else renderScreens();
   function handle(m) {
     switch (m.type) {
       case "relay":
@@ -1383,7 +1618,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       case "asset_result": if (m.ok) toast(m.deleted ? "Deleted " + m.name : "Uploaded " + m.name); else toast(m.error, true); break;
       case "gfx": {
         const before = JSON.stringify(S.gfx);
-        S.gfx = m.state || {};
+        S.gfx = m.state || {}; viewKey = null;
         // the second camera reporting its car is not news for the log
         const quiet = g => { const x = JSON.parse(g || "{}"); if (x.pip) delete x.pip.second; return JSON.stringify(x); };
         if (m.by && m.by !== me && before !== JSON.stringify(S.gfx) && quiet(before) !== quiet(JSON.stringify(S.gfx))) { log(esc(m.by) + " changed the graphics"); dirty.look = true; }
@@ -1407,7 +1642,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   addEventListener("pointercancel", () => { holding = false; }, true);
   setInterval(() => {
     if (holding) return;
-    if (dirty.ctl) { dirty.ctl = false; dirty.studio = true; renderControls(); }
+    if (dirty.ctl) { dirty.ctl = false; dirty.studio = dirty.mon = true; renderControls(); }
+    if (dirty.mon) { dirty.mon = false; renderStudioCtl(); renderScreens(); }
     if (dirty.studio && !document.querySelector("[data-pane=studio]").classList.contains("hide") &&
         !(document.activeElement && document.activeElement.closest("[data-pane=studio]") && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName))) { dirty.studio = false; renderStudio(); }
     if (dirty.cam) { dirty.cam = false; renderHeader(); renderCameraButtons(); renderDirector(); }

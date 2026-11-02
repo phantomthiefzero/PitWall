@@ -210,6 +210,15 @@ Broadcast (broadcast/)
   PCs' clocks) and cuts its own camera to the host's picks (pip.want, a new seq each) through its own bridge, only while
   the host's broadcast is on. Starting it turns the co-host's own master switch on and their director and grid walk
   off (their explicit hand-over); stopping or quitting turns the switch off and clears pip.second.
+- Monitor and studio mode (producer, top): Program (and Preview) screens are the overlay itself (overlay.html
+  &monitor=1: no sound, no stinger; &preview=1 lays gfx studio.pv over what is on air) scaled over this viewer's video
+  (OBS Virtual Camera with the game only, a VDO.Ninja link, or black; kept in localStorage, never sent). Studio mode
+  (gfx studio.on) stages every change except studio, stinger, replay, photos and scenes into studio.pv; a staged
+  removal is the marker "__pw_del__" (the relay's merge drops nulls) and Take sends it as null with studio.pv cleared,
+  in one message, after the stinger if chosen, then any held camera cut (studio.cut, through cmd(): the master switch
+  and the Director's owner as for any cut). The producer's G() reads the staged view, so its controls show Preview.
+  Saved scenes (gfx scenes) hold every layer's show and the graphics' settings, never the look, files, lists or a
+  moment's state; recalling one goes through setGfx, so into Preview in studio mode.
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
