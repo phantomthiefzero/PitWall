@@ -2,7 +2,7 @@
 <html lang="en"><head><script>(function(){var t=null;try{t=localStorage.getItem('suite:theme')}catch(e){}if(!t&&true)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);var k=null;try{k=localStorage.getItem('suite:look')}catch(e){}if(k==='pitwall'||k==='arcade'){document.documentElement.setAttribute('data-look',k);document.documentElement.setAttribute('data-theme','dark')}})()</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>iRacing Suite</title>
 <style>
-:root{--bg:#f4f4f2;--card:#fff;--fg:#1d2024;--mut:#6b7078;--ln:#dcdcd8;--acc:#d9a400;--good:#1a8f4c;--warn:#b87800;--blue:#2f6fd6}
+:root{--bg:#f4f4f2;--card:#fff;--fg:#1d2024;--mut:#6b7078;--ln:#dcdcd8;--acc:#8a5c00;--good:#167d42;--warn:#b87800;--blue:#2f6fd6}
 :root[data-theme="dark"]{color-scheme:dark;--bg:#16181b;--card:#1f2226;--fg:#e8e9eb;--mut:#9aa0a8;--ln:#30343a;--acc:#e6b422;--good:#2fb36a;--warn:#e0a325;--blue:#4b8bf0}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
 .wrap{max-width:1040px;margin:0 auto;padding:28px 24px 40px}
@@ -127,6 +127,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 :root[data-look="pitwall"] .gl b,:root[data-look="pitwall"] .last .st b,:root[data-look="pitwall"] .rcard .rb{font-family:var(--seg)!important;color:var(--you)}
 :root[data-look="pitwall"] footer{border-top:1px solid #1d2125;padding-top:12px}
 :root[data-look="pitwall"] #themeBtn,:root[data-look="pitwall"] .views .theme{display:none!important}
+:root[data-look="pitwall"] .card div[style*="border-radius"],:root[data-look="pitwall"] .card svg[style*="border-radius"],:root[data-look="pitwall"] .card .strip,:root[data-look="pitwall"] .sets>summary,:root[data-look="pitwall"] .sets-body,:root[data-look="pitwall"] code,:root[data-look="pitwall"] .cotarget,:root[data-look="pitwall"] .cocard,:root[data-look="pitwall"] .cotabs,:root[data-look="pitwall"] .tl-in,:root[data-look="pitwall"] .tl-sec .sx,:root[data-look="pitwall"] .tl-corners>div{border-radius:2px!important}
 :root[data-look="arcade"]{color-scheme:dark;
   --bg:#06080d;--card:#0c1018;--fg:#ffffff;--mut:#9aa4b8;--ln:#232a38;
   --you:#ffd400;--ref:#19d9ff;--bad:#ff3a2a;--good:#38f07a;--rear:#ff4fd8;--acc:#ffd400;--blue:#19d9ff;--warn:#ffb000;--pb:#b45cff;
@@ -222,6 +223,8 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 :root[data-look="arcade"] .lk-hud .plate{min-width:30px;height:30px;font-size:16px;border-radius:15px}
 :root[data-look="arcade"] .lk-hud .bar{height:12px}}
 :root[data-look="arcade"] #themeBtn,:root[data-look="arcade"] .views .theme{display:none!important}
+:root[data-look="arcade"] .card div[style*="border-radius"],:root[data-look="arcade"] .card svg[style*="border-radius"],:root[data-look="arcade"] .card .strip,:root[data-look="arcade"] .sets>summary,:root[data-look="arcade"] .sets-body,:root[data-look="arcade"] code,:root[data-look="arcade"] .cotarget,:root[data-look="arcade"] .cocard,:root[data-look="arcade"] .cotabs,:root[data-look="arcade"] .tl-in,:root[data-look="arcade"] .tl-sec .sx,:root[data-look="arcade"] .tl-corners>div{border-radius:2px!important}
+:root[data-look="arcade"] .gl span{font-family:var(--num)!important}
 :root[data-look="arcade"] .lk-fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8990}
 :root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none;overflow:hidden;--k:#ffd400}
 :root[data-look="arcade"] .lk-pop .band{position:absolute;left:-12%;right:-12%;height:190px;top:calc(50% - 95px);transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(4,6,10,.92) 14% 86%,transparent);
