@@ -224,6 +224,15 @@ Broadcast (broadcast/)
   every OBS source, not only the one showing the screen. Default positions keep the graphics that are on together
   apart (the speed trap above the card's right end, picture in picture beside the map); the producer's Position
   settings move any of them.
+- Show screens move slowly and quietly (drifting glows, a light sweeping by, specks rising, the stripes easing;
+  the words and lists come in once per screen change, never on each refresh). Each screen can use your own file
+  instead (gfx scene.files[mode]: an uploaded picture or looping muted video, or an https page) with a dark backing
+  under our words, or alone (scene.bare[mode]).
+- Stingers: built-in styles (overlay STINGERS + CSS `#stinger.run[data-style=...]`: wipe, chevrons, checker,
+  panels, iris), each covering the whole picture from 42% to 58% of its length, where the cut falls; or your own
+  video (theme.stinger.video, every uploaded video is listed in Look > Stingers, each with its own cut point in
+  theme.stinger.cuts). Adding a built-in: one STINGERS entry and its CSS, and keep it covering 42-58%. The stinger's
+  own settings are never staged in studio mode. The first graphics state an overlay sees only sets the stinger mark.
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
