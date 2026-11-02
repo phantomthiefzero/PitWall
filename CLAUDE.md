@@ -203,6 +203,13 @@ Broadcast (broadcast/)
   tyre runs (derived.tyreRuns: compound changes only, so two stints on one compound are one run), the speed trap
   (derived.topSpeedBestMs) and the running-order crawl. League standings come from the producer's file or paste
   (parseLeague, tested in Node): the points are the league's own, never worked out here.
+- Picture in picture (gfx pip): the producer pastes a video link (VDO.Ninja's view link; https only, or this PC) and
+  the overlay plays it in a framed window with a caption (the car picked, or the second camera's car). The second
+  camera (`suite/second_camera.py`, the co-host's home page) is the co-host's own suite tied to the host's relay with
+  the co-host link: it reports its sim's camera car (pip.second.cam; staleness timed by the receiver, never by the two
+  PCs' clocks) and cuts its own camera to the host's picks (pip.want, a new seq each) through its own bridge, only while
+  the host's broadcast is on. Starting it turns the co-host's own master switch on and their director and grid walk
+  off (their explicit hand-over); stopping or quitting turns the switch off and clears pip.second.
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.

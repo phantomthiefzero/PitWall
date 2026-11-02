@@ -456,7 +456,9 @@ plays the transition; the producer sends the camera command at `theme.stinger.cu
 `scene {mode: soon|break|end|null, kick, title, sub, untilMs}` (a show screen: full screen, hides every other
 graphic; untilMs is a wall-clock time for the countdown), `straps {list: [{name, role}], idx, at, secs}` (a new
 `at` puts commentator `idx` up for `secs`, 0 = until `idx` is null), `sponsors {show, logos: [asset], every}`, `qlap {show}`, `tyres {show}`, `trap {show}`, `strip {show}`,
-`league {show, title, sub, rows: [{pos, name, points, num, cls, uid}]}`, `tower {cut, rotate: [mode, ...]}`,
+`league {show, title, sub, rows: [{pos, name, points, num, cls, uid}]}`,
+`pip {show, url, label, car, shot, want: {num, group, seq}, second: {name, cam: {idx, num, uid, name}, seen}}` (picture in
+picture; `want` asks a second camera to cut, `second` is written by the co-host's suite: suite/second_camera.py), `tower {cut, rotate: [mode, ...]}`,
 `tower {layout: overall|classes|class, perClass, ...,
 mode: ...|gap|pits|incidents}`, and `theme`: `{preset: imsa|pitboard|daylight, colors: {ink, ink2,
 head, headText, text, muted, accent, accentText, fl, plate}, fonts: {display, body}, fontAssets,

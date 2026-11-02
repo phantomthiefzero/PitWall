@@ -137,6 +137,12 @@ class PitWallHost:
                                producer_token=self.producer_token, view_token=self.view_token, log=self.log, **kw)
         return self.share
 
+    def local_producer(self):
+        """(ws URL, producer token) of this relay for an in-app client (suite.second_camera), or None."""
+        if self.port is None or self.error is not None:
+            return None
+        return "ws://127.0.0.1:%d/view?token=%s" % (self.port, self.producer_token), self.producer_token
+
     def info(self):
         ok = self.port is not None and self.error is None
         base = "http://127.0.0.1:%d/broadcast/" % self.port if self.port else None

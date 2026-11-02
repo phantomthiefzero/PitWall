@@ -21,11 +21,13 @@ RULES = [
     ("docs/", []),
     ("suite/web/analyzer/", [ANALYZER, SUITE]),      # the suite serves it and checks its size
     ("suite/web/", [SUITE]),
+    ("suite/second_camera.py", [SUITE, "tests/test_second_camera.py"]),
     ("suite/", [SUITE, ANALYZER]),                    # bridge, share, updater, page splitting
     ("broadcast/", PITWALL[1:] + [SUITE]),
+    ("pitwall/bridge.py", PITWALL + [SUITE, "tests/test_second_camera.py"]),
+    ("relay/", PITWALL + [SUITE, "tests/test_second_camera.py"]),
     ("client/", ["tests/test_pipeline.py", "tests/test_client.py", SUITE]),
     ("pitwall/", PITWALL + [SUITE]),
-    ("relay/", PITWALL + [SUITE]),
     ("tests/analyzer_harness.js", [ANALYZER]),
     ("scripts/pick_tests.py", [SUITE]),
 ]
