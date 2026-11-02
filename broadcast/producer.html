@@ -181,6 +181,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         <h3>Layout</h3><div class="opts" id="twLayout"></div>
         <div id="twLayoutOpts"></div>
         <h3>Shows</h3><div class="opts" id="twMode"></div>
+        <h3>Take turns (8 s each)</h3><div class="opts" id="twRot"></div>
+        <h3>Cut line after</h3><div class="opts" id="twCut"></div>
       </section>
       <section><h2>Driver card</h2><div class="opts" id="cardFollow"></div><p class="note" id="cardNote"></p></section>
       <section>
@@ -291,6 +293,18 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         <h3>Each logo for</h3><div class="opts" id="spEvery"></div>
       </section>
       <section>
+        <h2>League standings</h2>
+        <p class="note" style="margin-top:0">Load the league's table from a file or paste it: CSV, TSV or JSON, the way most league sites and spreadsheets export it. Columns are found by their headings (position, driver or name, points, number, class, customer id); without headings, the text column is the name and the last number the points. Drivers in this session show where they are now.</p>
+        <div class="grid2">
+          <label for="lgTitleIn">Title</label><input type="text" id="lgTitleIn" placeholder="Championship">
+          <label for="lgSubIn">Line beside it</label><input type="text" id="lgSubIn" placeholder="after round 4 of 10">
+          <label for="lgFile">File</label><input type="file" id="lgFile" accept=".csv,.tsv,.txt,.json">
+        </div>
+        <textarea id="lgPaste" rows="4" style="width:100%;margin-top:8px" placeholder="…or paste the table here"></textarea>
+        <div class="opts"><button data-lgload="1">Use the pasted table</button><button data-lgclr="1">Clear</button></div>
+        <div id="lgPrev" class="note"></div>
+      </section>
+      <section>
         <h2>Podium</h2>
         <p class="note" style="margin-top:0">The top three, with their pictures. Switch it on under On air.</p>
         <div class="opts" id="pdCls"></div>
@@ -370,7 +384,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       <h2>Overlay for OBS</h2>
       <p class="note" style="margin-top:0">Browser Source, 1920 × 1080. It uses the view token, not yours.</p>
       <code id="obsUrl">Ask whoever runs the relay for the view token.</code>
-      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors) to give one graphic its own source.</p>
+      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors, qlap, tyres, trap, strip, league) to give one graphic its own source.</p>
     </section>
   </div>
 </main>
@@ -526,14 +540,63 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       : `<p class="note">No pictures uploaded yet.</p>`;
     const ev = G("sponsors.every", 15);
     $("spEvery").innerHTML = [8, 15, 30].map(n => `<button data-spevery="${n}" class="${ev === n ? "on" : ""}" ${dis}>${n} s</button>`).join("");
+    for (const [id, k] of [["lgTitleIn", "title"], ["lgSubIn", "sub"]]) if (document.activeElement !== $(id)) $(id).value = G("league." + k, "") || "";
+    const lr = G("league.rows", []) || [];
+    $("lgPrev").innerHTML = lr.length ? `${lr.length} drivers: ` + lr.slice(0, 5).map(r => `${esc(r.pos)}. ${esc(r.name)} <b>${esc(r.points)}</b>`).join(" · ") + (lr.length > 5 ? " …" : "") + ". Switch it on under On air." : "No table loaded.";
     const pc = G("podium.classId", null), cl = classes();
     $("pdCls").innerHTML = cl.length > 1 ? `<button data-pdcls="" class="${pc == null ? "on" : ""}" ${dis}>Each class in turn</button>` +
       cl.map(c => `<button data-pdcls="${esc(c.id)}" class="${pc === c.id ? "on" : ""}" style="box-shadow:inset 4px 0 0 ${css(c.color)}" ${dis}>${esc(c.name)}</button>`).join("")
       : `<span class="note">One class: the overall top three.</span>`;
   }
+  // League table: CSV / TSV / semicolons / JSON. Headings are matched by meaning; without them the text
+  // column is the name and the last number the points. Rows are sorted by position, else by points.
+  function parseLeague(text) {
+    text = String(text || "").replace(/^\uFEFF/, "").trim();
+    if (!text) return [];
+    let rows;
+    if (/^[\[{]/.test(text)) {
+      let j = JSON.parse(text); if (!Array.isArray(j)) j = j.standings || j.rows || j.drivers || Object.values(j).find(Array.isArray) || [];
+      rows = j.map(o => Array.isArray(o) ? o : o);
+    } else {
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      const sep = ["\t", ";", ","].map(ch => [ch, lines.slice(0, 5).reduce((n, l) => n + l.split(ch).length - 1, 0)]).sort((a, b) => b[1] - a[1])[0][0];
+      const cells = l => { const out = []; let cur = "", q = false;
+        for (let i = 0; i < l.length; i++) { const ch = l[i]; if (ch === '"') { if (q && l[i + 1] === '"') { cur += '"'; i++; } else q = !q; } else if (ch === sep && !q) { out.push(cur.trim()); cur = ""; } else cur += ch; }
+        out.push(cur.trim()); return out; };
+      rows = lines.map(cells);
+    }
+    const KEYS = { pos: /^(pos|position|rank|place|#)$/i, name: /^(name|driver|driver name|drivers?|racer|member)$/i, points: /^(points?|pts|total|total points)$/i,
+      num: /^(no\.?|num|number|car( number| #)?|#\s*car)$/i, cls: /^(class|car class|division)$/i, uid: /^(cust ?id|customer ?id|user ?id|iracing ?id|member ?id|id)$/i };
+    let objs;
+    if (rows.length && !Array.isArray(rows[0])) {
+      objs = rows.map(o => { const r = {}; for (const [k, v] of Object.entries(o)) for (const [f, re] of Object.entries(KEYS)) if (re.test(k.trim()) && r[f] == null) r[f] = v; return r; });
+    } else {
+      const head = rows[0].map(h => Object.entries(KEYS).find(([, re]) => re.test(String(h).trim())));
+      if (head.some(Boolean) && head.some(h => h && (h[0] === "name" || h[0] === "points"))) {
+        objs = rows.slice(1).map(r => { const o = {}; head.forEach((h, i) => { if (h && o[h[0]] == null) o[h[0]] = r[i]; }); return o; });
+      } else {
+        objs = rows.map(r => { const num = r.map((x, i) => [i, x]).filter(([, x]) => /^-?\d+(\.\d+)?$/.test(String(x).trim()));
+          const txt = r.map((x, i) => [i, x]).filter(([, x]) => /[a-z]/i.test(String(x)));
+          return { name: txt.length ? txt[0][1] : "", points: num.length ? num[num.length - 1][1] : "", pos: num.length > 1 && num[0][0] === 0 ? num[0][1] : undefined }; });
+      }
+    }
+    const clean = v => v == null ? "" : String(v).trim();
+    let out = objs.map(o => ({ pos: clean(o.pos).replace(/\D+$/, "") || null, name: clean(o.name), points: clean(o.points), num: clean(o.num) || null, cls: clean(o.cls) || null, uid: clean(o.uid) || null }))
+      .filter(r => r.name);
+    const n = v => parseFloat(String(v).replace(",", "."));
+    if (out.every(r => r.pos)) out.sort((a, b) => n(a.pos) - n(b.pos));
+    else out = out.sort((a, b) => (n(b.points) || 0) - (n(a.points) || 0)).map((r, i) => ({ ...r, pos: String(i + 1) }));
+    return out.slice(0, 60);
+  }
+  function useLeague(text) {
+    try { const rows = parseLeague(text); if (!rows.length) { toast("No drivers found in that table", true); return; }
+      setGfx({ league: { rows } }); toast(rows.length + " drivers loaded"); dirty.studio = true; }
+    catch (e) { toast("That table could not be read: " + e.message, true); }
+  }
+  $("lgFile").onchange = async e => { const f = e.target.files[0]; if (f) useLeague(await f.text()); e.target.value = ""; };
   const strapList = () => ((G("straps", {}) || {}).list || []).map(p => ({ ...p }));
   document.addEventListener("click", e => {
-    const b = e.target.closest && e.target.closest("[data-scmode],[data-sccd],[data-strapadd],[data-strapoff],[data-strapon],[data-strapdel],[data-strapsecs],[data-spon],[data-spevery],[data-pdcls]");
+    const b = e.target.closest && e.target.closest("[data-scmode],[data-sccd],[data-strapadd],[data-strapoff],[data-strapon],[data-strapdel],[data-strapsecs],[data-spon],[data-spevery],[data-pdcls],[data-lgload],[data-lgclr]");
     if (!b || b.disabled) return;
     const ds = b.dataset;
     if (ds.scmode != null) setGfx({ scene: { mode: ds.scmode || null } });
@@ -546,6 +609,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     else if (ds.spon != null) { const l = (G("sponsors.logos", []) || []).slice(), i = l.indexOf(ds.spon); if (i >= 0) l.splice(i, 1); else l.push(ds.spon); setGfx({ sponsors: { logos: l } }); }
     else if (ds.spevery) setGfx({ sponsors: { every: Number(ds.spevery) } });
     else if (ds.pdcls != null) setGfx({ podium: { classId: ds.pdcls === "" ? null : Number(ds.pdcls) } });
+    else if (ds.lgload) useLeague($("lgPaste").value);
+    else if (ds.lgclr) setGfx({ league: { rows: null } });
     dirty.studio = true;
   });
   document.addEventListener("input", e => {
@@ -558,6 +623,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     else if (t.id === "scKickIn") setGfxSoon("sck", { scene: { kick: t.value } });
     else if (t.id === "scTitleIn") setGfxSoon("sct", { scene: { title: t.value } });
     else if (t.id === "scSubIn") setGfxSoon("scs", { scene: { sub: t.value } });
+    else if (t.id === "lgTitleIn") setGfxSoon("lgt", { league: { title: t.value } });
+    else if (t.id === "lgSubIn") setGfxSoon("lgs", { league: { sub: t.value } });
   });
 
   // ------------------------------------------------------------- tabs
@@ -576,10 +643,12 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false],
     ["traffic", "Traffic warning (class leaders reaching a slower class)", false], ["fastlap", "Fastest-lap alerts (per class)", false], ["penalty", "Race control: penalties and warnings", false],
     ["h2h", "Head to head (two cars side by side)", false], ["podium", "Podium (top three; class picked in Studio)", false],
-    ["sponsors", "Sponsor logos (picked in Studio)", false], ["onboard", "Onboard: gear, speed, revs, wheel (camera car)", false], ["ticker", "Race control ticker", true],
+    ["sponsors", "Sponsor logos (picked in Studio)", false], ["qlap", "Qualifying: live lap against pole (camera car)", false],
+    ["tyres", "Tyre history (the driver card's car)", false], ["trap", "Speed trap (top speeds)", false],
+    ["strip", "Running order crawl (oval style, along the bottom)", false], ["league", "League standings (loaded in Studio)", false], ["onboard", "Onboard: gear, speed, revs, wheel (camera car)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
   // Not a layer: lets the overlay bring up "where they're faster" in a close battle and the results at the finish.
-  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, traffic, fastest laps, penalties, results at the finish)") +
+  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, traffic, fastest laps, penalties, live qualifying laps, results at the finish)") +
     sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
     sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)") +
@@ -604,8 +673,14 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       $("twLayoutOpts").innerHTML = `<h3>Rows</h3><div class="opts">${[10, 15, 20, 25, 30].map(n => `<button data-rows="${n}" class="${G("tower.rows", 20) === n ? "on" : ""}" ${dis}>${n}</button>`).join("")}</div>`;
     }
     const mode = G("tower.mode", "interval");
-    $("twMode").innerHTML = [["interval", "Interval"], ["gap", "Gap to leader"], ["best", "Best lap"], ["last", "Last lap"], ["sectors", "Sectors"], ["pits", "Pit stops"], ["incidents", "Incidents"]]
+    $("twMode").innerHTML = [["interval", "Interval"], ["gap", "Gap to leader"], ["best", "Best lap"], ["last", "Last lap"], ["sectors", "Sectors"], ["tyres", "Tyres"], ["pits", "Pit stops"], ["incidents", "Incidents"]]
       .map(([k, l]) => `<button data-mode="${k}" class="${mode === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
+    const rot = G("tower.rotate", null) || [];
+    $("twRot").innerHTML = [["interval", "Interval"], ["gap", isRace() ? "Gap" : "To pole"], ["last", "Last lap"], ["best", "Best lap"], ["tyres", "Tyres"], ["pits", "Pit stops"]]
+      .map(([k, l]) => `<button data-rot="${k}" class="${rot.includes(k) ? "on" : ""}" ${dis}>${l}</button>`).join("") + `<span class="note" style="align-self:center">${rot.length > 1 ? "on" : "pick two or more"}</span>`;
+    const cut = G("tower.cut", 0) || 0;
+    $("twCut").innerHTML = [[0, "None"], [10, "P10"], [12, "P12"], [15, "P15"], [20, "P20"]].map(([n, l]) => `<button data-cut="${n}" class="${cut === n ? "on" : ""}" ${dis}>${l}</button>`).join("") +
+      `<span class="note" style="align-self:center">a red line, as in knockout qualifying</span>`;
     const follow = G("card.follow", "camera");
     $("cardFollow").innerHTML = `<button data-follow="camera" class="${follow === "camera" ? "on" : ""}" ${dis}>Follow the camera</button>` +
       `<button data-follow="pinned" class="${follow === "pinned" ? "on" : ""}" ${prod && G("card.idx", null) != null ? "" : "disabled"}>Pinned driver</button>`;
@@ -768,6 +843,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     }
     else if (ds.pin) { e.stopPropagation(); setGfx({ card: { follow: "pinned", idx: Number(ds.pin), show: true } }); }
     else if (ds.snap) { e.stopPropagation(); cmd({ cmd: "livery", action: "snap", idx: Number(ds.snap) }, "Livery photo"); }
+    else if (ds.rot) { const r = (G("tower.rotate", null) || []).slice(), i = r.indexOf(ds.rot); if (i >= 0) r.splice(i, 1); else r.push(ds.rot); setGfx({ tower: { rotate: r.length > 1 ? r : r.length ? r : null } }); }
+    else if (ds.cut != null) setGfx({ tower: { cut: Number(ds.cut) || null } });
     else if (ds.h2hpair) setGfx({ h2h: { cars: ds.h2hpair.split(",").map(Number), show: true } });
     else if (ds.h2hclr) setGfx({ h2h: { cars: null } });
     else if (ds.obu) setGfx({ onboard: { units: ds.obu } });
@@ -1049,7 +1126,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
-  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors" };
+  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League" };
   const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
   function renderLook() {
     const th = S.gfx.theme || {}, preset = th.preset || "imsa";

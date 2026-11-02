@@ -1391,6 +1391,53 @@ class Deriver:
                 cr.append(at(k / K))
                 k += 1
 
+    # Qualifying: a car on a push lap against its class's pole lap, stretch by stretch (lap_splits).
+    QUALI_PUSH_S = 3.0          # further behind the pole lap than this: not a push lap (an out- or cool-down lap)
+    QUALI_MIN_STRETCH = 2       # a delta needs a couple of stretches behind it
+
+    def quali_laps(self, cars: list) -> None:
+        """Sets each car's derived.classPoleGapS (its best lap against its class's best, iRacing's best
+        laps) and, on a push lap, derived.qualiLap: {stretch, of, deltaPoleS, deltaOwnS, poleIdx,
+        projectedS, projectedPos}. deltaPoleS is this lap's time to the last stretch boundary passed
+        against the class pole lap's time to the same boundary (both timed here, by lap_splits);
+        projectedS is the pole lap plus that delta, projectedPos where that would put the car in its
+        class on iRacing's best laps."""
+        K = self.STRETCHES
+        best: dict = {}
+        for c in cars:
+            b = c.get("bestLapS")
+            if b and b > 0 and (c.get("classId") not in best or b < best[c.get("classId")]):
+                best[c.get("classId")] = b
+        poles: dict = {}
+        for c in cars:
+            sp = self._split.get(c.get("idx")) or {}
+            if sp.get("best") and (c.get("classId") not in poles or sp["bestS"] < poles[c.get("classId")][1]["bestS"]):
+                poles[c.get("classId")] = (c["idx"], sp)
+        for c in cars:
+            d = c.setdefault("derived", {})
+            b, cb = c.get("bestLapS"), best.get(c.get("classId"))
+            d["classPoleGapS"] = round(b - cb, 3) if b and b > 0 and cb else None
+            d["qualiLap"] = None
+            sp, pole = self._split.get(c.get("idx")) or {}, poles.get(c.get("classId"))
+            cr = sp.get("cross")
+            if not pole or not cr or sp.get("bad") or c.get("onPitRoad"):
+                continue
+            k = len(cr) - 1
+            if k < self.QUALI_MIN_STRETCH or k >= K:
+                continue
+            pidx, psp = pole
+            dp = (cr[k] - cr[0]) - psp["best"][k]
+            if dp > self.QUALI_PUSH_S:
+                continue
+            own = sp.get("best")
+            proj = psp["bestS"] + dp
+            others = [x.get("bestLapS") for x in cars if x is not c and x.get("classId") == c.get("classId")
+                      and (x.get("bestLapS") or 0) > 0]
+            d["qualiLap"] = {"stretch": k, "of": K, "deltaPoleS": round(dp, 3),
+                             "deltaOwnS": round((cr[k] - cr[0]) - own[k], 3) if own else None,
+                             "poleIdx": pidx, "projectedS": round(proj, 3),
+                             "projectedPos": 1 + sum(1 for x in others if x < proj)}
+
     def faster(self, a, b) -> dict | None:
         """Car a against car b, best lap against best lap, over STRETCHES equal parts of the track:
         seconds a gains in each (negative: a loses), and each lap's time at every boundary."""
@@ -2276,18 +2323,31 @@ class Deriver:
         comp = c.get("compound")
         in_pits = bool(c.get("onPitRoad")) or c.get("surface") == "in_pit_stall"
         if cs is None:
-            self._cmp[idx] = cs = {"c": comp, "changes": 0, "pitT": t if in_pits else None}
+            self._cmp[idx] = cs = {"c": comp, "changes": 0, "pitT": t if in_pits else None,
+                                   "hist": [[comp, c.get("lap") if is_race and (c.get("lap") or 0) <= 1 else None]]}
         if in_pits:
             cs["pitT"] = t
         if comp is not None and comp != cs["c"]:
             recent = cs.get("pitT") is not None and t is not None and t - cs["pitT"] <= self.PIT_CHANGE_WINDOW_S
             if cs["c"] is not None and recent and c.get("surface") != "not_in_world":
                 cs["changes"] += 1
+                cs.setdefault("hist", []).append([comp, c.get("lap")])
+                del cs["hist"][:-8]
                 if self.events_live:
                     self.event(t, "compound_change", idx=idx, fromCompound=cs["c"], toCompound=comp,
                                classId=c.get("classId"))
             cs["c"] = comp
         out["compoundChanges"] = cs["changes"]
+        # Tyre history: each compound run seen, from the lap it started (None: started before we
+        # connected). Only compound CHANGES are visible, so two stints on one compound are one run.
+        hist = cs.get("hist") or []
+        if hist and hist[-1][0] is None and comp is not None:
+            hist[-1][0] = comp                       # the compound was not known yet at first sight
+        lap_now = c.get("lap")
+        out["tyreRuns"] = [{"compound": h[0], "fromLap": h[1],
+                            "laps": ((hist[k + 1][1] if k + 1 < len(hist) else lap_now) - h[1])
+                            if h[1] is not None and (hist[k + 1][1] if k + 1 < len(hist) else lap_now) is not None else None}
+                           for k, h in enumerate(hist) if h[0] is not None]
         used = c.get("fastRepairsUsed")
         out["fastRepairsLeft"] = (max(0, fast_limit - used)
                                   if isinstance(fast_limit, int) and isinstance(used, (int, float)) and used >= 0
@@ -3551,6 +3611,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         deriver.learn_lap_profile(cars)
         if live_edge(g)["atLive"]:
             deriver.lap_splits(cars, now)
+        deriver.quali_laps(cars)
         meet = deriver.meetings(cars, player_idx, now)
         class_best_sectors = Deriver.sector_marks(cars)
         out["derived"] = {

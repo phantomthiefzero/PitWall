@@ -265,7 +265,7 @@ at most ~60 points for a sparkline. Never a forecast: iRacing publishes none. `g
 session's peak combined g from the 360 Hz accelerometer samples.
 
 Per-car additions under `derived` (any car): `speedMs` (from lap-distance movement and the
-track length; iRacing does not give other cars' speed), `topSpeedBestMs`, `consistencyS`,
+track length; iRacing does not give other cars' speed), `topSpeedBestMs`, `consistencyS`, `classPoleGapS`, `qualiLap` ({stretch, of, deltaPoleS, deltaOwnS, poleIdx, projectedS, projectedPos}: a push lap only), `tyreRuns` ([{compound, fromLap, laps}]),
 `gridPos`, `gridClassPos`, `posGained`, `classPosGained`, `lapsLedSeen`, `classLapsLedSeen`,
 `stintsSeen`, `stintStartLap`, `lapsThisStint`, `longestStintLaps`, `nextStopLapEst`,
 `compoundChanges`, `fastRepairsLeft`, `drivers` (team races: [{"name","timeS","laps","current",
@@ -455,7 +455,8 @@ plays the transition; the producer sends the camera command at `theme.stinger.cu
 `h2h {show, cars: [idx, idx]}`, `onboard {show, units: kph|mph}`, `podium {show, classId}`,
 `scene {mode: soon|break|end|null, kick, title, sub, untilMs}` (a show screen: full screen, hides every other
 graphic; untilMs is a wall-clock time for the countdown), `straps {list: [{name, role}], idx, at, secs}` (a new
-`at` puts commentator `idx` up for `secs`, 0 = until `idx` is null), `sponsors {show, logos: [asset], every}`,
+`at` puts commentator `idx` up for `secs`, 0 = until `idx` is null), `sponsors {show, logos: [asset], every}`, `qlap {show}`, `tyres {show}`, `trap {show}`, `strip {show}`,
+`league {show, title, sub, rows: [{pos, name, points, num, cls, uid}]}`, `tower {cut, rotate: [mode, ...]}`,
 `tower {layout: overall|classes|class, perClass, ...,
 mode: ...|gap|pits|incidents}`, and `theme`: `{preset: imsa|pitboard|daylight, colors: {ink, ink2,
 head, headText, text, muted, accent, accentText, fl, plate}, fonts: {display, body}, fontAssets,

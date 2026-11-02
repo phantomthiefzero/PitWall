@@ -21,6 +21,8 @@ Hard rules
   - Windows is slow where Linux is instant: a refused local connection takes a second or more. Nothing
     that may touch the network, a socket, a subprocess or a dialog runs on an event loop: use a thread
     or run_in_executor (suite.bridge.LiveSource looks for the sim on its own thread for this reason).
+  - Windows' default text encoding is cp1252, not UTF-8: text passed to or read from a subprocess (Node for the
+    page tests) gives `encoding="utf-8"` explicitly, or a byte-order mark or a non-Latin name fails only there.
 - Do not add a build step to `client/`. One HTML file. Its only other files are the booth look's
   fonts in `client/assets/` (licences in LICENSES.md), served by name by the relay
   (`relay.server.client_asset`, .woff2 only) and the suite; without them the page falls back to
@@ -195,6 +197,13 @@ Broadcast (broadcast/)
   the order, closing with each class's top three; full screen, every other graphic hidden while one is up), the podium,
   commentator straps (timed in the overlay from when the strap arrived, never by comparing two machines' clocks) and
   sponsor logos (the producer's uploaded files). The countdown is to a time the producer set, not a race figure.
+- Qualifying, F1 and oval extras: `Deriver.quali_laps` (derived.qualiLap: a push lap's time to the last stretch
+  boundary against the class pole lap's, both from lap_splits, and where it would put the car; classPoleGapS), the
+  tower's "To pole" (gap mode outside a race), a cut line (gfx tower.cut), columns taking turns (gfx tower.rotate),
+  tyre runs (derived.tyreRuns: compound changes only, so two stints on one compound are one run), the speed trap
+  (derived.topSpeedBestMs) and the running-order crawl. League standings come from the producer's file or paste
+  (parseLeague, tested in Node): the points are the league's own, never worked out here.
+- Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
 - Race length comes from the leader and SessionLaps (normalize.race_length), never from

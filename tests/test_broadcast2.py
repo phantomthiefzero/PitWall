@@ -1310,3 +1310,120 @@ def test_passes_from_the_fake_race():
     for e in passes:
         assert e["classPos"] < e["fromClassPos"] and e["passedIdx"] and e["idx"] not in e["passedIdx"]
         assert e["replayT"] <= e["t"]
+
+
+# --------------------------------------------------------------------- qualifying
+
+def _prof(lap_s, K=24, start=100.0, upto=None):
+    """Boundary times for an even lap of lap_s seconds: best profile (from 0) or live crossings (from start)."""
+    return [round(start + lap_s * k / K, 3) for k in range((upto if upto is not None else K) + 1)]
+
+
+def test_quali_lap_against_the_class_pole_lap():
+    d = Deriver()
+    K = Deriver.STRETCHES
+    cars = [{"idx": 1, "classId": 10, "bestLapS": 100.0, "onPitRoad": False},
+            {"idx": 2, "classId": 10, "bestLapS": 101.0, "onPitRoad": False},
+            {"idx": 3, "classId": 10, "bestLapS": 102.0, "onPitRoad": False},
+            {"idx": 4, "classId": 20, "bestLapS": 110.0, "onPitRoad": False}]
+    pole = [x - 100.0 for x in _prof(100.0)]
+    d._split = {1: {"best": pole, "bestS": 100.0, "cross": None, "bad": False},
+                2: {"best": [x - 100.0 for x in _prof(101.0)], "bestS": 101.0, "cross": None, "bad": False},
+                # car 3 is half way round a lap at 100.6 s pace: 0.3 s down on pole at stretch 12
+                3: {"best": [x - 100.0 for x in _prof(102.0)], "bestS": 102.0, "cross": _prof(100.6, upto=12), "bad": False},
+                # car 4 is alone in its class with no timed best: no pole, no delta
+                4: {"best": None, "bestS": None, "cross": _prof(110.0, upto=12), "bad": False}}
+    d.quali_laps(cars)
+    q = cars[2]["derived"]["qualiLap"]
+    assert q["stretch"] == 12 and q["of"] == K and q["poleIdx"] == 1
+    assert abs(q["deltaPoleS"] - 0.3) < 0.01 and abs(q["deltaOwnS"] - (-0.7)) < 0.01
+    assert abs(q["projectedS"] - 100.3) < 0.01 and q["projectedPos"] == 2, "between the pole and car 2's 101.0"
+    assert [c["derived"]["classPoleGapS"] for c in cars] == [0.0, 1.0, 2.0, 0.0]
+    assert cars[3]["derived"]["qualiLap"] is None
+    # a slow lap (an out- or cool-down lap) is not a push lap
+    d._split[3]["cross"] = _prof(110.0, upto=12)
+    d.quali_laps(cars)
+    assert cars[2]["derived"]["qualiLap"] is None
+    # nor one with a reset or the pit lane in it, nor before two stretches are done
+    d._split[3].update(cross=_prof(100.6, upto=12), bad=True)
+    d.quali_laps(cars)
+    assert cars[2]["derived"]["qualiLap"] is None
+    d._split[3].update(cross=_prof(100.6, upto=1), bad=False)
+    d.quali_laps(cars)
+    assert cars[2]["derived"]["qualiLap"] is None
+
+
+def test_quali_laps_from_the_fake_session():
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    d = Deriver()
+    sess, seen = None, 0
+    for k in range(60 * 400):
+        src.tick()
+        if k % 10:
+            continue
+        if sess is None:
+            sess = build_session(src)
+        build_state(src, d)
+        out = build_cars(src, sess, d)
+        for c in out["cars"]:
+            q = (c.get("derived") or {}).get("qualiLap")
+            if q:
+                seen += 1
+                assert q["deltaPoleS"] <= Deriver.QUALI_PUSH_S and 1 <= q["projectedPos"] <= len(out["cars"])
+    assert seen > 0
+
+
+# --------------------------------------------------------------------- tyre history
+
+def test_tyre_runs_from_compound_changes_in_the_pits():
+    d = Deriver()
+    c = {"idx": 3, "classId": 10, "pos": 3, "classPos": 3, "lap": 1, "compound": 0, "onPitRoad": False,
+         "surface": "on_track", "fastRepairsUsed": 0}
+    x = d.car_extras(dict(c), 0.0, {}, None, True, False)
+    assert x["tyreRuns"] == [{"compound": 0, "fromLap": 1, "laps": 0}], "seen at the start: the run's start is known"
+    x = d.car_extras(dict(c, lap=12), 50.0, {}, None, True, False)
+    assert len(x["tyreRuns"]) == 1 and x["tyreRuns"][0]["laps"] == 11
+    x = d.car_extras(dict(c, lap=14, onPitRoad=True, compound=1), 60.0, {}, None, True, False)
+    x = d.car_extras(dict(c, lap=20, compound=1), 90.0, {}, None, True, False)
+    assert [(r["compound"], r["fromLap"], r["laps"]) for r in x["tyreRuns"]] == [(0, 1, 13), (1, 14, 6)]
+    # first seen mid-race: the first run's start is not known
+    d2 = Deriver()
+    x = d2.car_extras(dict(c, lap=9), 0.0, {}, None, True, False)
+    assert x["tyreRuns"] == [{"compound": 0, "fromLap": None, "laps": None}]
+
+
+# --------------------------------------------------------------------- league table
+
+def _parse_league(text):
+    import re
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+    page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "broadcast", "producer.html"),
+                encoding="utf-8").read()
+    m = re.search(r"\n  function parseLeague\(text\) \{[\s\S]*?\n  \}\n", page)
+    assert m, "parseLeague not found in the producer page"
+    js = m.group(0) + "\nconsole.log(JSON.stringify(parseLeague(require('fs').readFileSync(0, 'utf8'))));"
+    r = subprocess.run([node, "-e", js], input=text, capture_output=True, text=True, encoding="utf-8", timeout=30)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_league_tables_in_the_usual_shapes():
+    # a spreadsheet export with headings, quoted names and a byte order mark
+    rows = _parse_league('﻿Pos,Driver,Car #,Class,Points\n2,"Smith, John",7,GT3,88\n1,Ana Lopez,12,GT3,101\n')
+    assert [(r["pos"], r["name"], r["num"], r["cls"], r["points"]) for r in rows] == [
+        ("1", "Ana Lopez", "12", "GT3", "101"), ("2", "Smith, John", "7", "GT3", "88")]
+    # tabs (pasted from a web page), different headings, an iRacing customer id
+    rows = _parse_league("Rank\tCust ID\tName\tTotal\n1\t12345\tAna Lopez\t101\n2\t678\tJohn Smith\t88")
+    assert rows[0]["uid"] == "12345" and rows[1]["points"] == "88"
+    # semicolons (European spreadsheets) and no headings: text is the name, the last number the points
+    rows = _parse_league("Ana Lopez;101\nJohn Smith;88\nKim Park;120")
+    assert [(r["pos"], r["name"]) for r in rows] == [("1", "Kim Park"), ("2", "Ana Lopez"), ("3", "John Smith")]
+    # JSON from a league site
+    rows = _parse_league('{"standings":[{"position":1,"driver":"Ana Lopez","points":101},{"position":2,"driver":"John Smith","points":88}]}')
+    assert [(r["pos"], r["name"], r["points"]) for r in rows] == [("1", "Ana Lopez", "101"), ("2", "John Smith", "88")]
+    assert _parse_league("   ") == []
