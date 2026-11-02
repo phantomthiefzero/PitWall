@@ -469,7 +469,7 @@
   @font-face { font-family: "DSEG7 Classic"; font-weight: 700; font-display: swap;
                src: url("assets/dseg7-classic-bold.woff2") format("woff2"); }
   :root[data-skin="booth"] {
-    --bg: #141619; --panel: #000; --line: #262B32; --text: #E9EDF2; --muted: #8B94A0; --dim: #59616C;
+    --bg: #141619; --panel: #000; --line: #262B32; --text: #E9EDF2; --muted: #8B94A0; --dim: #7A828D;
     --green: #2BD96B; --yellow: #FFD100; --red: #FF3B30; --blue: #4FA3FF; --purple: #B44CFF; --orange: #FF8A1F;
     --row-line: #15191E; --row-focus: #0E1D2C; --row-cmp: #1C1230; --inset: #0A0E13; --inset2: #1A2029;
     --radar-bg: #05070A; --trackline: #3A414B; --opt-bg: #0A0E13;
@@ -604,7 +604,7 @@
 @font-face{font-family:"Russo One";font-display:swap;src:url("assets/russo-one-latin-400-normal.woff2") format("woff2")}
 @font-face{font-family:"Exo 2";font-weight:400 600;font-display:swap;src:url("assets/exo-2-latin-500-normal.woff2") format("woff2")}
 @font-face{font-family:"Exo 2";font-weight:700 900;font-style:italic;font-display:swap;src:url("assets/exo-2-latin-900-italic.woff2") format("woff2")}
-:root[data-look="arcade"]{--bg:#06080d;--panel:#0c1018;--line:#273044;--text:#fff;--muted:#9aa4b8;--dim:#66708a;
+:root[data-look="arcade"]{--bg:#06080d;--panel:#0c1018;--line:#273044;--text:#fff;--muted:#9aa4b8;--dim:#7a85a0;
   --green:#38f07a;--yellow:#ffd400;--red:#ff3a2a;--blue:#19d9ff;--purple:#b45cff;--orange:#ffb000;--led:#ffd400;--bezel:#273044;--stand:#06080d;
   --ui:"Exo 2","Segoe UI",system-ui,sans-serif;--title:"Exo 2",system-ui,sans-serif;--num:"Exo 2",system-ui,sans-serif;--canvas-font:"Exo 2",system-ui,sans-serif;
   --you:#ffd400;--warn:#ffb000;
@@ -630,6 +630,8 @@
 :root[data-look="arcade"] .unittoggle{font:800 italic 13px var(--ui)!important;background:linear-gradient(180deg,#1a2234,#111827)!important;border:1px solid #3a4762!important;transform:skewX(-14deg)}
 :root[data-look="arcade"] footer{background:#06080d!important;border-top:2px solid #2b3446!important}
 :root[data-look="arcade"] .alarm{border-radius:0!important;transform:skewX(-10deg)}
+:root[data-look="arcade"] .menu-body,:root[data-look="arcade"] .bb-row,:root[data-look="arcade"] #radar,:root[data-look="arcade"] #suiteBack{border-radius:2px!important}
+:root[data-look="arcade"] #suiteBack{font-family:var(--ui)!important}
 :root[data-look="arcade"] .lk-fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8990}
 :root[data-look="arcade"] .lk-pop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;pointer-events:none;overflow:hidden;--k:#ffd400}
 :root[data-look="arcade"] .lk-pop .band{position:absolute;left:-12%;right:-12%;height:190px;top:calc(50% - 95px);transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(4,6,10,.92) 14% 86%,transparent);
@@ -2040,7 +2042,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     const incs = S.feed.events.filter(e => e.idx === c.idx && (e.kind === "car_incident" || e.kind === "off_track" || e.kind === "slowed")).length;
     el.innerHTML =
       `<div class="fhead"><span class="fnum">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}` +
-      (c.licString ? `<span class="lic"${c.licColor != null ? ` style="background:${classCss(c.licColor)}"` : ""}>${esc(c.licString)}</span>` : "") +
+      (c.licString ? `<span class="lic"${c.licColor != null ? ` style="background:${classCss(c.licColor)};color:${inkOn(classCss(c.licColor))}"` : ""}>${esc(c.licString)}</span>` : "") +
       (c.iRating ? `<span class="ir" title="iRating">${fmt.irating(c.iRating)}</span>` : "") +
       (isCam ? `<span class="note" style="font-weight:400"> · on camera</span>` : "") + `</div>` +
       sec("Car",
@@ -3627,10 +3629,11 @@ LK.look = document.documentElement.dataset.look || "basic";
     const key = c.carId != null ? c.carId + "_" + (c.teamId || c.userId) : null;
     return (key && S.carColors && S.carColors[key]) || designCss(c.carDesign) || "#6FA8FF";
   }
-  function inkOn(hex) {      // dark or light text on a fill, whichever reads
+  function inkOn(hex) {      // dark or light text on a fill, whichever has more contrast (WCAG luminance)
     const v = parseInt(String(hex).slice(1), 16); if (!isFinite(v)) return "#08203F";
-    const r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255;
-    return 0.299 * r + 0.587 * g + 0.114 * b > 140 ? "#08203F" : "#FFFFFF";
+    const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const L = 0.2126 * f((v >> 16) & 255) + 0.7152 * f((v >> 8) & 255) + 0.0722 * f(v & 255);
+    return (L + 0.05) / 0.0644 > 1.05 / (L + 0.05) ? "#08203F" : "#FFFFFF";   // 0.0644: #08203F's luminance + 0.05
   }
   function dotFill(c, multi) {
     return dotMode === "paint" ? paintCss(c) : (multi && c.classColor != null ? classCss(c.classColor) : "#6FA8FF");

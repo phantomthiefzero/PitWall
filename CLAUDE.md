@@ -47,6 +47,12 @@ Hard rules
   Apache 2.0, see LICENSES.md), one line at a time, in Arcade only, when suite:announcer is 'f' or 'm' (off by
   default). Effects are drawn on one canvas (lkFx) only while something moves. Fonts: Exo 2 (italic 900
   for the big type) and Russo One in client/assets (OFL).
+- Style consistency (checked across every page and look): text at least 4.5:1 against what it sits on (3:1 for big
+  or bold), light-theme colours darker than the dark-theme ones for that reason (--you, --good, --bad, --acc); one
+  button style per look (Basic: the Clear button's, set on `button`; class rules refine it); buttons and fields in
+  the page's font; Pit wall and Arcade square (inline rounded boxes included), Basic rounded; text on a coloured fill
+  picks its ink by contrast (PitWall inkOn); on the broadcast, secondary text on a header uses the header's text
+  colour, not --muted (which is for rows).
 - Tab vs spaces: this repo is 4-space Python and 2-space HTML/JS (not the Godot projects' tabs).
 
 Verification status
