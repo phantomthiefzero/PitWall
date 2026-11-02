@@ -1468,3 +1468,41 @@ console.log(JSON.stringify({pv, view, take}));"""
     from relay.server import merge_gfx
     g = merge_gfx({}, {"studio": {"pv": out["pv"]}})
     assert g["studio"]["pv"]["h2h"]["cars"] == "__pw_del__"
+
+
+def test_the_master_switch_answers_while_the_sim_is_closed():
+    """The producer's "Broadcast off/ON" looked stuck: the bridge said the switch had changed only in the stream's
+    next frame, and with iRacing closed or between sessions there is none. It now says so at once."""
+    from pitwall.bridge import Bridge
+
+    class WS:
+        def __init__(self, msgs):
+            self.msgs, self.sent = [json.dumps(m) for m in msgs], []
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.msgs:
+                raise StopAsyncIteration
+            return self.msgs.pop(0)
+
+        async def send(self, raw):
+            self.sent.append(json.loads(raw))
+
+    class Closed(FakeSource):              # iRacing not running: no frames at all
+        def tick(self):
+            return False
+
+    src = Closed(realtime=False, spectator=True)
+    b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False,
+               livery_dir=tempfile.mkdtemp())
+    ws = WS([{"type": "cmd", "cmd": "director", "action": "broadcast", "on": True}])
+    asyncio.run(b._consumer(ws))
+    st = [m for m in ws.sent if m.get("type") == "director"]
+    assert st and st[-1]["live"] is True, "the new state goes out without waiting for a frame"
+    res = [m for m in ws.sent if m.get("type") == "cmd_result"]
+    assert res and res[0]["ok"] and res[0]["data"]["live"] is True
+    ws = WS([{"type": "cmd", "cmd": "director", "action": "broadcast", "on": False}])
+    asyncio.run(b._consumer(ws))
+    assert [m for m in ws.sent if m.get("type") == "director"][-1]["live"] is False

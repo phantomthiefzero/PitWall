@@ -367,9 +367,19 @@ class AppWindowApiTest(unittest.TestCase):
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
                                   "update_open_key_page", "save_report", "save_image",
                                   "record_start", "record_stop", "record_info", "record_show",
-                                  "second_start", "second_stop", "second_info"})
+                                  "second_start", "second_stop", "second_info", "open_in_browser"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
+
+    def test_the_app_window_grants_a_camera_only_to_the_suites_own_pages(self):
+        """The producer's monitor reads OBS Virtual Camera in the app window, which refused it until the app
+        answered WebView2's permission request; only the suite's own local pages get it."""
+        from suite.app import camera_allowed
+        self.assertTrue(camera_allowed(True, "http://127.0.0.1:8765/broadcast/producer.html?token=x"))
+        self.assertTrue(camera_allowed(True, "http://localhost:18123/"))
+        for uri in ("https://vdo.ninja/?view=abc", "http://127.0.0.1.evil.example/", "https://127.0.0.1/", "", None):
+            self.assertFalse(camera_allowed(True, uri), uri)
+        self.assertFalse(camera_allowed(False, "http://127.0.0.1:8765/"), "the microphone and the rest stay refused")
 
     def test_race_report_is_saved_where_the_save_dialog_says(self):
         """The app window (WebView2) drops page downloads, so the Race report button

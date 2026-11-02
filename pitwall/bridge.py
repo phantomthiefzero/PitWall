@@ -544,6 +544,12 @@ class Bridge:
                 res = await asyncio.get_running_loop().run_in_executor(None, self._broadcast_cmd, msg)
             self.log(f"cmd {msg.get('cmd')}/{msg.get('action')} -> {'ok' if res['ok'] else res['error']}")
             await ws.send(json.dumps(res))
+            # Everyone's panel, the overlay and the relay's snapshot learn the new state now. Waiting for the
+            # stream's next frame meant never while iRacing was closed or between sessions (the producer loop
+            # only builds frames while the sim ticks): the master switch then looked stuck on "off".
+            if msg.get("cmd") == "director" and self.director.changed:
+                self.director.changed = False
+                await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
         elif msg.get("type") == "cmd" and msg.get("cmd") in ("camera", "replay") and not self.director.live:
             await ws.send(json.dumps({"type": "cmd_result", "ok": False, "echo": msg, "error": BROADCAST_OFF}))
         elif msg.get("type") == "cmd":
