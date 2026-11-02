@@ -278,6 +278,13 @@ Broadcast (broadcast/)
 - One owner of the camera at a time (director.py): you / director / grid walk / followed battle.
   A producer `camera` command always takes it back (bridge._consumer calls Director.manual()).
   Anything new that moves the camera must go through the Director's owner, not around it.
+- Motion on air (overlay MOTION CSS block; producer Look > Motion: Animated / Calm / Still, gfx theme.motion): every look
+  moves its own way (data-preset): IMSA wipes in with the highlight leading, Pit board drops, Daylight rises, Night neon
+  flickers on, Heritage opens from the centre, Pit wall powers on; Arcade keeps its own. Entrances use clip-path,
+  opacity and filter only (makeRoom measures the boxes). Restarted one-shots from script: lk-hit (hit(): something new
+  on a graphic already up), m-roll (roll(): a lap count that changed), mv-up / mv-dn (a car gained or lost a place).
+  Animated adds the loops (a glint across the headers every 22 s, a flag that is out rippling); Calm drops them; Still
+  stops the graphics (stingers and show screens still move).
 - Looks on air: the producer's look presets Pit wall and Arcade restyle the graphics (overlay CSS under `:root[data-look]`),
   not just the colours. The driver card shows the driver's picture (gfx.photos by iRacing user id, uploaded in the
   producer's Liveries tab; without one, nothing: no drawn stand-in, the user's call) and the helmet
