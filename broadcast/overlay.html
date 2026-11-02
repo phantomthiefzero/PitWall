@@ -355,6 +355,16 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .lg-r .now{font:700 13px/1 var(--body);color:var(--accentText);background:var(--accent);border-radius:var(--r);padding:4px 6px 3px;text-transform:none}
 .lg-r .pts{width:70px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
 
+/* ---------- picture in picture: a second camera's video (VDO.Ninja link) in a framed window ---------- */
+#pip{right:36px;top:170px;width:640px}
+.pp{border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);background:#000;border:3px solid var(--accent)}
+.pp-v{position:relative;aspect-ratio:16/9;background:#000}
+.pp-v iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.pp-c{display:flex;align-items:center;gap:9px;background:var(--ink);padding:7px 12px 6px}
+.pp-c .lb{font:800 14px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;background:var(--accent);color:var(--accentText);padding:4px 7px 3px;border-radius:var(--r)}
+.pp-c .nm{flex:1;min-width:0;font:700 21px/1.1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-c .ps{color:var(--muted);font:700 17px/1 var(--display)}
+
 /* ---------- standings board / grid ---------- */
 #board,#grid{left:50%;top:110px;width:1400px;margin-left:-700px}
 .pn{border-radius:var(--r);overflow:hidden}
@@ -556,6 +566,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   <section class="layer" id="trap"><div class="inner" id="trBox"></div></section>
   <section class="layer" id="strip"><div class="so" id="soRow"></div></section>
   <section class="layer" id="league"><div class="inner"><div class="pn"><div class="pn-head"><img class="logo hide" id="lgLogo" alt=""><b id="lgTitle">Championship</b><span id="lgSub"></span></div><div class="pn-body"><div class="lg-cols" id="lgCols"></div></div></div></div></section>
+  <section class="layer" id="pip"><div class="inner"><div class="pp"><div class="pp-v" id="ppV"></div><div class="pp-c" id="ppC"></div></div></div></section>
   <section class="layer" id="podium"><div class="inner" id="pdBox"></div></section>
   <section class="layer" id="strap"><div class="inner" id="spBox"></div></section>
   <section class="layer" id="sponsors"><div class="inner sb" id="sbBox"></div></section>
@@ -661,7 +672,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return v === undefined ? dflt : v;
   }
   const T = (k, d) => G("theme." + k, d);
-  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false, qlap: false, tyres: false, trap: false, strip: false, league: false };
+  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false, qlap: false, tyres: false, trap: false, strip: false, league: false, pip: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
   // Automatic graphics (producer: "Pick graphics for me"): the battle's "where they're faster" when the two
@@ -817,11 +828,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const blogo = assetUrl(th.bannerLogo || th.sponsor);
     $("bnLogoBox").classList.toggle("hide", !blogo); if (blogo) $("bnLogo").src = blogo;
     // layout: every graphic can be moved and resized
-    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league"]) {
+    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip"]) {
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${Number(l.s) || 1})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "100% 0", strip: "50% 100%", league: "50% 0" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "100% 0", strip: "50% 100%", league: "50% 0", pip: "100% 0" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -1210,6 +1221,40 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const h = col(list.slice(0, half)) + (half < list.length ? col(list.slice(half)) : "");
     $("lgCols").style.gridTemplateColumns = half < list.length ? "1fr 1fr" : "1fr";
     if ($("lgCols").innerHTML !== h) $("lgCols").innerHTML = h;
+  }
+
+  // ---------------------------------------------------------------- picture in picture
+  // gfx pip: {url, label, car, second: {name, cam: {idx, num, uid, name}, seen}}. The video is the producer's
+  // VDO.Ninja view link (https only, or this PC), loaded when the window first comes on and dropped a minute
+  // after it goes off. The caption names the second camera's car while that camera reports in (pip.second,
+  // from the co-host's suite), else the car the producer picked. "Reports in" is timed here, from when a
+  // report arrived, never by comparing the two PCs' clocks.
+  const PIP = { url: null, offAt: 0, secKey: null, secAt: 0 };
+  function pipUrl(u) {
+    try { const x = new URL(String(u || "")); return x.protocol === "https:" || /^(127\.0\.0\.1|localhost)$/.test(x.hostname) ? x.href : null; } catch (e) { return null; }
+  }
+  function pipCar(p) {
+    const sec = p.second, key = sec ? JSON.stringify(sec) : null, now = performance.now();
+    if (key !== PIP.secKey) { PIP.secKey = key; PIP.secAt = now; }
+    const cam = sec && sec.cam && now - PIP.secAt < 150000 ? sec.cam : null;
+    if (cam) { const c = carByIdx(cam.idx); if (c && (cam.num == null || String(c.num) === String(cam.num))) return c;
+      const byNum = allCars().find(x => cam.num != null && String(x.num) === String(cam.num)); if (byNum) return byNum; }
+    return carByIdx(p.car);
+  }
+  function renderPip() {
+    const p = G("pip", {}) || {}, url = pipUrl(p.url), on = shown("pip") && !!url, now = performance.now();
+    $("pip").classList.toggle("on", on);
+    if (on) {
+      PIP.offAt = 0;
+      if (PIP.url !== url) { PIP.url = url; $("ppV").innerHTML = `<iframe src="${esc(url)}" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>`; hit($("pip")); }
+    } else if (PIP.url) {
+      if (!PIP.offAt) PIP.offAt = now;
+      else if (now - PIP.offAt > 60000 || !url) { PIP.url = null; $("ppV").innerHTML = ""; }
+    }
+    if (!on) return;
+    const c = pipCar(p), m = multi();
+    const h = `<span class="lb">${esc(p.label || "Onboard")}</span>` + (c ? `${plate(c)}<span class="nm">${nameHtml(c.name)}</span><span class="ps">${c.pos > 0 ? "P" + (m ? c.classPos : c.pos) : ""}</span>` : `<span class="nm"></span>`);
+    if ($("ppC").innerHTML !== h) $("ppC").innerHTML = h;
   }
 
   // ---------------------------------------------------------------- show screens
@@ -1813,7 +1858,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague();
+      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
     }
     drawMap(); drawFaster(t);
     pumpTicker();

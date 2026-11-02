@@ -47,6 +47,9 @@ class Engine:
         self.updater = None          # set by main(); suite.updater.Updater
         from suite.recording import SessionRecorder
         self.recorder = SessionRecorder()   # the home page's Record button
+        from suite.second_camera import SecondCamera
+        # the co-host's side of the broadcast's picture-in-picture (suite/second_camera.py)
+        self.second = SecondCamera(self.pitwall.local_producer)
         self.port = None
         self.error = None
         self._ready = threading.Event()
@@ -300,6 +303,16 @@ class Api:
             return {"ok": False, "error": str(e)}
         return {"ok": True}
 
+    # ---- Second camera (suite/second_camera.py): this PC's iRacing as a host's picture-in-picture
+    def second_start(self, link, name=""):
+        return self._engine.second.start(link, name)
+
+    def second_stop(self):
+        return self._engine.second.stop()
+
+    def second_info(self):
+        return self._engine.second.info()
+
     def share_info(self):
         host = self._engine.pitwall
         s = host.share
@@ -406,6 +419,8 @@ def close_with_app(engine):
     _on_quit.append(lambda: engine.pitwall.share and engine.pitwall.share.stop())
     # a recording in progress is closed properly, so the file is readable
     _on_quit.append(lambda: engine.recorder.stop(wait=2.5))
+    # a second camera hands the host back its caption and turns this PC's broadcast switch off
+    _on_quit.append(lambda: engine.second.stop(wait=1.5))
 
 
 def main():

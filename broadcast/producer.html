@@ -186,6 +186,19 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       </section>
       <section><h2>Driver card</h2><div class="opts" id="cardFollow"></div><p class="note" id="cardNote"></p></section>
       <section>
+        <h2>Picture in picture</h2>
+        <div class="grid2">
+          <label for="pipUrl">Video link</label><input type="text" id="pipUrl" placeholder="VDO.Ninja view link: https://vdo.ninja/?view=…">
+          <label for="pipLabelIn">Caption</label><span style="display:flex;gap:6px;flex-wrap:wrap" id="pipLabel"></span>
+          <label for="pipCar">Car in the window</label><select id="pipCar"></select>
+        </div>
+        <div class="note" id="pipSecond"></div>
+        <div id="pipShotBox"><h3>Second camera's shot</h3><div class="opts" id="pipShot"></div></div>
+        <details class="note"><summary>How to set it up</summary>
+          <p>Your co-host spectates the same session in their own iRacing. They open <b>vdo.ninja</b>, choose to share their screen (the iRacing window), and send you the <b>view</b> link it gives; paste it above, then switch Picture in picture on under On air. The video plays inside the overlay, in a framed window you can move and resize under Look, Position.</p>
+          <p>If your co-host runs the suite too, they paste your co-host link into <b>Second camera</b> on their home page. Then the caption follows their camera by itself, and picking a car or a shot here moves their camera (only while your broadcast is on).</p></details>
+      </section>
+      <section>
         <h2>Head to head</h2>
         <div class="opts" id="h2hPick"></div>
         <p class="note" id="h2hNote"></p>
@@ -384,7 +397,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       <h2>Overlay for OBS</h2>
       <p class="note" style="margin-top:0">Browser Source, 1920 × 1080. It uses the view token, not yours.</p>
       <code id="obsUrl">Ask whoever runs the relay for the view token.</code>
-      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors, qlap, tyres, trap, strip, league) to give one graphic its own source.</p>
+      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors, pip, qlap, tyres, trap, strip, league) to give one graphic its own source.</p>
     </section>
   </div>
 </main>
@@ -643,7 +656,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false],
     ["traffic", "Traffic warning (class leaders reaching a slower class)", false], ["fastlap", "Fastest-lap alerts (per class)", false], ["penalty", "Race control: penalties and warnings", false],
     ["h2h", "Head to head (two cars side by side)", false], ["podium", "Podium (top three; class picked in Studio)", false],
-    ["sponsors", "Sponsor logos (picked in Studio)", false], ["qlap", "Qualifying: live lap against pole (camera car)", false],
+    ["sponsors", "Sponsor logos (picked in Studio)", false], ["pip", "Picture in picture (second camera)", false], ["qlap", "Qualifying: live lap against pole (camera car)", false],
     ["tyres", "Tyre history (the driver card's car)", false], ["trap", "Speed trap (top speeds)", false],
     ["strip", "Running order crawl (oval style, along the bottom)", false], ["league", "League standings (loaded in Studio)", false], ["onboard", "Onboard: gear, speed, revs, wheel (camera car)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
@@ -687,6 +700,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const pc = carByIdx(G("card.idx", null));
     $("cardNote").textContent = follow === "pinned" && pc ? "Showing #" + pc.num + " " + pc.name + ". Use Card on a driver to change it." : "Use Card on a driver in the field to pin one.";
     renderH2HPick(dis);
+    renderPipCtl(dis);
     const ou = G("onboard.units", "kph");
     $("obUnits").innerHTML = [["kph", "km/h"], ["mph", "mph"]].map(([k, l]) => `<button data-obu="${k}" class="${ou === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
     const gm = G("grid.mode", "auto");
@@ -845,6 +859,9 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     else if (ds.snap) { e.stopPropagation(); cmd({ cmd: "livery", action: "snap", idx: Number(ds.snap) }, "Livery photo"); }
     else if (ds.rot) { const r = (G("tower.rotate", null) || []).slice(), i = r.indexOf(ds.rot); if (i >= 0) r.splice(i, 1); else r.push(ds.rot); setGfx({ tower: { rotate: r.length > 1 ? r : r.length ? r : null } }); }
     else if (ds.cut != null) setGfx({ tower: { cut: Number(ds.cut) || null } });
+    else if (ds.piplab) setGfx({ pip: { label: ds.piplab } });
+    else if (ds.pipshot) { const sec = secondUp(), c = carByIdx(G("pip.car", null)), num = c ? c.num : sec && sec.cam ? sec.cam.num : null;
+      setGfx({ pip: { shot: ds.pipshot, ...(sec && num != null ? { want: pipWant(num, ds.pipshot) } : {}) } }); }
     else if (ds.h2hpair) setGfx({ h2h: { cars: ds.h2hpair.split(",").map(Number), show: true } });
     else if (ds.h2hclr) setGfx({ h2h: { cars: null } });
     else if (ds.obu) setGfx({ onboard: { units: ds.obu } });
@@ -937,6 +954,33 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     $("h2hNote").textContent = a && b ? `Showing #${a.num} ${a.name} and #${b.num} ${b.name}. Switch it on under On air.`
       : "Pick two drivers, or use Head to head on a battle. With none picked it shows the battle on air.";
   }
+  // Picture in picture: the video link, the caption, the car; with a second camera (the co-host's suite,
+  // suite/second_camera.py) a pick also asks their camera to go there (gfx pip.want, a new seq each time).
+  let pipSecAt = 0, pipSecKey = null;
+  const secondUp = () => { const s = G("pip.second", null), k = s ? JSON.stringify(s) : null;
+    if (k !== pipSecKey) { pipSecKey = k; pipSecAt = Date.now(); } return s && Date.now() - pipSecAt < 150000 ? s : null; };
+  function pipWant(num, shot) { return { num: num == null ? null : String(num), group: shot || G("pip.shot", "") || null, seq: Date.now() }; }
+  function renderPipCtl(dis) {
+    if (document.activeElement !== $("pipUrl")) $("pipUrl").value = G("pip.url", "") || "";
+    const lab = G("pip.label", "Onboard") || "Onboard";
+    $("pipLabel").innerHTML = ["Onboard", "Battle", "Chase", "Second view"].map(l => `<button data-piplab="${l}" class="${lab === l ? "on" : ""}" ${dis}>${l}</button>`).join("");
+    const sec = secondUp(), cam = sec && sec.cam;
+    const cars = allCars().filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos), pick = G("pip.car", null);
+    if (document.activeElement !== $("pipCar"))
+      $("pipCar").innerHTML = `<option value="">${sec ? "Whoever the second camera is on" : "Pick a driver"}</option>` + cars.map(c => `<option value="${c.idx}" ${pick === c.idx ? "selected" : ""}>P${c.pos} #${esc(c.num)} ${esc(c.name)}</option>`).join("");
+    $("pipCar").disabled = !!dis;
+    $("pipSecond").innerHTML = sec ? `Second camera: <b>${esc(sec.name || "connected")}</b>${cam ? ", on #" + esc(cam.num) + " " + esc(cam.name || "") : ""}. ` +
+      (S.director && S.director.live ? "A pick here moves their camera." : "Their camera follows your picks once your broadcast is on.")
+      : "No second camera connected: the caption shows the car you pick.";
+    $("pipShotBox").classList.toggle("hide", !sec);
+    const shot = G("pip.shot", "");
+    $("pipShot").innerHTML = ((S.session && S.session.cameras) || []).filter(g => !g.scenic).map(g => `<button data-pipshot="${esc(g.name)}" class="${shot === g.name ? "on" : ""}" ${dis}>${esc(g.name)}</button>`).join("");
+  }
+  $("pipUrl").addEventListener("input", e => setGfxSoon("pipu", { pip: { url: e.target.value.trim() || null } }));
+  $("pipCar").addEventListener("change", e => {
+    const v = e.target.value, c = v === "" ? null : carByIdx(Number(v));
+    setGfx({ pip: c ? { car: c.idx, ...(secondUp() ? { want: pipWant(c.num) } : {}) } : { car: null } });
+  });
   function renderBattles() {
     try { renderTraffic(); } catch (e) {}
     const list = (S.cars && S.cars.derived && S.cars.derived.battles) || [];
@@ -1126,7 +1170,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
-  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League" };
+  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League" };
   const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
   function renderLook() {
     const th = S.gfx.theme || {}, preset = th.preset || "imsa";
@@ -1340,7 +1384,9 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       case "gfx": {
         const before = JSON.stringify(S.gfx);
         S.gfx = m.state || {};
-        if (m.by && m.by !== me && before !== JSON.stringify(S.gfx)) { log(esc(m.by) + " changed the graphics"); dirty.look = true; }
+        // the second camera reporting its car is not news for the log
+        const quiet = g => { const x = JSON.parse(g || "{}"); if (x.pip) delete x.pip.second; return JSON.stringify(x); };
+        if (m.by && m.by !== me && before !== JSON.stringify(S.gfx) && quiet(before) !== quiet(JSON.stringify(S.gfx))) { log(esc(m.by) + " changed the graphics"); dirty.look = true; }
         try { renderPhotos(); } catch (e) {}
         dirty.ctl = dirty.field = true; break;
       }

@@ -366,7 +366,8 @@ class AppWindowApiTest(unittest.TestCase):
                                   "share_start", "share_stop", "share_info",
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
                                   "update_open_key_page", "save_report", "save_image",
-                                  "record_start", "record_stop", "record_info", "record_show"})
+                                  "record_start", "record_stop", "record_info", "record_show",
+                                  "second_start", "second_stop", "second_info"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
 

@@ -46,7 +46,7 @@ h1,.app h2,.share h2,.recs h2{font-family:var(--title);font-weight:600;letter-sp
 .share h2{margin:0 0 4px;font-size:19px}.share p{margin:0 0 8px;color:var(--mut);font-size:14px}.share .sh-main{flex:1;min-width:280px}
 .share .qr{width:190px;height:190px;background:#fff;border-radius:8px;padding:6px;flex:none}.share .qr svg{width:100%;height:100%;display:block}
 .share code{display:block;font-size:12.5px;background:var(--bg);border:1px solid var(--ln);border-radius:6px;padding:7px 9px;word-break:break-all;user-select:all;margin:4px 0 8px}
-.share .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.share .err{color:#e05a4f;font-size:14px;margin:0 0 8px}
+.share .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.share .row input{font:inherit;font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--ln);background:var(--bg);color:var(--fg)}.share .err{color:#e05a4f;font-size:14px;margin:0 0 8px}
 .share .bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin:6px 0 10px;max-width:360px}.share .bar i{display:block;height:100%;background:var(--acc);width:0}
 .share details{margin-top:10px;font-size:13px;color:var(--mut)}.share details summary{cursor:pointer}
 .live-pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:10px;background:rgba(47,179,106,.15);color:var(--good);margin-left:8px;vertical-align:middle}
@@ -344,6 +344,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <a class="open" id="bcOpen" style="text-decoration:none;white-space:nowrap">Open producer panel →</a></div>
 </div>
 <div class="share hidden" id="share"></div>
+<div class="share hidden" id="second"></div>
 <section class="recs hidden" id="recs"></section>
 <footer>The suite reads iRacing's telemetry. The only thing it ever changes in the sim is the replay camera, and only when you use the Broadcast producer panel. Everything stays on this PC unless you choose to share it.</footer>
 </div>
@@ -682,6 +683,27 @@ shTimer=setTimeout(sharePoll,(sh.state==='downloading'||sh.state==='starting')?5
 async function shareStart(){try{sh=await window.pywebview.api.share_start()}catch(e){sh={state:'error',error:String(e)}}shareCard();sharePoll()}
 async function shareStop(){try{sh=await window.pywebview.api.share_stop()}catch(e){}shareCard();sharePoll()}
 window.addEventListener('pywebviewready',sharePoll);setTimeout(sharePoll,1500);
+// ---- Second camera (suite/second_camera.py): this PC's iRacing as a host's picture-in-picture camera
+let sc={state:'off'},scTimer=null;
+function secondCard(){const el=$('second');if(!hasApi()||!info.pitwall||!info.pitwall.ok){el.classList.add('hidden');return}el.classList.remove('hidden');
+const st=sc.state,on=st==='on'||st==='connecting';const key=JSON.stringify(sc);if(el.dataset.key===key)return;
+if(!on&&el.dataset.key&&el.contains(document.activeElement)&&document.activeElement.tagName==='INPUT'){return}
+el.dataset.key=key;let h='<div class="sh-main"><h2>Second camera'+(st==='on'?'<span class="live-pill">ON</span>':'')+'</h2>';
+if(!on){h+='<p>Co-hosting someone\'s broadcast? Your iRacing can be their picture-in-picture camera. Spectate the same session, share your iRacing window with <b>vdo.ninja</b> and send them its view link, then paste the host\'s <b>co-host link</b> here. Their caption follows your camera, and their producer panel can move it.</p>'+
+'<div class="row"><input id="scLink" placeholder="Co-host link: https://….trycloudflare.com/broadcast/producer.html?token=…" style="flex:1;min-width:260px" spellcheck="false"><input id="scName" placeholder="Your name" style="width:150px"><button type="button" id="scGo">Start</button></div>'+
+(st==='error'?'<p class="err"></p>':'')+'<p style="font-size:13px;margin-top:8px">Starting it hands your iRacing camera to the host: it turns this app\'s broadcast switch on and its auto-director off. Stop (or closing the app) gives it back.</p>'}
+else{const c=sc.camCar;h+='<p>'+(st==='connecting'?'Connecting…':'Connected to <b>'+esc(sc.host||'')+'</b>')+(sc.simConnected?'':' · waiting for this app\'s PitWall')+'</p>'+
+'<p>Your camera: '+(c?'<b>#'+esc(c.num)+' '+esc(c.name||'')+'</b>':'not on a car yet')+' · '+(sc.hostLive?'the host\'s broadcast is on: their picks move your camera':'the host\'s broadcast is off: your camera stays where you put it')+'</p>'+
+(sc.error?'<p class="err"></p>':'')+'<div class="row"><button type="button" id="scStop">Stop</button></div>'}
+el.innerHTML=h+'</div>';const e=el.querySelector('.err');if(e)e.textContent=sc.error||'';
+const go=$('scGo');if(go){try{$('scLink').value=lkGet('suite:secondLink','');$('scName').value=lkGet('suite:secondName','')}catch(x){}
+go.onclick=async()=>{go.disabled=true;go.textContent='Working…';const l=$('scLink').value.trim(),n=$('scName').value.trim();try{localStorage.setItem('suite:secondLink',l);localStorage.setItem('suite:secondName',n)}catch(x){}
+try{sc=await window.pywebview.api.second_start(l,n)||sc}catch(x){sc={state:'error',error:String(x)}}el.dataset.key='';secondCard();secondPoll()}}
+const sp=$('scStop');if(sp)sp.onclick=async()=>{sp.disabled=true;sp.textContent='Working…';try{sc=await window.pywebview.api.second_stop()||sc}catch(x){}el.dataset.key='';secondCard();secondPoll()}}
+async function secondPoll(){clearTimeout(scTimer);if(!hasApi()){scTimer=setTimeout(secondPoll,1500);return}
+try{sc=await window.pywebview.api.second_info()||sc}catch(e){}secondCard();
+scTimer=setTimeout(secondPoll,sc.state==='on'||sc.state==='connecting'?2000:10000)}
+window.addEventListener('pywebviewready',secondPoll);setTimeout(secondPoll,1500);
 // ---- Updates: newest build from the repo's GitHub releases (suite/updater.py)
 let up={state:'idle'},upSetup=false,upTimer=null,upAsked=0;
 const ago=t=>{if(!t)return'';const d=new Date(t*1000);return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
