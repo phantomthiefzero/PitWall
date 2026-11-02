@@ -185,6 +185,12 @@ Broadcast (broadcast/)
 - Multiclass (normalize `class_traffic`, `sector_marks`): the overlay's Traffic warning (a class leader reaching a
   slower class's pack), fastest-lap alerts per class (from feed fastest_lap events), and sector colours per class
   (tower "Sectors" mode, the driver card). Sector purple is the class's best, never the overall best.
+- Race moments (normalize `_car_flag_events`, `_pass_events`): car_flag / penalty_served from CarIdxSessionFlags (the
+  overlay's race control alert; the meatball stays the damage incident's), passes for position in class. The
+  producer's "Replay ready" list shows every moment with sessionNum + replayT in a few words, each with Play
+  (jumpTo, through cmd(): refused with the broadcast off). Head to head (gfx h2h.cars, else the battle on air) and
+  the onboard graphic (the camera car's CarIdxGear / CarIdxRPM / CarIdxSteer, derived.speedMs) show only values
+  the page already has; the gap only between class neighbours.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
 - Race length comes from the leader and SessionLaps (normalize.race_length), never from

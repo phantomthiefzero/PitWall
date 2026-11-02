@@ -142,8 +142,15 @@ rateSPerLap), `position` (fromPos, toPos -- class position), `lead_change`, `fla
 `car_incident` (idx, points, total, driverTotal, limit, lap, sessionNum, replayT, anchor, surface,
 causes, single, maybeSeveral -- a car's counted incident points went up; see Incidents below),
 `off_track` and `slowed` (idx, lap, pct, sessionNum, replayT -- seen in the telemetry, not points),
-`class_lead` (idx, prevIdx, classId -- every
-class, held 5 s, with or without a player car; `lead_change` remains the player's class only).
+`class_lead` (idx, prevIdx, classId, sessionNum, replayT -- every
+class, held 5 s, with or without a player car; `lead_change` remains the player's class only; replayT is 5 s
+before the event, when the lead changed),
+`car_flag` (idx, flag: black | furled | disqualify | repair, carLap, pos, classPos, classId, sessionNum, replayT --
+a car gained the flag in CarIdxSessionFlags; seeded silently, not repeated within 20 s),
+`penalty_served` (same fields -- a black flag went while the car stayed in the world, not disqualified),
+`pass` (idx, passedIdx [...], classId, classPos, fromClassPos, pos, carLap, sessionNum, replayT -- a pass for
+position in class while racing: the place held 2 s, the passed car on track, off pit road, within 0.03 lap;
+replayT is when the new place first showed).
 
 `session.options` carries `IncidentLimit` (a number, or "unlimited"),
 `FastRepairsLimit`, `StandingStart` and `NumStarters` from WeekendOptions.

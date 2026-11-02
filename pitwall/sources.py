@@ -542,6 +542,17 @@ class FakeSource(TelemetrySource):
         # more heading change per meter -> slower. 0.55 .. 1.0
         return max(0.55, 1.0 - dh * 9.0)
 
+    # Race control for single cars (CarIdxSessionFlags), as a spectator sees it: car 7 gets the
+    # furled black (a warning) 40 s into the race, car 9 a black flag (a penalty) from 70 s to 130 s.
+    def _car_flags(self) -> list:
+        f = [0] * 64
+        rt = self.t - self.parade_s
+        if self.n_cars > 7 and 40 <= rt < 50:
+            f[7] |= 0x080000
+        if self.n_cars > 9 and 70 <= rt < 130:
+            f[9] |= 0x010000
+        return f
+
     def _class_positions(self, pos):
         """Rank within each class, derived from the overall order."""
         out = [0] * 64
@@ -886,9 +897,9 @@ class FakeSource(TelemetrySource):
             "CarIdxF2Time": f2, "CarIdxEstTime": [p * self._est_lap(i) if p >= 0 else 0.0 for i, p in enumerate(pcts)],
             "CarIdxOnPitRoad": onpit, "CarIdxTrackSurface": surf,
             "CarIdxLastLapTime": last, "CarIdxBestLapTime": best, "CarIdxBestLapNum": lapsc,
-            "CarIdxTireCompound": comp, "CarIdxSessionFlags": [0] * 64,
+            "CarIdxTireCompound": comp, "CarIdxSessionFlags": self._car_flags(),
             "CarIdxFastRepairsUsed": fr, "CarIdxP2P_Status": [False] * 64, "CarIdxP2P_Count": [0] * 64,
-            "CarIdxGear": gear, "CarIdxRPM": rpm, "CarIdxSteer": [0.0] * 64, "CarIdxPaceFlags": [0] * 64,
+            "CarIdxGear": gear, "CarIdxRPM": rpm, "CarIdxSteer": [0.3 * math.sin(self.t * 0.8 + i) if i < self.n_cars else 0.0 for i in range(64)], "CarIdxPaceFlags": [0] * 64,
             "CamCarIdx": self.cam["car"] if self.spectator else 0,
             "CamGroupNumber": self.cam["group"], "CamCameraNumber": self.cam["num"],
             "CamCameraState": 0x0051 if self.spectator else 0x0000,

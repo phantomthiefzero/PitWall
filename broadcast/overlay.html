@@ -128,7 +128,7 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 
 /* ---------- driver card ---------- */
 #card{left:460px;bottom:54px;width:900px}
-.cd{display:flex;align-items:stretch;border-radius:var(--r);overflow:hidden;height:118px}
+.cd{display:flex;align-items:stretch;border-radius:var(--r);overflow:hidden;height:130px}
 .cd .lv{width:220px;flex:none;background:var(--ink2);position:relative;overflow:hidden}
 .cd .num{width:96px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .cd .num b{font:800 54px/.9 var(--display)}
@@ -182,6 +182,50 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .fla .t b{font:800 30px/1 var(--display);font-variant-numeric:tabular-nums}
 .fla .t small{font:600 13px/1.2 var(--body);opacity:.85;margin-top:3px}
 @keyframes flaIn{from{transform:translateX(60px);opacity:0}}
+
+/* ---------- race control: penalties and warnings for one car ---------- */
+#penalty{right:36px;bottom:360px;width:480px}
+.pen{display:flex;align-items:stretch;border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45);animation:flaIn .45s cubic-bezier(.15,.9,.25,1) both}
+.pen .fg{width:64px;flex:none;background:#0b0d12;position:relative;border-right:1px solid var(--line)}
+.pen .fg.furled{background:linear-gradient(135deg,#fff 0 50%,#0b0d12 50%)}
+.pen .fg.disqualify::before,.pen .fg.disqualify::after{content:"";position:absolute;left:50%;top:50%;width:44px;height:7px;margin:-3.5px 0 0 -22px;background:#fff;transform:rotate(45deg)}
+.pen .fg.disqualify::after{transform:rotate(-45deg)}
+.pen .fg.served{background:#16a34a}
+.pen .m{flex:1;background:var(--ink);padding:10px 14px;min-width:0}
+.pen .h{display:flex;align-items:center;gap:8px;font:800 15px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pen .w{display:flex;align-items:center;gap:8px;margin-top:6px}
+.pen .w .nm{flex:1;min-width:0;font:700 24px/1.1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pen .s{color:var(--muted);font:600 15px/1.2 var(--body);margin-top:4px}
+.pen .cl{font:800 13px/1 var(--display);padding:4px 7px 3px;border-radius:var(--r);letter-spacing:.04em;text-transform:uppercase;flex:none}
+
+/* ---------- head to head: two cars side by side ---------- */
+#h2h{left:50%;top:190px;width:760px;margin-left:-380px}
+.hh{border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45);background:var(--ink)}
+.hh-h{background:var(--head);color:var(--headText);font:800 16px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:8px 14px 7px;text-align:center}
+.hh-who{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+.hh-who>div{display:flex;align-items:center;gap:10px;padding:12px 16px;min-width:0}
+.hh-who>div+div{flex-direction:row-reverse;text-align:right;border-left:1px solid var(--line)}
+.hh-who .nm{flex:1;min-width:0;font:700 26px/1.1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hh-who .ps{font:800 30px/1 var(--display);font-variant-numeric:tabular-nums;flex:none}
+.hh-row{display:grid;grid-template-columns:1fr 170px 1fr;align-items:center;padding:7px 16px}
+.hh-row+.hh-row{border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.hh-row span{text-align:center;color:var(--muted);font:600 13px/1 var(--body);letter-spacing:.06em;text-transform:uppercase}
+.hh-row b{font:700 22px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.hh-row b:last-child{text-align:right}
+.hh-row b.up{color:var(--accent)}
+.hh-row .sxr{display:flex;gap:4px}
+.hh-row b:last-child .sxr{justify-content:flex-end}
+.hh-row .sxr em{font:700 14px/1 var(--display);font-style:normal;padding:2px 5px 1px;border-radius:2px;color:#0b0d12;background:var(--line)}
+.hh-row .sxr em.p{background:var(--sx-p);color:#fff}.hh-row .sxr em.g{background:var(--sx-g)}.hh-row .sxr em.y{background:var(--sx-y)}
+
+/* ---------- onboard: the camera car's gear, speed, revs and wheel ---------- */
+#onboard{left:460px;bottom:190px}
+.ob{display:flex;align-items:center;gap:14px;background:var(--ink);border-radius:var(--r);box-shadow:0 12px 40px rgba(0,0,0,.45);padding:10px 16px 10px 12px}
+.ob .gr{font:800 54px/1 var(--display);width:46px;text-align:center;font-variant-numeric:tabular-nums}
+.ob .vals{display:flex;flex-direction:column;gap:4px}
+.ob .vals b{font:800 30px/1 var(--display);font-variant-numeric:tabular-nums}
+.ob .vals small{font:600 13px/1 var(--body);color:var(--muted);margin-left:5px;text-transform:uppercase;letter-spacing:.06em}
+.ob svg{width:56px;height:56px;flex:none;transition:transform .1s linear}
 
 
 /* ---------- the driver's picture and helmet (driver card, battle) ---------- */
@@ -409,6 +453,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
 
   <section class="layer" id="traffic"><div class="inner"><div class="tr"><div class="tr-h"><span class="ic"></span>Traffic ahead</div><div id="trRows"></div></div></div></section>
   <section class="layer" id="fastlap"><div class="inner" id="flaBox"></div></section>
+  <section class="layer" id="penalty"><div class="inner" id="penBox"></div></section>
+  <section class="layer" id="h2h"><div class="inner" id="hhBox"></div></section>
+  <section class="layer" id="onboard"><div class="inner"><div class="ob"><div class="gr" id="obGear">–</div><div class="vals"><div><b id="obSpd">–</b><small id="obUnit">km/h</small></div><div><b id="obRpm">–</b><small>rpm</small></div></div>
+    <svg id="obWheel" viewBox="-30 -30 60 60" aria-hidden="true"><circle r="25" fill="none" stroke="currentColor" stroke-width="6"/><path d="M-25 0H25M0 0V25" stroke="currentColor" stroke-width="6"/><rect x="-3" y="-30" width="6" height="9" fill="var(--accent)"/></svg></div></div></section>
   <section class="layer" id="map"><div class="inner"><canvas id="mapCv" width="720" height="720"></canvas></div></section>
 
   <section class="layer on" id="ticker"></section>
@@ -505,7 +553,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return v === undefined ? dflt : v;
   }
   const T = (k, d) => G("theme." + k, d);
-  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false };
+  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
   // Automatic graphics (producer: "Pick graphics for me"): the battle's "where they're faster" when the two
@@ -516,7 +564,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (!G("auto.on", false)) return false;
     if (name === "board") return isRace() && racingFlag() === "checkered";
     if (name === "traffic") return isRace() && trafficList(20).length > 0;
-    if (name === "fastlap") return true;
+    if (name === "fastlap" || name === "penalty") return true;
     if (name !== "faster") return false;
     const b = currentBattle(); if (!b) { AUTO.pair = null; return false; }
     const c2 = carByIdx(b.cars[b.cars.length - 1]), d = c2 && c2.derived || {};
@@ -530,7 +578,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     AUTO.pair = key; AUTO.from = now; return true;
   }
   const shown = name => allowed(name) && (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
-    !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap"].includes(name) && G("grid.solo", true));
+    !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
   const gridWalkCar = () => {
@@ -658,11 +706,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const blogo = assetUrl(th.bannerLogo || th.sponsor);
     $("bnLogoBox").classList.toggle("hide", !blogo); if (blogo) $("bnLogo").src = blogo;
     // layout: every graphic can be moved and resized
-    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap"]) {
+    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard"]) {
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${Number(l.s) || 1})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -877,6 +925,81 @@ body.bc-off>*:not(script){visibility:hidden!important}
     FLA.html = `<div class="fla"><div class="bar"></div><div class="m"><div class="h">Fastest lap${m ? tag(c) : ""}</div><div class="w">${plate(c)}<span class="nm">${nameHtml(c.name)}</span></div></div>` +
       `<div class="t"><b>${fmt.lap(e.lapS)}</b>${gain != null && gain > 0 ? `<small>${gain.toFixed(3)} s quicker</small>` : e.lapNum ? `<small>lap ${e.lapNum}</small>` : ""}</div></div>`;
     $("flaBox").innerHTML = FLA.html; hit($("fastlap"));
+  }
+
+  // ---------------------------------------------------------------- race control: one car's flags
+  // From car_flag / penalty_served (normalize.py, CarIdxSessionFlags; a spectator sees them too).
+  // One at a time, 8 s each; the meatball is the ticker's (an incident already says damage).
+  const PEN = { q: [], cur: null, at: 0, html: null };
+  const PEN_WORD = { black: ["Black flag", "Penalty"], furled: ["Warning", "Furled black flag"],
+    disqualify: ["Disqualified", "Black flag with a cross"], served: ["Penalty served", "Back racing"] };
+  function queuePenalty(e) {
+    if (!e) return;
+    if (e.kind === "car_flag" && PEN_WORD[e.flag]) PEN.q.push({ idx: e.idx, flag: e.flag });
+    else if (e.kind === "penalty_served") PEN.q.push({ idx: e.idx, flag: "served" });
+    if (PEN.q.length > 6) PEN.q.splice(0, PEN.q.length - 6);
+  }
+  function renderPenalty() {
+    const now = performance.now();
+    if (PEN.cur && now - PEN.at > 8000) PEN.cur = null;
+    if (!PEN.cur && PEN.q.length) { PEN.cur = PEN.q.shift(); PEN.at = now; PEN.html = null; }
+    const e = PEN.cur, c = e && carByIdx(e.idx);
+    $("penalty").classList.toggle("on", !!c && shown("penalty"));
+    if (!c || PEN.html != null) return;
+    const [h, sub] = PEN_WORD[e.flag], m = multi();
+    const tag = m && c.className ? `<span class="cl" style="background:${css(c.classColor) || "var(--muted)"};color:${inkOn(css(c.classColor))}">${esc(c.className)}</span>` : "";
+    const pos = c.pos > 0 ? (m ? "P" + c.classPos + " in class" : "P" + c.pos) : "";
+    PEN.html = `<div class="pen"><div class="fg ${e.flag}"></div><div class="m"><div class="h">Race control${tag}</div>` +
+      `<div class="w">${plate(c)}<span class="nm">${nameHtml(c.name)}</span></div><div class="s"><b>${esc(h)}</b> · ${esc([sub, pos].filter(Boolean).join(" · "))}</div></div></div>`;
+    $("penBox").innerHTML = PEN.html; hit($("penalty"));
+  }
+
+  // ---------------------------------------------------------------- head to head
+  // Two cars the producer picks (gfx h2h.cars), else the battle on air's last two. Only values the
+  // tower and the card already show; the gap only when they are neighbours in class (the rear car's own).
+  function h2hCars() {
+    const pick = (G("h2h.cars", null) || []).map(carByIdx).filter(Boolean);
+    if (pick.length === 2) return pick;
+    const b = currentBattle();
+    return b ? b.cars.slice(-2).map(carByIdx).filter(Boolean) : [];
+  }
+  function renderH2H() {
+    const pair = h2hCars().sort((a, b) => (a.pos > 0 ? a.pos : 999) - (b.pos > 0 ? b.pos : 999));
+    $("h2h").classList.toggle("on", pair.length === 2 && shown("h2h"));
+    if (pair.length !== 2) return;
+    const [a, b] = pair, m = multi(), da = a.derived || {}, db = b.derived || {};
+    const posOf = c => c.pos > 0 ? "P" + (m && a.classId === b.classId ? c.classPos : c.pos) : "–";
+    const lower = (x, y) => x > 0 && y > 0 ? (x < y ? [true, false] : y < x ? [false, true] : [false, false]) : [false, false];
+    const row = (label, va, vb, up) => `<div class="hh-row"><b class="${up && up[0] ? "up" : ""}">${va}</b><span>${esc(label)}</span><b class="${up && up[1] ? "up" : ""}">${vb}</b></div>`;
+    const secs = c => { const d = c.derived || {}, s = d.sectorS || [], k = d.sectorMarks || [];
+      return s.length ? `<span class="sxr">${s.map((t, i) => t > 0 ? `<em class="${k[i] || ""}">${t.toFixed(1)}</em>` : "<em>–</em>").join("")}</span>` : "–"; };
+    let rows = row("Last lap", fmt.lap(a.lastLapS), fmt.lap(b.lastLapS), lower(a.lastLapS, b.lastLapS)) +
+      row("Best lap", fmt.lap(a.bestLapS), fmt.lap(b.bestLapS), lower(a.bestLapS, b.bestLapS));
+    if ((da.sectorS || []).length || (db.sectorS || []).length) rows += row("Sectors", secs(a), secs(b));
+    if (isRace()) {
+      rows += row("Pit stops", da.stopsSeen ?? "–", db.stopsSeen ?? "–");
+      if (da.stintLaps != null || db.stintLaps != null) rows += row("Stint", da.stintLaps ?? "–", db.stintLaps ?? "–");
+      if (a.classId === b.classId && b.classPos === a.classPos + 1 && db.liveClassIntervalS != null)
+        rows += row("Gap", "", fmt.gap(db.liveClassIntervalS));
+    }
+    const side = c => `<div>${plate(c)}<span class="nm">${nameHtml(c.name)}</span><span class="ps">${posOf(c)}</span></div>`;
+    const h = `<div class="hh"><div class="hh-h">Head to head</div><div class="hh-who">${side(a)}${side(b)}</div>${rows}</div>`;
+    if ($("hhBox").innerHTML !== h) { const fresh = !$("hhBox").innerHTML; $("hhBox").innerHTML = h; if (fresh) hit($("h2h")); }
+  }
+
+  // ---------------------------------------------------------------- onboard
+  // The camera car's own CarIdxGear, CarIdxRPM and CarIdxSteer, and its speed (derived.speedMs).
+  function renderOnboard() {
+    const c = carByIdx(camIdx());
+    $("onboard").classList.toggle("on", !!c && shown("onboard"));
+    if (!c) return;
+    const g = c.gear, mph = G("onboard.units", "kph") === "mph", v = (c.derived || {}).speedMs;
+    $("obGear").textContent = g == null ? "–" : g < 0 ? "R" : g === 0 ? "N" : String(g);
+    $("obSpd").textContent = v == null ? "–" : String(Math.round(v * (mph ? 2.23694 : 3.6)));
+    $("obUnit").textContent = mph ? "mph" : "km/h";
+    $("obRpm").textContent = c.rpm == null ? "–" : String(Math.round(c.rpm / 10) * 10);
+    // CarIdxSteer is radians, positive turning left (iRacing's convention; unverified on screen)
+    $("obWheel").style.transform = c.steerRad == null ? "" : `rotate(${(-c.steerRad).toFixed(3)}rad)`;
   }
 
   // ---------------------------------------------------------------- banner + replay bug
@@ -1170,13 +1293,20 @@ body.bc-off>*:not(script){visibility:hidden!important}
         const w = { green: "Green flag", yellow: "Yellow flag", caution: "Full course yellow", red: "Red flag", white: "White flag: final lap", checkered: "Checkered flag" }[e.flag];
         return w ? ["flag", "Flag", `<b>${w}</b>`] : null;
       }
+      case "car_flag": {
+        if (e.flag === "repair") return null;                          // the damage incident says it
+        if (shown("penalty")) return null;                            // the race control alert has it
+        const w = { black: "Black flag", furled: "Warning", disqualify: "Disqualified" }[e.flag];
+        return w ? ["flag", w, nm(e.idx)] : null;
+      }
+      case "penalty_served": return shown("penalty") ? null : ["flag", "Penalty served", nm(e.idx)];
       case "rain_start": return ["wx", "Weather", "Rain is falling"];
       case "rain_stop": return ["wx", "Weather", "The rain has stopped"];
       case "declared_wet": return ["wx", "Weather", e.value ? "Wet race declared" : "Wet declaration lifted"];
     }
     return null;
   }
-  function pushTick(e) { queueFastLap(e); const it = tickerItem(e); if (it) queue.push(it); }
+  function pushTick(e) { queueFastLap(e); queuePenalty(e); const it = tickerItem(e); if (it) queue.push(it); }
   function pumpTicker() {
     const box = $("ticker");
     box.classList.toggle("on", shown("ticker"));
@@ -1373,7 +1503,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap();
+      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard();
     }
     drawMap(); drawFaster(t);
     pumpTicker();
