@@ -1606,3 +1606,17 @@ def test_director_follows_push_laps_outside_a_race_and_the_leader_on_the_last_la
         t[0] = 300 + k
         d2.tick(sess, cars, st, [])
     assert d2.segment["key"] == "finish" and cuts[-1][0] == "2"
+
+
+def test_overlay_makes_room_for_every_graphic():
+    """Every graphic that can be moved is also kept clear of the others (makeRoom): none is left out of
+    ROOM_ORDER, each has one direction to slide, and the corner map steps aside for the faster panel's own."""
+    import re
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    ids = set(re.findall(r'"(\w+)"', re.search(r"const LAYOUT_IDS = \[([^\]]*)\]", page).group(1)))
+    order = re.findall(r'"(\w+)"', re.search(r"const ROOM_ORDER = \[([^\]]*)\]", page).group(1))
+    up = set(re.findall(r'"(\w+)"', re.search(r"const ROOM_UP = new Set\(\[([^\]]*)\]", page).group(1)))
+    assert set(order) == ids and len(order) == len(ids)
+    assert up <= ids
+    assert 'shown("map") && !!S.cars && !$("faster").classList.contains("on")' in page
+    assert "if (EDIT) return;" in page.split("function makeRoom()")[1][:200]   # Arrange shows real positions
