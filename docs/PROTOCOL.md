@@ -92,8 +92,15 @@ any other speed, or slow motion, means the picture is not the race as it happens
                          "afterYourStopS"|"afterTheirStopS"}],
             "traffic":[{"idx","kind":"you_catch"|"catches_you","inS","atPct"}],
             "battles":[{"id","classId","cars":[idx,...],"gapsS":[...],"closingSPerLap":[...],
-                        "catchLaps":[...],"forClassPos","forPos"}]}}
+                        "catchLaps":[...],"forClassPos","forPos"}],
+            "classTraffic":[{"idx","classId","aheadIdx","aheadClassId","inS","packN","packIdx":[...]}],
+            "classBestSectorS":{"<classId>":[s,...]}}}
 ```
+`classTraffic` (multiclass): for each class leader on track, the first slower-class car it will reach
+within 60 s at the two cars' paces (`inS`), and the slower cars within 6 s behind that one (`packIdx`,
+`packN`). Sorted by `inS`. `classBestSectorS` is each class's best time per sector this session; each
+car's `derived.sectorMarks` colours its own sectors against it: "p" class best, "g" its own best, "y"
+slower, null not timed yet.
 `battles` (race only): cars that are neighbours IN THEIR CLASS with trusted F2Times less than
 1.0 s apart; a pair stays in until the gap passes 1.5 s. Pairs that touch form one group,
 front to back. `gapsS[k]` is between `cars[k]` and `cars[k+1]`. `closingSPerLap[k]` / `catchLaps[k]`
