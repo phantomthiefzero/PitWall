@@ -288,14 +288,18 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         </div>
       </section>
       <section>
-        <h2>Replay transition</h2>
+        <h2>Stingers <small>the transition into and out of replays, and on Take</small></h2>
+        <h3>Built in</h3>
+        <div class="opts" id="stBuilt"></div>
         <div class="grid2">
-          <label for="sVideo">Stinger</label><select id="sVideo"></select>
-          <label for="sLogo">Logo on the wipe</label><select id="sLogo"></select>
+          <label for="sLogo">Logo in the middle</label><select id="sLogo"></select>
           <label for="sDur">Length (ms)</label><input type="number" id="sDur" min="400" max="4000" step="50" value="900">
           <label for="sCut">Cut at (ms)</label><input type="number" id="sCut" min="0" max="4000" step="50" value="420">
         </div>
-        <p class="note">The camera jumps at the cut point, while the stinger covers the screen. For a video stinger, set the cut to the moment it fills the frame.</p>
+        <h3>Your stingers</h3>
+        <div id="stOwn" class="assets"></div>
+        <label class="btn" style="display:inline-block;margin-top:6px;cursor:pointer"><input type="file" id="stAdd" accept=".webm,.mp4,.mov" hidden><span style="display:inline-block;padding:6px 12px;border:1px solid var(--line);border-radius:6px">Add a stinger video</span></label>
+        <p class="note">The camera jumps at the cut point, while the stinger covers the screen: for a built-in one, about half its length; for your own video, the moment it fills the frame (each video keeps its own). Making one: 1920 × 1080, about one second, a WebM with transparency (VP9 with alpha) so the race shows around it, or an MP4 that covers the screen. Every video you upload is listed here.</p>
         <div class="opts" style="margin-top:6px"><button id="sTest">Test the stinger</button></div>
       </section>
       <section>
@@ -338,6 +342,9 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         </div>
         <h3>Countdown</h3><div class="opts" id="scCount"></div>
         <p class="note">Starting soon lists the entry by class, the break shows the order, closing shows the top three of each class. Sponsors chosen below sit along the bottom.</p>
+        <h3>Your own file for each screen</h3>
+        <div id="scFiles"></div>
+        <p class="note">Built in is the animated background. Or use your own: a picture or a looping video you uploaded (Look, Files; a video plays muted), or a web page you made elsewhere (its https address), for something more involved. Tick <b>file only</b> to show it without our words, countdown and lists.</p>
       </section>
       <section>
         <h2>Commentators</h2>
@@ -543,7 +550,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     if (!canProduce()) { toast("This link is view-only", true); return; }
     if (studioOn() && !straightNext) {
       const now = {}, later = {};
-      for (const [k, v] of Object.entries(patch)) (IMMEDIATE.has(k) ? now : later)[k] = v;
+      // the stinger's own settings are the transition itself, never something to preview
+      for (const [k, v] of Object.entries(patch)) (IMMEDIATE.has(k) || (k === "theme" && v && Object.keys(v).join() === "stinger") ? now : later)[k] = v;
       if (Object.keys(later).length) {
         const pv = enc(JSON.parse(JSON.stringify(later)));
         S.gfx.studio.pv = merge(S.gfx.studio.pv || {}, JSON.parse(JSON.stringify(pv)));
@@ -610,7 +618,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     if (!useIt || !canProduce()) { fn(); return; }
     stingerSeq = Math.max(stingerSeq, G("stinger.seq", 0)) + 1;
     setGfx({ stinger: { seq: stingerSeq, dir, at: Date.now() } });
-    setTimeout(fn, Number(G("theme.stinger.cutMs", 420)) || 0);
+    const vid = G("theme.stinger.video", null), cuts = G("theme.stinger.cuts", {}) || {};
+    setTimeout(fn, Number(vid ? (cuts[vid] ?? 500) : G("theme.stinger.cutMs", 420)) || 0);
   }
   function backToLive() {
     withStinger("toLive", () => cmd({ cmd: "replay", action: "search", mode: "to_end" }, "Back to live"));
@@ -788,6 +797,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const dis = canProduce() ? "" : "disabled", mode = G("scene.mode", null) || "";
     $("scMode").innerHTML = SCENES.map(([k, l]) => `<button data-scmode="${k}" class="${mode === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
     for (const [id, k] of [["scKickIn", "kick"], ["scTitleIn", "title"], ["scSubIn", "sub"]]) if (document.activeElement !== $(id)) $(id).value = G("scene." + k, "") || "";
+    renderSceneFiles(dis);
     const until = G("scene.untilMs", null), left = until ? Math.max(0, Math.round((until - Date.now()) / 60000)) : null;
     $("scCount").innerHTML = [2, 5, 10, 15, 30].map(n => `<button data-sccd="${n}" ${dis}>${n} min</button>`).join("") +
       `<button data-sccd="0" ${dis || (until ? "" : "disabled")}>None</button>` + (until ? `<span class="note" style="align-self:center">${left > 0 ? "about " + left + " min left" : "at zero"}</span>` : "");
@@ -859,6 +869,27 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     catch (e) { toast("That table could not be read: " + e.message, true); }
   }
   $("lgFile").onchange = async e => { const f = e.target.files[0]; if (f) useLeague(await f.text()); e.target.value = ""; };
+  // Each show screen's own file (gfx scene.files[mode]: an uploaded picture or video, or an https page) and
+  // whether it shows alone (scene.bare[mode]).
+  function renderSceneFiles(dis) {
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest("#scFiles")) return;
+    const files = G("scene.files", {}) || {}, bare = G("scene.bare", {}) || {}, media = S.assets.filter(a => /^(image|video)\//.test(a.type));
+    $("scFiles").innerHTML = SCENES.filter(([k]) => k).map(([k, l]) => {
+      const cur = files[k] || "", page = /^https:/.test(cur);
+      const opts = `<option value="">Built in (animated)</option>` + media.map(a => `<option value="${esc(a.name)}" ${cur === a.name ? "selected" : ""}>${esc(a.name)}</option>`).join("") +
+        `<option value="page" ${page ? "selected" : ""}>A web page…</option>`;
+      return `<div style="margin-bottom:9px"><div style="font-weight:700;font-size:13px;margin-bottom:3px">${l}</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">` +
+        `<select data-scfile="${k}" style="flex:1 1 100%" ${dis}>${opts}</select>` +
+        (page ? `<input type="text" data-scpage="${k}" value="${esc(cur)}" placeholder="https://…" style="flex:1 1 100%" ${dis}>` : "") +
+        (cur ? `<label class="note" style="margin:0;white-space:nowrap"><input type="checkbox" data-scbare="${k}" ${bare[k] ? "checked" : ""} ${dis}> file only (no words or lists)</label>` : "") + `</div></div>`;
+    }).join("");
+  }
+  document.addEventListener("change", e => {
+    const t = e.target, ds = t.dataset || {};
+    if (ds.scfile) { const v = t.value === "page" ? "https://" : t.value || null; setGfx({ scene: { files: { [ds.scfile]: v } } }); dirty.studio = true; t.blur(); }
+    else if (ds.scpage) { const v = t.value.trim(); setGfx({ scene: { files: { [ds.scpage]: /^https:\/\/./.test(v) ? v : "https://" } } }); }
+    else if (ds.scbare) setGfx({ scene: { bare: { [ds.scbare]: t.checked } } });
+  });
   const strapList = () => ((G("straps", {}) || {}).list || []).map(p => ({ ...p }));
   document.addEventListener("click", e => {
     const b = e.target.closest && e.target.closest("[data-scmode],[data-sccd],[data-strapadd],[data-strapoff],[data-strapon],[data-strapdel],[data-strapsecs],[data-spon],[data-spevery],[data-pdcls],[data-lgload],[data-lgclr]");
@@ -1123,6 +1154,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     else if (ds.incf) { incFilter = ds.incf; dirty.inc = true; }
     else if (ds.pre) { preroll = Number(ds.pre); try { localStorage.setItem("pw.producer.preroll", preroll); } catch (e2) {} dirty.inc = true; }
     else if (ds.jump) { const ev = S.feed.events.find(x => x.seq === Number(ds.jump)); if (ev) jumpTo(ev); }
+    else if (ds.ststyle) setGfx({ theme: { stinger: { style: ds.ststyle, video: null } } });
+    else if (ds.stvid) setGfx({ theme: { stinger: { video: G("theme.stinger.video", null) === ds.stvid ? null : ds.stvid } } });
     else if (ds.preset) setGfx({ theme: { preset: ds.preset, colors: null, fonts: null } });
     else if (ds.names) setGfx({ theme: { names: ds.names } });
     else if (ds.lvsrc) setGfx({ theme: { livery: { source: ds.lvsrc } } });
@@ -1447,8 +1480,13 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     $("aLogo").innerHTML = assetOpts("image/", th.logo);
     $("aBanner").innerHTML = assetOpts("image/", th.bannerLogo);
     const st = th.stinger || {};
-    $("sVideo").innerHTML = `<option value="">Built-in wipe</option>` + S.assets.filter(a => a.type.startsWith("video/")).map(a => `<option ${a.name === st.video ? "selected" : ""}>${esc(a.name)}</option>`).join("");
     $("sLogo").innerHTML = assetOpts("image/", st.logo);
+    const BUILT = [["wipe", "Wipe"], ["chevrons", "Chevrons"], ["checker", "Checkered flag"], ["panels", "Panels"], ["iris", "Iris"]];
+    $("stBuilt").innerHTML = BUILT.map(([k, l]) => `<button data-ststyle="${k}" class="${!st.video && (st.style || "wipe") === k ? "on" : ""}">${l}</button>`).join("");
+    const vids = S.assets.filter(a => a.type.startsWith("video/")), cuts = st.cuts || {};
+    $("stOwn").innerHTML = vids.length ? vids.map(a => `<div><span>${esc(a.name)}</span><label class="note" style="flex:none">cut at <input type="number" data-stcut="${esc(a.name)}" min="0" max="6000" step="50" value="${cuts[a.name] ?? 500}" style="width:72px"> ms</label>` +
+      `<button data-stvid="${esc(a.name)}" class="${st.video === a.name ? "on" : ""}" style="min-height:26px;padding:1px 9px">${st.video === a.name ? "In use" : "Use"}</button></div>`).join("")
+      : `<p class="note">None yet: add a video below.</p>`;
     $("sDur").value = st.durationMs || 900; $("sCut").value = st.cutMs ?? 420;
     const lay = th.layout || {};
     $("positions").innerHTML = `<span></span><span class="note">right px</span><span class="note">down px</span><span class="note">size</span>` +
@@ -1490,7 +1528,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     else if (t.id === "radius") setGfx({ theme: { radius: Number(t.value) } });
     else if (t.id === "aLogo") setGfx({ theme: { logo: t.value || null } });
     else if (t.id === "aBanner") setGfx({ theme: { bannerLogo: t.value || null } });
-    else if (t.id === "sVideo") setGfx({ theme: { stinger: { video: t.value || null } } });
+    else if (t.dataset && t.dataset.stcut) setGfx({ theme: { stinger: { cuts: { [t.dataset.stcut]: Math.max(0, Number(t.value) || 0) } } } });
     else if (t.id === "sLogo") setGfx({ theme: { stinger: { logo: t.value || null } } });
   });
   $("sTest").onclick = () => withStinger("toReplay", () => toast("Cut point"));
@@ -1505,6 +1543,15 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const f = e.target.files[0]; if (!f) return;
     try { const th = JSON.parse(await f.text()); setGfx({ theme: null }); setTimeout(() => setGfx({ theme: th }), 200); toast("Look loaded"); }
     catch (err) { toast("That file is not a saved look", true); }
+    e.target.value = "";
+  };
+  $("stAdd").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 30 * 1024 * 1024) { toast(f.name + " is over 30 MB", true); return; }
+    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+    send({ type: "asset_put", name: f.name, data });
+    setGfx({ theme: { stinger: { video: f.name } } });
+    toast("Added " + f.name + ": set its cut point, then Test");
     e.target.value = "";
   };
   $("upload").onchange = async e => {
