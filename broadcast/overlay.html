@@ -264,8 +264,37 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 /* ---------- show screens: starting soon, intermission, closing (full screen) ---------- */
 #scene{left:0;top:0;width:1920px;height:1080px}
 .sc{position:absolute;inset:0;overflow:hidden;background:radial-gradient(1200px 700px at 80% -10%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 70%),linear-gradient(160deg,color-mix(in srgb,var(--head) 85%,#000),var(--ink) 55%,#05070b)}
-.sc::before{content:"";position:absolute;left:-200px;right:-200px;bottom:100px;height:12px;background:var(--accent);transform:rotate(-2deg);opacity:.9}
-.sc::after{content:"";position:absolute;left:-200px;right:-200px;bottom:80px;height:4px;background:color-mix(in srgb,var(--accent) 50%,transparent);transform:rotate(-2deg)}
+.sc::before{content:"";position:absolute;left:-200px;right:-200px;bottom:100px;height:12px;background:var(--accent);transform:rotate(-2deg);opacity:.9;animation:scStripe 14s ease-in-out infinite alternate}
+.sc::after{content:"";position:absolute;left:-200px;right:-200px;bottom:80px;height:4px;background:color-mix(in srgb,var(--accent) 50%,transparent);transform:rotate(-2deg);animation:scStripe 18s ease-in-out -6s infinite alternate}
+/* the built-in screen's slow movement: two drifting glows, a light that sweeps by now and then, specks rising */
+.sc-fx{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.sc-fx i{position:absolute;border-radius:50%;filter:blur(60px);opacity:.35}
+.sc-fx i.g1{width:900px;height:900px;left:-200px;top:-300px;background:color-mix(in srgb,var(--accent) 45%,transparent);animation:scDrift1 38s ease-in-out infinite alternate}
+.sc-fx i.g2{width:1100px;height:1100px;right:-400px;bottom:-500px;background:color-mix(in srgb,var(--head) 70%,#3a5bff 20%);opacity:.3;animation:scDrift2 46s ease-in-out infinite alternate}
+.sc-fx b{position:absolute;top:-20%;bottom:-20%;width:260px;left:-400px;transform:skewX(-20deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);animation:scSweep 13s ease-in-out infinite}
+.sc-fx u{position:absolute;inset:-100% 0 0 0;background-image:radial-gradient(circle,rgba(255,255,255,.22) 1.2px,transparent 1.6px),radial-gradient(circle,rgba(255,255,255,.12) 1px,transparent 1.4px);
+  background-size:180px 220px,260px 300px;background-position:0 0,90px 130px;animation:scRise 70s linear infinite;opacity:.6}
+@keyframes scDrift1{to{transform:translate(380px,220px) scale(1.15)}}
+@keyframes scDrift2{to{transform:translate(-320px,-180px) scale(.9)}}
+@keyframes scSweep{0%,55%{left:-400px}100%{left:2300px}}
+@keyframes scRise{to{transform:translateY(50%)}}
+@keyframes scStripe{to{transform:rotate(-2deg) translateX(-120px)}}
+/* coming in: the words rise, the lists follow one row at a time (only when the screen changes) */
+.sc.enter .sc-k,.sc.enter h1,.sc.enter .sc-sub,.sc.enter .sc-cd{animation:scUp .9s cubic-bezier(.2,.8,.2,1) both}
+.sc.enter h1{animation-delay:.12s}.sc.enter .sc-sub{animation-delay:.24s}.sc.enter .sc-cd{animation-delay:.36s}
+.sc.enter .sc-col{animation:scUp .8s cubic-bezier(.2,.8,.2,1) both}
+.sc.enter .sc-col:nth-child(2){animation-delay:.15s}.sc.enter .sc-col:nth-child(3){animation-delay:.3s}.sc.enter .sc-col:nth-child(4){animation-delay:.45s}
+@keyframes scUp{from{opacity:0;transform:translateY(24px)}}
+.sc-cd{animation:none}
+.sc-cd .tick{display:inline-block;animation:scBreath 4s ease-in-out infinite}
+@keyframes scBreath{50%{opacity:.82}}
+/* your own file in place of the built-in background (a picture, a looping video or a web page) */
+.sc-own{position:absolute;inset:0}
+.sc-own img,.sc-own video,.sc-own iframe{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0}
+.sc.own{background:#000}
+.sc.own:not(.bare) .sc-own::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.72),rgba(0,0,0,.35) 60%,rgba(0,0,0,.2))}.sc.own::before,.sc.own::after,.sc.own .sc-fx{display:none}
+.sc.bare .sc-in,.sc.bare .sc-sp{display:none}
+@media (prefers-reduced-motion:reduce){.sc *,.sc::before,.sc::after{animation:none!important}}
 .sc-in{position:absolute;left:120px;right:120px;top:96px;bottom:220px;display:flex;flex-direction:column;color:var(--text)}
 .sc-top{display:flex;align-items:center;gap:22px}
 .sc-top img{max-height:90px;max-width:300px;object-fit:contain}
@@ -421,6 +450,23 @@ small{margin-right:4px}
 @keyframes sw2{0%{left:-170%}10%{left:-170%}50%{left:-20%}60%{left:-20%}100%{left:120%}}
 @keyframes mk{0%,35%{opacity:0;transform:translate(-50%,-50%) scale(.9)}50%{opacity:1;transform:translate(-50%,-50%) scale(1)}65%{opacity:1}80%,100%{opacity:0}}
 #stinger video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* More built-in stingers (theme.stinger.style). Each covers the whole picture from about 40% to 60% of its length,
+   where the cut happens (cutMs, half the length by default). To add one: a STINGERS entry below and its CSS here. */
+#stinger .fx{position:absolute;inset:0;pointer-events:none}
+#stinger .fx>*{position:absolute}
+#stinger.run[data-style="chevrons"] .fx>i.fill{top:0;height:100%;left:-120%;width:120%;background:var(--head);animation:stFill var(--dur) cubic-bezier(.7,0,.3,1) both}
+#stinger.run[data-style="chevrons"] .fx>i.ch{top:-10%;height:120%;width:520px;left:-700px;background:var(--accent);clip-path:polygon(0 0,55% 0,100% 50%,55% 100%,0 100%,45% 50%);animation:stChev var(--dur) cubic-bezier(.6,0,.4,1) both}
+@keyframes stFill{0%{transform:translateX(0)}42%,58%{transform:translateX(100%)}100%{transform:translateX(200%)}}
+@keyframes stChev{0%{transform:translateX(0)}100%{transform:translateX(3400px)}}
+#stinger.run[data-style="checker"] .fx>i{inset:-10% auto -10% 0;width:2600px;left:-2700px;transform:skewX(-14deg);
+  background:linear-gradient(90deg,var(--accent) 0 40px,transparent 40px),repeating-conic-gradient(#f2f2f2 0 25%,#111 0 50%) 0 0/96px 96px;animation:stFlag var(--dur) cubic-bezier(.7,0,.3,1) both}
+@keyframes stFlag{0%{left:-2700px}42%,58%{left:-300px}100%{left:2200px}}
+#stinger.run[data-style="panels"] .fx>i{top:0;height:100%;width:12.7%;background:var(--head);transform:translateY(-105%);animation:stPanel var(--dur) cubic-bezier(.7,0,.3,1) both}
+#stinger.run[data-style="panels"] .fx>i:nth-child(even){background:color-mix(in srgb,var(--head) 80%,var(--accent))}
+@keyframes stPanel{0%{transform:translateY(-105%)}35%,65%{transform:translateY(0)}100%{transform:translateY(105%)}}
+#stinger.run[data-style="iris"] .fx>i{left:50%;top:50%;width:2400px;height:2400px;margin:-1200px 0 0 -1200px;border-radius:50%;background:var(--head);box-shadow:0 0 0 22px var(--accent);transform:scale(0);animation:stIris var(--dur) cubic-bezier(.7,0,.3,1) both}
+@keyframes stIris{0%{transform:scale(0);opacity:1}42%,58%{transform:scale(1);opacity:1}100%{transform:scale(1);opacity:0}}
+#stinger.run:not([data-style="wipe"]) .bar{display:none}
 
 #setup{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#111;color:#fff;padding:24px 28px;max-width:640px;font:500 20px/1.45 sans-serif}
 @media (prefers-reduced-motion: reduce){.row,.layer,.tk,.inner{transition:none!important;animation:none!important}}
@@ -571,7 +617,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   <section class="layer" id="podium"><div class="inner" id="pdBox"></div></section>
   <section class="layer" id="strap"><div class="inner" id="spBox"></div></section>
   <section class="layer" id="sponsors"><div class="inner sb" id="sbBox"></div></section>
-  <section class="layer" id="scene"><div class="sc"><div class="sc-in"><div class="sc-top"><img id="scLogo" class="hide" alt=""><div class="sc-k" id="scKick"></div></div>
+  <section class="layer" id="scene"><div class="sc" id="scBox"><div class="sc-own" id="scOwn"></div><div class="sc-fx"><i class="g1"></i><i class="g2"></i><b></b><u></u></div><div class="sc-in"><div class="sc-top"><img id="scLogo" class="hide" alt=""><div class="sc-k" id="scKick"></div></div>
     <h1 id="scTitle"></h1><div class="sc-sub" id="scSub"></div><div class="sc-cd" id="scCd"></div><div class="sc-body" id="scBody"></div></div><div class="sc-sp" id="scSp"></div></div></section>
   <section class="layer" id="penalty"><div class="inner" id="penBox"></div></section>
   <section class="layer" id="h2h"><div class="inner" id="hhBox"></div></section>
@@ -591,7 +637,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     <div class="pn-body"><div class="gd" id="gdSlots"></div><div class="gd-foot"><span id="gdPage"></span><span id="gdNote"></span></div></div>
   </div></div></section>
 
-  <section class="layer on" id="stinger"><div class="bar b1"></div><div class="bar b2"></div><div class="mark" id="stMark"></div></section>
+  <section class="layer on" id="stinger"><div class="bar b1"></div><div class="bar b2"></div><div class="fx" id="stFx"></div><div class="mark" id="stMark"></div></section>
 
   <div id="setup" class="hide">This overlay needs the relay's view token in its address: add <code>?token=…</code> (and <code>&amp;relay=ws://127.0.0.1:8765</code> when opened from a file).</div>
 </div>
@@ -1294,7 +1340,24 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function renderScene() {
     const mode = G("scene.mode", null), on = !!mode && allowed("scene");
     $("scene").classList.toggle("on", on);
-    if (!on) { sceneSig = ""; return; }
+    if (!on) { sceneSig = ""; renderScene.mode = null; return; }
+    // Each screen can use your own file (gfx scene.files[mode]): an uploaded picture or looping video, or a web
+    // page (https); with scene.bare[mode], that file alone, without the built-in words and lists.
+    const own = (G("scene.files", {}) || {})[mode] || "", bare = !!(G("scene.bare", {}) || {})[mode];
+    const ownKey = mode + "|" + own;
+    if ($("scOwn").dataset.k !== ownKey) {
+      $("scOwn").dataset.k = ownKey;
+      const a = (S.assets || []).find(x => x.name === own), u = /^https:\/\/./.test(own) ? own : a ? assetUrl(own) : "";
+      $("scOwn").innerHTML = !u ? "" : /^https:/.test(own) ? `<iframe src="${esc(u)}" allow="autoplay" referrerpolicy="no-referrer"></iframe>`
+        : a && a.type.startsWith("video/") ? `<video src="${esc(u)}" autoplay loop muted playsinline></video>` : `<img src="${esc(u)}" alt="">`;
+    }
+    $("scBox").classList.toggle("own", !!$("scOwn").innerHTML);
+    $("scBox").classList.toggle("bare", bare && !!$("scOwn").innerHTML);
+    if (renderScene.mode !== mode) {      // a new screen: the words and lists come in once
+      renderScene.mode = mode; const box = $("scBox");
+      box.classList.remove("enter"); void box.offsetWidth; box.classList.add("enter");
+      clearTimeout(renderScene.t); renderScene.t = setTimeout(() => box.classList.remove("enter"), 2500);
+    }
     const t = S.session && S.session.track, sess = sessionRow();
     $("scKick").textContent = G("scene.kick", "") || SCENE_KICK[mode] || "";
     $("scTitle").textContent = G("scene.title", "") || T("text.event", "") || T("text.series", "") || (t ? t.TrackDisplayName : "");
@@ -1304,7 +1367,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (until && mode !== "end") {
       const left = Math.max(0, Math.round((until - Date.now()) / 1000));
       const word = mode === "soon" ? "Starting in" : mode === "break" ? "Back in" : "";
-      $("scCd").innerHTML = left > 0 ? `<small>${word}</small>${fmt.clock(left)}` : `<small>${mode === "soon" ? "Starting" : mode === "break" ? "Back" : ""}</small>now`;
+      $("scCd").innerHTML = left > 0 ? `<small>${word}</small><span class="tick">${fmt.clock(left)}</span>` : `<small>${mode === "soon" ? "Starting" : mode === "break" ? "Back" : ""}</small>now`;
     } else $("scCd").innerHTML = "";
     const sp = (G("sponsors.logos", []) || []).map(assetUrl).filter(Boolean);
     const spH = sp.map(u => `<img src="${u}" alt="">`).join("");
@@ -1803,16 +1866,28 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // it, then sends the camera command at the cut point, so the jump happens
   // behind it. A video from the assets (webm with alpha) replaces the default.
   let stingerSeq = null, stingerRunning = false;
+  // The built-in stingers: name -> pieces drawn (CSS #stinger.run[data-style=...]). Your own are videos (theme.stinger.video).
+  // Every one covers the whole picture from 42% to 58% of its length, so a cut anywhere in there is hidden.
+  const STINGERS = {
+    wipe: { html: () => "" },
+    chevrons: { html: () => '<i class="fill"></i>' + [0, 1, 2].map(k => `<i class="ch" style="animation-delay:calc(var(--dur) * ${k * 0.06})"></i>`).join("") },
+    checker: { html: () => "<i></i>" },
+    panels: { html: () => Array.from({ length: 8 }, (_, k) => `<i style="left:${k * 12.5}%;animation-delay:calc(var(--dur) * ${k * 0.01})"></i>`).join("") },
+    iris: { html: () => "<i></i>" },
+  };
   function maybeStinger() {
     const st = S.gfx.stinger;
+    // The first graphics state this page sees only sets the mark: an old stinger is not played on load. A state
+    // with no stinger yet sets it too (the first stinger ever fired used to be taken for an old one and skipped).
+    if (stingerSeq === null) { stingerSeq = st && st.seq != null ? st.seq : -1; return; }
     if (!st || st.seq == null) return;
-    if (stingerSeq === null) { stingerSeq = st.seq; return; }     // do not replay an old one on load
     if (st.seq === stingerSeq) return;
     stingerSeq = st.seq;
     if (!allowed("stinger")) return;
     if (st.at && Date.now() - st.at > 4000) return;              // stale: arrived after a reconnect
     const box = $("stinger");
     const vid = T("stinger.video", "");
+    $("stFx").innerHTML = "";
     const dur = Number(T("stinger.durationMs", 900)) || 900;
     stingerRunning = true;
     box.querySelectorAll("video").forEach(v => v.remove());
@@ -1825,6 +1900,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
       setTimeout(() => { stingerRunning = false; }, 6000);
       return;
     }
+    const style = STINGERS[T("stinger.style", "wipe")] ? T("stinger.style", "wipe") : "wipe";
+    box.dataset.style = style;
+    $("stFx").innerHTML = STINGERS[style].html();
     const logo = assetUrl(T("stinger.logo", "") || T("logo", ""));
     $("stMark").innerHTML = logo ? `<img src="${logo}" alt="">` : (st.dir === "take" ? "" : `<b>${esc(st.dir === "toLive" ? "Live" : "Replay")}</b>`);
     box.style.setProperty("--dur", dur + "ms");

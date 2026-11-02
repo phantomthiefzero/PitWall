@@ -454,7 +454,7 @@ overlay reads: `tower {show, mode: interval|leader|best|last|stops|incidents, cl
 plays the transition; the producer sends the camera command at `theme.stinger.cutMs`),
 `ticker {..., incidents, minIncident}`, `traffic {show, within}`, `fastlap {show}`, `penalty {show}`,
 `h2h {show, cars: [idx, idx]}`, `onboard {show, units: kph|mph}`, `podium {show, classId}`,
-`scene {mode: soon|break|end|null, kick, title, sub, untilMs}` (a show screen: full screen, hides every other
+`scene {mode: soon|break|end|null, kick, title, sub, untilMs, files: {<mode>: asset name or https page}, bare: {<mode>: bool}}` (a show screen: full screen, hides every other
 graphic; untilMs is a wall-clock time for the countdown), `straps {list: [{name, role}], idx, at, secs}` (a new
 `at` puts commentator `idx` up for `secs`, 0 = until `idx` is null), `sponsors {show, logos: [asset], every}`, `qlap {show}`, `tyres {show}`, `trap {show}`, `strip {show}`,
 `league {show, title, sub, rows: [{pos, name, points, num, cls, uid}]}`,
@@ -466,7 +466,7 @@ picture; `want` asks a second camera to cut, `second` is written by the co-host'
 mode: ...|gap|pits|incidents}`, and `theme`: `{preset: imsa|pitboard|daylight, colors: {ink, ink2,
 head, headText, text, muted, accent, accentText, fl, plate}, fonts: {display, body}, fontAssets,
 caps, radius, names: initial|last|full, rowHeight, text: {series, event, gridTitle}, logo,
-bannerLogo, stinger: {video, logo, durationMs, cutMs, sound}, livery: {source: render|photo, x, y, zoom},
+bannerLogo, stinger: {style: wipe|chevrons|checker|panels|iris, video, cuts: {<video>: ms}, logo, durationMs, cutMs, sound}, livery: {source: render|photo, x, y, zoom},
 layout: {<graphic>: {x, y, s}}}`. A rejected patch gets
 `gfx_result {ok:false, error}`.
 
