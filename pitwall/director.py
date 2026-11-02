@@ -20,13 +20,18 @@ in the producer panel:
 whoever had it before ("race" or "you"). Nothing acts while a replay is on
 screen, nor while livery photos are being taken; the owner carries on at live.
 
-Shot choice in "race" mode, from what the race is doing:
+"race" mode tells stories, not shots. Each candidate gets an interest score from what the race is doing:
 
-    a fresh incident (contact, spin)   -> that car, from trackside
-    a battle                           -> leader's rear chase / chaser's chase / onboard
-    a pit stop                         -> pit lane
-    the start and the leader now and then -> aerial and trackside
-    otherwise                          -> the pack near the front
+    a fresh incident (contact, spin)          -> cut at once, from trackside
+    the start                                 -> wide, the leader
+    a lead change, a pass for position        -> the cars involved
+    a battle: how close, closing or not, what it is for, how many cars
+    a class leader, more the longer since it was last shown
+    a top car stopped in its pit box
+
+The director stays with the best story for a few shots, changing angle within it (SEGMENT_MIN_S to SEGMENT_MAX_S),
+and a story it has just shown scores lower for a while (FATIGUE_S), so it neither hops between random cars every
+few seconds nor sits on one battle all race. Nothing is picked for its own sake: no random car "in the field".
 
 Every cut goes through the same command gate as a producer's.
 """
@@ -59,6 +64,11 @@ BATTLE_SHOTS = [("chase", "back"), ("rear", "front"), ("trackside", "back"),
                 ("aerial", "front"), ("onboard", "back")]
 
 FRESH_INCIDENT_S = 20.0     # an incident older than this is not news
+FRESH_MOMENT_S = 12.0       # a pass or a lead change older than this is not worth cutting to
+SEGMENT_MIN_S = 14.0        # a story gets at least this long (two or three shots) unless something bigger happens
+SEGMENT_MAX_S = 40.0        # and at most this, then another story gets the air
+FATIGUE_S = 150.0           # a story just shown scores lower for this long
+INTERRUPT_BY = 35.0         # a new story must beat the one on air by this much to cut in before SEGMENT_MIN_S
 BATTLE_LOST_S = 8.0         # a followed battle missing this long is over
 
 
@@ -101,6 +111,9 @@ class Director:
         self._battle_flip = False
         self._shots = 0
         self._grid_walked = set()         # session numbers already walked automatically
+        self.segment = None               # the story on air: {"key", "why", "cars", "start", "shot"}
+        self._aired: dict = {}            # story key -> [(start, end), ...] in the last FATIGUE_S
+        self._lead_shown: dict = {}       # classId -> when its leader was last on air
         self._last_state = None
         self.current = None               # {"car", "num", "group", "groupName", "reason"}
         self.changed = True
@@ -312,6 +325,7 @@ class Director:
                 g = self._pick_group(groups, {"trackside": 5, "chase": 2, "aerial": 1})
                 if g and self._do_cut(c, g, f"incident: {inc.get('what')}"):
                     self._next_at = now + max(hold, 6.0)
+                    self._end_segment(now)
                     return
         # 2. the start: wide
         if race_state in ("parade_laps", "warmup") or (leader and (leader.get("lap") or 0) <= 1 and self._shots < 3):
@@ -319,39 +333,113 @@ class Director:
                 g = self._pick_group(groups, {"aerial": 4, "trackside": 2, "rear": 1})
                 if g and self._do_cut(leader, g, "the start"):
                     self._next_at = now + hold
+                    self._end_segment(now)
                     return
-        # 3. a car in its pit box
-        pit = [c for c in cars if c.get("surface") == "in_pit_stall" and c.get("pos")]
-        if pit and self.rng.random() < 0.25 and groups.get("pit"):
-            c = min(pit, key=lambda c: c["pos"])
-            g = self._pick_group(groups, {"pit": 1})
-            if g and self._do_cut(c, g, "pit stop"):
-                self._next_at = now + hold
-                return
-        # 4. a battle
-        battles = ((cars_msg.get("derived") or {}).get("battles")) or []
-        if battles and self.rng.random() < 0.75:
-            b = battles[0] if self.rng.random() < 0.7 else self.rng.choice(battles)
-            front, back = by.get(b["cars"][0]), by.get(b["cars"][-1])
-            if front and back:
-                self._battle_flip = not self._battle_flip
-                if self._battle_flip and groups.get("rear"):
-                    c, g, why = front, self._pick_group(groups, {"rear": 1}), "battle: from the car ahead"
-                else:
-                    c = back
-                    g = self._pick_group(groups, {k: w for k, w in weights.items() if k != "rear"})
-                    why = "battle: the chaser"
-                if g and self._do_cut(c, g, why):
-                    self._next_at = now + hold
-                    return
-        # 5. the leader now and then, else someone near the front
-        if leader and self._shots % 5 == 0:
-            c, why = leader, "the leader"
+        # 3. a story
+        self._story_step(groups, cars, by, cars_msg, recent_incidents, t_live, weights, hold, now)
+
+    # ------------------------------------------------------------------ stories
+    def _end_segment(self, now):
+        if self.segment:
+            self._aired.setdefault(self.segment["key"], []).append((self.segment["start"], now))
+        self.segment = None
+
+    def _aired_s(self, key, now):
+        spans = [(a, b) for a, b in self._aired.get(key, []) if b > now - FATIGUE_S]
+        self._aired[key] = spans
+        return sum(b - max(a, now - FATIGUE_S) for a, b in spans)
+
+    def _stories(self, cars, by, cars_msg, moments, t_live, now) -> list[dict]:
+        """Every story worth a camera now, with its interest score (before fatigue)."""
+        out = []
+        multi = len({c.get("classId") for c in cars if c.get("classPos")}) > 1
+        # lead changes and passes for position, just now
+        for e in moments:
+            if t_live is not None and e.get("t") is not None and t_live - e["t"] > FRESH_MOMENT_S:
+                continue
+            if e.get("kind") == "class_lead" and e.get("idx") in by:
+                out.append({"key": "lead-change:%s" % e.get("classId"), "score": 85, "why": "new leader",
+                            "cars": [e["idx"]] + ([e["prevIdx"]] if e.get("prevIdx") in by else [])})
+            elif e.get("kind") == "pass" and e.get("idx") in by:
+                cp = e.get("classPos") or 99
+                out.append({"key": "pass:%s:%s" % (e["idx"], cp), "score": 50 + (25 if cp <= 3 else 10 if cp <= 6 else 0),
+                            "why": "a pass for %sP%s" % ("class " if multi else "", cp),
+                            "cars": [x for x in (e.get("passedIdx") or [])[:1] if x in by] + [e["idx"]]})
+        # battles: how close, closing or not, what they are for, how many cars
+        for b in (cars_msg.get("derived") or {}).get("battles") or []:
+            cs = [i for i in b.get("cars") or [] if i in by]
+            if len(cs) < 2 or any(by[i].get("onPitRoad") for i in cs):
+                continue
+            gap = min(b.get("gapsS") or [9.9])
+            closing = max([x for x in b.get("closingSPerLap") or [] if x is not None] or [0.0])
+            fp = b.get("forClassPos") or 99
+            score = 35 + (30 if gap < 0.3 else 18 if gap < 0.6 else 6) + (12 if closing > 0.1 else 0) \
+                + (30 if fp == 1 else 18 if fp <= 3 else 8 if fp <= 6 else 0) + 5 * (len(cs) - 2)
+            out.append({"key": "battle:%s" % b.get("id"), "score": score, "cars": cs,
+                        "why": "battle for %sP%s" % ("class " if multi else "", fp)})
+        # each class's leader, more interesting the longer it has been off air
+        leaders = {}
+        for c in cars:
+            if c.get("classPos") == 1 and not c.get("onPitRoad"):
+                leaders[c.get("classId")] = c
+        for cid, c in leaders.items():
+            since = now - self._lead_shown.get(str(cid), now - 120.0)
+            out.append({"key": "leader:%s" % cid, "score": 18 + min(32.0, since / 6.0), "cars": [c["idx"]],
+                        "why": "the %sleader" % ("class " if multi else "")})
+        # a car near the front stopped in its box
+        for c in cars:
+            if c.get("surface") == "in_pit_stall" and (c.get("classPos") or 99) <= 5:
+                out.append({"key": "pit:%s" % c["idx"], "score": 30, "cars": [c["idx"]], "why": "pit stop", "pit": True})
+        return out
+
+    def _story_step(self, groups, cars, by, cars_msg, moments, t_live, weights, hold, now):
+        seg = self.segment
+        best, best_s = None, -1e9
+        for st in self._stories(cars, by, cars_msg, moments, t_live, now):
+            sc = st["score"] - 0.4 * self._aired_s(st["key"], now)
+            if seg and st["key"] == seg["key"]:
+                age = now - seg["start"]
+                sc += 25 if age < SEGMENT_MIN_S else -200 if age >= SEGMENT_MAX_S else 0
+            st["now"] = sc
+            if sc > best_s:
+                best, best_s = st, sc
+        if best is None:
+            return
+        on_air = next((x for x in [best] if seg and x["key"] == seg["key"]), None)
+        if seg and best["key"] != seg["key"] and now - seg["start"] < SEGMENT_MIN_S:
+            # a story still running keeps the air unless the new one is much bigger
+            cur = next((st for st in self._stories(cars, by, cars_msg, moments, t_live, now) if st["key"] == seg["key"]), None)
+            if cur is not None and best_s < cur["score"] - 0.4 * self._aired_s(cur["key"], now) + 25 + INTERRUPT_BY:
+                best, on_air = cur, cur
+        if not on_air:
+            if seg:
+                self._aired.setdefault(seg["key"], []).append((seg["start"], now))
+            seg = self.segment = {"key": best["key"], "why": best["why"], "cars": best["cars"], "start": now, "shot": 0}
         else:
-            front = sorted((c for c in cars if c.get("pos")), key=lambda c: c["pos"])[:8] or cars
-            c, why = self.rng.choice(front), "the field"
-        g = self._pick_group(groups, weights)
-        if g and self._do_cut(c, g, why):
+            seg["cars"] = best["cars"]
+        # the shot within the story: battles go round the battle's angles, the rest by style
+        cs = [by[i] for i in seg["cars"] if i in by]
+        if not cs:
+            self.segment = None
+            return
+        if best.get("pit") and groups.get("pit"):
+            car, g = cs[0], self._pick_group(groups, {"pit": 1})
+        elif len(cs) >= 2:
+            car, g = None, None
+            for k in range(len(BATTLE_SHOTS)):
+                kind, who = BATTLE_SHOTS[(seg["shot"] + k) % len(BATTLE_SHOTS)]
+                if groups.get(kind):
+                    car, g = (cs[0] if who == "front" else cs[-1]), self._pick_group(groups, {kind: 1})
+                    seg["shot"] = (seg["shot"] + k + 1) % len(BATTLE_SHOTS)
+                    break
+        else:
+            car, g = cs[0], self._pick_group(groups, weights)
+        if car is not None and g and self._do_cut(car, g, seg["why"]):
+            if seg["key"].startswith("leader:"):
+                self._lead_shown[seg["key"].split(":", 1)[1]] = now
+            for c in cs:
+                if c.get("classPos") == 1:
+                    self._lead_shown[str(c.get("classId"))] = now
             self._next_at = now + hold
 
     def _battle_step(self, groups, by, cars_msg, now):

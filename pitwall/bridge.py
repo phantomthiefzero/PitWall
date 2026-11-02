@@ -326,7 +326,8 @@ class Bridge:
         return out
 
     def _broadcast_tick(self, cars_msg: dict, outbox: list):
-        recent = [e for e in self.deriver.feed_events[-40:] if e.get("kind") == "race_incident"]
+        # incidents, and the moments a director cuts to: passes for position and lead changes
+        recent = [e for e in self.deriver.feed_events[-60:] if e.get("kind") in ("race_incident", "pass", "class_lead")]
         if self.gate.camera:
             try:
                 self.director.tick(self.session_msg, cars_msg, self._last_state, recent,

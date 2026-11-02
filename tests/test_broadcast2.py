@@ -1506,3 +1506,45 @@ def test_the_master_switch_answers_while_the_sim_is_closed():
     ws = WS([{"type": "cmd", "cmd": "director", "action": "broadcast", "on": False}])
     asyncio.run(b._consumer(ws))
     assert [m for m in ws.sent if m.get("type") == "director"][-1]["live"] is False
+
+
+def test_director_tells_stories_and_moves_on():
+    """In race mode the director used to cut every few seconds, often to a random car "in the field", and went
+    back to the top battle three times in four. Now it stays with one story for a few shots, never longer than
+    SEGMENT_MAX_S, and spreads the air between stories; nothing is picked at random."""
+    from pitwall.director import SEGMENT_MAX_S
+    src, d, cuts, clock = _director_rig()
+    deriver = Deriver()
+    sess = build_session(src)
+    log = []                                  # (time, story key, reason)
+    for k in range(60 * 480):
+        src.tick()
+        if k % 8:
+            continue
+        st = build_state(src, deriver)
+        cars = build_cars(src, sess, deriver)
+        clock[0] = k / 60.0
+        n = len(cuts)
+        recent = [e for e in deriver.feed_events[-60:] if e.get("kind") in ("race_incident", "pass", "class_lead")]
+        d.tick(sess, cars, st, recent)
+        if len(cuts) > n:
+            log.append((clock[0], (d.segment or {}).get("key"), d.current["reason"]))
+    assert len(log) > 30
+    assert not [r for _, _, r in log if r == "the field"], "no random cars"
+    # how long each story stayed on air, run by run
+    runs, start = [], None
+    for i, (t, key, _) in enumerate(log):
+        if key is None:
+            continue
+        if i == 0 or log[i - 1][1] != key:
+            start = t
+        nxt = log[i + 1][0] if i + 1 < len(log) else t
+        if i + 1 == len(log) or log[i + 1][1] != key:
+            runs.append((key, nxt - start))
+    assert max(s for _, s in runs) <= SEGMENT_MAX_S + 12, runs
+    keys = [k for _, k, _ in log if k]
+    assert len(set(keys)) >= 4, set(keys)
+    top = max(set(keys), key=keys.count)
+    assert keys.count(top) / len(keys) < 0.5, f"{top} hogged the air"
+    # and shots inside a story last longer than the old 6-9 s hops between random cars
+    assert len(runs) < len(log) * 0.6

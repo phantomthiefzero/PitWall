@@ -37,6 +37,14 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
 .layer{position:absolute;opacity:0;pointer-events:none;transition:opacity .35s ease}
 .layer.on{opacity:1}
+/* Arrange mode (&edit=1, the producer's "Arrange graphics"): every graphic on screen can be dragged, and resized
+   by its corner or the mouse wheel; double-click puts it back. */
+body.edit .layer.on:not(#stinger):not(#scene){pointer-events:auto;cursor:move}
+body.edit .layer.on:not(#stinger):not(#scene) .inner,body.edit #strip.on .so{outline:2px dashed rgba(255,214,0,.85);outline-offset:3px}
+body.edit .layer.drag .inner{outline-color:#3fd47a}
+body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outline:2px dashed rgba(255,214,0,.85);outline-offset:3px}
+.ed-tag{position:absolute;z-index:5;transform:translateY(-100%);background:rgba(255,214,0,.95);color:#000;font:700 14px/1 sans-serif;padding:4px 7px;pointer-events:none;white-space:nowrap}
+.ed-h{position:absolute;z-index:5;width:22px;height:22px;background:#ffd600;border:2px solid #000;cursor:nwse-resize}
 .inner{transition:transform .4s cubic-bezier(.2,.8,.2,1)}
 .hide{display:none!important}
 .tab{font-variant-numeric:tabular-nums}
@@ -651,7 +659,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const ONLY = Q.get("only");
   // The producer panel's monitor (&monitor=1): no sound, no stinger. Its Preview screen (&preview=1) shows the
   // graphics staged in studio mode (gfx studio.pv laid over what is on air), whatever the master switch says.
-  const MONITOR = Q.get("monitor") === "1", PREVIEW = MONITOR && Q.get("preview") === "1";
+  const EDIT = Q.get("edit") === "1" || Q.get("edit") === "all";
+  const MONITOR = Q.get("monitor") === "1" || EDIT, PREVIEW = MONITOR && (Q.get("preview") === "1" || EDIT);
   if (PREVIEW) document.body.classList.remove("bc-off");
   const DEL = "__pw_del__";      // a staged "remove this key" (the relay's merge would drop a plain null)
   function staged(into, patch) {
@@ -761,7 +770,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // A show screen covers the whole picture: nothing else is on air while one is up, on any source (a tower given
   // its own OBS source would otherwise sit on top of the starting-soon screen).
   const sceneUp = () => !!G("scene.mode", null);
-  const shown = name => allowed(name) && !sceneUp() && (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
+  const EDIT_ALL = Q.get("edit") === "all";
+  const shown = name => allowed(name) && !sceneUp() && (EDIT_ALL || !!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
     !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
@@ -890,13 +900,78 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const blogo = assetUrl(th.bannerLogo || th.sponsor);
     $("bnLogoBox").classList.toggle("hide", !blogo); if (blogo) $("bnLogo").src = blogo;
     // layout: every graphic can be moved and resized
-    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip"]) {
+    // theme.size: every graphic at once (the full-width crawl excepted), times its own size
+    const size = Math.min(1.5, Math.max(0.5, Number(th.size) || 1));
+    for (const id of LAYOUT_IDS) {
+      if (ED.id === id) continue;                 // being dragged in Arrange mode
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
-      el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${Number(l.s) || 1})`;
+      el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${(Number(l.s) || 1) * (id === "strip" ? 1 : size)})`;
       el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
+  }
+
+  // ---------------------------------------------------------------- Arrange mode
+  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip"];
+  const ED_NAMES = { tower: "Timing tower", banner: "Banner", replay: "Replay bug", battle: "Battle box", card: "Driver card", map: "Track map", ticker: "Race control",
+    board: "Standings", grid: "Grid", faster: "Where they're faster", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head",
+    onboard: "Onboard", podium: "Podium", strap: "Commentator", sponsors: "Sponsors", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", strip: "Running order",
+    league: "League", pip: "Picture in picture" };
+  // Dragging changes this page only; the result goes to the producer panel (postMessage), which saves it as the
+  // look's layout (theme.layout) so every OBS source follows.
+  const ED = { id: null };
+  function edLayout(id) { const l = ((S.gfx.theme || {}).layout || {})[id] || {}; return { x: Number(l.x) || 0, y: Number(l.y) || 0, s: Number(l.s) || 1 }; }
+  function edSend(id, l) { try { window.parent.postMessage({ pwLayout: { id, x: Math.round(l.x), y: Math.round(l.y), s: Math.round(l.s * 100) / 100 } }, "*"); } catch (e) {} }
+  function edApply(id, l) {
+    const size = id === "strip" ? 1 : Math.min(1.5, Math.max(0.5, Number(T("size", 1)) || 1));
+    ($(id).querySelector(".inner") || $(id)).style.transform = `translate(${l.x}px,${l.y}px) scale(${l.s * size})`;
+  }
+  function edMarks() {
+    document.querySelectorAll(".ed-tag,.ed-h").forEach(e => e.remove());
+    for (const id of LAYOUT_IDS) {
+      const sec = $(id); if (!sec.classList.contains("on")) continue;
+      const r = (sec.querySelector(".inner") || sec).getBoundingClientRect(); if (!r.width) continue;
+      const t = document.createElement("div"); t.className = "ed-tag"; t.textContent = ED_NAMES[id] || id;
+      t.style.left = r.left + "px"; t.style.top = Math.max(18, r.top - 4) + "px"; document.body.appendChild(t);
+      if (id === "strip") continue;
+      const h = document.createElement("div"); h.className = "ed-h"; h.dataset.id = id;
+      h.style.left = (r.right - 11) + "px"; h.style.top = (r.bottom - 11) + "px"; document.body.appendChild(h);
+    }
+  }
+  if (EDIT) {
+    document.body.classList.add("edit");
+    setInterval(() => { if (!ED.id) edMarks(); }, 400);
+    document.addEventListener("mousedown", e => {
+      const h = e.target.closest(".ed-h"), sec = h ? $(h.dataset.id) : e.target.closest(".layer.on");
+      if (!sec || !LAYOUT_IDS.includes(sec.id)) return;
+      e.preventDefault();
+      const id = sec.id, l0 = edLayout(id), r = (sec.querySelector(".inner") || sec).getBoundingClientRect();
+      ED.id = id; sec.classList.add("drag");
+      const mode = h ? "size" : "move", x0 = e.clientX, y0 = e.clientY;
+      let l = { ...l0 };
+      const move = ev => {
+        const dx = ev.clientX - x0, dy = ev.clientY - y0;
+        if (mode === "move") l = { ...l0, x: l0.x + (id === "strip" ? 0 : dx), y: l0.y + dy };
+        else l = { ...l0, s: Math.min(2.5, Math.max(0.3, l0.s * (r.width + dx) / r.width)) };
+        edApply(id, l);
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up);
+        sec.classList.remove("drag"); edSend(id, l); setTimeout(() => { ED.id = null; }, 300);
+      };
+      document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
+    });
+    document.addEventListener("wheel", e => {
+      const sec = e.target.closest(".layer.on"); if (!sec || !LAYOUT_IDS.includes(sec.id) || sec.id === "strip") return;
+      e.preventDefault();
+      const l = edLayout(sec.id); l.s = Math.min(2.5, Math.max(0.3, l.s * (e.deltaY < 0 ? 1.05 : 1 / 1.05)));
+      edApply(sec.id, l); edSend(sec.id, l);
+    }, { passive: false });
+    document.addEventListener("dblclick", e => {
+      const sec = e.target.closest(".layer.on"); if (!sec || !LAYOUT_IDS.includes(sec.id)) return;
+      edApply(sec.id, { x: 0, y: 0, s: 1 }); edSend(sec.id, { x: 0, y: 0, s: 1 });
+    });
   }
 
   // ---------------------------------------------------------------- liveries
