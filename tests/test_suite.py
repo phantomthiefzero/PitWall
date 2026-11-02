@@ -716,7 +716,8 @@ class GuestTokenTest(unittest.TestCase):
                 packed = r.read()
             self.assertEqual(gzip.decompress(packed), want, path)
             self.assertLess(len(packed), len(want) // 2, path)
-        # not asked for: sent as it is (a broadcast page, under the size that stalls)
+        # not asked for: sent as it is. Every browser asks (OBS's too), so on the wire a page is its compressed
+        # size; the overlay (~140 KB) and the dashboard (~160 KB) are over the stall size only uncompressed.
         _s, headers, body = fetch(http + "/broadcast/overlay.html", gzip_ok=False)
         self.assertIsNone(headers.get("Content-Encoding"))
         self.assertEqual(body, on_disk("broadcast", "overlay.html"))

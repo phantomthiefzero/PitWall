@@ -48,6 +48,10 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .tw-head{background:var(--head);color:var(--headText);display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r) var(--r) 0 0}
 .tw-head .ttl{font:700 22px/1 var(--display);text-transform:var(--caps);letter-spacing:.02em}
 .tw-head .st{margin-left:auto;font:700 22px/1 var(--display);text-transform:var(--caps);font-variant-numeric:tabular-nums}
+.tw-head .md{font:700 12px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px solid currentColor;border-radius:var(--r);padding:3px 5px 2px}
+.row.cut{box-shadow:inset 0 -3px 0 var(--flag-red,#e33)}
+.tc{display:inline-block;min-width:20px;text-align:center;font:800 13px/1 var(--display);padding:3px 4px 2px;border-radius:50%;color:#0b0d12;background:#ccc;margin-right:5px}
+.tc.S{background:#ff4d4d}.tc.M{background:#ffd23f}.tc.H{background:#f2f2f2}.tc.W{background:#3c8dff;color:#fff}.tc.I{background:#3fd47a}
 .tw-head .st small{font-weight:600;color:var(--muted);font-size:16px;margin-right:4px}
 .tw-flag{height:5px;background:var(--muted)}
 .tw-body{position:relative;background:var(--ink)}
@@ -310,6 +314,47 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .sb img{max-width:220px;max-height:56px;object-fit:contain;animation:sbIn .6s ease both}
 @keyframes sbIn{from{opacity:0;transform:translateY(8px)}}
 
+/* ---------- qualifying: the camera car's live lap against the class pole lap ---------- */
+#qlap{left:50%;top:36px;width:640px;margin-left:-320px}
+.ql{background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.ql-h{display:flex;align-items:center;gap:10px;background:var(--head);color:var(--headText);padding:8px 14px 7px;font:800 15px/1 var(--display);letter-spacing:.08em;text-transform:uppercase}
+.ql-h .nm{font:700 20px/1 var(--display);letter-spacing:0;text-transform:var(--caps)}
+.ql-b{display:flex;align-items:center;gap:18px;padding:10px 16px}
+.ql-d{font:800 46px/1 var(--display);font-variant-numeric:tabular-nums;padding:4px 10px 2px;border-radius:var(--r)}
+.ql-d.p{background:var(--sx-p);color:#fff}.ql-d.g{background:var(--sx-g);color:#0b0d12}.ql-d.y{background:var(--sx-y);color:#0b0d12}
+.ql-x{display:flex;flex-direction:column;gap:6px;color:var(--muted);font:600 16px/1 var(--body)}
+.ql-x b{color:var(--text);font:800 26px/1 var(--display)}
+.ql-bar{height:6px;background:var(--line)}.ql-bar i{display:block;height:100%;background:var(--accent)}
+
+/* ---------- tyres, speed trap ---------- */
+#tyres{left:800px;bottom:190px}
+#trap{right:36px;top:560px;width:360px}
+.mini{background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.mini-h{background:var(--head);color:var(--headText);padding:7px 12px 6px;font:800 14px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;display:flex;gap:8px;align-items:center}
+.mini-r{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--line);font:600 18px/1 var(--display);text-transform:var(--caps);white-space:nowrap}
+.mini-r .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.mini-r .v{font-variant-numeric:tabular-nums;font-weight:800}
+.ty{display:flex;align-items:center;gap:6px;padding:9px 12px}
+.ty .run{display:flex;align-items:center;font:700 17px/1 var(--display);font-variant-numeric:tabular-nums}
+.ty .ar{color:var(--muted)}
+
+/* ---------- running order strip (oval style), league standings ---------- */
+#strip{left:0;bottom:8px;width:1920px;height:36px;overflow:hidden}
+.so{display:flex;width:max-content;animation:soRun var(--so-dur,60s) linear infinite}
+.so-c{display:flex;align-items:center;gap:7px;height:36px;padding:0 16px 0 10px;background:var(--ink);border-right:1px solid var(--line);font:700 19px/1 var(--display);text-transform:var(--caps);white-space:nowrap}
+.so-c .p{font-weight:800;color:var(--accent)}
+.so-c .g{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}
+.so-c.cam{background:color-mix(in srgb,var(--accent) 25%,var(--ink))}
+.so-t{background:var(--head);color:var(--headText);padding:0 16px;display:flex;align-items:center;font:800 16px/1 var(--display);letter-spacing:.08em;text-transform:uppercase}
+@keyframes soRun{to{transform:translateX(-50%)}}
+#league{left:50%;top:110px;width:1100px;margin-left:-550px}
+.lg-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
+.lg-r{display:flex;align-items:center;gap:10px;height:34px;border-top:1px solid var(--line);padding:0 6px;font:600 20px/1 var(--display);text-transform:var(--caps)}
+.lg-r .p{width:30px;text-align:center;font-weight:800}
+.lg-r .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lg-r .now{font:700 13px/1 var(--body);color:var(--accentText);background:var(--accent);border-radius:var(--r);padding:4px 6px 3px;text-transform:none}
+.lg-r .pts{width:70px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+
 /* ---------- standings board / grid ---------- */
 #board,#grid{left:50%;top:110px;width:1400px;margin-left:-700px}
 .pn{border-radius:var(--r);overflow:hidden}
@@ -465,7 +510,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
 <body class="bc-off">
 <div id="stage">
   <section class="layer" id="tower"><div class="inner">
-    <div class="tw-head"><img class="logo hide" id="twLogo" alt=""><span class="ttl" id="twTitle">Race</span><span class="st" id="twState"></span></div>
+    <div class="tw-head"><img class="logo hide" id="twLogo" alt=""><span class="ttl" id="twTitle">Race</span><span class="md hide" id="twMd"></span><span class="st" id="twState"></span></div>
     <div class="tw-flag" id="twFlag"></div>
     <div class="tw-body" id="twBody"></div>
     <div class="tw-foot"></div>
@@ -506,6 +551,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
 
   <section class="layer" id="traffic"><div class="inner"><div class="tr"><div class="tr-h"><span class="ic"></span>Traffic ahead</div><div id="trRows"></div></div></div></section>
   <section class="layer" id="fastlap"><div class="inner" id="flaBox"></div></section>
+  <section class="layer" id="qlap"><div class="inner" id="qlBox"></div></section>
+  <section class="layer" id="tyres"><div class="inner" id="tyBox"></div></section>
+  <section class="layer" id="trap"><div class="inner" id="trBox"></div></section>
+  <section class="layer" id="strip"><div class="so" id="soRow"></div></section>
+  <section class="layer" id="league"><div class="inner"><div class="pn"><div class="pn-head"><img class="logo hide" id="lgLogo" alt=""><b id="lgTitle">Championship</b><span id="lgSub"></span></div><div class="pn-body"><div class="lg-cols" id="lgCols"></div></div></div></div></section>
   <section class="layer" id="podium"><div class="inner" id="pdBox"></div></section>
   <section class="layer" id="strap"><div class="inner" id="spBox"></div></section>
   <section class="layer" id="sponsors"><div class="inner sb" id="sbBox"></div></section>
@@ -611,7 +661,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return v === undefined ? dflt : v;
   }
   const T = (k, d) => G("theme." + k, d);
-  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false };
+  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false, qlap: false, tyres: false, trap: false, strip: false, league: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
   // Automatic graphics (producer: "Pick graphics for me"): the battle's "where they're faster" when the two
@@ -623,6 +673,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (name === "board") return isRace() && racingFlag() === "checkered";
     if (name === "traffic") return isRace() && trafficList(20).length > 0;
     if (name === "fastlap" || name === "penalty") return true;
+    if (name === "qlap") return !isRace() && !!qlapCar();
     if (name !== "faster") return false;
     const b = currentBattle(); if (!b) { AUTO.pair = null; return false; }
     const c2 = carByIdx(b.cars[b.cars.length - 1]), d = c2 && c2.derived || {};
@@ -638,7 +689,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // A show screen covers the whole picture: nothing else is on air while one is up (unless it has its own source).
   const sceneUp = () => !!G("scene.mode", null) && allowed("scene");
   const shown = name => allowed(name) && !sceneUp() && (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
-    !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard"].includes(name) && G("grid.solo", true));
+    !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
   const gridWalkCar = () => {
@@ -766,11 +817,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const blogo = assetUrl(th.bannerLogo || th.sponsor);
     $("bnLogoBox").classList.toggle("hide", !blogo); if (blogo) $("bnLogo").src = blogo;
     // layout: every graphic can be moved and resized
-    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors"]) {
+    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league"]) {
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${Number(l.s) || 1})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "100% 0", strip: "50% 100%", league: "50% 0" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -820,12 +871,14 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const lapsOr = (s, laps) => laps >= 1 ? fmt.laps(laps) : s != null ? fmt.gap(s) : null;
     switch (mode) {
       case "gap": {
+        if (!isRace()) return d.classPoleGapS == null ? "–" : d.classPoleGapS === 0 ? fmt.lap(c.bestLapS) : fmt.gap(d.classPoleGapS);
         if (byClass) return d.liveClassGapS == null && d.classGapLaps == null ? (c.classPos === 1 ? "Leader" : "–") : lapsOr(d.liveClassGapS, d.classGapLaps) || "–";
         return c.pos === 1 ? "Leader" : lapsOr(d.liveGapS, d.gapLaps) || (c.gapValid && c.f2TimeS > 0 ? fmt.gap(c.f2TimeS) : "–");
       }
       case "best": return fmt.lap(c.bestLapS);
       case "last": return fmt.lap(c.lastLapS);
       case "pits": return d.stopsSeen != null ? String(d.stopsSeen) : "–";
+      case "tyres": { const r = (d.tyreRuns || []).slice(-1)[0]; return r ? tyreHtml(r.compound) + (d.lapsThisStint != null ? d.lapsThisStint : "") : "–"; }
       case "incidents": {
         if (c.incidents != null && c.incidents >= 0 && officialPublished()) return c.incidents + "x";
         const p = predicted(c.idx);
@@ -893,7 +946,12 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("twState").innerHTML = rs.main;
     const f = racingFlag();
     $("twFlag").style.background = f ? FLAG_BG[f] : "var(--muted)";
-    const mode = G("tower.mode", "interval");
+    // F1-style: the column can take turns (gfx tower.rotate), 8 s each, its name in the header
+    const ROT = { interval: "Interval", gap: isRace() ? "Gap" : "To pole", last: "Last lap", best: "Best lap", tyres: "Tyres", pits: "Pit stops" };
+    const rot = G("tower.rotate", null);
+    const mode = rot && rot.length ? rot[Math.floor(Date.now() / 8000) % rot.length] : G("tower.mode", "interval");
+    $("twMd").classList.toggle("hide", !(rot && rot.length)); $("twMd").textContent = ROT[mode] || "";
+    const cut = Number(G("tower.cut", 0)) || 0;
     const { rows, byClass } = towerRows();
     const multiC = multi(), cam = camIdx(), now = performance.now();
     const fl = fastestByClass();
@@ -930,7 +988,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const mvEl = el.querySelector(".mv"); mvEl.className = "mv" + (mv ? (mv.up ? " up" : " dn") : ""); mvEl.textContent = mv ? (mv.up ? "▲" : "▼") : "";
       const vEl = el.querySelector(".val");
       if (mode === "sectors") { const h = sectorBars(r); if (vEl.innerHTML !== h) vEl.innerHTML = h; }
+      else if (mode === "tyres") { const h = towerValue(r, mode, byClass); if (vEl.innerHTML !== h) vEl.innerHTML = h; }
       else vEl.textContent = towerValue(r, mode, byClass);
+      el.classList.toggle("cut", cut > 0 && p === cut);
       el.classList.toggle("cam", r.idx === cam);
       el.classList.toggle("alt", n % 2 === 1);
       el.style.height = rowH + "px";
@@ -1062,6 +1122,96 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("obWheel").style.transform = c.steerRad == null ? "" : `rotate(${(-c.steerRad).toFixed(3)}rad)`;
   }
 
+  // ---------------------------------------------------------------- tyres
+  // The compound's name from the session's tyre list (DriverTires), its first letter on a coloured disc.
+  function tyreHtml(i) {
+    const t = ((S.session && S.session.driverTires) || []).find(x => x.index === i), n = t && t.type ? String(t.type) : "";
+    const k = /soft/i.test(n) ? "S" : /med/i.test(n) ? "M" : /hard/i.test(n) ? "H" : /wet|rain/i.test(n) ? "W" : /inter/i.test(n) ? "I" : "";
+    return `<span class="tc ${k}" title="${esc(n)}">${esc(k || (n ? n[0].toUpperCase() : "C" + i))}</span>`;
+  }
+  function renderTyres() {
+    const c = cardCar(), runs = c && (c.derived || {}).tyreRuns || [];
+    $("tyres").classList.toggle("on", !!c && runs.length > 0 && shown("tyres"));
+    if (!c || !runs.length) return;
+    const h = `<div class="mini"><div class="mini-h">Tyres ${plate(c)}<span>${nameHtml(c.name)}</span></div><div class="ty">` +
+      runs.map(r => `<span class="run">${tyreHtml(r.compound)}${r.laps != null ? r.laps + " laps" : "since we joined"}</span>`).join('<span class="ar">›</span>') + `</div></div>`;
+    if ($("tyBox").innerHTML !== h) $("tyBox").innerHTML = h;
+  }
+
+  // ---------------------------------------------------------------- speed trap
+  // Each car's best top speed on a lap (derived.topSpeedBestMs), the camera car's class in a multiclass race.
+  function renderTrap() {
+    const cam = carByIdx(camIdx()), m = multi(), mph = G("onboard.units", "kph") === "mph";
+    const list = allCars().filter(c => (c.derived || {}).topSpeedBestMs > 0 && (!m || !cam || c.classId === cam.classId))
+      .sort((a, b) => b.derived.topSpeedBestMs - a.derived.topSpeedBestMs).slice(0, 6);
+    $("trap").classList.toggle("on", list.length > 0 && shown("trap"));
+    if (!list.length) return;
+    const k = c => c.className && m ? `<span class="cl" style="font:800 12px/1 var(--display);padding:3px 6px 2px;border-radius:var(--r);background:${css(c.classColor)};color:${inkOn(css(c.classColor))}">${esc(c.className)}</span>` : "";
+    const h = `<div class="mini"><div class="mini-h">Speed trap ${list[0] ? k(list[0]) : ""}</div>` + list.map((c, i) =>
+      `<div class="mini-r"><span style="width:22px;text-align:center">${i + 1}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span><span class="v">${Math.round(c.derived.topSpeedBestMs * (mph ? 2.23694 : 3.6))}</span><small style="color:var(--muted);font:600 12px var(--body)">${mph ? "mph" : "km/h"}</small></div>`).join("") + `</div>`;
+    if ($("trBox").innerHTML !== h) $("trBox").innerHTML = h;
+  }
+
+  // ---------------------------------------------------------------- qualifying lap
+  function qlapCar() { const c = carByIdx(camIdx()); return c && (c.derived || {}).qualiLap ? c : null; }
+  function renderQlap() {
+    const c = qlapCar(), q = c && c.derived.qualiLap;
+    $("qlap").classList.toggle("on", !!q && !isRace() && shown("qlap"));
+    if (!q) return;
+    const dp = q.deltaPoleS, cls = dp < 0 ? "p" : q.deltaOwnS != null && q.deltaOwnS < 0 ? "g" : "y";
+    const pole = carByIdx(q.poleIdx), m = multi();
+    const h = `<div class="ql"><div class="ql-h">Live lap ${plate(c)}<span class="nm">${nameHtml(c.name)}</span></div>` +
+      `<div class="ql-b"><span class="ql-d ${cls}">${dp < 0 ? "−" : "+"}${Math.abs(dp).toFixed(3)}</span>` +
+      `<div class="ql-x"><span>to ${q.poleIdx === c.idx ? "own best" : "pole"}${pole && q.poleIdx !== c.idx ? " · " + nameHtml(pole.name) : ""}</span><span>on for <b>P${q.projectedPos}</b>${m && c.className ? " " + esc(c.className) : ""}</span></div>` +
+      `${q.deltaOwnS != null ? `<div class="ql-x" style="margin-left:auto;text-align:right"><span>own best</span><b>${q.deltaOwnS < 0 ? "−" : "+"}${Math.abs(q.deltaOwnS).toFixed(3)}</b></div>` : ""}</div>` +
+      `<div class="ql-bar"><i style="width:${(100 * q.stretch / q.of).toFixed(1)}%"></i></div></div>`;
+    if ($("qlBox").innerHTML !== h) $("qlBox").innerHTML = h;
+  }
+
+  // ---------------------------------------------------------------- running order strip
+  // The whole field in running order (derived.livePos), crawling right to left; rebuilt each time round.
+  const SO = { built: false };
+  function soHtml() {
+    const cam = camIdx(), race = isRace();
+    const field = allCars().filter(c => c.pos > 0).sort((a, b) => ((a.derived || {}).livePos || a.pos) - ((b.derived || {}).livePos || b.pos));
+    const one = `<span class="so-t">${esc(T("text.series", "") || "Running order")}</span>` + field.map(c => { const d = c.derived || {};
+      const g = !race ? fmt.lap(c.bestLapS) : c.pos === 1 ? "Leader" : d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : d.liveGapS != null ? fmt.gap(d.liveGapS) : "";
+      return `<span class="so-c${c.idx === cam ? " cam" : ""}"><span class="p">${esc(d.livePos || c.pos)}</span>${plate(c)}<span>${nameHtml(c.name, "last")}</span><span class="g">${esc(g)}</span></span>`; }).join("");
+    return { html: one + one, n: field.length };
+  }
+  function renderStrip() {
+    const on = shown("strip") && !!S.cars;
+    $("strip").classList.toggle("on", on);
+    if (!on) { SO.built = false; return; }
+    if (!SO.built) {
+      const r = soHtml(); $("soRow").innerHTML = r.html; $("soRow").style.setProperty("--so-dur", Math.max(30, r.n * 3.2) + "s"); SO.built = true;
+      $("soRow").onanimationiteration = () => { const x = soHtml(); $("soRow").innerHTML = x.html; };
+    }
+  }
+
+  // ---------------------------------------------------------------- league standings
+  // gfx league: {title, rows: [{pos, name, points, num, cls, uid}]} from the producer's uploaded file. The
+  // points are the league's own figures; a driver in this session shows where they are now (iRacing's order).
+  function renderLeague() {
+    const L = G("league", {}) || {}, rows = L.rows || [];
+    const on = shown("league") && rows.length > 0;
+    $("league").classList.toggle("on", on);
+    if (!on) return;
+    $("lgTitle").textContent = L.title || "Championship";
+    $("lgSub").textContent = L.sub || "";
+    const logo = assetUrl(T("logo", "")); $("lgLogo").classList.toggle("hide", !logo); if (logo) $("lgLogo").src = logo;
+    const cars = allCars().filter(c => c.pos > 0), m = multi();
+    const nameKey = n => String(n || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const now = r => { const c = cars.find(c => (r.uid && String(c.userId) === String(r.uid)) || (r.name && nameKey(c.name) === nameKey(r.name)));
+      return c ? `<span class="now">${isRace() ? "Now " : ""}P${esc(m ? c.classPos : c.pos)}</span>` : ""; };
+    const list = rows.slice(0, 24), half = list.length > 12 ? Math.ceil(list.length / 2) : list.length;
+    const col = part => `<div>${part.map((r, i) => `<div class="lg-r"><span class="p">${esc(r.pos ?? "")}</span>${r.num != null && r.num !== "" ? `<span class="plate" style="background:${T("colors.plate", "#2a2f38")};color:#fff">${esc(r.num)}</span>` : ""}` +
+      `<span class="n">${nameHtml(r.name)}${r.cls ? ` <small style="color:var(--muted);font-size:14px">${esc(r.cls)}</small>` : ""}</span>${now(r)}<span class="pts">${esc(r.points ?? "")}</span></div>`).join("")}</div>`;
+    const h = col(list.slice(0, half)) + (half < list.length ? col(list.slice(half)) : "");
+    $("lgCols").style.gridTemplateColumns = half < list.length ? "1fr 1fr" : "1fr";
+    if ($("lgCols").innerHTML !== h) $("lgCols").innerHTML = h;
+  }
+
   // ---------------------------------------------------------------- show screens
   // gfx scene: {mode: soon | break | end, title, sub, untilMs}. The countdown runs on this machine's clock
   // to the time the producer set; nothing in it is a race figure.
@@ -1131,7 +1281,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       return by ? (d.classGapLaps >= 1 ? fmt.laps(d.classGapLaps) : fmt.gap(d.liveClassGapS)) : (d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : fmt.gap(d.liveGapS)); };
     const step = (c, k) => !c ? "<div></div>" : `<div class="pd-s p${k}"><div class="ph">${photoHtml(c) || helmetHtml(c, 120)}</div><div class="nm">${nameHtml(c.name)}</div>` +
       `<div class="x">${plate(c)}<span>${esc(val(c))}</span></div><div class="step">${k}</div></div>`;
-    const h = `<div class="pd"><div class="pd-h"><b>${fin && race ? "Podium" : "Top three"}</b>${g.k ? `<span class="cl" style="background:${g.k.color};color:${inkOn(g.k.color)}">${esc(g.k.name)}</span>` : ""}` +
+    const h = `<div class="pd"><div class="pd-h"><b>${fin && race ? "Podium" : !race && /qual/i.test((sessionRow() || {}).SessionType || "") ? (fin ? "Front of the grid" : "Qualifying: top three") : "Top three"}</b>${g.k ? `<span class="cl" style="background:${g.k.color};color:${inkOn(g.k.color)}">${esc(g.k.name)}</span>` : ""}` +
       `<span>${esc(T("text.event", "") || (S.session && S.session.track ? S.session.track.TrackDisplayName : ""))}</span></div>` +
       `<div class="pd-b">${step(top[1], 2)}${step(top[0], 1)}${step(top[2], 3)}</div></div>`;
     if (h !== pdSig) { const fresh = !pdSig; pdSig = h; $("pdBox").innerHTML = h; if (fresh) hit($("podium")); }
@@ -1663,7 +1813,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor();
+      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague();
     }
     drawMap(); drawFaster(t);
     pumpTicker();
