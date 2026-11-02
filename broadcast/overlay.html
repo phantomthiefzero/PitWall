@@ -257,6 +257,59 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 @keyframes tkIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
 @keyframes tkOut{to{opacity:0;transform:translateX(30px)}}
 
+/* ---------- show screens: starting soon, intermission, closing (full screen) ---------- */
+#scene{left:0;top:0;width:1920px;height:1080px}
+.sc{position:absolute;inset:0;overflow:hidden;background:radial-gradient(1200px 700px at 80% -10%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 70%),linear-gradient(160deg,color-mix(in srgb,var(--head) 85%,#000),var(--ink) 55%,#05070b)}
+.sc::before{content:"";position:absolute;left:-200px;right:-200px;bottom:100px;height:12px;background:var(--accent);transform:rotate(-2deg);opacity:.9}
+.sc::after{content:"";position:absolute;left:-200px;right:-200px;bottom:80px;height:4px;background:color-mix(in srgb,var(--accent) 50%,transparent);transform:rotate(-2deg)}
+.sc-in{position:absolute;left:120px;right:120px;top:96px;bottom:220px;display:flex;flex-direction:column;color:var(--text)}
+.sc-top{display:flex;align-items:center;gap:22px}
+.sc-top img{max-height:90px;max-width:300px;object-fit:contain}
+.sc-k{font:800 26px/1 var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+.sc h1{font:800 96px/1 var(--display);text-transform:uppercase;letter-spacing:.01em;margin:18px 0 8px;max-width:1500px}
+.sc-sub{font:600 30px/1.2 var(--body);color:var(--muted);text-transform:var(--caps)}
+.sc-cd{margin-top:22px;font:800 64px/1 var(--display);font-variant-numeric:tabular-nums}
+.sc-cd small{font:700 24px/1 var(--display);color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-right:16px}
+.sc-body{margin-top:auto;display:grid;gap:26px;grid-auto-flow:column;grid-auto-columns:1fr;align-items:end}
+.sc-col h3{margin:0 0 8px;font:800 20px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:7px 10px 6px;border-radius:var(--r);display:inline-block}
+.sc-col .r{display:flex;align-items:center;gap:10px;height:34px;border-top:1px solid var(--line);font:600 21px/1 var(--display);text-transform:var(--caps);white-space:nowrap}
+.sc-col .r .p{width:28px;text-align:center;font-weight:800}
+.sc-col .r .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sc-col .r .v{color:var(--muted);font-variant-numeric:tabular-nums}
+.sc-col .more{color:var(--muted);font:600 17px/1 var(--body);padding-top:8px}
+.sc-sp{position:absolute;left:120px;right:120px;bottom:12px;display:flex;align-items:center;justify-content:center;gap:56px;height:56px}
+.sc-sp img{max-height:56px;max-width:220px;object-fit:contain;opacity:.9}
+
+/* ---------- podium: top three of a class ---------- */
+#podium{left:50%;top:150px;width:1100px;margin-left:-550px}
+.pd{border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.pd-h{background:var(--head);color:var(--headText);display:flex;align-items:center;gap:14px;padding:12px 20px}
+.pd-h b{font:800 34px/1 var(--display);text-transform:uppercase;letter-spacing:.03em}
+.pd-h .cl{font:800 16px/1 var(--display);padding:5px 9px 4px;border-radius:var(--r);letter-spacing:.05em;text-transform:uppercase}
+.pd-h span{margin-left:auto;color:var(--muted);font:600 17px/1 var(--body)}
+.pd-b{display:grid;grid-template-columns:1fr 1.15fr 1fr;align-items:end;gap:14px;background:var(--ink);padding:18px 18px 0}
+.pd-s{display:flex;flex-direction:column;align-items:center;text-align:center;min-width:0}
+.pd-s .ph{width:150px;height:150px;border-radius:50%;overflow:hidden;background:var(--ink2);display:grid;place-items:center}
+.pd-s .ph img,.pd-s .ph svg{width:100%;height:100%;object-fit:cover}
+.pd-s .nm{margin-top:10px;font:700 26px/1.1 var(--display);text-transform:var(--caps);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pd-s .x{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font:600 18px/1 var(--display);font-variant-numeric:tabular-nums}
+.pd-s .step{margin-top:12px;width:100%;background:var(--ink2);display:grid;place-items:center;font:800 64px/1 var(--display);color:var(--accent);border-top:4px solid var(--accent)}
+.pd-s.p1 .step{height:150px}.pd-s.p2 .step{height:110px}.pd-s.p3 .step{height:80px}
+.pd-s.p1 .ph{width:180px;height:180px;box-shadow:0 0 0 5px var(--accent)}
+
+/* ---------- commentator strap and sponsor bug ---------- */
+#strap{left:36px;bottom:180px}
+.sp-s{display:flex;align-items:stretch;border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45);animation:flaIn .45s cubic-bezier(.15,.9,.25,1) both}
+.sp-s .bar{width:10px;background:var(--accent);flex:none}
+.sp-s .m{background:var(--ink);padding:12px 22px 11px 16px}
+.sp-s .nm{font:800 34px/1 var(--display);text-transform:uppercase;letter-spacing:.01em}
+.sp-s .rl{margin-top:6px;color:var(--muted);font:600 18px/1.1 var(--body)}
+.sp-s .rl b{color:var(--accent);font-weight:700}
+#sponsors{left:36px;bottom:54px;width:260px;height:76px}
+.sb{width:100%;height:100%;background:var(--ink);border-radius:var(--r);display:grid;place-items:center;box-shadow:0 12px 40px rgba(0,0,0,.45);overflow:hidden}
+.sb img{max-width:220px;max-height:56px;object-fit:contain;animation:sbIn .6s ease both}
+@keyframes sbIn{from{opacity:0;transform:translateY(8px)}}
+
 /* ---------- standings board / grid ---------- */
 #board,#grid{left:50%;top:110px;width:1400px;margin-left:-700px}
 .pn{border-radius:var(--r);overflow:hidden}
@@ -453,6 +506,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
 
   <section class="layer" id="traffic"><div class="inner"><div class="tr"><div class="tr-h"><span class="ic"></span>Traffic ahead</div><div id="trRows"></div></div></div></section>
   <section class="layer" id="fastlap"><div class="inner" id="flaBox"></div></section>
+  <section class="layer" id="podium"><div class="inner" id="pdBox"></div></section>
+  <section class="layer" id="strap"><div class="inner" id="spBox"></div></section>
+  <section class="layer" id="sponsors"><div class="inner sb" id="sbBox"></div></section>
+  <section class="layer" id="scene"><div class="sc"><div class="sc-in"><div class="sc-top"><img id="scLogo" class="hide" alt=""><div class="sc-k" id="scKick"></div></div>
+    <h1 id="scTitle"></h1><div class="sc-sub" id="scSub"></div><div class="sc-cd" id="scCd"></div><div class="sc-body" id="scBody"></div></div><div class="sc-sp" id="scSp"></div></div></section>
   <section class="layer" id="penalty"><div class="inner" id="penBox"></div></section>
   <section class="layer" id="h2h"><div class="inner" id="hhBox"></div></section>
   <section class="layer" id="onboard"><div class="inner"><div class="ob"><div class="gr" id="obGear">–</div><div class="vals"><div><b id="obSpd">–</b><small id="obUnit">km/h</small></div><div><b id="obRpm">–</b><small>rpm</small></div></div>
@@ -553,7 +611,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return v === undefined ? dflt : v;
   }
   const T = (k, d) => G("theme." + k, d);
-  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false };
+  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
   // Automatic graphics (producer: "Pick graphics for me"): the battle's "where they're faster" when the two
@@ -577,7 +635,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (gap == null || Math.abs(gap) >= 0.5 || now - (AUTO.rest[key] || -1e9) < 120000) return false;
     AUTO.pair = key; AUTO.from = now; return true;
   }
-  const shown = name => allowed(name) && (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
+  // A show screen covers the whole picture: nothing else is on air while one is up (unless it has its own source).
+  const sceneUp = () => !!G("scene.mode", null) && allowed("scene");
+  const shown = name => allowed(name) && !sceneUp() && (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
     !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
@@ -706,11 +766,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const blogo = assetUrl(th.bannerLogo || th.sponsor);
     $("bnLogoBox").classList.toggle("hide", !blogo); if (blogo) $("bnLogo").src = blogo;
     // layout: every graphic can be moved and resized
-    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard"]) {
+    for (const id of ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors"]) {
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${Number(l.s) || 1})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -1002,6 +1062,106 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("obWheel").style.transform = c.steerRad == null ? "" : `rotate(${(-c.steerRad).toFixed(3)}rad)`;
   }
 
+  // ---------------------------------------------------------------- show screens
+  // gfx scene: {mode: soon | break | end, title, sub, untilMs}. The countdown runs on this machine's clock
+  // to the time the producer set; nothing in it is a race figure.
+  const SCENE_KICK = { soon: "Starting soon", break: "We'll be right back", end: "Thanks for watching" };
+  function classGroups() {
+    const field = allCars().filter(c => c.pos > 0);
+    return multi() ? classes().map(k => ({ k, list: field.filter(c => c.classId === k.id).sort((a, b) => a.classPos - b.classPos) }))
+      : [{ k: null, list: field.sort((a, b) => a.pos - b.pos) }];
+  }
+  const clsHead = k => k ? `<h3 style="background:${k.color || "var(--muted)"};color:${inkOn(k.color)}">${esc(k.name)}</h3>` : "";
+  let sceneSig = "";
+  function renderScene() {
+    const mode = G("scene.mode", null), on = !!mode && allowed("scene");
+    $("scene").classList.toggle("on", on);
+    if (!on) { sceneSig = ""; return; }
+    const t = S.session && S.session.track, sess = sessionRow();
+    $("scKick").textContent = G("scene.kick", "") || SCENE_KICK[mode] || "";
+    $("scTitle").textContent = G("scene.title", "") || T("text.event", "") || T("text.series", "") || (t ? t.TrackDisplayName : "");
+    $("scSub").textContent = G("scene.sub", "") || [t ? t.TrackDisplayName : "", t && t.TrackConfigName ? t.TrackConfigName : "", sess ? sess.SessionType : ""].filter(Boolean).join(" · ");
+    const logo = assetUrl(T("logo", "")); $("scLogo").classList.toggle("hide", !logo); if (logo && $("scLogo").getAttribute("src") !== logo) $("scLogo").src = logo;
+    const until = G("scene.untilMs", null);
+    if (until && mode !== "end") {
+      const left = Math.max(0, Math.round((until - Date.now()) / 1000));
+      const word = mode === "soon" ? "Starting in" : mode === "break" ? "Back in" : "";
+      $("scCd").innerHTML = left > 0 ? `<small>${word}</small>${fmt.clock(left)}` : `<small>${mode === "soon" ? "Starting" : mode === "break" ? "Back" : ""}</small>now`;
+    } else $("scCd").innerHTML = "";
+    const sp = (G("sponsors.logos", []) || []).map(assetUrl).filter(Boolean);
+    const spH = sp.map(u => `<img src="${u}" alt="">`).join("");
+    if ($("scSp").innerHTML !== spH) $("scSp").innerHTML = spH;
+    // the body changes with the field: rebuilt at most once a second
+    const now = performance.now(); if (sceneSig === mode && now - (renderScene.at || 0) < 1000) return;
+    sceneSig = mode; renderScene.at = now;
+    const groups = classGroups(), race = isRace(), fin = racingFlag() === "checkered";
+    let body = "";
+    if (mode === "soon") {
+      const per = groups.length > 1 ? 12 : 24;
+      body = groups.map(g => `<div class="sc-col">${clsHead(g.k)}${(g.list.length ? g.list : []).slice(0, per).map(c =>
+        `<div class="r">${plate(c)}<span class="n">${nameHtml(c.name)}</span></div>`).join("")}${g.list.length > per ? `<div class="more">and ${g.list.length - per} more</div>` : ""}</div>`).join("");
+    } else if (mode === "break") {
+      body = groups.map(g => `<div class="sc-col">${clsHead(g.k)}${g.list.slice(0, 6).map(c => { const d = c.derived || {}, by = !!g.k;
+        const gap = race ? ((by ? c.classPos : c.pos) === 1 ? "Leader" : by ? (d.classGapLaps >= 1 ? fmt.laps(d.classGapLaps) : fmt.gap(d.liveClassGapS)) : (d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : fmt.gap(d.liveGapS))) : fmt.lap(c.bestLapS);
+        return `<div class="r"><span class="p">${esc(by ? c.classPos : c.pos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span><span class="v">${esc(gap)}</span></div>`; }).join("")}</div>`).join("");
+    } else if (mode === "end") {
+      body = groups.map(g => `<div class="sc-col">${clsHead(g.k)}${g.list.slice(0, 3).map(c => { const by = !!g.k;
+        return `<div class="r"><span class="p">${esc(by ? c.classPos : c.pos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span><span class="v">${race && !fin ? "" : fmt.lap(c.bestLapS)}</span></div>`; }).join("")}</div>`).join("");
+    }
+    if ($("scBody").innerHTML !== body) $("scBody").innerHTML = body;
+  }
+
+  // ---------------------------------------------------------------- podium
+  // Top three of a class (gfx podium.classId; none picked in a multiclass race: each class in turn, 10 s each).
+  let pdSig = "";
+  function renderPodium() {
+    const groups = classGroups();
+    let g = groups[0];
+    if (groups.length > 1) {
+      const pick = G("podium.classId", null);
+      g = groups.find(x => x.k.id === pick) || groups[Math.floor(Date.now() / 10000) % groups.length];
+    }
+    const on = shown("podium") && !!g && g.list.length > 0;
+    $("podium").classList.toggle("on", on);
+    if (!on) return;
+    const by = !!g.k, fin = racingFlag() === "checkered", race = isRace(), top = g.list.slice(0, 3);
+    const val = c => { const d = c.derived || {}, p = by ? c.classPos : c.pos;
+      if (!race) return fmt.lap(c.bestLapS);
+      if (p === 1) return fin ? "Winner" : "Leader";
+      return by ? (d.classGapLaps >= 1 ? fmt.laps(d.classGapLaps) : fmt.gap(d.liveClassGapS)) : (d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : fmt.gap(d.liveGapS)); };
+    const step = (c, k) => !c ? "<div></div>" : `<div class="pd-s p${k}"><div class="ph">${photoHtml(c) || helmetHtml(c, 120)}</div><div class="nm">${nameHtml(c.name)}</div>` +
+      `<div class="x">${plate(c)}<span>${esc(val(c))}</span></div><div class="step">${k}</div></div>`;
+    const h = `<div class="pd"><div class="pd-h"><b>${fin && race ? "Podium" : "Top three"}</b>${g.k ? `<span class="cl" style="background:${g.k.color};color:${inkOn(g.k.color)}">${esc(g.k.name)}</span>` : ""}` +
+      `<span>${esc(T("text.event", "") || (S.session && S.session.track ? S.session.track.TrackDisplayName : ""))}</span></div>` +
+      `<div class="pd-b">${step(top[1], 2)}${step(top[0], 1)}${step(top[2], 3)}</div></div>`;
+    if (h !== pdSig) { const fresh = !pdSig; pdSig = h; $("pdBox").innerHTML = h; if (fresh) hit($("podium")); }
+  }
+
+  // ---------------------------------------------------------------- commentator strap, sponsor bug
+  // gfx straps: {list: [{name, role}], idx, at, secs}. A new `at` puts the strap up for `secs` (0: until taken
+  // down), timed here from when it arrived, so the two machines' clocks never matter.
+  const STRAP = { key: null, from: 0 };
+  function renderStrap() {
+    const st = G("straps", {}) || {}, p = st.idx != null ? (st.list || [])[st.idx] : null;
+    const key = p ? st.idx + "|" + st.at : null;
+    if (key !== STRAP.key) { STRAP.key = key; STRAP.from = performance.now(); if (p) { $("spBox").innerHTML = `<div class="sp-s"><div class="bar"></div><div class="m"><div class="nm">${esc(p.name || "")}</div>` +
+      (p.role ? `<div class="rl">${esc(p.role)}</div>` : "") + `</div></div>`; hit($("strap")); } }
+    const secs = st.secs == null ? 10 : st.secs;
+    $("strap").classList.toggle("on", !!p && allowed("strap") && !sceneUp() && (!secs || performance.now() - STRAP.from < secs * 1000));
+  }
+  const SPB = { i: -1, at: 0 };
+  function renderSponsor() {
+    const logos = (G("sponsors.logos", []) || []).filter(Boolean);
+    const on = shown("sponsors") && logos.length > 0 && !$("traffic").classList.contains("on");
+    $("sponsors").classList.toggle("on", on);
+    if (!on) return;
+    const every = Math.max(4, G("sponsors.every", 15)) * 1000, now = performance.now();
+    if (SPB.i < 0 || now - SPB.at > every || SPB.i >= logos.length) {
+      SPB.i = (SPB.i + 1) % logos.length; SPB.at = now;
+      $("sbBox").innerHTML = `<img src="${assetUrl(logos[SPB.i])}" alt="">`;
+    }
+  }
+
   // ---------------------------------------------------------------- banner + replay bug
   function renderBanner() {
     $("banner").classList.toggle("on", shown("banner") && !!S.state);
@@ -1021,7 +1181,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     // replay bug: behind live, paused, slow or fast
     const cam = S.state.camera || {}, sp = cam.replaySpeed;
     const behind = !live() || (sp != null && (sp !== 1 || cam.replaySlowMotion));
-    $("replay").classList.toggle("on", behind && allowed("replay") && G("replay.show", true) !== false && !stingerRunning);
+    $("replay").classList.toggle("on", behind && allowed("replay") && !sceneUp() && G("replay.show", true) !== false && !stingerRunning);
     const lbl = G("replay.label", "");
     $("rpLabel").classList.toggle("hide", !lbl);
     $("rpLabel").textContent = sp === 0 ? "Paused" : cam.replaySlowMotion ? "Slow motion" + (lbl ? " · " + lbl : "") : lbl;
@@ -1147,7 +1307,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function renderCard() {
     const walk = gridWalkCar();
     const c = cardCar();
-    $("card").classList.toggle("on", walk ? allowed("card") || allowed("grid") : shown("card") && !!c);
+    $("card").classList.toggle("on", walk ? (allowed("card") || allowed("grid")) && !sceneUp() : shown("card") && !!c);
     $("card").classList.toggle("walk", !!walk);
     if (!c) return;
     if (walk) { renderGridCard(c); return; }
@@ -1398,7 +1558,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function renderGrid() {
     const rows = (S.session && S.session.grid && S.session.grid.rows) || [];
     gridUp = (rows.length > 0 && gridWanted() && !!S.cars) || !!gridWalkCar();
-    const on = allowed("grid") && rows.length > 0 && gridWanted() && !!S.cars && !gridWalkCar();
+    const on = allowed("grid") && !sceneUp() && rows.length > 0 && gridWanted() && !!S.cars && !gridWalkCar();
     $("grid").classList.toggle("on", on);
     if (!on) return;
     const t = S.session.track;
@@ -1503,7 +1663,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard();
+      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor();
     }
     drawMap(); drawFaster(t);
     pumpTicker();

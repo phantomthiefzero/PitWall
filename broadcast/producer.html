@@ -173,7 +173,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
 <div id="bcOff" class="hide"><b>The broadcast is off.</b> Nothing shows on the overlay and nothing here moves the camera: no director, no grid walk at the pace laps, no cuts or replays. Turn it on with <b>Broadcast off</b> at the top when you are ready to go on air. The Look and Liveries tabs can be set up meanwhile.</div>
 <main id="main" class="hide">
   <div id="colLeft">
-    <div class="tabs"><button data-tab="show" class="on">Show</button><button data-tab="look">Look</button><button data-tab="liveries">Liveries</button></div>
+    <div class="tabs"><button data-tab="show" class="on">Show</button><button data-tab="look">Look</button><button data-tab="studio">Studio</button><button data-tab="liveries">Liveries</button></div>
     <div data-pane="show">
       <section><h2>On air</h2><div id="roleWarn" class="warn hide">This link uses a view-only token: open it with the producer token to make changes.</div><div id="toggles"></div></section>
       <section>
@@ -265,6 +265,37 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       </section>
     </div>
 
+    <div data-pane="studio" class="hide">
+      <section>
+        <h2>Show screens</h2>
+        <p class="note" style="margin-top:0">A full-screen page in place of the race graphics: before the start, in a break, and at the end.</p>
+        <div class="opts" id="scMode"></div>
+        <div class="grid2">
+          <label for="scKickIn">Big words</label><input type="text" id="scKickIn" placeholder="Starting soon / We'll be right back / Thanks for watching">
+          <label for="scTitleIn">Title</label><input type="text" id="scTitleIn" placeholder="the event name (Look tab), else the track">
+          <label for="scSubIn">Line under it</label><input type="text" id="scSubIn" placeholder="track · layout · session">
+        </div>
+        <h3>Countdown</h3><div class="opts" id="scCount"></div>
+        <p class="note">Starting soon lists the entry by class, the break shows the order, closing shows the top three of each class. Sponsors chosen below sit along the bottom.</p>
+      </section>
+      <section>
+        <h2>Commentators</h2>
+        <div id="strapList"></div>
+        <div class="opts"><button data-strapadd="1">Add a commentator</button><button data-strapoff="1">Take the strap down</button></div>
+        <h3>A strap stays up for</h3><div class="opts" id="strapSecs"></div>
+      </section>
+      <section>
+        <h2>Sponsors</h2>
+        <p class="note" style="margin-top:0">Pick logos from your files (upload them under Look, Files). They take turns in a small box at the bottom left (switch it on under On air) and all sit along the bottom of the show screens.</p>
+        <div id="spList" class="assets"></div>
+        <h3>Each logo for</h3><div class="opts" id="spEvery"></div>
+      </section>
+      <section>
+        <h2>Podium</h2>
+        <p class="note" style="margin-top:0">The top three, with their pictures. Switch it on under On air.</p>
+        <div class="opts" id="pdCls"></div>
+      </section>
+    </div>
     <div data-pane="liveries" class="hide">
       <section>
         <h2>Car pictures</h2>
@@ -339,7 +370,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       <h2>Overlay for OBS</h2>
       <p class="note" style="margin-top:0">Browser Source, 1920 × 1080. It uses the view token, not yours.</p>
       <code id="obsUrl">Ask whoever runs the relay for the view token.</code>
-      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger) to give one graphic its own source.</p>
+      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors) to give one graphic its own source.</p>
     </section>
   </div>
 </main>
@@ -472,12 +503,70 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   }
   $("toLive").onclick = backToLive;
 
+  // ------------------------------------------------------------- Studio tab
+  const SCENES = [["", "Off"], ["soon", "Starting soon"], ["break", "Intermission"], ["end", "Closing"]];
+  function renderStudio() {
+    const dis = canProduce() ? "" : "disabled", mode = G("scene.mode", null) || "";
+    $("scMode").innerHTML = SCENES.map(([k, l]) => `<button data-scmode="${k}" class="${mode === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
+    for (const [id, k] of [["scKickIn", "kick"], ["scTitleIn", "title"], ["scSubIn", "sub"]]) if (document.activeElement !== $(id)) $(id).value = G("scene." + k, "") || "";
+    const until = G("scene.untilMs", null), left = until ? Math.max(0, Math.round((until - Date.now()) / 60000)) : null;
+    $("scCount").innerHTML = [2, 5, 10, 15, 30].map(n => `<button data-sccd="${n}" ${dis}>${n} min</button>`).join("") +
+      `<button data-sccd="0" ${dis || (until ? "" : "disabled")}>None</button>` + (until ? `<span class="note" style="align-self:center">${left > 0 ? "about " + left + " min left" : "at zero"}</span>` : "");
+    const st = G("straps", {}) || {}, list = st.list || [];
+    $("strapList").innerHTML = list.length ? list.map((p, i) => `<div class="grid2" style="margin-bottom:6px">` +
+      `<input type="text" data-strapf="${i}.name" value="${esc(p.name || "")}" placeholder="Name" ${dis}>` +
+      `<span style="display:flex;gap:6px"><input type="text" data-strapf="${i}.role" value="${esc(p.role || "")}" placeholder="Role, e.g. Lead commentator" style="flex:1" ${dis}>` +
+      `<button data-strapon="${i}" class="${st.idx === i ? "on" : ""}" ${dis}>On air</button><button data-strapdel="${i}" ${dis}>Remove</button></span></div>`).join("")
+      : `<p class="note">No one yet.</p>`;
+    const secs = st.secs == null ? 10 : st.secs;
+    $("strapSecs").innerHTML = [[6, "6 s"], [10, "10 s"], [15, "15 s"], [0, "Until taken down"]].map(([n, l]) => `<button data-strapsecs="${n}" class="${secs === n ? "on" : ""}" ${dis}>${l}</button>`).join("");
+    const logos = G("sponsors.logos", []) || [], imgs = S.assets.filter(a => a.type.startsWith("image/"));
+    $("spList").innerHTML = imgs.length ? imgs.map(a => `<div><img src="${assetUrl(a.name)}" alt=""><span>${esc(a.name)}</span>` +
+      `<button data-spon="${esc(a.name)}" class="${logos.includes(a.name) ? "on" : ""}" style="min-height:26px;padding:1px 9px" ${dis}>${logos.includes(a.name) ? "A sponsor" : "Use"}</button></div>`).join("")
+      : `<p class="note">No pictures uploaded yet.</p>`;
+    const ev = G("sponsors.every", 15);
+    $("spEvery").innerHTML = [8, 15, 30].map(n => `<button data-spevery="${n}" class="${ev === n ? "on" : ""}" ${dis}>${n} s</button>`).join("");
+    const pc = G("podium.classId", null), cl = classes();
+    $("pdCls").innerHTML = cl.length > 1 ? `<button data-pdcls="" class="${pc == null ? "on" : ""}" ${dis}>Each class in turn</button>` +
+      cl.map(c => `<button data-pdcls="${esc(c.id)}" class="${pc === c.id ? "on" : ""}" style="box-shadow:inset 4px 0 0 ${css(c.color)}" ${dis}>${esc(c.name)}</button>`).join("")
+      : `<span class="note">One class: the overall top three.</span>`;
+  }
+  const strapList = () => ((G("straps", {}) || {}).list || []).map(p => ({ ...p }));
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-scmode],[data-sccd],[data-strapadd],[data-strapoff],[data-strapon],[data-strapdel],[data-strapsecs],[data-spon],[data-spevery],[data-pdcls]");
+    if (!b || b.disabled) return;
+    const ds = b.dataset;
+    if (ds.scmode != null) setGfx({ scene: { mode: ds.scmode || null } });
+    else if (ds.sccd != null) setGfx({ scene: { untilMs: Number(ds.sccd) ? Date.now() + Number(ds.sccd) * 60000 : null } });
+    else if (ds.strapadd) setGfx({ straps: { list: [...strapList(), { name: "", role: "" }] } });
+    else if (ds.strapoff) setGfx({ straps: { idx: null } });
+    else if (ds.strapon != null) setGfx({ straps: { idx: Number(ds.strapon), at: Date.now() } });
+    else if (ds.strapdel != null) { const l = strapList(); l.splice(Number(ds.strapdel), 1); setGfx({ straps: { list: l, idx: null } }); }
+    else if (ds.strapsecs != null) setGfx({ straps: { secs: Number(ds.strapsecs) } });
+    else if (ds.spon != null) { const l = (G("sponsors.logos", []) || []).slice(), i = l.indexOf(ds.spon); if (i >= 0) l.splice(i, 1); else l.push(ds.spon); setGfx({ sponsors: { logos: l } }); }
+    else if (ds.spevery) setGfx({ sponsors: { every: Number(ds.spevery) } });
+    else if (ds.pdcls != null) setGfx({ podium: { classId: ds.pdcls === "" ? null : Number(ds.pdcls) } });
+    dirty.studio = true;
+  });
+  document.addEventListener("input", e => {
+    const t = e.target, f = t.dataset && t.dataset.strapf;
+    if (f) {   // the whole list from what is typed, so two quick edits never undo each other
+      const l = strapList();
+      document.querySelectorAll("[data-strapf]").forEach(x => { const [i, k] = x.dataset.strapf.split("."); if (l[i]) l[i][k] = x.value; });
+      setGfxSoon("straps", { straps: { list: l } });
+    }
+    else if (t.id === "scKickIn") setGfxSoon("sck", { scene: { kick: t.value } });
+    else if (t.id === "scTitleIn") setGfxSoon("sct", { scene: { title: t.value } });
+    else if (t.id === "scSubIn") setGfxSoon("scs", { scene: { sub: t.value } });
+  });
+
   // ------------------------------------------------------------- tabs
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
     document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("on", x === b));
     document.querySelectorAll("[data-pane]").forEach(p => p.classList.toggle("hide", p.dataset.pane !== b.dataset.tab));
     try { localStorage.setItem("pw.producer.tab", b.dataset.tab); } catch (e) {}
     if (b.dataset.tab === "look") renderLook();
+    if (b.dataset.tab === "studio") renderStudio();
   });
   // the tab you were on, once the rest of the page is set up (the Look tab needs the presets defined below)
   setTimeout(() => { try { const t = localStorage.getItem("pw.producer.tab"); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (e) {} }, 0);
@@ -486,7 +575,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const LAYERS = [["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
     ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false],
     ["traffic", "Traffic warning (class leaders reaching a slower class)", false], ["fastlap", "Fastest-lap alerts (per class)", false], ["penalty", "Race control: penalties and warnings", false],
-    ["h2h", "Head to head (two cars side by side)", false], ["onboard", "Onboard: gear, speed, revs, wheel (camera car)", false], ["ticker", "Race control ticker", true],
+    ["h2h", "Head to head (two cars side by side)", false], ["podium", "Podium (top three; class picked in Studio)", false],
+    ["sponsors", "Sponsor logos (picked in Studio)", false], ["onboard", "Onboard: gear, speed, revs, wheel (camera car)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
   // Not a layer: lets the overlay bring up "where they're faster" in a close battle and the results at the finish.
   const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, traffic, fastest laps, penalties, results at the finish)") +
@@ -959,7 +1049,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
-  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard" };
+  const POS_LABELS = { tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors" };
   const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
   function renderLook() {
     const th = S.gfx.theme || {}, preset = th.preset || "imsa";
@@ -1138,7 +1228,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const base = location.protocol.startsWith("http") ? location.origin + location.pathname.replace(/producer\.html$/, "") : "";
     if (view && base) $("obsUrl").textContent = base + "overlay.html?token=" + encodeURIComponent(view) + (Q.get("relay") ? "&relay=" + encodeURIComponent(relay) : "");
   }
-  const dirty = { ctl: true, field: true, inc: true, cam: true, look: false, lv: true };
+  const dirty = { ctl: true, field: true, inc: true, cam: true, look: false, lv: true, studio: true };
   function handle(m) {
     switch (m.type) {
       case "relay":
@@ -1168,7 +1258,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         if (m.kind === "render") S.renders = (S.renders || 0) + 1;
         dirty.lv = dirty.field = true; break;
       }
-      case "assets": S.assets = m.files || []; renderAssets(); dirty.look = true; break;
+      case "assets": S.assets = m.files || []; renderAssets(); dirty.look = dirty.studio = true; break;
       case "asset_result": if (m.ok) toast(m.deleted ? "Deleted " + m.name : "Uploaded " + m.name); else toast(m.error, true); break;
       case "gfx": {
         const before = JSON.stringify(S.gfx);
@@ -1194,7 +1284,9 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   addEventListener("pointercancel", () => { holding = false; }, true);
   setInterval(() => {
     if (holding) return;
-    if (dirty.ctl) { dirty.ctl = false; renderControls(); }
+    if (dirty.ctl) { dirty.ctl = false; dirty.studio = true; renderControls(); }
+    if (dirty.studio && !document.querySelector("[data-pane=studio]").classList.contains("hide") &&
+        !(document.activeElement && document.activeElement.closest("[data-pane=studio]") && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName))) { dirty.studio = false; renderStudio(); }
     if (dirty.cam) { dirty.cam = false; renderHeader(); renderCameraButtons(); renderDirector(); }
     if (dirty.field) { dirty.field = false; renderField(); renderBattles(); renderPhotos(); }
     if (dirty.inc) { dirty.inc = false; renderIncidents(); renderMoments(); }
