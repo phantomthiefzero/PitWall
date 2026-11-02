@@ -21,6 +21,8 @@ Hard rules
   - Windows is slow where Linux is instant: a refused local connection takes a second or more. Nothing
     that may touch the network, a socket, a subprocess or a dialog runs on an event loop: use a thread
     or run_in_executor (suite.bridge.LiveSource looks for the sim on its own thread for this reason).
+  - Windows' default text encoding is cp1252, not UTF-8: text passed to or read from a subprocess (Node for the
+    page tests) gives `encoding="utf-8"` explicitly, or a byte-order mark or a non-Latin name fails only there.
 - Do not add a build step to `client/`. One HTML file. Its only other files are the booth look's
   fonts in `client/assets/` (licences in LICENSES.md), served by name by the relay
   (`relay.server.client_asset`, .woff2 only) and the suite; without them the page falls back to
