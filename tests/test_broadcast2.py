@@ -1407,7 +1407,7 @@ def _parse_league(text):
     m = re.search(r"\n  function parseLeague\(text\) \{[\s\S]*?\n  \}\n", page)
     assert m, "parseLeague not found in the producer page"
     js = m.group(0) + "\nconsole.log(JSON.stringify(parseLeague(require('fs').readFileSync(0, 'utf8'))));"
-    r = subprocess.run([node, "-e", js], input=text, capture_output=True, text=True, timeout=30)
+    r = subprocess.run([node, "-e", js], input=text, capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
 
