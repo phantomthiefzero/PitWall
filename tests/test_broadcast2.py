@@ -1548,3 +1548,61 @@ def test_director_tells_stories_and_moves_on():
     assert keys.count(top) / len(keys) < 0.5, f"{top} hogged the air"
     # and shots inside a story last longer than the old 6-9 s hops between random cars
     assert len(runs) < len(log) * 0.6
+
+
+def test_the_checkered_flag_waits_for_the_leader():
+    """iRacing raises the checkered flag when a timed race's clock runs out, a lap before the leader finishes:
+    until SessionState turns checkered it is the last lap (the white flag), on air and in the feed."""
+    from pitwall.normalize import race_flags
+    assert race_flags(["checkered", "green"], "racing") == ["green", "white"]
+    assert race_flags(["checkered", "white"], "racing") == ["white"]
+    assert race_flags(["checkered"], "checkered") == ["checkered"]
+    assert race_flags(["checkered"], "cool_down") == ["checkered"]
+    assert race_flags(None, "racing") == []
+    d = Deriver()
+    base = {"timeS": 0.0, "state": "racing", "flags": ["green"]}
+    d.state_events(0.0, dict(base), {}, {})
+    d.state_events(30.0, dict(base, flags=["checkered"]), {}, {})          # the clock ran out
+    fl = [e["flag"] for e in d.feed_events if e["kind"] == "flag"]
+    assert "checkered" not in fl and "white" in fl
+    d.state_events(120.0, dict(base, flags=["checkered"], state="checkered"), {}, {})   # the leader crosses
+    assert [e["flag"] for e in d.feed_events if e["kind"] == "flag"][-1] == "checkered"
+
+
+def test_director_follows_push_laps_outside_a_race_and_the_leader_on_the_last_lap():
+    from pitwall.director import Director
+    cuts = []
+    t = [0.0]
+    d = Director(lambda n, g: cuts.append((n, g)) or {"ok": True}, rng=random.Random(2), clock=lambda: t[0])
+    d.set_live(True)
+    d.configure(on=True, hold_s=6)
+    sess = {"cameras": [{"num": 1, "name": "TV1"}, {"num": 2, "name": "Chase"}, {"num": 3, "name": "Cockpit"}]}
+    st = {"session": {"state": "racing"}, "derived": {"liveEdge": {"atLive": True, "tLive": 500.0}}}
+
+    def car(i, pos, **kw):
+        c = {"idx": i, "num": str(i), "pos": pos, "classPos": pos, "classId": 1, "surface": "on_track", "lap": 5, "derived": {}}
+        c.update(kw)
+        return c
+    # qualifying: car 7 is on a lap that would take pole; car 3 leads but is cruising
+    q = {"isRace": False}
+    cars = {"cars": [car(3, 1), car(7, 4, derived={"qualiLap": {"projectedPos": 1, "stretch": 12, "of": 24}})], "derived": q}
+    for k in range(20):
+        t[0] = 100 + k
+        d.tick(sess, cars, st, [])
+    assert d.segment["key"] == "push:7" and cuts[-1][0] == "7"
+    # a push lap is followed beyond the usual story length, to the line
+    for k in range(60):
+        t[0] = 120 + k
+        d.tick(sess, cars, st, [])
+    assert d.segment["key"] == "push:7", "still on the lap after a minute"
+    # a race's last lap: the leader to the line, whatever else is on
+    cuts.clear()
+    d2 = Director(lambda n, g: cuts.append((n, g)) or {"ok": True}, rng=random.Random(2), clock=lambda: t[0])
+    d2.set_live(True)
+    d2.configure(on=True, hold_s=6)
+    race = {"isRace": True, "race": {"lapsToGo": 1}, "battles": [{"id": "1:4", "cars": [4, 5], "gapsS": [0.4], "closingSPerLap": [0.2], "forClassPos": 4}]}
+    cars = {"cars": [car(2, 1), car(4, 4), car(5, 5)], "derived": race}
+    for k in range(30):
+        t[0] = 300 + k
+        d2.tick(sess, cars, st, [])
+    assert d2.segment["key"] == "finish" and cuts[-1][0] == "2"

@@ -258,6 +258,17 @@ Broadcast (broadcast/)
   and size, each class leader (more the longer off air) and top cars in their box. It stays with a story for
   SEGMENT_MIN_S..SEGMENT_MAX_S going round its angles; a story just aired scores lower for FATIGUE_S; nothing is
   picked at random. tests: test_director_tells_stories_and_moves_on.
+- Auto ("Pick graphics for me") is contextual (overlay ctxWants / CONTEXTUAL): the driver card comes up for a few
+  seconds when the camera finds a new car and now and then on a long shot (never over a battle box or a qualifying
+  lap, which name the cars), the battle box shows the battle the camera is on, the onboard graphic follows onboard
+  cameras, the speed trap comes up now and then outside a race; a pinned card or a battle picked by hand still rules.
+  Outside a race the tower's Interval column reads the gap to pole. The director also follows push laps in practice
+  and qualifying to the line (stories "push", up to 150 s) and the leader on the last lap ("finish").
+- The checkered flag waits for the leader (normalize.race_flags, state derived.raceFlags): iRacing raises it when a
+  timed race's clock runs out, a lap early; until SessionState turns checkered it reads as the white flag.
+- Producer buttons: camera, replay and director buttons are off while the broadcast is off (the bridge refuses
+  them); with the director, grid walk or a followed battle holding the camera they are dimmed and a line says a
+  click takes it back. The battle list's buttons all switch off with a second click (unfollow: director end_battle).
 - Arrange graphics (producer): the overlay with &edit=1 (or all) is draggable and resizable; it posts each change to
   the producer (postMessage pwLayout), which saves theme.layout; theme.size scales every graphic but the crawl.
 - One owner of the camera at a time (director.py): you / director / grid walk / followed battle.

@@ -410,6 +410,8 @@ class Bridge:
                 if not self.director.start_grid_walk(order, hold_s=msg.get("holdS"), on_car=on_car):
                     res["error"] = BROADCAST_OFF
                     return res
+            elif action == "unfollow":
+                self.director.end_battle()
             elif action == "stop":
                 self.director.stop()
             else:

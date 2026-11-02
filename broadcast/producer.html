@@ -95,6 +95,7 @@ h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:
 .ir .what b{font-weight:700}
 .ir .sub{color:var(--mut);font-size:12px}
 .ir button{min-height:28px;padding:2px 9px;font-size:13px;flex:none}
+.takes button:not(.on){opacity:.55}.takes button:not(.on):hover{opacity:1}
 .mom .mk{font:700 11px/1 var(--txt);letter-spacing:.05em;text-transform:uppercase;width:78px;flex:none;text-align:center;padding:5px 0 4px;border-radius:4px;background:var(--panel2);color:var(--mut)}
 .mom .mk.k-pass{background:color-mix(in srgb,var(--acc) 22%,var(--panel2));color:var(--fg)}
 .mom .mk.k-inc{background:color-mix(in srgb,#c48a00 30%,var(--panel2));color:var(--fg)}
@@ -415,6 +416,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     <section>
       <h2>Cameras <small id="camGroupName"></small></h2>
       <div id="camWarn" class="warn hide"></div>
+      <p class="note hide" id="camOwn" style="margin:4px 0 0"></p>
       <div class="owner" id="owner"></div>
       <h3 style="margin-top:0">Shots on the car on camera</h3>
       <div class="opts" id="shots"></div>
@@ -994,7 +996,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     ["strip", "Running order crawl (oval style, along the bottom)", false], ["league", "League standings (loaded in Studio)", false], ["onboard", "Onboard: gear, speed, revs, wheel (camera car)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
   // Not a layer: lets the overlay bring up "where they're faster" in a close battle and the results at the finish.
-  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me (close battles, traffic, fastest laps, penalties, live qualifying laps, results at the finish)") +
+  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me: they follow the camera (the driver card for a few seconds on a new car, the battle box on a battle, onboard on an onboard camera) and the race (close battles, traffic, fastest laps, penalties, qualifying laps, the speed trap, results at the finish)") +
     sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
     sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)") +
@@ -1049,7 +1051,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         .map(([k, l]) => `<button data-minc="${k}" class="${minInc === k ? "on" : ""}" ${dis}>${l}</button>`).join("")}</div>` +
       sw("sw-sting", G("stinger.enabled", true) !== false, 'data-sting="1"', "Transition stinger on replays");
     const bm = G("battle.mode", "auto");
-    $("btMode").innerHTML = `<button data-bmode="auto" class="${bm === "auto" ? "on" : ""}" style="min-height:24px;padding:1px 8px" title="The battle box shows the closest battle on its own" ${dis}>Box picks the closest</button>`;
+    $("btMode").innerHTML = `<button data-bmode="auto" class="${bm === "auto" && G("battle.show", false) ? "on" : ""}" style="min-height:24px;padding:1px 8px" title="The battle box shows the closest battle on its own" ${dis}>Box picks the closest</button>`;
     renderCameraButtons(true);
   }
 
@@ -1062,32 +1064,40 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const camOk = canCamera();
     const groups = (S.session && S.session.cameras) || [];
     const cur = S.state && S.state.camera ? S.state.camera.group : null;
-    const sig = [camOk, cur, groups.length, S.session && S.session.update, directorOn(), S.director && S.director.style].join("|");
+    // Off, the bridge refuses every cut: the buttons say so by being off. With the director (or the grid walk, or
+    // a followed battle) holding the camera, a click takes it back: dimmed, with a line saying so.
+    const live = !!(S.director && S.director.live), own = owner(), can = camOk && live;
+    const sig = [camOk, cur, groups.length, S.session && S.session.update, directorOn(), S.director && S.director.style, live, own].join("|");
     if (sig === camSig && !force) return;
     camSig = sig;
     const why = !canProduce() ? "" : !S.hello ? "Waiting for the bridge." : "Camera control is off: start the bridge with --allow-camera (the suite does this for you).";
     $("camWarn").textContent = why; $("camWarn").classList.toggle("hide", camOk || !why);
+    const ownTxt = camOk && !live ? "The broadcast is off: nothing here moves the camera until you turn it on at the top."
+      : can && own !== "you" ? ({ race: "The director", grid: "The grid walk", battle: "Following the battle" }[own] || "The director") + " has the camera: a click on a shot, a group or a driver takes it back." : "";
+    $("camOwn").textContent = ownTxt; $("camOwn").classList.toggle("hide", !ownTxt);
+    for (const id of ["shots", "groups", "focus"]) $(id).classList.toggle("takes", can && own !== "you");
+
     const byName = n => groups.find(g => (g.name || "").toLowerCase() === n);
     $("shots").innerHTML = SHOTS.map(([label, names]) => {
       const gs = names.map(byName).filter(Boolean);
-      return gs.length ? `<button data-shot="${gs.map(g => g.num).join(",")}" ${camOk ? "" : "disabled"}>${label}</button>` : "";
+      return gs.length ? `<button data-shot="${gs.map(g => g.num).join(",")}" ${can ? "" : "disabled"}>${label}</button>` : "";
     }).join("") || '<span class="note">Camera groups arrive with the session.</span>';
     // iRacing's own groups; anything else came from a camera pack (marked ★)
     const known = new Set(["nose", "gearbox", "roll bar", "lf susp", "lr susp", "rf susp", "rr susp", "gyro", "cockpit",
       "scenic", "tv1", "tv2", "tv3", "pit lane", "pit lane 2", "blimp", "chopper", "chase", "far chase", "rear chase"]);
-    $("groups").innerHTML = groups.map(g => `<button data-group="${esc(g.num)}" class="${g.num === cur ? "on" : ""}" ${camOk && !g.scenic ? "" : "disabled"}${known.has((g.name || "").toLowerCase()) ? "" : ' title="Added by a camera pack"'}>${esc(g.name || "Group " + g.num)}${known.has((g.name || "").toLowerCase()) ? "" : " ★"}</button>`).join("");
+    $("groups").innerHTML = groups.map(g => `<button data-group="${esc(g.num)}" class="${g.num === cur ? "on" : ""}" ${can && !g.scenic ? "" : "disabled"}${known.has((g.name || "").toLowerCase()) ? "" : ' title="Added by a camera pack"'}>${esc(g.name || "Group " + g.num)}${known.has((g.name || "").toLowerCase()) ? "" : " ★"}</button>`).join("");
     renderPacks(groups, known);
     const cg = groups.find(g => g.num === cur);
     $("camGroupName").textContent = cg ? "On " + cg.name : "";
     const dir = S.director || {}, dOn = directorOn();
-    $("dirCtl").innerHTML = `<button data-dir="toggle" class="big ${dOn ? "on" : ""}" ${camOk ? "" : "disabled"} title="${dOn ? "The director is choosing the shots" : "The director is off"}">${dOn ? "Stop the director" : "Start the director"}</button>` +
+    $("dirCtl").innerHTML = `<button data-dir="toggle" class="big ${dOn ? "on" : ""}" ${can ? "" : "disabled"} title="${dOn ? "The director is choosing the shots" : "The director is off"}">${dOn ? "Stop the director" : "Start the director"}</button>` +
       (dir.styles || ["cinematic", "onboard", "tv"]).map(st => `<button data-dstyle="${st}" class="${dir.style === st ? "on" : ""}" ${camOk ? "" : "disabled"}>${{ cinematic: "Cinematic", onboard: "Onboards", tv: "Classic TV" }[st] || st}</button>`).join("") +
       `<label class="note" style="align-self:center">hold <input type="number" id="dirHold" min="3" max="30" value="${dir.holdS || 8}" style="width:56px"> s</label>`;
     $("focus").innerHTML = [["exciting", "Most exciting"], ["leader", "Leader"], ["incident", "Incidents"]]
-      .map(([k, l]) => `<button data-focus="${k}" ${camOk ? "" : "disabled"}>${l}</button>`).join("");
+      .map(([k, l]) => `<button data-focus="${k}" ${can ? "" : "disabled"}>${l}</button>`).join("");
     $("replay").innerHTML = [["live", "Back to live"], ["pause", "Pause"], ["play", "Play"], ["slow", "Slow motion"],
       ["prev_incident", "Previous iRacing incident"], ["next_incident", "Next iRacing incident"], ["prev_lap", "Previous lap"]]
-      .map(([k, l]) => `<button data-replay="${k}" ${camOk ? "" : "disabled"}>${l}</button>`).join("");
+      .map(([k, l]) => `<button data-replay="${k}" ${can ? "" : "disabled"}>${l}</button>`).join("");
   }
   // Camera packs: what is on disk for this track (pitwall/camerapacks.py)
   // against the groups iRacing is actually offering. Installed is not loaded.
@@ -1155,7 +1165,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     else if (ds.tk) setGfx({ ticker: { [ds.tk]: !G("ticker." + ds.tk, true) } });
     else if (ds.minc) setGfx({ ticker: { minIncident: ds.minc } });
     else if (ds.sting) setGfx({ stinger: { enabled: G("stinger.enabled", true) === false } });
-    else if (ds.bmode) setGfx({ battle: { mode: "auto", cars: null } });
+    else if (ds.bmode) setGfx(b.classList.contains("on") ? { battle: { show: false } } : { battle: { mode: "auto", cars: null, show: true } });
     else if (ds.shot) {
       const nums = ds.shot.split(",").map(Number), cur = S.state && S.state.camera ? S.state.camera.group : null;
       const i = nums.indexOf(cur), g = nums[(i + 1) % nums.length];      // a second press moves to the next of the set
@@ -1168,10 +1178,10 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     }
     else if (ds.own) cmd({ cmd: "director", action: "stop" }, "You have the camera");
     else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");
-    else if (ds.btfollow) {
+    else if (ds.btfollow) {           // a second click stops following (the camera goes back to whoever had it)
       const cars = ds.btfollow.split(",").map(Number);
-      setGfx({ battle: { mode: "pick", cars, show: true } });
-      cmd({ cmd: "director", action: "follow_battle", cars }, "Following the battle");
+      if (b.classList.contains("on")) cmd({ cmd: "director", action: "unfollow" }, "Stopped following");
+      else { setGfx({ battle: { mode: "pick", cars, show: true } }); cmd({ cmd: "director", action: "follow_battle", cars }, "Following the battle"); }
     }
     else if (ds.dir) {
       const on = !directorOn();
@@ -1195,12 +1205,12 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     else if (ds.piplab) setGfx({ pip: { label: ds.piplab } });
     else if (ds.pipshot) { const sec = secondUp(), c = carByIdx(G("pip.car", null)), num = c ? c.num : sec && sec.cam ? sec.cam.num : null;
       setGfx({ pip: { shot: ds.pipshot, ...(sec && num != null ? { want: pipWant(num, ds.pipshot) } : {}) } }); }
-    else if (ds.h2hpair) setGfx({ h2h: { cars: ds.h2hpair.split(",").map(Number), show: true } });
+    else if (ds.h2hpair) setGfx(b.classList.contains("on") ? { h2h: { show: false } } : { h2h: { cars: ds.h2hpair.split(",").map(Number), show: true } });
     else if (ds.h2hclr) setGfx({ h2h: { cars: null } });
     else if (ds.obu) setGfx({ onboard: { units: ds.obu } });
     else if (ds.mfilt) { momFilter = ds.mfilt; dirty.inc = true; }
     else if (ds.mplay) { const ev = S.feed.events.find(x => x.seq === Number(ds.mplay)); if (ev) { played.add(ev.seq); jumpTo(ev); dirty.inc = true; } }
-    else if (ds.btshow) setGfx({ battle: { mode: "pick", cars: ds.btshow.split(",").map(Number), show: true } });
+    else if (ds.btshow) setGfx(b.classList.contains("on") ? { battle: { show: false } } : { battle: { mode: "pick", cars: ds.btshow.split(",").map(Number), show: true } });
     else if (ds.incf) { incFilter = ds.incf; dirty.inc = true; }
     else if (ds.pre) { preroll = Number(ds.pre); try { localStorage.setItem("pw.producer.preroll", preroll); } catch (e2) {} dirty.inc = true; }
     else if (ds.jump) { const ev = S.feed.events.find(x => x.seq === Number(ds.jump)); if (ev) jumpTo(ev); }
@@ -1248,7 +1258,9 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const cam = S.state && S.state.camera ? S.state.camera.carIdx : null;
     const pin = G("card.follow", "camera") === "pinned" ? G("card.idx", null) : null;
     const m = multi(), race = isRace();
-    $("fieldHint").textContent = "click a driver to cut to them · " + (race ? "gap to the car ahead" : "best lap");
+    const live = !!(S.director && S.director.live) && canCamera();
+    $("fieldHint").textContent = (!live ? "turn the broadcast on to cut to a driver" : owner() !== "you" ? "click a driver to take the camera" : "click a driver to cut to them") +
+      " · " + (race ? "gap to the car ahead" : "best lap");
     const row = c => {
       const d = c.derived || {};
       const g = race ? (c.pos === 1 ? "Leader" : d.intervalLaps >= 1 ? D("+" + d.intervalLaps + (d.intervalLaps === 1 ? " lap" : " laps")) : d.liveIntervalS != null ? D(gap(d.liveIntervalS)) : "–") : lap(c.bestLapS);
@@ -1316,6 +1328,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const v = e.target.value, c = v === "" ? null : carByIdx(Number(v));
     setGfx({ pip: c ? { car: c.idx, ...(secondUp() ? { want: pipWant(c.num) } : {}) } : { car: null } });
   });
+  const h2hOn = pair => { const p = G("h2h.cars", null) || []; return !!G("h2h.show", false) && p.length === 2 && pair.every(i => p.includes(i)); };
   function renderBattles() {
     try { renderTraffic(); } catch (e) {}
     const list = (S.cars && S.cars.derived && S.cars.derived.battles) || [];
@@ -1337,7 +1350,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         `<div class="who">${parts.join(" ")}</div><div class="act">` +
         `<button data-btfollow="${b.cars.join(",")}" class="${followed ? "on" : ""}" ${canCamera() ? "" : "disabled"} title="Shows the battle box and keeps the camera on these cars until the battle ends">${followed ? "Following" : "Follow with camera"}</button>` +
         `<button data-btshow="${b.cars.join(",")}" class="${live ? "on" : ""}" ${canProduce() ? "" : "disabled"} title="Shows the battle box for these cars without moving the camera">${live ? "In the battle box" : "Show in the battle box"}</button>` +
-        `<button data-h2hpair="${b.cars.slice(-2).join(",")}" ${canProduce() ? "" : "disabled"} title="The last two cars of this battle, side by side">Head to head</button></div></div>`;
+        `<button data-h2hpair="${b.cars.slice(-2).join(",")}" class="${h2hOn(b.cars.slice(-2)) ? "on" : ""}" ${canProduce() ? "" : "disabled"} title="The last two cars of this battle, side by side">${h2hOn(b.cars.slice(-2)) ? "Head to head on" : "Head to head"}</button></div></div>`;
     }).join("");
   }
 
@@ -1368,7 +1381,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         return `<div class="ir"><span class="pts p${pts >= 4 ? 4 : pts >= 2 ? 2 : pts >= 1 ? 1 : 0}" title="Likely incident points">${D("~" + pts + "x")}</span>` +
           `<div class="when">${e.lap != null ? "Lap " + esc(e.lap) + "<br>" : ""}${clock(e.replayT ?? e.t)}</div>` +
           `<div class="what"><b>${esc(WHAT[e.what] || e.what)}</b><br>${who}<div class="sub">${esc(e.confidence ? e.confidence[0].toUpperCase() + e.confidence.slice(1) : "")} confidence · ${esc((e.signals || []).map(x => SIGNAL[x] || String(x).replace(/_/g, " ")).join(", "))}</div></div>` +
-          `<button data-jump="${e.seq}" ${camOk && e.replayT != null && e.sessionNum != null ? "" : "disabled"}>Replay</button></div>`;
+          `<button data-jump="${e.seq}" ${camOk && S.director && S.director.live && e.replayT != null && e.sessionNum != null ? "" : "disabled"}>Replay</button></div>`;
       }).join("");
     }
     // The official counts, once iRacing publishes them (after the finish)
@@ -1434,7 +1447,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       const [label, k] = MOM_KIND[e.kind];
       return `<div class="ir mom${played.has(e.seq) ? " played" : ""}"><span class="mk k-${k}">${label}</span>` +
         `<div class="what"><b>${t[0]}</b><div class="sub">${t[1]}</div></div>` +
-        `<button data-mplay="${e.seq}" ${camOk ? "" : "disabled"} title="${camOk ? "Go back to this moment and play it" : "Needs camera control"}">${played.has(e.seq) ? "Again" : "Play"}</button></div>`;
+        `<button data-mplay="${e.seq}" ${camOk && S.director && S.director.live ? "" : "disabled"} title="${!camOk ? "Needs camera control" : S.director && S.director.live ? "Go back to this moment and play it" : "Turn the broadcast on to play replays"}">${played.has(e.seq) ? "Again" : "Play"}</button></div>`;
     }).join("");
   }
   function jumpTo(e) {
@@ -1715,7 +1728,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       case "director": {
         const was = owner();
         S.director = m;
-        renderLive();
+        renderLive(); dirty.inc = dirty.field = true;
         const now = owner();
         if (was !== now && now === "you" && m.note) log(esc("Camera back to you: " + m.note));
         else if (was !== now && m.note) log(esc(m.note));

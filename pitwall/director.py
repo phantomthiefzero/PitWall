@@ -202,6 +202,13 @@ class Director:
         self.changed = True
         return True
 
+    def end_battle(self):
+        """Stop following a battle: the camera goes back to whoever had it before (the director, or you)."""
+        if self.on and self.mode == "battle":
+            self._end_temporary("stopped following the battle")
+            return True
+        return False
+
     def stop(self):
         """Stop whatever is running; the producer has the camera."""
         self.resume = None
@@ -377,6 +384,23 @@ class Director:
                 + (30 if fp == 1 else 18 if fp <= 3 else 8 if fp <= 6 else 0) + 5 * (len(cs) - 2)
             out.append({"key": "battle:%s" % b.get("id"), "score": score, "cars": cs,
                         "why": "battle for %sP%s" % ("class " if multi else "", fp)})
+        # practice and qualifying: a push lap, more the better the place it is on for and the nearer the line;
+        # followed to the end of the lap (it drops out of the list when the lap ends or goes off)
+        is_race = bool((cars_msg.get("derived") or {}).get("isRace"))
+        for c in cars:
+            q = (c.get("derived") or {}).get("qualiLap")
+            if is_race or not q or c.get("onPitRoad"):
+                continue
+            pp = q.get("projectedPos") or 99
+            score = 45 + (35 if pp == 1 else 22 if pp <= 3 else 10 if pp <= 10 else 0) + 12 * (q.get("stretch") or 0) / max(1, q.get("of") or 24)
+            out.append({"key": "push:%s" % c["idx"], "score": score, "cars": [c["idx"]], "max": 150.0,
+                        "why": "a flying lap, on for P%s" % pp})
+        # the last lap: the leader to the line
+        race = (cars_msg.get("derived") or {}).get("race") or {}
+        if race.get("lapsToGo") == 1 or race.get("white"):
+            lead = min((c for c in cars if c.get("pos")), key=lambda c: c["pos"], default=None)
+            if lead is not None:
+                out.append({"key": "finish", "score": 95, "cars": [lead["idx"]], "max": 240.0, "why": "the last lap"})
         # each class's leader, more interesting the longer it has been off air
         leaders = {}
         for c in cars:
@@ -399,7 +423,7 @@ class Director:
             sc = st["score"] - 0.4 * self._aired_s(st["key"], now)
             if seg and st["key"] == seg["key"]:
                 age = now - seg["start"]
-                sc += 25 if age < SEGMENT_MIN_S else -200 if age >= SEGMENT_MAX_S else 0
+                sc += 25 if age < SEGMENT_MIN_S else -200 if age >= st.get("max", SEGMENT_MAX_S) else 0
             st["now"] = sc
             if sc > best_s:
                 best, best_s = st, sc

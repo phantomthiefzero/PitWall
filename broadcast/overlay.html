@@ -261,7 +261,7 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 #ticker{right:36px;bottom:54px;width:480px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 .tk{display:flex;align-items:stretch;background:var(--ink);width:100%;min-height:40px;border-radius:var(--r);overflow:hidden;animation:tkIn .45s cubic-bezier(.2,.8,.2,1) both}
 .tk.out{animation:tkOut .4s ease both}
-.tk i{width:84px;flex:none;display:grid;place-items:center;font:800 13px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;font-style:normal;background:var(--muted);color:var(--ink)}
+.tk i{min-width:84px;padding:0 10px;white-space:nowrap;box-sizing:border-box;flex:none;display:grid;place-items:center;font:800 13px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;font-style:normal;background:var(--muted);color:var(--ink)}
 .tk.k-fl i{background:var(--fl);color:#fff} .tk.k-lead i{background:var(--accent);color:var(--accentText)}
 .tk.k-inc i{background:var(--lose);color:#fff} .tk.k-flag i{background:var(--flag-green);color:#000}
 .tk.k-wx i{background:#59c2e8;color:#000}
@@ -511,7 +511,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
 :root[data-look="arcade"] .tw-head{transform:skewX(-8deg);position:relative;border-bottom:3px solid var(--accent)}
 :root[data-look="arcade"] .tw-head::after{content:"";position:absolute;left:0;right:0;bottom:-11px;height:8px;background:var(--chkg) 0 0/8px 8px;opacity:.9}
 :root[data-look="arcade"] .tw-head .ttl,:root[data-look="arcade"] .tw-head .st{font-style:italic}
-:root[data-look="arcade"] .tw-head .st{font:900 italic 1em var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
+:root[data-look="arcade"] .tw-head .st{font:900 italic 22px/1 var(--num);padding-right:2px;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
 :root[data-look="arcade"] .tw-flag,:root[data-look="arcade"] .tw-foot{display:none}
 :root[data-look="arcade"] .tw-body{background:transparent;margin-top:10px}
 :root[data-look="arcade"] .row{background:linear-gradient(90deg,rgba(17,23,37,.94),rgba(10,14,22,.94))!important;border-left:3px solid transparent;margin-top:0}
@@ -563,7 +563,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
 :root[data-look="arcade"] .bt-foot{background:#06080d;border:1px solid #2b3549;margin-top:10px;transform:skewX(-8deg);font-style:italic}
 :root[data-look="arcade"] .tk{border:1px solid #2b3549;border-left:4px solid var(--accent);transform:skewX(-8deg);box-shadow:0 10px 30px rgba(0,0,0,.5)}
 :root[data-look="arcade"] .tk p b{font-style:italic}
-:root[data-look="arcade"] .pn-head b{font:900 italic 1em var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
+:root[data-look="arcade"] .pn-head b{font:900 italic 40px/1.05 var(--num);padding-right:4px;color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text}
 :root[data-look="arcade"] .fs-h,:root[data-look="arcade"] .bt-head{background:var(--accent);color:#000}
 :root[data-look="arcade"] .rp{transform:skewX(-10deg)}
 :root[data-look="arcade"] .rp b{font-style:italic}
@@ -749,8 +749,40 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // are within half a second, at most 20 s per pair every 2 minutes; the results board at the finish; the
   // traffic warning when a class leader is 20 s from a slower class in a race; every fastest-lap alert.
   const AUTO = { pair: null, from: 0, rest: {} };
+  // Contextual graphics ("Pick graphics for me"): what the camera is showing decides what goes up. The driver card
+  // comes up for a few seconds when the camera finds a new car (and now and then on a long shot), the battle box
+  // while the camera is on a battle, the onboard graphic on an onboard camera, the speed trap now and then outside
+  // a race. Timed from when this page saw the change, never by another machine's clock.
+  const CTX = { cam: null, camAt: 0, group: null, groupAt: 0 };
+  const CARD_SHOW_MS = [1500, 9500], CARD_AGAIN_MS = 45000, CARD_AGAIN_FOR = 7000;
+  function ctxTick() {
+    const cam = camIdx(), g = S.state && S.state.camera ? S.state.camera.group : null, now = performance.now();
+    if (cam !== CTX.cam) { CTX.cam = cam; CTX.camAt = now; }
+    if (g !== CTX.group) { CTX.group = g; CTX.groupAt = now; }
+  }
+  const camBattle = () => { const cam = camIdx(); return ((S.cars && S.cars.derived && S.cars.derived.battles) || []).find(b => b.cars.includes(cam)) || null; };
+  const ONBOARD = new Set(["cockpit", "roll bar", "nose", "gearbox", "lf susp", "rf susp", "lr susp", "rr susp"]);
+  function camKind() {
+    const g = ((S.session && S.session.cameras) || []).find(x => x.num === CTX.group);
+    return g && ONBOARD.has(String(g.name || "").toLowerCase()) ? "onboard" : "other";
+  }
+  function ctxWants(name) {
+    const now = performance.now(), since = now - CTX.camAt;
+    if (name === "battle") return isRace() && !!camBattle() && since > 1500;
+    if (name === "onboard") return camKind() === "onboard" && now - CTX.groupAt > 1000;
+    if (name === "card") {
+      if (CTX.cam == null || (isRace() && camBattle()) || (!isRace() && qlapCar())) return false;   // those graphics name the cars already
+      if (since >= CARD_SHOW_MS[0] && since <= CARD_SHOW_MS[1]) return true;
+      return since > CARD_AGAIN_MS && (since - CARD_AGAIN_MS) % CARD_AGAIN_MS < CARD_AGAIN_FOR;
+    }
+    if (name === "trap") return !isRace() && Date.now() % 180000 < 12000;
+    return false;
+  }
+  // In auto these follow the camera instead of their switch, unless the producer picked something by hand.
+  const CONTEXTUAL = { card: () => G("card.follow", "camera") === "camera", battle: () => G("battle.mode", "auto") !== "pick", onboard: () => true };
   function autoWants(name) {
     if (!G("auto.on", false)) return false;
+    if (name === "trap") return ctxWants("trap");
     if (name === "board") return isRace() && racingFlag() === "checkered";
     if (name === "traffic") return isRace() && trafficList(20).length > 0;
     if (name === "fastlap" || name === "penalty") return true;
@@ -771,7 +803,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // its own OBS source would otherwise sit on top of the starting-soon screen).
   const sceneUp = () => !!G("scene.mode", null);
   const EDIT_ALL = Q.get("edit") === "all";
-  const shown = name => allowed(name) && !sceneUp() && (EDIT_ALL || !!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)) &&
+  const shown = name => allowed(name) && !sceneUp() &&
+    (EDIT_ALL || (G("auto.on", false) && CONTEXTUAL[name] && CONTEXTUAL[name]() ? ctxWants(name) : (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)))) &&
     !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
@@ -810,7 +843,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   }
   const FLAG_PRIO = ["red", "checkered", "white", "caution", "yellow", "blue", "green"];
   function racingFlag() {
-    const f = (S.state && S.state.session.flags) || [];
+    // normalize.race_flags: no checkered until the leader has crossed the line (iRacing raises it at the clock's end)
+    const f = (S.state && ((S.state.derived && S.state.derived.raceFlags) || S.state.session.flags)) || [];
     const hit = FLAG_PRIO.find(x => f.includes(x) || f.includes(x + "_waving"));
     if (hit) return hit;
     // a replay carries no flags: normalize.py reads the caution from the field's speed
@@ -1095,7 +1129,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     // F1-style: the column can take turns (gfx tower.rotate), 8 s each, its name in the header
     const ROT = { interval: "Interval", gap: isRace() ? "Gap" : "To pole", last: "Last lap", best: "Best lap", tyres: "Tyres", pits: "Pit stops" };
     const rot = G("tower.rotate", null);
-    const mode = rot && rot.length ? rot[Math.floor(Date.now() / 8000) % rot.length] : G("tower.mode", "interval");
+    let mode = rot && rot.length ? rot[Math.floor(Date.now() / 8000) % rot.length] : G("tower.mode", "interval");
+    if (mode === "interval" && !isRace()) mode = "gap";          // practice and qualifying: the gap to pole, not to the car ahead
     $("twMd").classList.toggle("hide", !(rot && rot.length)); $("twMd").textContent = ROT[mode] || "";
     const cut = Number(G("tower.cut", 0)) || 0;
     const { rows, byClass } = towerRows();
@@ -1280,7 +1315,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("tyres").classList.toggle("on", !!c && runs.length > 0 && shown("tyres"));
     if (!c || !runs.length) return;
     const h = `<div class="mini"><div class="mini-h">Tyres ${plate(c)}<span>${nameHtml(c.name)}</span></div><div class="ty">` +
-      runs.map(r => `<span class="run">${tyreHtml(r.compound)}${r.laps != null ? r.laps + " laps" : "since we joined"}</span>`).join('<span class="ar">›</span>') + `</div></div>`;
+      runs.map(r => `<span class="run">${tyreHtml(r.compound)}${r.laps != null ? r.laps + (r.laps === 1 ? " lap" : " laps") : "since we joined"}</span>`).join('<span class="ar">›</span>') + `</div></div>`;
     if ($("tyBox").innerHTML !== h) $("tyBox").innerHTML = h;
   }
 
@@ -1550,6 +1585,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const want = G("battle.cars", []) || [];
       return list.find(b => want.length && want.every(i => b.cars.includes(i))) || list.find(b => want.some(i => b.cars.includes(i))) || null;
     }
+    if (G("auto.on", false)) { const cb = camBattle(); if (cb) return cb; }      // auto: the battle the camera is on
     const cls = G("tower.class", null);
     return list.find(b => cls == null || b.classId === cls) || null;
   }
@@ -2037,7 +2073,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
+      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
     }
     drawMap(); drawFaster(t);
     pumpTicker();
