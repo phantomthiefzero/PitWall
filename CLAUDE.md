@@ -191,6 +191,10 @@ Broadcast (broadcast/)
   (jumpTo, through cmd(): refused with the broadcast off). Head to head (gfx h2h.cars, else the battle on air) and
   the onboard graphic (the camera car's CarIdxGear / CarIdxRPM / CarIdxSteer, derived.speedMs) show only values
   the page already has; the gap only between class neighbours.
+- The show (producer's Studio tab): show screens (gfx scene: starting soon with the entry by class, intermission with
+  the order, closing with each class's top three; full screen, every other graphic hidden while one is up), the podium,
+  commentator straps (timed in the overlay from when the strap arrived, never by comparing two machines' clocks) and
+  sponsor logos (the producer's uploaded files). The countdown is to a time the producer set, not a race figure.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
 - Race length comes from the leader and SessionLaps (normalize.race_length), never from

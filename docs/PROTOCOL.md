@@ -451,7 +451,12 @@ overlay reads: `tower {show, mode: interval|leader|best|last|stops|incidents, cl
 `replay {label, car, show}` (caption for the Replay bug; shown only while not at the live edge),
 `grid {mode: auto|on|off, followCamera, solo}`, `stinger {seq, dir, at, enabled}` (a new `seq`
 plays the transition; the producer sends the camera command at `theme.stinger.cutMs`),
-`ticker {..., incidents, minIncident}`, `tower {layout: overall|classes|class, perClass, ...,
+`ticker {..., incidents, minIncident}`, `traffic {show, within}`, `fastlap {show}`, `penalty {show}`,
+`h2h {show, cars: [idx, idx]}`, `onboard {show, units: kph|mph}`, `podium {show, classId}`,
+`scene {mode: soon|break|end|null, kick, title, sub, untilMs}` (a show screen: full screen, hides every other
+graphic; untilMs is a wall-clock time for the countdown), `straps {list: [{name, role}], idx, at, secs}` (a new
+`at` puts commentator `idx` up for `secs`, 0 = until `idx` is null), `sponsors {show, logos: [asset], every}`,
+`tower {layout: overall|classes|class, perClass, ...,
 mode: ...|gap|pits|incidents}`, and `theme`: `{preset: imsa|pitboard|daylight, colors: {ink, ink2,
 head, headText, text, muted, accent, accentText, fl, plate}, fonts: {display, body}, fontAssets,
 caps, radius, names: initial|last|full, rowHeight, text: {series, event, gridTitle}, logo,
