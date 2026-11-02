@@ -199,6 +199,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       <button data-monmin="1" id="monMin" title="Show or hide the screens (just for you)">Hide screens</button>
       <label for="monSrc" class="note" style="margin:0">Video</label><select id="monSrc" style="max-width:240px"></select>
       <input type="text" id="monLink" class="hide" placeholder="VDO.Ninja view link of the game" style="width:240px">
+      <span id="monNote" class="note hide" style="margin:0"></span>
       <span class="sp"></span>
       <span id="studioCtl" style="display:contents"></span>
     </div>
@@ -390,7 +391,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       </section>
       <section>
         <h2>Driver pictures</h2>
-        <p class="note" style="margin-top:0">A photo for a driver goes on the driver card and the battle graphic, kept for every race by their iRacing ID. Without one, the driver's helmet on their race suit is drawn in their own iRacing colours. Ask drivers before putting their face on a stream.</p>
+        <p class="note" style="margin-top:0">A photo for a driver goes on the driver card and the battle graphic, kept for every race by their iRacing ID. Without one, that space is left out (the card still shows their helmet). Ask drivers before putting their face on a stream.</p>
         <div id="photoList" class="assets"></div>
       </section>
     </div>
@@ -639,12 +640,25 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       (navigator.mediaDevices ? `<option value="find">Find cameras… (OBS Virtual Camera)</option>` : "");
     $("monLink").classList.toggle("hide", MON.src !== "link"); if (document.activeElement !== $("monLink")) $("monLink").value = MON.link;
   }
+  // A camera refused: in the suite's own window (WebView2) the app should grant it to its own pages; if it still
+  // will not, the same panel in the browser can (Chrome and Edge ask once).
+  function camRefused(e) {
+    const inApp = !!(window.pywebview && window.pywebview.api && window.pywebview.api.open_in_browser);
+    const n = $("monNote"); n.classList.remove("hide");
+    n.innerHTML = `No camera access${e && e.name === "NotFoundError" ? " (no camera found: is OBS Virtual Camera started?)" : ""}.` +
+      (inApp ? ` <button data-monbrowser="1">Open in your browser</button>` : " Allow the camera for this page in the browser's address bar, then pick it again.");
+    toast("No camera access: " + (e && (e.message || e.name) || "refused"), true);
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-monbrowser]"); if (!b) return;
+    window.pywebview.api.open_in_browser(location.href).then(r => { if (r && r.ok) toast("Opened in your browser: carry on there"); else toast((r && r.error) || "Could not open the browser", true); });
+  });
   async function startVideo() {
     if (MON.stream) { MON.stream.getTracks().forEach(t => t.stop()); MON.stream = null; }
     if (MON.src.startsWith("cam:")) {
       try {
         MON.stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: MON.src.slice(4) }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false });
-      } catch (e) { MON.failed = MON.src; toast("The camera could not be opened: " + (e.message || e.name), true); }
+      } catch (e) { MON.failed = MON.src; camRefused(e); }
     }
     MON.keys = {}; renderScreens();
   }
@@ -681,7 +695,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   $("monSrc").addEventListener("change", e => {
     const v = e.target.value;
     if (v === "find") {   // asking once for the camera lets the browser name them
-      navigator.mediaDevices.getUserMedia({ video: true }).then(s => { s.getTracks().forEach(t => t.stop()); listCams(); }).catch(err => { toast("No camera access: " + (err.message || err.name), true); renderMonSrc(); });
+      navigator.mediaDevices.getUserMedia({ video: true }).then(s => { s.getTracks().forEach(t => t.stop()); $("monNote").classList.add("hide"); listCams(); }).catch(err => { camRefused(err); renderMonSrc(); });
       return;
     }
     MON.src = v; MON.failed = null; try { localStorage.setItem("pw.mon.src", v); } catch (e) {}
@@ -1636,6 +1650,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         if (m.ok) {
           toast(label + (m.simulated ? " (fake field)" : ""));
           if (m.data && m.data.sources) $("oSrcList").innerHTML = m.data.sources.map(s => `<option value="${esc(s)}">`).join("");
+          if (m.data && m.data.type === "director") handle(m.data);    // the switch's new state, at once
         } else { toast(m.error || "Command failed", true); log(esc(label + ": " + (m.error || "failed")), true); }
         break;
       }

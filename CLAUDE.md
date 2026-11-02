@@ -224,6 +224,10 @@ Broadcast (broadcast/)
   every OBS source, not only the one showing the screen. Default positions keep the graphics that are on together
   apart (the speed trap above the card's right end, picture in picture beside the map); the producer's Position
   settings move any of them.
+- Camera in the app window: WebView2 asks the app before a page may use a camera, and pywebview never answers
+  (refused: the monitor showed "no camera access"). suite.app.allow_local_camera answers it on the window's UI thread,
+  camera only and only for the suite's own pages (camera_allowed: http on 127.0.0.1 / localhost). If it is still
+  refused the producer offers Api.open_in_browser (the suite's own addresses only).
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
@@ -238,12 +242,14 @@ Broadcast (broadcast/)
   Off, nothing moves the camera (director, the pace-lap grid walk, battle following, livery photos, the
   producer's cuts and replays are refused by the bridge) and the overlay shows nothing. Anything new that
   moves the camera or puts something on air must respect it.
+  The bridge answers a director command with the new status at once, sim or no sim: its frame loop only runs while
+  iRacing ticks, so status left for the next frame never arrived with the sim closed (the switch looked stuck).
 - One owner of the camera at a time (director.py): you / director / grid walk / followed battle.
   A producer `camera` command always takes it back (bridge._consumer calls Director.manual()).
   Anything new that moves the camera must go through the Director's owner, not around it.
 - Looks on air: the producer's look presets Pit wall and Arcade restyle the graphics (overlay CSS under `:root[data-look]`),
   not just the colours. The driver card shows the driver's picture (gfx.photos by iRacing user id, uploaded in the
-  producer's Liveries tab; else the helmet on the race suit, drawn from HelmetDesignStr / SuitDesignStr) and the helmet
+  producer's Liveries tab; without one, nothing: no drawn stand-in, the user's call) and the helmet
   (carrender's pk_helmet.png when iRacing gives one -- unverified, VARIABLES_TO_VERIFY "Helmets" -- else drawn). Arcade's
   announcer (the suite's voice-<f|m>-*.mp3 from the relay, no sound effects: a battle coming on and the race's flags;
   gfx sound.on, off by default; gfx sound.man picks the man's voice) never speaks with the master switch off.
