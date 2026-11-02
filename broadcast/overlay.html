@@ -239,6 +239,7 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 .cd .hel{width:96px;flex:none;background:var(--ink);display:grid;place-items:center}
 .cd .hel img,.cd .hel svg{width:84px;height:84px;object-fit:contain;display:block;filter:drop-shadow(0 4px 6px rgba(0,0,0,.4))}
 .bt-car .ph{width:44px;height:44px;flex:none;border-radius:var(--r);overflow:hidden;background:var(--ink2);position:relative}
+.bt-car .ph:empty{display:none}
 .bt-car .ph img,.bt-car .ph svg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .lv:empty{display:none}
 .livery{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -918,13 +919,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (l.helmet) return `<img src="${l.helmet}" alt="">`;
     return c.helmetDesign ? helmetSvg(c.helmetDesign, size) : "";
   }
+  // The driver's own picture (uploaded in the producer's Liveries tab), or nothing: no stand-in figure (the
+  // user's call: an empty space looks better on air than a drawn body). The helmet has its own place on the card.
   function photoHtml(c) {
     const ph = (S.gfx.photos || {})[String(c.userId)];
-    if (ph) return `<img src="${assetUrl(ph)}" alt="">`;
-    if (!c.helmetDesign && !c.suitDesign) return "";
-    const s = designCols(c.suitDesign).c;
-    return `<svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid slice"><path d="M20 200 C24 150 56 130 100 128 C144 130 176 150 180 200Z" fill="${s[0]}"/><path d="M88 128 L100 200 L112 128Z" fill="${s[1]}"/>` +
-      `<path d="M40 160 L70 140 L74 200 L52 200Z" fill="${s[2]}" opacity=".9"/>` + helmetSvg(c.helmetDesign, 124).replace("<svg ", `<svg x="38" y="22" `) + `</svg>`;
+    return ph ? `<img src="${assetUrl(ph)}" alt="">` : "";
   }
   function liveryHtml(c) {
     const l = S.liveries[liveryKey(c)] || {};

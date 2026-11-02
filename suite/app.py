@@ -313,6 +313,14 @@ class Api:
     def second_info(self):
         return self._engine.second.info()
 
+    def open_in_browser(self, url):
+        """Open one of the suite's own pages (the producer panel) in the default browser. Only this PC's
+        addresses: a page cannot use this to open anything else."""
+        if not camera_allowed(True, url):
+            return {"ok": False, "error": "only the suite's own pages"}
+        webbrowser.open(str(url))
+        return {"ok": True}
+
     def share_info(self):
         host = self._engine.pitwall
         s = host.share
@@ -411,6 +419,52 @@ def fallback_window(url):
             pass
 
 
+def camera_allowed(is_camera: bool, uri: str) -> bool:
+    """The app window grants a camera only to the suite's own pages: the producer panel's monitor reads OBS
+    Virtual Camera there. Nothing from the internet (a VDO.Ninja picture, a show screen's web page) gets it."""
+    import urllib.parse
+    try:
+        u = urllib.parse.urlparse(str(uri or ""))
+    except ValueError:
+        return False
+    return bool(is_camera) and u.scheme == "http" and u.hostname in ("127.0.0.1", "localhost")
+
+
+def allow_local_camera(window, log=print):
+    """WebView2 asks the app whether a page may use the camera; pywebview never answers, so the request was
+    refused ("no camera access" in the producer's monitor). Answer it, for camera_allowed() pages only. Installed
+    once, on the window's UI thread, after the first page has loaded (CoreWebView2 exists from then on).
+    Windows only; anywhere else, or if WebView2 is not what draws the window, this does nothing."""
+    done = []
+
+    def install():
+        from Microsoft.Web.WebView2.Core import CoreWebView2PermissionKind, CoreWebView2PermissionState
+        core = window.native.webview.CoreWebView2
+
+        def on_permission(sender, args):
+            try:
+                if camera_allowed(args.PermissionKind == CoreWebView2PermissionKind.Camera, args.Uri):
+                    args.State = CoreWebView2PermissionState.Allow
+            except Exception as e:  # noqa: BLE001  (a refusal stays a refusal)
+                log("camera permission: %s" % e)
+        core.PermissionRequested += on_permission
+        log("camera access allowed for the suite's own pages")
+
+    def on_loaded(*_a):
+        if done:
+            return
+        done.append(1)
+        try:
+            from System import Action
+            window.native.Invoke(Action(install))
+        except Exception as e:  # noqa: BLE001
+            log("camera permission handler not installed: %s: %s" % (type(e).__name__, e))
+    try:
+        window.events.loaded += on_loaded
+    except Exception:
+        pass
+
+
 def close_with_app(engine):
     """What must end with the app. The relay, PitWall's bridge, the iRacing reader and the
     web servers are threads of this process and end with it (quit_now); the share tunnel
@@ -485,6 +539,7 @@ def _main():
             window = webview.create_window("iRacing Suite", engine.url, js_api=api,
                                            width=1440, height=920, min_size=(900, 600))
             api._window = window
+            allow_local_camera(window)
             # Quit as the window starts closing: waiting for "closed" left the window
             # hanging on screen while WebView2 shut itself down.
             try:
