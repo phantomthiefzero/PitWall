@@ -1231,3 +1231,82 @@ def test_multiclass_derived_values_from_the_fake_race():
         assert isinstance(out["derived"]["classBestSectorS"], dict)
     assert saw_traffic > 0, "the fake's classes should meet"
     assert saw_marks > 0
+
+
+# --------------------------------------------------------------------- race moments
+
+def _rm_car(idx, cls, lap, pct, cpos, **kw):
+    c = {"idx": idx, "classId": cls, "lap": lap, "pct": pct, "surface": "on_track", "onPitRoad": False,
+         "classPos": cpos, "pos": cpos, "flags": [], "derived": {"liveClassPos": cpos, "livePos": cpos}}
+    c.update(kw)
+    return c
+
+
+def test_car_flags_reach_the_feed_once_and_a_served_penalty_is_reported():
+    d = Deriver()
+    def tick(t, flags_1, flags_2=(), surf_2="on_track"):
+        cars = [_rm_car(1, 10, 3, .5, 1, flags=list(flags_1)),
+                _rm_car(2, 10, 3, .4, 2, flags=list(flags_2), surface=surf_2)]
+        d.field_events(cars, t, None, {}, state="racing", session_num=2)
+    tick(0, ["black"])                                   # already black-flagged when first seen: seeded silently
+    tick(1, ["black", "blue"])
+    assert not [e for e in d.feed_events if e["kind"] in ("car_flag", "penalty_served")]
+    tick(2, [], ["furled"])
+    served = [e for e in d.feed_events if e["kind"] == "penalty_served"]
+    assert len(served) == 1 and served[0]["idx"] == 1 and served[0]["sessionNum"] == 2
+    fl = [e for e in d.feed_events if e["kind"] == "car_flag"]
+    assert [(e["idx"], e["flag"]) for e in fl] == [(2, "furled")] and fl[0]["replayT"] == 2
+    tick(3, ["black"], [])                               # a new penalty
+    tick(4, [], [])
+    tick(5, ["black"], [])                               # again within 20 s: not repeated
+    assert [(e["idx"], e["flag"]) for e in d.feed_events if e["kind"] == "car_flag"] == [(2, "furled"), (1, "black")]
+    tick(6, [], [], surf_2="not_in_world")
+    tick(7, [], ["black"])                               # back in the world with a flag: seeded, not news
+    assert len([e for e in d.feed_events if e["kind"] == "car_flag"]) == 2
+
+
+def test_a_pass_on_track_is_reported_with_its_moment_but_a_pit_stop_is_not():
+    d = Deriver()
+    def tick(t, cars):
+        d.field_events(cars, t, None, {}, state="racing", session_num=1)
+    # car 2 runs behind car 1, then goes by at t=10
+    for t in range(0, 10):
+        tick(t, [_rm_car(1, 10, 5, .50 + t * .001, 1), _rm_car(2, 10, 5, .495 + t * .0012, 2)])
+    for t in range(10, 13):
+        tick(t, [_rm_car(1, 10, 5, .51 + t * .001, 2), _rm_car(2, 10, 5, .515 + t * .0012, 1)])
+    p = [e for e in d.feed_events if e["kind"] == "pass"]
+    assert len(p) == 1
+    assert p[0]["idx"] == 2 and p[0]["passedIdx"] == [1] and p[0]["classPos"] == 1 and p[0]["fromClassPos"] == 2
+    assert p[0]["replayT"] == 10 and p[0]["sessionNum"] == 1, "the replay starts where the pass happened"
+    # car 2 goes down pit road and car 1 goes by: a place gained, not a pass
+    for t in range(13, 20):
+        tick(t, [_rm_car(1, 10, 5, .53 + t * .001, 1), _rm_car(2, 10, 5, .52, 2, onPitRoad=True)])
+    # a different class going by is not a pass for position
+    for t in range(20, 26):
+        tick(t, [_rm_car(1, 10, 5, .6, 1), _rm_car(3, 20, 5, .61, 1), _rm_car(4, 20, 5, .59 + t * .0001, 2)])
+    assert len([e for e in d.feed_events if e["kind"] == "pass"]) == 1
+    # under a caution nothing counts
+    for t in range(26, 30):
+        d.field_events([_rm_car(1, 10, 6, .1, 2), _rm_car(2, 10, 6, .11, 1)], t, None, {}, state="caution", session_num=1)
+    assert len([e for e in d.feed_events if e["kind"] == "pass"]) == 1
+
+
+def test_passes_from_the_fake_race():
+    """The multiclass fake runs a whole race: every pass is in one class, between cars on track."""
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    d = Deriver()
+    sess = None
+    for k in range(60 * 420):
+        src.tick()
+        if k % 10:
+            continue
+        if sess is None:
+            sess = build_session(src)
+        build_state(src, d)
+        build_cars(src, sess, d)
+    passes = [e for e in d.feed_events if e["kind"] == "pass"]
+    assert passes, "a 5-minute fake race should have passes"
+    for e in passes:
+        assert e["classPos"] < e["fromClassPos"] and e["passedIdx"] and e["idx"] not in e["passedIdx"]
+        assert e["replayT"] <= e["t"]

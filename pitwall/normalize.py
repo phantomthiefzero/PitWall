@@ -1585,7 +1585,7 @@ class Deriver:
     # (cars driving back in) pit lane traffic is not a pit stop.
     PIT_EVENT_STATES = {"parade_laps", "racing", None}
 
-    def field_events(self, cars: list, t, player_idx, stops: dict, state=None):
+    def field_events(self, cars: list, t, player_idx, stops: dict, state=None, session_num=None):
         ev = self._ev
         by = {c["idx"]: c for c in cars}
         me = by.get(player_idx)
@@ -1644,7 +1644,15 @@ class Deriver:
         for cid in {c.get("classId") for c in cars if c.get("classPos")}:
             leader_c = next((c["idx"] for c in cars if c.get("classPos") == 1 and c.get("classId") == cid), None)
             self._stable(ev, ("class_lead", cid), leader_c, t, 5.0,
-                         lambda old, new, cid=cid: self.event(t, "class_lead", idx=new, prevIdx=old, classId=cid))
+                         lambda old, new, cid=cid: self.event(
+                             t, "class_lead", idx=new, prevIdx=old, classId=cid, sessionNum=session_num,
+                             replayT=None if t is None else round(t - 5.0, 2)))
+        if t is not None:
+            self._car_flag_events(cars, t, session_num)
+            if state == "racing":
+                self._pass_events(cars, t, session_num)
+            else:
+                ev["cpos"] = {}                  # passes count only while racing: start again after a caution
         if me is None:
             return
         # someone closing on you, or you on them (class rivals, once per approach)
@@ -1672,6 +1680,83 @@ class Deriver:
         # class leader changes, held for 5 s
         leader = next((c["idx"] for c in cars if c.get("classPos") == 1 and c.get("classId") == me.get("classId")), None)
         self._stable(ev, "lead", leader, t, 5.0, lambda old, new: self.event(t, "lead_change", idx=new, prevIdx=old))
+
+    # Per-car flags (CarIdxSessionFlags). A spectator sees these too (the user, Nov 2026):
+    # a black flag (a penalty), the furled black (a warning), disqualified, the meatball.
+    CAR_FLAG_EVENTS = ("black", "furled", "disqualify", "repair")
+
+    def _car_flag_events(self, cars, t, session_num):
+        """car_flag when a car gains one of CAR_FLAG_EVENTS (seeded silently on first
+        sight, not repeated within FLAG_REPEAT_S), and penalty_served when a black flag
+        goes while the car is still in the world and not disqualified."""
+        ev = self._ev
+        seen, at = ev.setdefault("cflag", {}), ev.setdefault("cflagAt", {})
+        for c in cars:
+            i = c["idx"]
+            if c.get("surface") == "not_in_world":
+                seen.pop(i, None)                # left the world: its flags go with it, not news
+                continue
+            fl = set(c.get("flags") or []) & set(self.CAR_FLAG_EVENTS)
+            had = seen.get(i)
+            seen[i] = fl
+            if had is None:
+                continue
+            where = dict(carLap=c.get("lap"), pos=c.get("pos") or None, classPos=c.get("classPos") or None,
+                         classId=c.get("classId"), sessionNum=session_num, replayT=round(t, 2))
+            for f in self.CAR_FLAG_EVENTS:
+                if f in fl and f not in had:
+                    last = at.get((i, f))
+                    if last is None or t - last >= self.FLAG_REPEAT_S:
+                        self.event(t, "car_flag", idx=i, flag=f, **where)
+                    at[(i, f)] = t
+            if "black" in had and "black" not in fl and "disqualify" not in fl:
+                self.event(t, "penalty_served", idx=i, **where)
+
+    # Passes for position in class, for the replay list. A car's place in its class
+    # (the running order, derived.liveClassPos) must hold PASS_HOLD_S before it counts,
+    # and the car it went by must be on track, off pit road and within PASS_NEAR_LAP of
+    # it: a rival pitting, towing or leaving is a place gained, not a pass.
+    PASS_HOLD_S = 2.0
+    PASS_NEAR_LAP = 0.03
+
+    def _pass_events(self, cars, t, session_num):
+        st = self._ev.setdefault("cpos", {})
+        racing = {c["idx"]: c for c in cars
+                  if c.get("surface") in ("on_track", "off_track") and not c.get("onPitRoad")}
+        gained = []
+        for c in cars:
+            i = c["idx"]
+            p = (c.get("derived") or {}).get("liveClassPos")
+            if not p or i not in racing:
+                st.pop(i, None)
+                continue
+            s = st.get(i)
+            if s is None or s["cid"] != c.get("classId"):
+                st[i] = {"cid": c.get("classId"), "val": p, "cand": p, "since": t}
+                continue
+            if p != s["cand"]:
+                s["cand"], s["since"] = p, t
+            if s["cand"] != s["val"] and t - s["since"] >= self.PASS_HOLD_S:
+                old, s["val"] = s["val"], s["cand"]
+                if s["val"] < old:
+                    gained.append((i, old, s["val"], s["since"]))
+        for i, old, new, since in gained:
+            a = racing[i]
+            da = _dist(a)
+            if da is None:
+                continue
+            passed = []
+            for j, b in racing.items():
+                if j == i or b.get("classId") != a.get("classId"):
+                    continue
+                bp = (b.get("derived") or {}).get("liveClassPos")
+                db = _dist(b)
+                if bp and new < bp <= old and db is not None and 0 < da - db <= self.PASS_NEAR_LAP:
+                    passed.append((bp, j))
+            if passed:
+                self.event(t, "pass", idx=i, passedIdx=[j for _, j in sorted(passed)], classId=a.get("classId"),
+                           classPos=new, fromClassPos=old, pos=(a.get("derived") or {}).get("livePos"),
+                           carLap=a.get("lap"), sessionNum=session_num, replayT=round(since, 2))
 
     @staticmethod
     def _stable(ev, key, value, t, hold, emit):
@@ -3499,7 +3584,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         # read from it would be old news reported as new.
         if edge["atLive"]:
             deriver.field_events(cars, now, player_idx, deriver._stops_tick,
-                                 state=SESSION_STATE.get(g("SessionState"), "invalid"))
+                                 state=SESSION_STATE.get(g("SessionState"), "invalid"), session_num=session_num)
         deriver.incidents(cars, edge, session_num,
                           surface_kind(((session_msg or {}).get("track") or {}).get("TrackType")),
                           state=SESSION_STATE.get(g("SessionState"), "invalid"),
