@@ -72,7 +72,7 @@ Run from source: `python -m pip install -r requirements.txt`, then `python -m su
 
 A TV-style broadcast for races you spectate, built on PitWall's bridge and relay. The default
 look follows an IMSA-style broadcast; every colour, font, logo, text and the position and size of
-every graphic can be changed from the producer panel (Look tab), and saved to a file.
+every graphic can be changed from the producer panel (Setup, Look), and saved to a file.
 
 | Graphic | What it shows |
 |---|---|
@@ -113,9 +113,9 @@ the paints it downloads in `Documents\iRacing\paint\<car>\car_<driver id>.tga` (
 `car_team_<team id>.tga` in team events), so a driver's Trading Paints livery is what appears,
 and iRacing's own paint scheme where there is none. It is automatic: keep Trading Paints running
 on the PC with iRacing, and new paints are picked up within 20 s of arriving. Pictures are
-kept for next time. Optionally, the Liveries tab can also take photos of the cars as they
+kept for next time. Optionally, Setup, Liveries can also take photos of the cars as they
 looked on track, through OBS's built-in WebSocket (Tools > WebSocket Server Settings > Enable);
-the Look tab chooses which of the two leads.
+Setup, Look chooses which of the two leads.
 
 **Grid walk.** Before the start, the director can walk down the starting grid one car at a time
 in a chase camera (and take OBS photos as it goes, if you use them).

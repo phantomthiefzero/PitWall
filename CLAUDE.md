@@ -230,8 +230,17 @@ Broadcast (broadcast/)
   "where they're faster" (which draws its own map, colours only: no cars on it, the user's call) is up.
 - Camera in the app window: WebView2 asks the app before a page may use a camera, and pywebview never answers
   (refused: the monitor showed "no camera access"). suite.app.allow_local_camera answers it on the window's UI thread,
-  camera only and only for the suite's own pages (camera_allowed: http on 127.0.0.1 / localhost). If it is still
-  refused the producer offers Api.open_in_browser (the suite's own addresses only).
+  camera only and only for the suite's own pages (camera_allowed: http on 127.0.0.1 / localhost; anything else asking
+  for a camera or microphone is told no). The handler alone still left it refused, so the window's browser is also
+  started with --use-fake-ui-for-media-stream (grant_media_in_window, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, set before
+  webview.start; it wins over pywebview's own arguments, so its flag is repeated). If it is still refused the producer
+  shows why (Api.camera_status: flag, handler, last request, error) and offers Api.open_in_browser (own addresses only).
+- Producer layout (the control room): no page scroll from 1180 px wide; four columns, each scrolling on its own:
+  the monitor and Cameras (director and replay first), the Field (the Card button shows on hover), On air (Auto
+  graphics, then a tile per graphic in groups; ⚙ opens its settings), and Replays / Incidents / Battles / Traffic /
+  Log as tabs. Every setting lives in the Setup drawer (Graphics, Look, Studio, Liveries, OBS; Esc closes; data-setup
+  opens it at a section). Long notes fold behind (i) (hintTidy). Keep it so: a new setting goes into Setup, not the
+  columns, and a new graphic is a tile (TILE_GROUPS, SHORT, GEAR).
 - Show screens move slowly and quietly (drifting glows, a light sweeping by, specks rising, the stripes easing;
   the words and lists come in once per screen change, never on each refresh). Each screen can use your own file
   instead (gfx scene.files[mode]: an uploaded picture or looping muted video, or an https page) with a dark backing
