@@ -45,6 +45,25 @@ def test_grid_positions_from_zero_are_shown_from_one():
     assert _qual_rows([{"Position": 1, "CarIdx": 1}, {"Position": 2, "CarIdx": 2}])[0]["pos"] == 1
 
 
+def test_grid_rows_carry_the_walk_s_numbers():
+    """The grid walk's gaps come from normalize (each row's derived), against the overall pole and the class's pole
+    (its first car, ClassPosition 1), two cars a row. A heat-set grid without times has places and no gaps."""
+    cls = {1: 10, 2: 10, 3: 20, 4: 20, 5: 10}
+    rows = _qual_rows([{"Position": 0, "ClassPosition": 0, "CarIdx": 1, "FastestTime": 100.0},
+                       {"Position": 1, "ClassPosition": 1, "CarIdx": 2, "FastestTime": 100.25},
+                       {"Position": 2, "ClassPosition": 0, "CarIdx": 3, "FastestTime": 104.5},
+                       {"Position": 3, "ClassPosition": 1, "CarIdx": 4, "FastestTime": 105.0},
+                       {"Position": 4, "ClassPosition": 2, "CarIdx": 5, "FastestTime": -1}], cls)
+    d = {r["idx"]: r["derived"] for r in rows}
+    assert d[1] == {"row": 1, "pole": True, "classPole": True, "poleGapS": None, "classPoleGapS": None}
+    assert d[2]["poleGapS"] == 0.25 and d[2]["classPoleGapS"] == 0.25 and d[2]["row"] == 1
+    assert d[3]["classPole"] and d[3]["poleGapS"] == 4.5 and d[3]["classPoleGapS"] is None and d[3]["row"] == 2
+    assert d[4]["classPoleGapS"] == 0.5
+    assert d[5]["poleGapS"] is None and d[5]["row"] == 3
+    heat = _qual_rows([{"Position": 0, "CarIdx": 1}, {"Position": 1, "CarIdx": 2}])
+    assert all(r["derived"]["poleGapS"] is None for r in heat)
+
+
 def test_a_race_with_its_own_qualify_positions_uses_them():
     from pitwall.normalize import _grid
     sessions = [{"SessionNum": 2, "SessionType": "Race",
@@ -155,7 +174,13 @@ def test_grid_walk_visits_the_grid_in_order_with_a_chase_camera_then_stops():
         clock[0] = step * 1.0
         d.tick(sess, cars, st, [])
     assert seen == [c["idx"] for c in order]
-    assert {g for _, g, _ in cuts} == {chase}
+    rear = next((g["num"] for g in sess["cameras"] if g["name"] == "Rear Chase"), chase)
+    used = [g for _, g, _ in cuts]
+    # the pole from in front, then the shots take turns (the fake field is one class... or several: each class's
+    # first car is a pole too, and gets the front shot)
+    assert used[0] == rear and set(used) <= {chase, rear}
+    if rear != chase and len({c.get("classId") for c in order}) == 1:
+        assert used[:5] == [rear, chase, rear, chase, rear]
     assert d.owner == "you", "the walk was started by hand: the camera goes back to the producer"
 
 
@@ -262,9 +287,10 @@ def test_the_pace_laps_start_a_grid_walk_in_order_that_ends_at_the_green():
     grid_nums = [num[r["idx"]] for r in sess["grid"]["rows"]]
     walk = [(n, g) for n, g, at in cuts if 20 <= at < 200][:len(grid_nums)]
     assert [n for n, _ in walk] == grid_nums, "every car, down the grid, in order"
-    assert {g for _, g in walk} == {chase}
+    rear = next((g["num"] for g in sess["cameras"] if g["name"] == "Rear Chase"), chase)
+    assert {g for _, g in walk} <= {chase, rear} and walk[0][1] == rear, "the pole from in front, then turns"
     walking = [at for at, o in owners if o == "grid"]
-    assert walking and min(walking) < 21 and max(walking) < 20 + 4 * 25, "about 4 s a car, from the pace laps"
+    assert walking and min(walking) < 21 and max(walking) < 20 + 4 * 25 + 12, "about 4 s a car (poles a little longer), from the pace laps"
     assert any(o == "race" for at, o in owners if max(walking) < at < 200), \
         "walk done before the green: the director carries on with the pace laps"
     assert all(o == "race" for at, o in owners if at > 201), "after the green, still the director"

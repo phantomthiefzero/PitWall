@@ -447,6 +447,78 @@ small{margin-right:4px}
 .slot.cam{background:color-mix(in srgb,var(--accent) 22%,var(--ink2));box-shadow:inset 0 0 0 3px var(--accent)}
 .gd-foot{display:flex;justify-content:space-between;color:var(--muted);font:600 14px/1 var(--body);padding:48px 4px 0}
 
+/* ---------- grid walk: the car the camera is on, as a TV grid slot, and the grid beside it ---------- */
+#gwalk{left:36px;bottom:54px;width:1240px}
+.gw{position:relative}
+.gw-tags{display:flex;align-items:stretch;gap:8px;margin-bottom:8px}
+.gw-tags:not(:has(:not(.hide))){display:none}
+.gw-cls{display:inline-flex;align-items:center;gap:10px;padding:7px 14px 6px;font:800 22px/1 var(--display);text-transform:uppercase;letter-spacing:.06em;border-radius:var(--r)}
+.gw-cls span{font:600 15px/1 var(--body);letter-spacing:.04em;opacity:.85;text-transform:none}
+.gw-row{display:flex;align-items:stretch;height:164px;border-radius:var(--r);overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.45)}
+.gw-pos{width:150px;flex:none;background:var(--head);color:var(--headText);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+.gw-pos small{font:700 14px/1 var(--body);letter-spacing:.12em;text-transform:uppercase;opacity:.8}
+.gw-pos b{font:800 96px/.86 var(--display);font-variant-numeric:tabular-nums;margin:4px 0 2px;display:block}
+.gw-pos span{font:700 14px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.gw-lv{width:300px;flex:none;background:linear-gradient(160deg,var(--ink2),var(--ink));position:relative;overflow:hidden}
+.gw-lv:empty{display:none}
+.gw-lv img{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);object-fit:contain}
+.gw-lv img:not(.render){inset:0;width:100%;height:100%;object-fit:cover}
+.gw-main{flex:1;min-width:0;background:var(--ink);display:flex;flex-direction:column}
+.gw-top{display:flex;align-items:center;gap:14px;padding:16px 20px 4px}
+.gw-top .plate{min-width:56px;height:36px;font-size:24px}
+.gw-name{font:800 48px/.95 var(--display);text-transform:var(--caps);letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.gw-name small{font-weight:500;color:var(--muted)}
+.gw-lic{margin-left:auto;display:flex;gap:6px;flex:none}
+.gw-lic span{font:700 14px/1 var(--body);padding:5px 8px 4px;border-radius:var(--r)}
+.gw-sub{padding:2px 20px 0;color:var(--muted);font:600 16px/1.2 var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gw-stats{margin-top:auto;display:flex;background:var(--ink2)}
+.gw-stats div{flex:1 1 auto;padding:8px 16px 9px;border-right:1px solid var(--line);white-space:nowrap}
+.gw-stats div:last-child{border-right:0}
+.gw-stats span{display:block;color:var(--muted);font:600 12px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
+.gw-stats b{display:block;font:700 26px/1.05 var(--display);font-variant-numeric:tabular-nums;margin-top:3px}
+.gw-stats b.q{color:var(--accent)}
+.gw-ph{width:130px;flex:none;background:var(--ink2);position:relative;overflow:hidden}
+.gw-ph:empty,.gw-hel:empty{display:none}
+.gw-ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.gw-hel{width:120px;flex:none;background:var(--ink);display:grid;place-items:center}
+.gw-hel img,.gw-hel svg{width:104px;height:104px;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.4))}
+.gw-badge{display:inline-flex;align-items:center;padding:8px 16px 7px;font:800 24px/1 var(--display);letter-spacing:.1em;text-transform:uppercase;
+  color:#1a1300;background:linear-gradient(100deg,#b88a1e,#ffe08a 45%,#d9a42b 60%,#ffe9a8);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+/* the grid beside it: two columns, staggered like the cars, the one on camera lit, the ones walked dimmed */
+#gladder{right:36px;top:110px;width:300px}
+.gl{background:color-mix(in srgb,var(--ink) 94%,transparent);border-radius:var(--r);overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.45)}
+.gl-head{display:flex;align-items:baseline;gap:8px;background:var(--head);color:var(--headText);padding:10px 14px}
+.gl-head b{font:800 21px/1 var(--display);text-transform:var(--caps);letter-spacing:.02em}
+.gl-head span{margin-left:auto;font:700 18px/1 var(--display);font-variant-numeric:tabular-nums}
+.gl-win{height:640px;overflow:hidden;position:relative}
+.gl-slots{display:grid;grid-template-columns:1fr 1fr;column-gap:10px;row-gap:6px;padding:10px 12px 46px;transition:transform .6s cubic-bezier(.2,.8,.2,1)}
+.gl-s{display:flex;align-items:center;gap:7px;height:46px;background:var(--ink2);border-radius:var(--r);padding:0 8px 0 0;overflow:hidden;transition:opacity .4s,background .4s,box-shadow .4s}
+.gl-s:nth-child(even){transform:translateY(26px)}
+.gl-s i{width:5px;align-self:stretch;flex:none}
+.gl-s .p{width:24px;font:800 20px/1 var(--display);text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.gl-s .plate{min-width:34px;height:22px;font-size:15px}
+.gl-s em{font:600 14px/1 var(--display);font-style:normal;text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.gl-s.done{opacity:.45}
+.gl-s.now{background:color-mix(in srgb,var(--accent) 26%,var(--ink2));box-shadow:inset 0 0 0 2px var(--accent)}
+.gl-s.now .p{color:var(--accent)}
+/* each new car comes in (Still: nothing moves, the MOTION block) */
+#gwalk.gw-next .gw-pos b{animation:gwPos .55s cubic-bezier(.2,.8,.2,1) both}
+#gwalk.gw-next .gw-lv img{animation:gwLv .7s .05s cubic-bezier(.15,.9,.25,1) both}
+#gwalk.gw-next .gw-top,#gwalk.gw-next .gw-sub{animation:gwIn .5s .12s cubic-bezier(.2,.8,.2,1) both}
+#gwalk.gw-next .gw-stats div{animation:gwUp .45s cubic-bezier(.2,.8,.2,1) both}
+#gwalk.gw-next .gw-stats div:nth-child(2){animation-delay:.08s}#gwalk.gw-next .gw-stats div:nth-child(3){animation-delay:.16s}
+#gwalk.gw-next .gw-stats div:nth-child(4){animation-delay:.24s}#gwalk.gw-next .gw-stats div:nth-child(5){animation-delay:.32s}
+#gwalk .gw-badge:not(.hide){animation:gwShine 2.4s ease-in-out infinite}
+#gwalk.gw-next .gw-badge:not(.hide){animation:gwBadge .7s .2s cubic-bezier(.2,1.4,.4,1) both,gwShine 2.4s .9s ease-in-out infinite}
+#gwalk.gw-cls-new .gw-cls{animation:gwIn .55s cubic-bezier(.2,.8,.2,1) both}
+.gw-badge{background-size:220% 100%}
+@keyframes gwPos{from{opacity:0;translate:0 40%}}
+@keyframes gwLv{from{opacity:0;translate:60% 0}}
+@keyframes gwIn{from{opacity:0;translate:-24px 0}}
+@keyframes gwUp{from{opacity:0;translate:0 12px}}
+@keyframes gwBadge{from{opacity:0;scale:.6}}
+@keyframes gwShine{0%,100%{background-position:0 0}50%{background-position:100% 0}}
+
 /* ---------- stinger ---------- */
 #stinger{left:0;top:0;width:1920px;height:1080px;opacity:1;overflow:hidden}
 #stinger .bar{position:absolute;top:-20%;height:140%;width:140%;left:-150%;transform:skewX(-18deg)}
@@ -637,6 +709,19 @@ body.bc-off>*:not(script){visibility:hidden!important}
 /* Still: the graphics do not move (the stingers and the show screens, chosen by name, still do) */
 :root[data-motion="off"] .layer:not(#stinger):not(#scene),:root[data-motion="off"] .layer:not(#stinger):not(#scene) *,
 :root[data-motion="off"] .layer:not(#stinger):not(#scene) *::before,:root[data-motion="off"] .layer:not(#stinger):not(#scene) *::after{animation:none!important}
+/* the grid walk in the Pit wall and Arcade looks */
+:root[data-look="pitwall"] .gw-row,:root[data-look="pitwall"] .gl{box-shadow:0 0 0 5px #16181b,0 0 0 6px #2a2e33,0 14px 30px rgba(0,0,0,.55)}
+:root[data-look="pitwall"] .gw-stats b{font-family:var(--seg)!important;font-size:22px;letter-spacing:.02em}
+:root[data-look="pitwall"] .gl-head{border-bottom:3px solid var(--accent)}
+:root[data-look="arcade"] .gw-row{clip-path:polygon(0 0,100% 0,98.6% 100%,0 100%);border-top:3px solid var(--accent);border-radius:0}
+:root[data-look="arcade"] .gw-pos b{font:900 italic 100px/.86 var(--num)}
+:root[data-look="arcade"] .gw-name{font-style:italic;text-shadow:var(--trail)}
+:root[data-look="arcade"] .gw-stats b{font:900 italic 27px/1.05 var(--num);color:var(--accent)}
+:root[data-look="arcade"] .gw-cls,:root[data-look="arcade"] .gw-badge{transform:skewX(-12deg);font-style:italic}
+:root[data-look="arcade"] .gl-head{transform:skewX(-8deg);border-bottom:3px solid var(--accent)}
+:root[data-look="arcade"] .gl-head b{font-style:italic}
+:root[data-look="arcade"] .gl-s .p{font-style:italic;color:var(--accent)}
+:root[data-look="arcade"] #gwalk.gw-next .gw-row{animation:lkCard .6s cubic-bezier(.15,.9,.25,1) both}
 /* ---------- /LOOKS ---------- */
 </style>
 </head>
@@ -711,6 +796,26 @@ body.bc-off>*:not(script){visibility:hidden!important}
   <section class="layer" id="grid"><div class="inner"><div class="pn">
     <div class="pn-head"><img class="logo hide" id="gdLogo" alt=""><b id="gdTitle">Starting grid</b><span id="gdSub"></span></div>
     <div class="pn-body"><div class="gd" id="gdSlots"></div><div class="gd-foot"><span id="gdPage"></span><span id="gdNote"></span></div></div>
+  </div></div></section>
+
+  <section class="layer" id="gwalk"><div class="inner"><div class="gw" id="gwBox">
+    <div class="gw-tags"><div class="gw-cls hide" id="gwCls"></div><div class="gw-badge hide" id="gwBadge"></div></div>
+    <div class="gw-row">
+      <div class="gw-pos"><small id="gwRowL"></small><b id="gwPos">–</b><span id="gwPosL"></span></div>
+      <div class="gw-lv" id="gwLv"></div>
+      <div class="gw-main">
+        <div class="gw-top"><span id="gwPlate"></span><div class="gw-name" id="gwName">–</div><div class="gw-lic" id="gwLic"></div></div>
+        <div class="gw-sub" id="gwSub"></div>
+        <div class="gw-stats" id="gwStats"></div>
+      </div>
+      <div class="gw-ph" id="gwPh"></div>
+      <div class="gw-hel" id="gwHel"></div>
+    </div>
+  </div></div></section>
+
+  <section class="layer" id="gladder"><div class="inner"><div class="gl">
+    <div class="gl-head"><b id="glTitle">Starting grid</b><span id="glCount"></span></div>
+    <div class="gl-win"><div class="gl-slots" id="glSlots"></div></div>
   </div></div></section>
 
   <section class="layer on" id="stinger"><div class="bar b1"></div><div class="bar b2"></div><div class="fx" id="stFx"></div><div class="mark" id="stMark"></div></section>
@@ -1026,7 +1131,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${(Number(l.s) || 1) * (id === "strip" ? 1 : size)})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0", gwalk: "0 100%", gladder: "100% 0" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -1037,9 +1142,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // until it is clear, and steps off air while there is no room. Sizes are measured, so a long tower or a growing
   // race control list moves what is below or above it. A graphic placed by hand (Arrange, theme.layout) stays where
   // it was put; the others make room around it. Arrange mode shows the real positions.
-  const ROOM_ORDER = ["strip", "tower", "banner", "replay", "card", "board", "grid", "league", "podium", "battle", "qlap",
+  const ROOM_ORDER = ["strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "board", "grid", "league", "podium", "battle", "qlap",
     "h2h", "faster", "pip", "map", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"];
-  const ROOM_UP = new Set(["strip", "card", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"]);
+  const ROOM_UP = new Set(["strip", "card", "gwalk", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"]);
   const ROOM_GAP = 8, ROOM_SLIDE = 420, ROOM = {};   // further than ROOM_SLIDE from its place it is off air instead
   function stageK() { return Math.min(innerWidth / 1920, innerHeight / 1080) || 1; }
   function makeRoom() {
@@ -1076,11 +1181,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
   setInterval(makeRoom, 250);
 
   // ---------------------------------------------------------------- Arrange mode
-  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip"];
+  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip", "gwalk", "gladder"];
   const ED_NAMES = { tower: "Timing tower", banner: "Banner", replay: "Replay bug", battle: "Battle box", card: "Driver card", map: "Track map", ticker: "Race control",
     board: "Standings", grid: "Grid", faster: "Where they're faster", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head",
     onboard: "Onboard", podium: "Podium", strap: "Commentator", sponsors: "Sponsors", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", strip: "Running order",
-    league: "League", pip: "Picture in picture" };
+    league: "League", pip: "Picture in picture", gwalk: "Grid walk", gladder: "Grid walk: the grid" };
   // Dragging changes this page only; the result goes to the producer panel (postMessage), which saves it as the
   // look's layout (theme.layout) so every OBS source follows.
   const ED = { id: null };
@@ -1821,7 +1926,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function renderCard() {
     const walk = gridWalkCar();
     const c = cardCar();
-    $("card").classList.toggle("on", walk ? (allowed("card") || allowed("grid")) && !sceneUp() : shown("card") && !!c);
+    // the grid walk has its own graphic (renderGridWalk): the card stays down meanwhile
+    $("card").classList.toggle("on", !walk && shown("card") && !!c);
     $("card").classList.toggle("walk", !!walk);
     if (!c) return;
     if (walk) { renderGridCard(c); return; }
@@ -1876,6 +1982,73 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (c.bestLapS > 0 && !r.timeS) stats.push(["Best lap", fmt.lap(c.bestLapS)]);
     $("cdStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
     { const h = sectorStat(c); if ($("cdSecs").innerHTML !== h) $("cdSecs").innerHTML = h; }
+  }
+
+  // ---------------------------------------------------------------- grid walk
+  // The car the walk is on as a TV grid slot (its place, row, the qualifying lap and the gaps to pole from
+  // normalize: each grid row's derived), with a pole badge and, in a multi-class field, the class's name as
+  // the walk reaches it; and the grid beside it, the car lit, the ones walked dimmed. Both only while walking.
+  const GW = { idx: null };
+  function renderGridWalk() {
+    // Arrange's "show every graphic" lays them out on the pole sitter
+    const c = gridWalkCar() || (EDIT_ALL ? carByIdx((((S.session && S.session.grid && S.session.grid.rows) || [])[0] || {}).idx) : null);
+    const okW = !ONLY || ["gwalk", "card", "grid"].includes(ONLY), okL = !ONLY || ["gladder", "grid"].includes(ONLY);
+    $("gwalk").classList.toggle("on", !!c && okW && !sceneUp());
+    $("gladder").classList.toggle("on", !!c && okL && !sceneUp());
+    if (!c) { GW.idx = null; return; }
+    const rows = (S.session && S.session.grid && S.session.grid.rows) || [];
+    const ri = rows.findIndex(x => x.idx === c.idx), r = rows[ri] || {}, d = r.derived || {};
+    const m = multi(), cc = css(c.classColor) || "#444";
+    const bg = m ? cc : T("colors.head", "#000");
+    const pb = $("gwPos").parentElement; pb.style.background = bg; pb.style.color = inkOn(/^#/.test(bg) ? bg : null);
+    $("gwPos").textContent = r.pos || "–";
+    $("gwRowL").textContent = d.row ? "Row " + d.row : "";
+    $("gwPosL").textContent = d.pole ? "Pole" : m && r.classPos ? (c.className || "Class") + " P" + r.classPos : "";
+    $("gwPosL").style.color = m ? "inherit" : "";
+    $("gwLv").innerHTML = liveryHtml(c);
+    $("gwPlate").innerHTML = plate(c);
+    const p = String(c.name || "").trim().split(/\s+/);
+    $("gwName").innerHTML = p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "");
+    $("gwLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
+      (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
+    $("gwSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
+    const stats = [["Qualifying", r.timeS ? fmt.lap(r.timeS) : "No time", "q"]];
+    if (d.poleGapS != null) stats.push(["To pole", fmt.gap(d.poleGapS)]);
+    if (m && d.classPoleGapS != null && d.classPoleGapS !== d.poleGapS) stats.push(["To class pole", fmt.gap(d.classPoleGapS)]);
+    if (r.lap) stats.push(["Set on lap", String(r.lap)]);
+    stats.push(["Grid", r.pos ? r.pos + " of " + rows.length : "–"]);
+    $("gwStats").innerHTML = stats.map(([k, v, cl]) => `<div><span>${esc(k)}</span><b class="${cl || ""}">${esc(v)}</b></div>`).join("");
+    $("gwPh").innerHTML = G("card.photo", true) ? photoHtml(c) : "";
+    $("gwHel").innerHTML = G("card.helmet", true) ? helmetHtml(c, 104) : "";
+    const badge = d.pole ? "Pole position" : m && d.classPole ? (c.className || "Class") + " pole" : "";
+    $("gwBadge").textContent = badge; $("gwBadge").classList.toggle("hide", !badge);
+    // a multi-class field: the class's name and size when the walk reaches its first car
+    const cls = m && d.classPole;
+    $("gwCls").classList.toggle("hide", !cls);
+    if (cls) {
+      const n = rows.filter(x => { const k = carByIdx(x.idx); return k && k.classId === c.classId; }).length;
+      $("gwCls").style.background = cc; $("gwCls").style.color = inkOn(cc);
+      $("gwCls").innerHTML = `${esc(c.className || "Class")}<span>${n} ${n === 1 ? "starter" : "starters"}</span>`;
+    }
+    if (GW.idx !== c.idx) {
+      GW.idx = c.idx;
+      replay($("gwalk"), "gw-next");
+      if (cls) replay($("gwalk"), "gw-cls-new");
+    }
+    // the grid beside it
+    const dir = S.director || {};
+    $("glTitle").textContent = T("text.gridTitle", "") || "Starting grid";
+    $("glCount").textContent = ri >= 0 ? (ri + 1) + " / " + rows.length : (dir.gridTotal ? dir.gridTotal + " cars" : "");
+    const html = rows.map((x, i) => {
+      const k = carByIdx(x.idx); if (!k) return `<div class="gl-s"><i></i><span class="p">${x.pos}</span></div>`;
+      const last = String(k.name || "").trim().split(/\s+/).slice(-1)[0] || "";
+      return `<div class="gl-s${i < ri ? " done" : i === ri ? " now" : ""}"><i style="background:${m ? css(k.classColor) : "var(--accent)"}"></i>` +
+        `<span class="p">${x.pos}</span>${plate(k)}<em>${esc(last)}</em></div>`;
+    }).join("");
+    if ($("glSlots").innerHTML !== html) $("glSlots").innerHTML = html;
+    const rowH = 52, fits = Math.floor(640 / rowH) - 1, at = Math.max(0, Math.floor(Math.max(ri, 0) / 2) - 2);
+    const maxRow = Math.max(0, Math.ceil(rows.length / 2) - fits);
+    $("glSlots").style.transform = `translateY(${-Math.min(at, maxRow) * rowH}px)`;
   }
 
   // ---------------------------------------------------------------- map (60 fps)
@@ -2197,7 +2370,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
+      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderGridWalk(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
     }
     drawMap(); drawFaster(t);
     pumpTicker();

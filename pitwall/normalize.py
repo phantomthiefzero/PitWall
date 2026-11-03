@@ -203,11 +203,12 @@ def build_session(src: TelemetrySource) -> dict:
         "sessions": sessions,
         "sectors": sp.get("Sectors", []) or [],
         "cameras": _camera_groups(src.session_info("CameraInfo")),
-        "grid": _grid(src.session_info("QualifyResultsInfo"), si.get("Sessions") or []),
+        "grid": _grid(src.session_info("QualifyResultsInfo"), si.get("Sessions") or [],
+                      {d.get("CarIdx"): d.get("CarClassID") for d in drivers}),
     }
 
 
-def _qual_rows(rows) -> list[dict]:
+def _qual_rows(rows, class_of=None) -> list[dict]:
     """QualifyResultsInfo/Results (or a session's QualifyPositions) as a grid.
     iRacing numbers these positions from 0 (pole is Position 0); shown from 1.
     The offset is applied only when a 0 is actually present, so a list that is
@@ -225,17 +226,42 @@ def _qual_rows(rows) -> list[dict]:
                     "idx": r.get("CarIdx"),
                     "timeS": ft if isinstance(ft, (int, float)) and ft > 0 else None,
                     "lap": r.get("FastestLap")})
-    return sorted(out, key=lambda x: x["pos"])
+    out.sort(key=lambda x: x["pos"])
+    _grid_derived(out, class_of or {})
+    return out
 
 
-def _grid(qri, sessions) -> dict:
+def _grid_derived(rows, class_of) -> None:
+    """For the grid walk (each row's "derived"): the row of the grid (two cars a row), the gap to pole and to the
+    class's pole on the qualifying lap, and whether the car is on pole overall or in its class. The class pole is
+    the class's first car (ClassPosition 1), not its quickest time: a grid set by a heat has positions without
+    times, and those stay without gaps."""
+    pole = next((r for r in rows if r["pos"] == 1), None)
+    class_pole = {}
+    for r in rows:
+        k = class_of.get(r["idx"])
+        if r.get("classPos") == 1 and k not in class_pole:
+            class_pole[k] = r
+    for r in rows:
+        k = class_of.get(r["idx"])
+        cp = class_pole.get(k)
+        r["derived"] = {
+            "row": (r["pos"] + 1) // 2 if r["pos"] > 0 else None,
+            "pole": r["pos"] == 1,
+            "classPole": r.get("classPos") == 1,
+            "poleGapS": round(r["timeS"] - pole["timeS"], 3) if r["timeS"] and pole and pole["timeS"] and r is not pole else None,
+            "classPoleGapS": round(r["timeS"] - cp["timeS"], 3) if r["timeS"] and cp and cp["timeS"] and r is not cp else None,
+        }
+
+
+def _grid(qri, sessions, class_of=None) -> dict:
     """The starting order for the race. A heat or a race with its own
     QualifyPositions uses those; otherwise the event's qualifying results."""
     for s in sessions:
         if "race" in str(s.get("SessionType") or "").lower() and s.get("QualifyPositions"):
             return {"source": "race_qualify_positions", "sessionNum": s.get("SessionNum"),
-                    "rows": _qual_rows(s.get("QualifyPositions"))}
-    rows = _qual_rows((qri or {}).get("Results"))
+                    "rows": _qual_rows(s.get("QualifyPositions"), class_of)}
+    rows = _qual_rows((qri or {}).get("Results"), class_of)
     return {"source": "qualify_results", "sessionNum": None, "rows": rows} if rows else {"source": None, "rows": []}
 
 
