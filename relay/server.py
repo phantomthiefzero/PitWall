@@ -94,6 +94,67 @@ LIVERY_MAX = 200
 WS_MAX_BYTES = 40 * 1024 * 1024
 
 
+# A league table from a web address (the producer's League standings, "From a link"). The page cannot fetch another
+# site itself (the browser forbids it), so the relay does, for the producer token only: http(s), a public address
+# (never this PC, the home network or anything else private: a co-host's link must not reach into the host's
+# network), every redirect checked the same way, 2 MB and 15 s at most, off the event loop.
+FETCH_MAX_BYTES = 2 * 1024 * 1024
+FETCH_TIMEOUT_S = 15.0
+
+
+def _public_host(host: str) -> bool:
+    import ipaddress
+    import socket
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0].split("%")[0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved
+                or ip.is_unspecified or getattr(ip, "is_site_local", False)):
+            return False
+    return bool(infos)
+
+
+def fetch_text(url: str, public=_public_host) -> dict:
+    """GET a page or file for the league table. Returns {ok, text, contentType, url} or {ok: False, error}."""
+    import urllib.request
+    import urllib.error
+
+    def allowed(u):
+        p = urllib.parse.urlparse(u)
+        return p.scheme in ("http", "https") and p.hostname and public(p.hostname)
+
+    class Checked(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if not allowed(newurl):
+                raise urllib.error.URLError("redirected to an address that is not public")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    if not isinstance(url, str) or len(url) > 2000 or not allowed(url):
+        return {"ok": False, "error": "use a public http(s) address"}
+    try:
+        opener = urllib.request.build_opener(Checked)
+        req = urllib.request.Request(url, headers={"User-Agent": "iRacing-Suite-league-table/1.0", "Accept": "*/*"})
+        with opener.open(req, timeout=FETCH_TIMEOUT_S) as r:
+            body = r.read(FETCH_MAX_BYTES + 1)
+            ctype = r.headers.get("Content-Type", "")
+            final = r.geturl()
+        if len(body) > FETCH_MAX_BYTES:
+            return {"ok": False, "error": "that page is larger than %d MB" % (FETCH_MAX_BYTES // (1024 * 1024))}
+        charset = "utf-8"
+        if "charset=" in ctype:
+            charset = ctype.split("charset=")[-1].split(";")[0].strip() or "utf-8"
+        try:
+            text = body.decode(charset, errors="replace")
+        except LookupError:
+            text = body.decode("utf-8", errors="replace")
+        return {"ok": True, "text": text, "contentType": ctype, "url": final}
+    except Exception as e:  # noqa: BLE001  (any failure is the producer's to see)
+        return {"ok": False, "error": str(getattr(e, "reason", None) or e)[:200]}
+
+
 def default_assets_dir() -> str:
     return os.path.join(os.path.expanduser("~"), ".pitwall", "broadcast_assets")
 
@@ -460,6 +521,16 @@ class Relay:
                         self.gfx_rev += 1
                         await self._fanout(self._gfx_message(by=msg.get("by") if isinstance(msg.get("by"), str) else None),
                                            only=lambda w: w not in self._guests)
+                elif msg.get("type") == "fetch_text":
+                    if role != "producer":
+                        reply({"type": "fetch_result", "ok": False, "id": msg.get("id"), "error": "only the producer token can load a link"})
+                    else:
+                        # on its own task: the producer's cuts and graphics carry on while a slow site answers
+                        async def fetch(m=msg):
+                            r = await asyncio.get_running_loop().run_in_executor(None, fetch_text, m.get("url"))
+                            r.update({"type": "fetch_result", "id": m.get("id")})
+                            reply(r)
+                        asyncio.ensure_future(fetch())
                 elif msg.get("type") == "cmd":
                     needs = CMD_ROLE.get(msg.get("cmd"))
                     if role != needs:

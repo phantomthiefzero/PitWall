@@ -484,6 +484,39 @@ small{margin-right:4px}
 .gw-hel img,.gw-hel svg{width:104px;height:104px;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.4))}
 .gw-badge{display:inline-flex;align-items:center;padding:8px 16px 7px;font:800 24px/1 var(--display);letter-spacing:.1em;text-transform:uppercase;
   color:#1a1300;background:linear-gradient(100deg,#b88a1e,#ffe08a 45%,#d9a42b 60%,#ffe9a8);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+/* a row at a time: both cars of the row, side by side, the one on camera lit */
+.gw-pair{display:flex;align-items:stretch;height:150px;border-radius:var(--r);overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.45)}
+.gw-pair .rw{width:118px;flex:none;background:var(--head);color:var(--headText);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gw-pair .rw small{font:700 14px/1 var(--body);letter-spacing:.14em;text-transform:uppercase;opacity:.8}
+.gw-pair .rw b{font:800 76px/.86 var(--display);margin-top:6px}
+.gw-half{flex:1 1 0;min-width:0;display:flex;align-items:stretch;background:var(--ink);position:relative;transition:filter .4s,opacity .4s}
+.gw-half+.gw-half{border-left:2px solid var(--line)}
+.gw-half:not(.now){filter:brightness(.7) saturate(.8)}
+.gw-half.now{box-shadow:inset 0 4px 0 var(--accent)}
+.gw-half .ps{width:84px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--ink2)}
+.gw-half .ps b{font:800 54px/.9 var(--display);font-variant-numeric:tabular-nums}
+.gw-half .ps span{font:700 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-top:4px;white-space:nowrap}
+.gw-half .lvh{width:150px;flex:none;position:relative;overflow:hidden;background:linear-gradient(160deg,var(--ink2),var(--ink))}
+.gw-half .lvh:empty{display:none}
+.gw-half .lvh img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);object-fit:contain}
+.gw-half .lvh img:not(.render){inset:0;width:100%;height:100%;object-fit:cover}
+.gw-half .gb{flex:1;min-width:0;display:flex;flex-direction:column;padding:14px 16px 0}
+.gw-half .gn{display:flex;align-items:center;gap:10px;font:800 32px/1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;min-width:0}
+.gw-half .gn em{font-style:normal;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.gw-half .gn small{font-weight:500;color:var(--muted)}
+.gw-half .gs{color:var(--muted);font:600 14px/1.2 var(--body);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gw-half .gq{display:flex;gap:18px;margin-top:auto;padding:0 0 12px}
+.gw-half .gq div span{display:block;color:var(--muted);font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
+.gw-half .gq div b{display:block;font:700 26px/1.05 var(--display);font-variant-numeric:tabular-nums;margin-top:3px}
+.gw-half .gq div b.q{color:var(--accent)}
+#gwalk.gw-next .gw-half.now .gb{animation:gwIn .45s cubic-bezier(.2,.8,.2,1) both}
+#gwalk.gw-next .gw-half.now .lvh img{animation:gwLv .6s cubic-bezier(.15,.9,.25,1) both}
+#gwalk.gw-row-new .gw-pair .rw b{animation:gwPos .55s cubic-bezier(.2,.8,.2,1) both}
+:root[data-look="arcade"] .gw-pair{clip-path:polygon(0 0,100% 0,98.6% 100%,0 100%);border-radius:0}
+:root[data-look="arcade"] .gw-half .gn,:root[data-look="arcade"] .gw-pair .rw b{font-style:italic}
+:root[data-look="arcade"] .gw-half .gq div b{font:900 italic 26px/1.05 var(--num);color:var(--accent)}
+:root[data-look="pitwall"] .gw-pair{box-shadow:0 0 0 5px #16181b,0 0 0 6px #2a2e33,0 14px 30px rgba(0,0,0,.55)}
+:root[data-look="pitwall"] .gw-half .gq div b{font-family:var(--seg)!important;font-size:21px}
 /* the grid beside it: two columns, staggered like the cars, the one on camera lit, the ones walked dimmed */
 #gladder{right:36px;top:110px;width:300px}
 .gl{background:color-mix(in srgb,var(--ink) 94%,transparent);border-radius:var(--r);overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.45)}
@@ -501,6 +534,7 @@ small{margin-right:4px}
 .gl-s.done{opacity:.45}
 .gl-s.now{background:color-mix(in srgb,var(--accent) 26%,var(--ink2));box-shadow:inset 0 0 0 2px var(--accent)}
 .gl-s.now .p{color:var(--accent)}
+.gl-s.mate{background:color-mix(in srgb,var(--accent) 10%,var(--ink2))}
 /* each new car comes in (Still: nothing moves, the MOTION block) */
 #gwalk.gw-next .gw-pos b{animation:gwPos .55s cubic-bezier(.2,.8,.2,1) both}
 #gwalk.gw-next .gw-lv img{animation:gwLv .7s .05s cubic-bezier(.15,.9,.25,1) both}
@@ -811,6 +845,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       <div class="gw-ph" id="gwPh"></div>
       <div class="gw-hel" id="gwHel"></div>
     </div>
+    <div class="gw-pair hide" id="gwPair"></div>
   </div></div></section>
 
   <section class="layer" id="gladder"><div class="inner"><div class="gl">
@@ -1614,6 +1649,33 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // ---------------------------------------------------------------- league standings
   // gfx league: {title, rows: [{pos, name, points, num, cls, uid}]} from the producer's uploaded file. The
   // points are the league's own figures; a driver in this session shows where they are now (iRacing's order).
+  // A driver's line in the league's table (gfx league.rows, the league's own points): by iRacing customer id, else by
+  // name (accents, iRacing's added digits and "Last, First" ignored), else by car number when only one row has it.
+  function leagueKeys(n) {
+    const s = String(n || "").trim(), sw = s.includes(",") ? s.split(",").map(x => x.trim()).reverse().join(" ") : s;
+    const k = x => x.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+    return [...new Set([k(s), k(sw)])].filter(Boolean);
+  }
+  function leagueRowFor(c, rows) {
+    if (!c) return null;
+    rows = rows || (G("league", {}) || {}).rows || [];
+    const uid = c.userId != null ? String(c.userId) : "";
+    let r = uid && rows.find(x => x.uid && String(x.uid) === uid); if (r) return r;
+    const ks = leagueKeys(c.name);
+    r = rows.find(x => leagueKeys(x.name).some(k => ks.includes(k))); if (r) return r;
+    // iRacing adds a digit to a name it already has ("John Smith2"): without the digits, if only one row fits
+    const bare = a => a.map(k => k.replace(/\d+$/, "")).filter(k => k.length > 3);
+    const kb = bare(ks), loose = kb.length ? rows.filter(x => bare(leagueKeys(x.name)).some(k => kb.includes(k))) : [];
+    if (loose.length === 1) return loose[0];
+    const byNum = rows.filter(x => x.num != null && x.num !== "" && String(x.num) === String(c.num ?? ""));
+    return byNum.length === 1 ? byNum[0] : null;
+  }
+  const ordinal = p => { const n = parseInt(p, 10); if (!(n > 0)) return String(p ?? ""); const t = n % 100;
+    return n + (t >= 11 && t <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"); };
+  function champText(c) {
+    const r = leagueRowFor(c); if (!r) return "";
+    return [r.pos ? ordinal(r.pos) : "", r.points !== "" && r.points != null ? r.points + " pts" : ""].filter(Boolean).join(" · ");
+  }
   function renderLeague() {
     const L = G("league", {}) || {}, rows = L.rows || [];
     const on = shown("league") && rows.length > 0;
@@ -1623,8 +1685,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("lgSub").textContent = L.sub || "";
     const logo = assetUrl(T("logo", "")); $("lgLogo").classList.toggle("hide", !logo); if (logo) $("lgLogo").src = logo;
     const cars = allCars().filter(c => c.pos > 0), m = multi();
-    const nameKey = n => String(n || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const now = r => { const c = cars.find(c => (r.uid && String(c.userId) === String(r.uid)) || (r.name && nameKey(c.name) === nameKey(r.name)));
+    const now = r => { const c = cars.find(c => leagueRowFor(c, rows) === r);
       return c ? `<span class="now">${isRace() ? "Now " : ""}P${esc(m ? c.classPos : c.pos)}</span>` : ""; };
     const list = rows.slice(0, 24), half = list.length > 12 ? Math.ceil(list.length / 2) : list.length;
     const col = part => `<div>${part.map((r, i) => `<div class="lg-r"><span class="p">${esc(r.pos ?? "")}</span>${r.num != null && r.num !== "" ? `<span class="plate" style="background:${T("colors.plate", "#2a2f38")};color:#fff">${esc(r.num)}</span>` : ""}` +
@@ -2017,23 +2078,49 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (m && d.classPoleGapS != null && d.classPoleGapS !== d.poleGapS) stats.push(["To class pole", fmt.gap(d.classPoleGapS)]);
     if (r.lap) stats.push(["Set on lap", String(r.lap)]);
     stats.push(["Grid", r.pos ? r.pos + " of " + rows.length : "–"]);
+    { const ch = champText(c); if (ch) stats.push(["Championship", ch]); }
     $("gwStats").innerHTML = stats.map(([k, v, cl]) => `<div><span>${esc(k)}</span><b class="${cl || ""}">${esc(v)}</b></div>`).join("");
     $("gwPh").innerHTML = G("card.photo", true) ? photoHtml(c) : "";
     $("gwHel").innerHTML = G("card.helmet", true) ? helmetHtml(c, 104) : "";
+    // a row at a time (the director's gridByRow): both cars of the row, the one on camera lit
+    const mates = d.row ? rows.filter(x => (x.derived || {}).row === d.row) : [];
+    const byRow = (S.director || {}).gridByRow !== false && mates.length === 2;
+    $("gwBox").querySelector(".gw-row").classList.toggle("hide", byRow);
+    $("gwPair").classList.toggle("hide", !byRow);
+    if (byRow) {
+      const half = x => {
+        const k = carByIdx(x.idx) || {}, dx = x.derived || {}, q = x.timeS ? fmt.lap(x.timeS) : "No time";
+        const nm = String(k.name || "").trim().split(/\s+/);
+        const nameH = nm.length > 1 ? `<small>${esc(nm[0])}</small> ${esc(nm.slice(1).join(" "))}` : esc(k.name || "");
+        const tag = dx.pole ? "Pole" : m && x.classPos ? esc(k.className || "Class") + " P" + x.classPos : "";
+        const gapH = dx.poleGapS != null ? `<div><span>To pole</span><b>${fmt.gap(dx.poleGapS)}</b></div>` : "";
+        const cgapH = m && dx.classPoleGapS != null && dx.classPoleGapS !== dx.poleGapS ? `<div><span>To class pole</span><b>${fmt.gap(dx.classPoleGapS)}</b></div>` : "";
+        return `<div class="gw-half${x.idx === c.idx ? " now" : ""}"><div class="ps" style="${m ? `background:${css(k.classColor) || "#444"};color:${inkOn(css(k.classColor))}` : ""}"><b>${esc(x.pos)}</b><span style="${m ? "color:inherit" : ""}">${tag}</span></div>` +
+          `<div class="lvh">${k.idx != null ? liveryHtml(k) : ""}</div><div class="gb"><div class="gn">${k.idx != null ? plate(k) : ""}<em>${nameH}</em></div>` +
+          `<div class="gs">${esc([k.team && k.team !== k.name ? k.team : "", k.car || ""].filter(Boolean).join(" · "))}</div>` +
+          `<div class="gq"><div><span>Qualifying</span><b class="q">${q}</b></div>${gapH}${cgapH}` +
+          (champText(k) ? `<div><span>Championship</span><b>${esc(champText(k))}</b></div>` : "") + `</div></div></div>`;
+      };
+      const h = `<div class="rw"><small>Row</small><b>${esc(d.row)}</b></div>` + mates.map(half).join("");
+      if ($("gwPair").innerHTML !== h) $("gwPair").innerHTML = h;
+    }
     const badge = d.pole ? "Pole position" : m && d.classPole ? (c.className || "Class") + " pole" : "";
     $("gwBadge").textContent = badge; $("gwBadge").classList.toggle("hide", !badge);
     // a multi-class field: the class's name and size when the walk reaches its first car
-    const cls = m && d.classPole;
+    // (a row: the class whose first car is in it, while the walk is on that row)
+    const clsRow = byRow ? mates.find(x => (x.derived || {}).classPole) : d.classPole ? r : null;
+    const kc = m && clsRow ? carByIdx(clsRow.idx) : null, cls = !!kc;
     $("gwCls").classList.toggle("hide", !cls);
     if (cls) {
-      const n = rows.filter(x => { const k = carByIdx(x.idx); return k && k.classId === c.classId; }).length;
-      $("gwCls").style.background = cc; $("gwCls").style.color = inkOn(cc);
-      $("gwCls").innerHTML = `${esc(c.className || "Class")}<span>${n} ${n === 1 ? "starter" : "starters"}</span>`;
+      const n = rows.filter(x => { const k = carByIdx(x.idx); return k && k.classId === kc.classId; }).length, kcc = css(kc.classColor) || "#444";
+      $("gwCls").style.background = kcc; $("gwCls").style.color = inkOn(kcc);
+      $("gwCls").innerHTML = `${esc(kc.className || "Class")}<span>${n} ${n === 1 ? "starter" : "starters"}</span>`;
     }
     if (GW.idx !== c.idx) {
       GW.idx = c.idx;
+      if (GW.row !== d.row) { GW.row = d.row; replay($("gwalk"), "gw-row-new"); }
       replay($("gwalk"), "gw-next");
-      if (cls) replay($("gwalk"), "gw-cls-new");
+      if (cls && GW.clsRow !== d.row) { GW.clsRow = d.row; replay($("gwalk"), "gw-cls-new"); }
     }
     // the grid beside it
     const dir = S.director || {};
@@ -2042,7 +2129,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const html = rows.map((x, i) => {
       const k = carByIdx(x.idx); if (!k) return `<div class="gl-s"><i></i><span class="p">${x.pos}</span></div>`;
       const last = String(k.name || "").trim().split(/\s+/).slice(-1)[0] || "";
-      return `<div class="gl-s${i < ri ? " done" : i === ri ? " now" : ""}"><i style="background:${m ? css(k.classColor) : "var(--accent)"}"></i>` +
+      const sameRow = byRow && i !== ri && (x.derived || {}).row === d.row;
+      return `<div class="gl-s${i === ri ? " now" : sameRow ? " mate" : i < ri ? " done" : ""}"><i style="background:${m ? css(k.classColor) : "var(--accent)"}"></i>` +
         `<span class="p">${x.pos}</span>${plate(k)}<em>${esc(last)}</em></div>`;
     }).join("");
     if ($("glSlots").innerHTML !== html) $("glSlots").innerHTML = html;

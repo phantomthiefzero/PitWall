@@ -37,6 +37,7 @@ Every cut goes through the same command gate as a producer's.
 """
 from __future__ import annotations
 
+import math
 import random
 import time
 
@@ -68,6 +69,15 @@ BATTLE_SHOTS = [("chase", "back"), ("rear", "front"), ("trackside", "back"),
 # look the same 30 times over.
 GRID_SHOTS = ["rear chase", "chase"]
 GRID_POLE_HOLD = 1.6         # a pole sitter's hold, times the walk's
+# The walk fits the pace laps: while they run, the time until the leader reaches the line (its pace over the last
+# few seconds, the distance to the next crossing; one that is just ahead is the line the field rolls over on its
+# way, so a lap more) is the budget. Too little for every car at its hold: shorter holds, down to a row in
+# GRID_ROW_MIN_S; too little for that: the front rows and each class's pole row, the rest left out. iRacing gives
+# no count of pace laps, so a walk that ends early hands back to the director (better than cut off by the green).
+GRID_ROW_MIN_S = 5.0
+GRID_SAFETY = 0.85
+GRID_FRONT_ROWS = 3
+GRID_JUST_AHEAD = 0.15       # a line closer than this (in laps) at the start is the one the field rolls over
 
 FRESH_INCIDENT_S = 20.0     # an incident older than this is not news
 FRESH_MOMENT_S = 12.0       # a pass or a lead change older than this is not worth cutting to
@@ -106,6 +116,10 @@ class Director:
         self.grid = []                    # car dicts still to visit
         self.grid_total = 0
         self.grid_hold_s = 5.0
+        self.grid_by_row = True           # the walk goes a row at a time (both cars, inside then outside)
+        self.grid_short = False           # the walk was shortened to fit the pace laps
+        self._pace = []                   # (t, laps) of the leader during the pace laps
+        self.pace_eta = None              # seconds until the leader reaches the line, while the pace laps run
         self.on_grid_car = None           # callback(car) when the walk reaches a car
         self.battle = None                # {"cars": [idx...], "lostAt": t|None, "shot": n}
         self.battle_hold_s = 6.0
@@ -155,7 +169,7 @@ class Director:
             self.current = None
         self.changed = True
 
-    def configure(self, on=None, style=None, hold_s=None, auto_grid=None):
+    def configure(self, on=None, style=None, hold_s=None, auto_grid=None, grid_rows=None):
         if on and not self.live:
             on = None                                 # the director runs only with the broadcast on
         if on is not None:
@@ -167,6 +181,8 @@ class Director:
             self.hold_s = max(3.0, min(30.0, float(hold_s)))
         if auto_grid is not None:
             self.auto_grid = bool(auto_grid)
+        if grid_rows is not None:
+            self.grid_by_row = bool(grid_rows)
         self.changed = True
 
     def manual(self, why="you cut the camera"):
@@ -182,6 +198,7 @@ class Director:
             return False
         self.grid = [c for c in cars if c.get("num") is not None]
         self.grid_total = len(self.grid)
+        self.grid_short = False
         # the pole and the first car of each class in this order (the walk goes down the grid)
         seen_cls, self._grid_poles = set(), set()
         for c in self.grid:
@@ -232,6 +249,7 @@ class Director:
                 "autoGrid": self.auto_grid, "gridHoldS": self.grid_hold_s,
                 "gridLeft": len(self.grid) if self.owner == "grid" else None,
                 "gridTotal": self.grid_total if self.owner == "grid" else None,
+                "gridByRow": self.grid_by_row, "gridShort": self.grid_short if self.owner == "grid" else None,
                 "battle": list(self.battle["cars"]) if self.battle else None,
                 "note": self.note, "current": self.current, "styles": sorted(STYLES)}
 
@@ -285,6 +303,7 @@ class Director:
             return                                   # broadcast off: nothing runs, not even the grid walk
         race_state = ((state or {}).get("session") or {}).get("state")
         self._watch_session(session, cars_msg, state, race_state)
+        self._sample_pace(session, cars_msg, race_state, self.clock())
         if not self.on:
             return
         edge = ((state or {}).get("derived") or {}).get("liveEdge") or {}
@@ -295,7 +314,7 @@ class Director:
             return
         groups = self._groups(session)
         if self.mode == "grid":
-            self._grid_step(groups, now)
+            self._grid_step(groups, now, session)
             return
         cars = [c for c in cars_msg.get("cars") or [] if c.get("num") is not None and c.get("surface") != "not_in_world"]
         if not cars:
@@ -506,12 +525,92 @@ class Director:
                 return
         self._next_at = now + 1.0
 
-    def _grid_step(self, groups, now):
+    # ------------------------------------------------------------------ the grid walk's time
+    def _sample_pace(self, session, cars_msg, race_state, now):
+        if race_state != "parade_laps":
+            self._pace, self.pace_eta, self._pace_target = [], None, None
+            return
+        rows = ((session or {}).get("grid") or {}).get("rows") or []
+        lead = rows[0]["idx"] if rows else None
+        car = next((c for c in cars_msg.get("cars") or [] if c.get("idx") == lead), None)
+        if car is None or car.get("pct") is None or car.get("lap") is None or car["pct"] < 0:
+            return
+        d = car["lap"] + car["pct"]
+        self._pace.append((now, d))
+        self._pace = [p for p in self._pace if now - p[0] <= 8.0]
+        (t0, d0), (t1, d1) = self._pace[0], self._pace[-1]
+        if t1 - t0 < 2.0 or d1 <= d0:
+            return
+        rate = (d1 - d0) / (t1 - t0)                      # laps a second, at the pace car's speed
+        if getattr(self, "_pace_target", None) is None:
+            # the line ahead when the pace laps began; one just ahead is the one the field rolls over on its way
+            self._pace_target = math.floor(d0) + 1 + (1 if math.floor(d0) + 1 - d0 < GRID_JUST_AHEAD else 0)
+        while self._pace_target <= d1:
+            self._pace_target += 1                        # still pacing after that line: another lap
+        self.pace_eta = (self._pace_target - d1) / rate
+
+    def _grid_rows(self, session) -> dict:
+        out = {}
+        for r in ((session or {}).get("grid") or {}).get("rows") or []:
+            row = (r.get("derived") or {}).get("row") or ((r.get("pos") or 0) + 1) // 2
+            out[r.get("idx")] = row
+        return out
+
+    def _grid_plan(self, session, car) -> float:
+        """The hold for this car: the walk's, or shorter to fit the pace laps, leaving rows out when even the
+        shortest holds do not fit (planned at the first car of each row, so a row is never split)."""
+        hold = self.grid_hold_s
+        rows_of = self._grid_rows(session)
+        unit = (lambda c: rows_of.get(c.get("idx"), c.get("idx"))) if self.grid_by_row else (lambda c: c.get("idx"))
+        units, order = {}, []
+        for c in [car] + self.grid:
+            u = unit(c)
+            if u not in units:
+                units[u] = []
+                order.append(u)
+            units[u].append(c)
+        if self.pace_eta is None:
+            return hold
+        budget = self.pace_eta * GRID_SAFETY
+        n = sum(len(v) for v in units.values())
+        if n * hold <= budget:
+            return hold
+        per_car_min = GRID_ROW_MIN_S / 2
+        if n * per_car_min <= budget:
+            return max(per_car_min, budget / n)
+        # leave rows out: the front rows and the rows with a class's pole first, then the rest from the front
+        poles = getattr(self, "_grid_poles", set())
+        front = lambda u: (rows_of.get(units[u][0].get("idx")) or 99) <= GRID_FRONT_ROWS
+        first = [u for u in order if front(u) or any(c.get("idx") in poles for c in units[u])]
+        rest = [u for u in order if u not in first]
+        keep, used = [], 0.0
+        for u in first + rest:
+            need = len(units[u]) * per_car_min
+            if used + need > budget and keep:
+                continue
+            keep.append(u)
+            used += need
+        if order[0] not in keep:
+            keep.insert(0, order[0])
+        dropped = [u for u in order if u not in keep]
+        if dropped:
+            self.grid_short = True
+            self.note = "short walk: the front of the grid and each class's pole"
+            kept = {id(c) for u in keep for c in units[u]}
+            self.grid = [c for c in self.grid if id(c) in kept]
+        return per_car_min
+
+    def _grid_step(self, groups, now, session=None):
         if not self.grid:
             self.current = None
             self._end_temporary("grid walk done")
             return
         car = self.grid.pop(0)
+        rows_of = self._grid_rows(session)
+        row_start = not self.grid_by_row or getattr(self, "_grid_row", None) != rows_of.get(car.get("idx"))
+        self._grid_row = rows_of.get(car.get("idx"))
+        if row_start:
+            self._grid_hold = self._grid_plan(session, car)
         k = self.grid_total - len(self.grid) - 1                 # this car's place in the walk, from 0
         pole = car.get("idx") in getattr(self, "_grid_poles", set())
         by_name = {(g.get("name") or "").lower(): g for gs in groups.values() for g in gs}
@@ -528,4 +627,5 @@ class Director:
             if self.on_grid_car:
                 self.on_grid_car(car)
         self.changed = True
-        self._next_at = now + self.grid_hold_s * (GRID_POLE_HOLD if pole else 1.0)
+        hold = getattr(self, "_grid_hold", self.grid_hold_s)
+        self._next_at = now + hold * (GRID_POLE_HOLD if pole and hold >= self.grid_hold_s else 1.0)

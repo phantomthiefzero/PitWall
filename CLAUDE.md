@@ -247,6 +247,17 @@ Broadcast (broadcast/)
   on, a pole badge, the class's name and size at its first car) and the grid beside it (gladder, top right: two
   staggered columns, the car lit, the ones walked dimmed). Gaps and rows come from normalize (_grid_derived, each grid
   row's `derived`); the driver card stays down while walking. Arrange's "show every graphic" lays both on the pole.
+  A row at a time by default (Director.grid_by_row, gridRows; both cars on screen, the camera on each in turn; a row
+  is never split). It fits the pace laps (_sample_pace: the leader's pace and the line ahead; one just ahead at the
+  start is the one the field rolls over, so a lap more): shorter holds down to GRID_ROW_MIN_S a row, then only the
+  front GRID_FRONT_ROWS rows and each class's pole row (grid_short). iRacing gives no count of pace laps, so ending
+  early (back to the director) is the safe side. tests: test_the_grid_walk_goes_by_rows_and_fits_the_pace_laps.
+- Championship (gfx league.rows, the league's own points): from a link (the relay fetches it for the producer token:
+  relay.fetch_text, public addresses only, redirects checked, 2 MB, off the loop; a Google Sheet's share link becomes
+  its CSV export; "keep it up to date" reloads every 10 min), a file or paste (CSV, TSV, JSON, or a web page: its best
+  <table>), or typed and fixed in the table editor. Drivers are found by customer id, else name (accents, "Last,
+  First"; iRacing's added digits only when one row fits), else a car number only one row has (leagueRowFor, the same
+  in the overlay and the producer, which says who it did not find). Shown on the League graphic and the grid walk.
 - Show screens move slowly and quietly (drifting glows, a light sweeping by, specks rising, the stripes easing;
   the words and lists come in once per screen change, never on each refresh). Each screen can use your own file
   instead (gfx scene.files[mode]: an uploaded picture or looping muted video, or an https page) with a dark backing
