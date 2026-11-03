@@ -208,7 +208,7 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
 - `session.grid` `{source, sessionNum, rows: [{pos, classPos, idx, timeS, lap, derived: {row, pole, classPole, poleGapS, classPoleGapS}}]}` from a race's
   QualifyPositions or QualifyResultsInfo; iRacing's 0-based positions shown from 1.
 - `director` (bridge): `{owner: you|race|grid|battle, on, mode, resume, style, holdS, autoGrid,
-  gridHoldS, gridLeft, gridTotal, gridByRow, gridShort, gridPaused, gridManual, gridAt, battle: [idx]|null, note, current: {car, num, group, groupName,
+  gridHoldS, gridLeft, gridTotal, gridByRow, gridShort, gridPaused, gridManual, gridAt, replays, stinger: {seq, dir: toReplay|toLive}|null, replay: {label, car, phase}|null, battle: [idx]|null, note, current: {car, num, group, groupName,
   reason, gridPos?}, styles}`. One owner moves the camera at a time. Any `camera` command (a cut by
   hand) makes the owner `you`; `grid` and `battle` are temporary and hand back to `resume` when they
   end. The grid walk starts by itself when a race's pace laps begin (`autoGrid`) and ends at the green.
@@ -418,7 +418,7 @@ Broadcast commands (producer token only; the bridge refuses them unless started 
 Director and liveries (producer token, `--allow-camera`):
 ```json
 {"type":"cmd","cmd":"director","action":"broadcast","on":true}
-{"type":"cmd","cmd":"director","action":"set","on":true,"style":"cinematic"|"onboard"|"tv","holdS":8,"autoGrid":true,"gridHoldS":5,"gridRows":true}
+{"type":"cmd","cmd":"director","action":"set","on":true,"style":"cinematic"|"onboard"|"tv","holdS":8,"autoGrid":true,"gridHoldS":5,"gridRows":true,"replays":true,"stinger":true,"stingerCutMs":420}
 {"type":"cmd","cmd":"director","action":"grid_walk","holdS":5,"capture":false,"manual":false}
 {"type":"cmd","cmd":"director","action":"grid_next"}   // also grid_prev, grid_pause {on}, grid_jump {car: idx}
 {"type":"cmd","cmd":"director","action":"grid_walk","holdS":5,"capture":true}

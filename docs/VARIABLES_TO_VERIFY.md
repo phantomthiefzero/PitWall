@@ -73,6 +73,7 @@ Recordings needed (each ~10–20 min, `--hz 10` is plenty for classification):
 |---|---|---|---|
 | `CamCarIdx` | follows every camera cut while spectating | 62 distinct changes in `spectate-race-vir` (the analyzer labelled it `pit-only`, an artefact of when cuts happened) | cut cameras in the producer panel; the tower highlight and driver card follow |
 | `CamGroupNumber`, `CamCameraNumber` | index `CameraInfo/Groups` | present in both spectate and replay captures | the panel's highlighted group matches iRacing's camera screen |
+| The director's own replays | a jump to the moment (car, group, seek, play) then `replay_search to_end`; the overlay's stinger covers both cuts | tested only against FakeSource and a stand-in replay function | turn the director on, wait for a quiet stretch after a spin: the stinger, ~10 s of replay with the bug's label, the stinger, live again; and a lead change during it brings it back early |
 | `CamCameraState` | 81 (0x51) while spectating = session screen + auto shot + key acceleration | observed value 81 in both captures | none needed for display |
 | `ReplayPlaySpeed`, `ReplayPlaySlowMotion` | 1 / false at the live edge while spectating | static 1 / false across 900 s spectated | pause, slow-mo, play from the panel; the overlay shows Paused / Slow-mo / nothing |
 | `ReplayFrameNumEnd` | frames from the end of the tape | ~1200 while spectating at speed 1 | **not displayed**: what the live edge reads as is unknown |

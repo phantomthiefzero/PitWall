@@ -1887,3 +1887,124 @@ def test_the_bridge_takes_the_walk_by_hand_commands():
     assert 'manual=bool(msg.get("manual"))' in src
     prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
     assert 'action: "grid_jump"' in prod and 'ArrowRight: "next"' in prod and 'data-gwgo="hand"' in prod
+
+
+# --------------------------------------------------------------------- the director's craft
+
+def _craft_rig(n=6, battles=None, traffic=None, caution=False, style="cinematic"):
+    cams = [{"num": i + 1, "name": nm} for i, nm in enumerate(
+        ["TV1", "Chase", "Gyro", "Rear Chase", "Blimp", "Cockpit", "Far Chase"])]
+    sess = {"cameras": cams, "grid": {"rows": []}}
+    cars = [{"idx": i, "num": str(10 + i), "name": "Driver %02d" % i, "pos": i + 1, "classPos": i + 1, "classId": 1,
+             "lap": 5, "pct": 0.1 * i, "surface": "on_track", "derived": {}} for i in range(n)]
+    msg = {"cars": cars, "derived": {"isRace": True, "battles": battles or [], "classTraffic": traffic or [],
+                                     "caution": {"active": caution}, "race": {"lapsToGo": 10}}}
+    t = [100.0]
+    log = {"cuts": [], "replay": []}
+
+    def cut(num, g):
+        log["cuts"].append((int(num) - 10, g, t[0]))
+        return {"ok": True}
+
+    def replay(cmd):
+        log["replay"].append((cmd, t[0]))
+        return {"ok": True}
+    d = Director(cut, rng=random.Random(3), clock=lambda: t[0], replay=replay)
+    d.set_live(True)
+    d.configure(on=True, style=style)
+    kinds = {c["num"]: group_kind(c["name"]) for c in cams}
+    return d, sess, msg, t, log, kinds
+
+
+def _state(t_live):
+    return {"session": {"state": "racing", "num": 2}, "derived": {"liveEdge": {"atLive": True, "tLive": t_live}}}
+
+
+def test_the_director_replays_a_moment_in_a_quiet_stretch_with_the_stinger():
+    d, sess, msg, t, log, kinds = _craft_rig()
+    contact = {"kind": "race_incident", "what": "contact", "idx": 3, "t": 470.0, "replayT": 470.0, "endT": 474.0,
+               "sessionNum": 2, "id": 9, "confidence": "high"}
+    stingers = []
+    for k in range(400):                                   # 40 s
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [contact])
+        if d.stinger and (not stingers or stingers[-1] != d.stinger):
+            stingers.append(dict(d.stinger))
+    jumps = [c for c, _ in log["replay"] if c.get("action") == "jump"]
+    lives = [c for c, _ in log["replay"] if c.get("action") == "search"]
+    assert len(jumps) == 1 and jumps[0]["timeS"] == 470.0 and jumps[0]["car"] == "13" and jumps[0]["session"] == 2
+    assert [s["dir"] for s in stingers] == ["toReplay", "toLive"], "the stinger in and out"
+    assert len(lives) == 1 and lives[0]["mode"] == "to_end", "and back to live"
+    t_jump = next(at for c, at in log["replay"] if c.get("action") == "jump")
+    t_live = next(at for c, at in log["replay"] if c.get("action") == "search")
+    assert 8.0 <= t_live - t_jump <= 19.0
+    assert d.rp is None and d.owner == "race"
+
+
+def test_a_replay_waits_for_quiet_and_cuts_back_for_big_news():
+    hot = [{"id": "1:0", "cars": [0, 1], "gapsS": [0.2], "closingSPerLap": [0.2], "forClassPos": 1}]
+    d, sess, msg, t, log, kinds = _craft_rig(battles=hot)
+    contact = {"kind": "race_incident", "what": "spin", "idx": 4, "t": 470.0, "replayT": 470.0, "sessionNum": 2, "id": 3}
+    for k in range(300):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [contact])
+    assert not log["replay"], "a fight for the lead on air: no replay"
+    # under a caution the battle is not news, and the replay runs; a new leader live brings it back early
+    d, sess, msg, t, log, kinds = _craft_rig(battles=hot, caution=True)
+    for k in range(60):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [contact])
+    assert any(c.get("action") == "jump" for c, _ in log["replay"])
+    lead = {"kind": "class_lead", "idx": 2, "prevIdx": 0, "t": 507.0, "replayT": 502.0, "sessionNum": 2, "classId": 1}
+    at = t[0]
+    for k in range(30):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(507.5 + k * 0.1), [contact, lead])
+    out = [a for c, a in log["replay"] if c.get("action") == "search"]
+    assert out and out[0] - at < 2.5, "back to live at once for the new leader"
+
+
+def test_shots_come_in_an_order_and_a_close_fight_is_held():
+    d, sess, msg, t, log, kinds = _craft_rig(n=3)
+    d.hold_s = 3
+    for k in range(400):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [])
+    shots = [kinds[g] for _, g, _ in log["cuts"]]
+    seq = SEQUENCES_CINEMATIC = ["trackside", "chase", "gyro", "rear", "aerial", "onboard"]
+    # every leader story's shots walk the cinematic order (wherever a new story starts it from the top)
+    for a, b in zip(shots, shots[1:]):
+        assert b == seq[(seq.index(a) + 1) % len(seq)] or b == seq[0], (a, b, shots)
+    # side by side: the shot stays
+    close = [{"id": "1:0", "cars": [0, 1], "gapsS": [0.15], "closingSPerLap": [0.05], "forClassPos": 1}]
+    d, sess, msg, t, log, kinds = _craft_rig(battles=close)
+    d.hold_s = 3
+    for k in range(200):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [])
+    times = [at for _, _, at in log["cuts"]]
+    gaps = [b - a for a, b in zip(times, times[1:])]
+    assert gaps and min(gaps) >= 2.0 and max(gaps) >= 8.0, "held through the side by side, 8 s more at most"
+
+
+def test_the_director_finds_traffic_charges_and_fastest_laps():
+    traffic = [{"idx": 0, "classId": 1, "aheadIdx": 5, "aheadClassId": 2, "inS": 3.0, "packN": 4, "packIdx": [5]}]
+    d, sess, msg, t, log, kinds = _craft_rig(traffic=traffic)
+    for k in range(30):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [])
+    assert d.segment and d.segment["key"] == "traffic:0" and kinds[log["cuts"][-1][1]] == "chase"
+    d, sess, msg, t, log, kinds = _craft_rig()
+    fl = {"kind": "fastest_lap", "idx": 4, "t": 499.0, "lapS": 90.1, "overall": True}
+    for k in range(10):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [fl])
+    assert d.segment["key"] == "fastlap:4"
+    d, sess, msg, t, log, kinds = _craft_rig()
+    msg["cars"][5]["derived"]["posGained"] = 9
+    passes = [{"kind": "pass", "idx": 5, "t": 480.0 + i, "replayT": 480.0 + i, "sessionNum": 2, "classPos": 6 - i} for i in range(2)]
+    for k in range(10):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), passes)
+    stories = {s["key"] for s in d._stories(msg["cars"], {c["idx"]: c for c in msg["cars"]}, msg, passes, 500.0, t[0])}
+    assert "charge:5" in stories

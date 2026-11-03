@@ -292,6 +292,15 @@ Broadcast (broadcast/)
   and size, each class leader (more the longer off air) and top cars in their box. It stays with a story for
   SEGMENT_MIN_S..SEGMENT_MAX_S going round its angles; a story just aired scores lower for FATIGUE_S; nothing is
   picked at random. tests: test_director_tells_stories_and_moves_on.
+  Also: a class leader reaching a slower class's pack (classTraffic), a car coming through the field (posGained 5+ and
+  passing lately), one closing on the car ahead (catchLaps), a fresh fastest lap; under a caution battles count for
+  little. Shots come in an order (SEQUENCES per style, STORY_SEQ per story), not by chance; a battle close and closing
+  (MOVE_GAP_S) goes onboard the chaser now and then; side by side (HOLD_CLOSE_S) the shot is held up to HOLD_MAX_S.
+  Replays (Director.replays_on, producer Setup > Auto-director): in a quiet stretch (nothing live above REPLAY_CALM) or
+  under a caution, the best recent moment (contact, spin, a top-3 pass, a lead change; 8-150 s old, one per REPLAY_GAP_S)
+  through the bridge's _replay (CommandGate, its own thread); the stinger in and out is the overlay's, fired from the
+  director's status (stinger {seq, dir}) with the camera moving at stinger_cut_s (the producer keeps it in step with
+  the look); back to live early for a fresh contact, spin or lead change. Never in the last two laps.
 - Auto ("Pick graphics for me") is contextual (overlay ctxWants / CONTEXTUAL): the driver card comes up for a few
   seconds when the camera finds a new car and now and then on a long shot (never over a battle box or a qualifying
   lap, which name the cars), the battle box shows the battle the camera is on, the onboard graphic follows onboard

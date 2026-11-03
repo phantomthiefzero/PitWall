@@ -439,6 +439,11 @@ header{padding:6px 12px}
           <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
         <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button data-gwgo="hand">Walk by hand</button><button id="gwStop">Stop</button></div>
       </section>
+      <section id="setDirector">
+        <h2>Auto-director</h2>
+        <div id="dirOpts"></div>
+        <p class="note">With replays on, the director shows the best recent moment again (a contact, a spin, a pass for the top places, a new leader) when nothing big is happening live, or under a caution: with the stinger in and out, from another angle, and straight back to live if something big happens meanwhile. At most one every 75 s.</p>
+      </section>
       <section id="setTicker"><h2>Race control ticker</h2><div id="tickerOpts"></div></section>
     </div>
     <div data-pane="look" class="hide">
@@ -751,6 +756,7 @@ header{padding:6px 12px}
     const on = !(S.director && S.director.live);
     send({ type: "cmd", cmd: "director", action: "broadcast", on }) && pending.push(on ? "Broadcast on" : "Broadcast off");
   });
+  const QUIET = {};             // a command whose answer needs no toast (keeping the director in step with the look)
   function cmd(obj, label) {
     if (obj.cmd !== "director" || obj.action !== "broadcast") {
       if (S.director && !S.director.live && !(obj.cmd === "livery" && obj.action === "setup")) { toast("The broadcast is off: turn it on at the top first", true); return false; }
@@ -1338,6 +1344,14 @@ header{padding:6px 12px}
     $("gridMode").innerHTML = [["auto", "Automatic"], ["on", "Show now"], ["off", "Off"]].map(([k, l]) => `<button data-grid="${k}" class="${gm === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
     $("gwSnapNote").textContent = S.lv && S.lv.config && S.lv.config.source ? "" : "(connect OBS in Liveries first)";
     const dr = S.director || {};
+    $("dirOpts").innerHTML = sw("sw-dirrep", dr.replays !== false, 'data-dirrep="1"', "Replays when it's quiet");
+    // the director fires the stinger for its own replays: tell it where the look's stinger covers the picture
+    if (canCamera() && dr.live) {
+      const vid = G("theme.stinger.video", null), cuts = G("theme.stinger.cuts", {}) || {};
+      const cutMs = Number(vid ? (cuts[vid] ?? 500) : G("theme.stinger.cutMs", 420)) || 0, on = G("stinger.enabled", true) !== false;
+      const k = cutMs + "|" + on;
+      if (k !== renderControls.stingKey) { renderControls.stingKey = k; if (send({ type: "cmd", cmd: "director", action: "set", stingerCutMs: cutMs, stinger: on })) pending.push(QUIET); }
+    }
     $("gwAuto").innerHTML = sw("sw-gwauto", dr.autoGrid !== false, 'data-gwauto="1"', "Start it when the pace laps begin");
     { const byRow = dr.gridByRow !== false;
       $("gwBy").innerHTML = `<button data-gwby="1" class="${byRow ? "on" : ""}" ${dis}>A row at a time</button><button data-gwby="0" class="${byRow ? "" : "on"}" ${dis}>One car at a time</button>`; }
@@ -1487,6 +1501,7 @@ header{padding:6px 12px}
     else if (ds.gwgo) cmd({ cmd: "director", action: "grid_walk", holdS: Number($("gwHold").value) || 5, capture: $("gwSnap").checked, manual: ds.gwgo === "hand" },
       ds.gwgo === "hand" ? "Grid walk by hand: Next, Previous, or click a driver" : "Walking the grid");
     else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
+    else if (ds.dirrep) cmd({ cmd: "director", action: "set", replays: !(S.director && S.director.replays !== false) }, "Director replays");
     else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");
     else if (ds.btfollow) {           // a second click stops following (the camera goes back to whoever had it)
       const cars = ds.btfollow.split(",").map(Number);
@@ -2088,6 +2103,7 @@ header{padding:6px 12px}
       case "fetch_result": leagueFetched(m); break;
       case "gfx_result": if (!m.ok) { toast(m.error, true); log(esc(m.error), true); setTimeout(() => send({ type: "resend" }), 300); } break;
       case "cmd_result": {
+        if (pending[0] === QUIET) { pending.shift(); if (m.data && m.data.type === "director") handle(m.data); break; }
         const label = pending.shift() || "Command";
         if (m.ok) {
           toast(label + (m.simulated ? " (fake field)" : ""));

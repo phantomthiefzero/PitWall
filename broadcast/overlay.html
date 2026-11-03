@@ -1867,7 +1867,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const cam = S.state.camera || {}, sp = cam.replaySpeed;
     const behind = !live() || (sp != null && (sp !== 1 || cam.replaySlowMotion));
     $("replay").classList.toggle("on", behind && allowed("replay") && !sceneUp() && G("replay.show", true) !== false && !stingerRunning);
-    const lbl = G("replay.label", "");
+    // the director's own replay names itself; the producer's carries the label it set
+    const dr = S.director && S.director.replay;
+    const lbl = dr && dr.label ? dr.label : G("replay.label", "");
     $("rpLabel").classList.toggle("hide", !lbl);
     $("rpLabel").textContent = sp === 0 ? "Paused" : cam.replaySlowMotion ? "Slow motion" + (lbl ? " · " + lbl : "") : lbl;
   }
@@ -2378,8 +2380,21 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (!st || st.seq == null) return;
     if (st.seq === stingerSeq) return;
     stingerSeq = st.seq;
-    if (!allowed("stinger")) return;
     if (st.at && Date.now() - st.at > 4000) return;              // stale: arrived after a reconnect
+    runStinger(st);
+  }
+  // The director's own replays fire their stinger through its status (director.stinger {seq, dir}); the first one
+  // this page sees only sets the mark, as for the producer's.
+  let dirStingerSeq = null;
+  function directorStinger(d) {
+    const st = d && d.stinger;
+    if (dirStingerSeq === null) { dirStingerSeq = st ? st.seq : -1; return; }
+    if (!st || st.seq === dirStingerSeq) return;
+    dirStingerSeq = st.seq;
+    runStinger(st);
+  }
+  function runStinger(st) {
+    if (!allowed("stinger")) return;
     const box = $("stinger");
     const vid = T("stinger.video", "");
     $("stFx").innerHTML = "";
@@ -2443,7 +2458,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
         applyTheme(); if (!MONITOR) maybeStinger(); break;
       }
       case "assets": S.assets = m.files || []; break;
-      case "director": S.director = m; document.body.classList.toggle("bc-off", !m.live && !PREVIEW); break;
+      case "director": S.director = m; document.body.classList.toggle("bc-off", !m.live && !PREVIEW); if (!MONITOR) directorStinger(m); break;
       case "livery": {
         if (!m.image) break;
         const car = m.car || String(m.key || "").split(":")[0], kind = m.kind || "photo";
