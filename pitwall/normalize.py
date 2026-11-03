@@ -1837,7 +1837,7 @@ class Deriver:
                 self._inc_lap = (lc, inc_now)
         if t is None:
             return
-        flags = set(session.get("flags") or [])
+        flags = set(race_flags(session.get("flags"), session.get("state")))     # no checkered before the leader finishes
         if ev["flags"] is not None:
             for f in self.FLAG_EVENTS:
                 if f in flags and f not in ev["flags"]:
@@ -3286,6 +3286,7 @@ def build_state(src: TelemetrySource, deriver: Deriver, session_msg: dict | None
                            "tankL": deriver.tank_l, "refuelLps": rate}
                           if derived["fuelPerLap"] and player["fuelL"] is not None else None)
     derived["liveEdge"] = live_edge(g)
+    derived["raceFlags"] = race_flags(session.get("flags"), session.get("state"))
     # "live" as the dashboard judges the player block: spectating leaves it zero.
     player_live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5 or (player["rpm"] or 0) > 500
     derived.update(deriver.trends(session["timeS"], weather, player, player_live))
@@ -3602,7 +3603,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             if me is not None:
                 c["derived"]["vsYou"] = vs_you(c, me, p, deriver.pace(player_idx))
         race = race_length(session_msg, session_num, ordered, _num(g("SessionTimeRemain")),
-                           deriver, decode_bits(g("SessionFlags"), FLAG_BITS))
+                           deriver, race_flags(decode_bits(g("SessionFlags"), FLAG_BITS),
+                                               SESSION_STATE.get(g("SessionState"))))
         fi = deriver._fuel_info or {}
         deriver.stop_forecast(cars, race if is_race else None, own_idx if own is not None else None,
                               fi.get("fpl"), deriver.tank_l, fi.get("fuelL"))
@@ -3828,6 +3830,19 @@ def _parse_secs(v):
         return x if 0 < x < 7 * 86400 else None
     except (TypeError, ValueError):
         return None
+
+
+def race_flags(flags, state) -> list:
+    """The flags as the race sees them. iRacing raises the checkered flag the moment a timed race's clock runs
+    out, while the leader still has the last lap to drive (observed: the overlay waved it a couple of minutes
+    early). SessionState only turns "checkered" when the leader crosses the line. So until then the checkered
+    flag reads as the white one: the last lap."""
+    out = list(flags or [])
+    if "checkered" in out and state not in ("checkered", "cool_down"):
+        out.remove("checkered")
+        if "white" not in out:
+            out.append("white")
+    return out
 
 
 def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver, flags) -> dict:
