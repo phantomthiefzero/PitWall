@@ -290,6 +290,9 @@ header{padding:6px 12px}
 .lg-ed{display:grid;grid-template-columns:44px 1fr 52px 64px 84px 28px;gap:3px 4px;align-items:center;max-height:320px;overflow:auto;margin:4px 0 6px}
 .lg-ed input{min-height:28px;padding:2px 6px;font-size:13px;width:100%}
 .lg-ed button{min-height:26px;padding:0;width:26px}
+
+.gwctl{margin:-2px 0 6px}
+.gwctl button{flex:1;min-height:34px;font-weight:700}
 </style>
 </head>
 <body>
@@ -345,6 +348,7 @@ header{padding:6px 12px}
       <div id="camWarn" class="warn hide"></div>
       <p class="note hide" id="camOwn" style="margin:4px 0 0"></p>
       <div class="owner" id="owner"></div>
+      <div class="opts gwctl hide" id="gwCtl"></div>
       <h3 style="margin-top:0">Auto-director <span class="note" id="dirNow" style="text-transform:none;letter-spacing:0;font-weight:500"></span></h3>
       <div class="opts" id="dirCtl"></div>
       <h3>Replay</h3>
@@ -356,6 +360,8 @@ header{padding:6px 12px}
       <div id="packs" class="note"></div>
       <h3>Let iRacing choose</h3>
       <div class="opts" id="focus"></div>
+      <h3>Grid walk</h3>
+      <div class="opts"><button data-gwgo="auto" title="Down the grid by itself (Setup, Starting grid: rows or cars, seconds per car)">Walk the grid</button><button data-gwgo="hand" title="Starts on pole and waits: Next, Previous, or click a driver">Walk by hand</button></div>
     </section>
   </div>
   <div id="colField">
@@ -431,7 +437,7 @@ header{padding:6px 12px}
         <p class="note" id="gwNow"></p>
         <div class="grid2"><label for="gwHold">Seconds per car</label><input type="number" id="gwHold" min="2" max="20" value="5">
           <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
-        <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button id="gwStop">Stop</button></div>
+        <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button data-gwgo="hand">Walk by hand</button><button id="gwStop">Stop</button></div>
       </section>
       <section id="setTicker"><h2>Race control ticker</h2><div id="tickerOpts"></div></section>
     </div>
@@ -1365,7 +1371,7 @@ header{padding:6px 12px}
     const why = !canProduce() ? "" : !S.hello ? "Waiting for the bridge." : "Camera control is off: start the bridge with --allow-camera (the suite does this for you).";
     $("camWarn").textContent = why; $("camWarn").classList.toggle("hide", camOk || !why);
     const ownTxt = camOk && !live ? "The broadcast is off: nothing here moves the camera until you turn it on at the top."
-      : can && own !== "you" ? ({ race: "The director", grid: "The grid walk", battle: "Following the battle" }[own] || "The director") + " has the camera: a click on a shot, a group or a driver takes it back." : "";
+      : can && own !== "you" ? ({ race: "The director", grid: "The grid walk", battle: "Following the battle" }[own] || "The director") + (own === "grid" ? " has the camera: a click on a shot or a group takes it back (a driver on the grid moves the walk to them)." : " has the camera: a click on a shot, a group or a driver takes it back.") : "";
     $("camOwn").textContent = ownTxt; $("camOwn").classList.toggle("hide", !ownTxt);
     for (const id of ["shots", "groups", "focus"]) $(id).classList.toggle("takes", can && own !== "you");
 
@@ -1428,13 +1434,21 @@ header{padding:6px 12px}
     const now = d.current && o !== "you" ? `Now: #${esc(d.current.num)} ${esc(c ? c.name : "")} · ${esc(d.current.groupName || "")}.` : "";
     const after = d.resume === "race" ? " Then back to the director." : o === "grid" || o === "battle" ? " Then the camera is yours again." : "";
     const head = { you: "You have the camera", race: "The auto-director has the camera",
-      grid: `Walking the grid${d.gridTotal ? ": car " + Math.max(1, d.gridTotal - (d.gridLeft || 0)) + " of " + d.gridTotal : ""}`,
+      grid: `${d.gridPaused ? "Grid walk, held" : "Walking the grid"}${d.gridTotal && d.gridAt != null ? ": car " + Math.max(1, d.gridAt + 1) + " of " + d.gridTotal : ""}`,
       battle: "Following " + battleName(d.battle) }[o] || o;
     const sub = o === "you" ? "Nothing moves it until you cut, start the director, follow a battle or walk the grid." :
       `${now}${after} Any cut you make takes it back.`;
     $("owner").className = "owner" + (o === "you" ? " you" : "");
-    $("owner").innerHTML = `<div class="who"><b>${esc(head)}</b>${sub}</div>` +
+    $("owner").innerHTML = `<div class="who"><b>${esc(head)}</b>${o === "grid" ? (d.gridPaused ? "Held on this car: Next or Previous moves on, or click a driver to go to them." :
+      "Next or Previous moves on now, Hold keeps it here; click a driver to go to them.") + (d.gridShort ? " Shortened to fit the pace laps." : "") : sub}</div>` +
       (o !== "you" ? `<button data-own="stop" ${canCamera() ? "" : "disabled"}>Take the camera</button>` : "");
+    // the walk by hand (also ← → and the space bar while it runs)
+    const gwc = $("gwCtl"), cam = canCamera() ? "" : "disabled";
+    document.querySelectorAll("[data-gwgo]").forEach(b => { b.disabled = !canCamera(); });
+    gwc.classList.toggle("hide", o !== "grid");
+    if (o === "grid") gwc.innerHTML = `<button data-gw="prev" title="Previous car (←)" ${cam}>◀ Previous</button>` +
+      `<button data-gw="pause" class="${d.gridPaused ? "on" : ""}" title="${d.gridPaused ? "Carry on by itself" : "Stay on this car"} (space)" ${cam}>${d.gridPaused ? "▶ Carry on" : "❚❚ Hold"}</button>` +
+      `<button data-gw="next" title="Next car (→)" ${cam}>Next ▶</button>`;
     $("dirNow").textContent = o === "race" ? "Choosing shots from the race." + (d.current ? " " + (d.current.reason || "") : "") :
       d.resume === "race" ? "On: comes back when the " + (o === "grid" ? "grid walk" : "battle") + " ends." : "Off.";
     $("gwNow").textContent = o === "grid" ? head + "." : "";
@@ -1469,6 +1483,9 @@ header{padding:6px 12px}
       if (c) cutToCar(c, Number(ds.group)); else cmd({ cmd: "camera", action: "focus", focus: "exciting", group: Number(ds.group), camera: 0 }, "Camera group");
     }
     else if (ds.own) cmd({ cmd: "director", action: "stop" }, "You have the camera");
+    else if (ds.gw) gridWalkCmd(ds.gw);
+    else if (ds.gwgo) cmd({ cmd: "director", action: "grid_walk", holdS: Number($("gwHold").value) || 5, capture: $("gwSnap").checked, manual: ds.gwgo === "hand" },
+      ds.gwgo === "hand" ? "Grid walk by hand: Next, Previous, or click a driver" : "Walking the grid");
     else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
     else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");
     else if (ds.btfollow) {           // a second click stops following (the camera goes back to whoever had it)
@@ -1520,14 +1537,32 @@ header{padding:6px 12px}
     if (e.target.id === "dirHold") cmd({ cmd: "director", action: "set", holdS: Number(e.target.value) || 8 }, "Director hold");
     if (e.target.id === "gwHold") cmd({ cmd: "director", action: "set", gridHoldS: Number(e.target.value) || 5 }, "Seconds per car");
   });
+  // During a grid walk a click on a driver on the grid moves the walk to them (the walk carries on from there);
+  // anywhere else, or a driver not on the grid, it is a cut as always (and the camera is yours).
+  function fieldPick(c) {
+    const onGrid = c && ((S.session && S.session.grid && S.session.grid.rows) || []).some(r => r.idx === c.idx);
+    if (owner() === "grid" && onGrid) { cmd({ cmd: "director", action: "grid_jump", car: c.idx }, "Grid walk: #" + c.num + " " + (c.name || "")); return; }
+    cutToCar(c);
+  }
   $("field").addEventListener("click", e => {
     if (e.target.closest("button")) return;
-    const r = e.target.closest(".car"); if (r) cutToCar(carByIdx(Number(r.dataset.idx)));
+    const r = e.target.closest(".car"); if (r) fieldPick(carByIdx(Number(r.dataset.idx)));
   });
   $("field").addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
     const r = e.target.closest(".car"); if (!r || e.target.closest("button")) return;
-    e.preventDefault(); cutToCar(carByIdx(Number(r.dataset.idx)));
+    e.preventDefault(); fieldPick(carByIdx(Number(r.dataset.idx)));
+  });
+  function gridWalkCmd(a) {
+    if (a === "pause") cmd({ cmd: "director", action: "grid_pause", on: !(S.director && S.director.gridPaused) }, S.director && S.director.gridPaused ? "Grid walk carries on" : "Grid walk held");
+    else cmd({ cmd: "director", action: a === "next" ? "grid_next" : "grid_prev" }, a === "next" ? "Next car" : "Previous car");
+  }
+  document.addEventListener("keydown", e => {
+    if (owner() !== "grid" || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!$("setup").classList.contains("hide") || !$("arrange").classList.contains("hide")) return;
+    const t = e.target; if (t && (/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName) || t.isContentEditable || t.closest(".car"))) return;
+    const a = { ArrowRight: "next", ArrowLeft: "prev", " ": "pause" }[e.key]; if (!a || !canCamera()) return;
+    e.preventDefault(); gridWalkCmd(a);
   });
   $("gwStart").onclick = () => cmd({ cmd: "director", action: "grid_walk", holdS: Number($("gwHold").value) || 5, capture: $("gwSnap").checked }, "Walking the grid");
   $("gwStop").onclick = () => cmd({ cmd: "director", action: "stop" }, "Director stopped");
