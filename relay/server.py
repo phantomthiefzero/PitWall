@@ -91,6 +91,35 @@ ASSET_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                ".mov": "video/quicktime", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
                ".otf": "font/otf"}
 LIVERY_MAX = 200
+
+# Booth notes (broadcast/notes.html): the commentators' own words, one note per driver (by iRacing user id, so it
+# is there again next race) and one for the show. Kept in a file in the uploads folder, written by the producer token
+# (the host and the co-host link), sent to the broadcast pages, never to share-link guests.
+NOTE_MAX_CHARS = 600
+SHOW_NOTE_MAX_CHARS = 4000
+NOTES_MAX_BYTES = 256 * 1024
+
+
+def clean_notes_patch(patch) -> dict | None:
+    """A notes message's "set": {"drivers": {uid: text or null}, "show": text}. Anything else is refused (None)."""
+    if not isinstance(patch, dict) or set(patch) - {"drivers", "show"}:
+        return None
+    out: dict = {}
+    if "drivers" in patch:
+        d = patch["drivers"]
+        if not isinstance(d, dict) or len(d) > 100:
+            return None
+        out["drivers"] = {}
+        for k, v in d.items():
+            k = str(k)
+            if not k.isdigit() or len(k) > 12 or not (v is None or isinstance(v, str)):
+                return None
+            out["drivers"][k] = None if v is None or not v.strip() else v[:NOTE_MAX_CHARS]
+    if "show" in patch:
+        if not isinstance(patch["show"], str):
+            return None
+        out["show"] = patch["show"][:SHOW_NOTE_MAX_CHARS]
+    return out
 WS_MAX_BYTES = 40 * 1024 * 1024
 
 
@@ -150,6 +179,7 @@ def client_asset(path: str):
     except OSError:
         return None
 BROADCAST_PAGES = {"/broadcast/overlay.html": "overlay.html", "/broadcast/producer.html": "producer.html",
+                   "/broadcast/notes.html": "notes.html",
                    "/broadcast/": "producer.html", "/broadcast": "producer.html"}
 
 
@@ -182,6 +212,10 @@ class Relay:
     def __init__(self, bridge_token: str, view_token: str, engineer_token: str | None,
                  producer_token: str | None = None, assets_dir: str | None = None):
         self.assets_dir = assets_dir or default_assets_dir()
+        # in the uploads folder, under a name no upload can have (a leading dot, not an asset type): never listed,
+        # served or deleted as a file
+        self.notes_path = os.path.join(self.assets_dir, ".booth_notes.json")
+        self.notes = self._load_notes()
         self.liveries: dict[str, str] = {}      # key -> raw "livery" message, newest kept
         self.bridge_token = bridge_token
         self.view_token = view_token
@@ -383,7 +417,50 @@ class Relay:
                 q.put_nowait(raw)
         if not guest:
             q.put_nowait(self._gfx_message())
+            q.put_nowait(self._notes_message())
         q.put_nowait(self._assets_message())
+
+    def _load_notes(self) -> dict:
+        try:
+            with open(self.notes_path, encoding="utf-8") as f:
+                n = json.load(f)
+            if isinstance(n, dict):
+                return {"drivers": {str(k): str(v) for k, v in (n.get("drivers") or {}).items() if v},
+                        "show": str(n.get("show") or "")}
+        except (OSError, ValueError):
+            pass
+        return {"drivers": {}, "show": ""}
+
+    def _save_notes(self):
+        try:
+            os.makedirs(os.path.dirname(self.notes_path), exist_ok=True)
+            with open(self.notes_path + ".part", "w", encoding="utf-8") as f:
+                json.dump(self.notes, f, ensure_ascii=False)
+            os.replace(self.notes_path + ".part", self.notes_path)
+        except OSError as e:
+            print(f"[relay] could not save the booth notes: {e}")
+
+    def _notes_message(self, by: str | None = None) -> str:
+        return json.dumps({"type": "notes", "notes": self.notes, "by": by}, ensure_ascii=False)
+
+    def apply_notes(self, patch) -> dict:
+        """Merge a notes patch (clean_notes_patch), keep it on disk. Returns a notes_result."""
+        p = clean_notes_patch(patch)
+        if p is None:
+            return {"type": "notes_result", "ok": False, "error": "a notes message needs {drivers: {user id: text}, show: text}"}
+        merged = {"drivers": dict(self.notes.get("drivers") or {}), "show": self.notes.get("show") or ""}
+        for k, v in (p.get("drivers") or {}).items():
+            if v is None:
+                merged["drivers"].pop(k, None)
+            else:
+                merged["drivers"][k] = v
+        if "show" in p:
+            merged["show"] = p["show"]
+        if len(json.dumps(merged, ensure_ascii=False).encode("utf-8")) > NOTES_MAX_BYTES:
+            return {"type": "notes_result", "ok": False, "error": "the notes are full (%d KB): clear some" % (NOTES_MAX_BYTES // 1024)}
+        self.notes = merged
+        self._save_notes()
+        return {"type": "notes_result", "ok": True}
 
     def _gfx_message(self, by: str | None = None) -> str:
         return json.dumps({"type": "gfx", "rev": self.gfx_rev, "state": self.gfx, "by": by})
@@ -460,6 +537,17 @@ class Relay:
                         self.gfx_rev += 1
                         await self._fanout(self._gfx_message(by=msg.get("by") if isinstance(msg.get("by"), str) else None),
                                            only=lambda w: w not in self._guests)
+                elif msg.get("type") == "notes":
+                    if role != "producer":
+                        reply({"type": "notes_result", "ok": False, "error": "only the producer token can write notes"})
+                    elif len(raw) > NOTES_MAX_BYTES:
+                        reply({"type": "notes_result", "ok": False, "error": "that note is too long"})
+                    else:
+                        r = self.apply_notes(msg.get("set"))
+                        reply(r)
+                        if r["ok"]:
+                            await self._fanout(self._notes_message(by=msg.get("by") if isinstance(msg.get("by"), str) else None),
+                                               only=lambda w: w not in self._guests)
                 elif msg.get("type") == "cmd":
                     needs = CMD_ROLE.get(msg.get("cmd"))
                     if role != needs:
