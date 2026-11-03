@@ -1620,3 +1620,25 @@ def test_overlay_makes_room_for_every_graphic():
     assert up <= ids
     assert 'shown("map") && !!S.cars && !$("faster").classList.contains("on")' in page
     assert "if (EDIT) return;" in page.split("function makeRoom()")[1][:200]   # Arrange shows real positions
+
+
+def test_every_look_moves_its_own_way():
+    """Motion (theme.motion on | calm | off): every look has an entrance, an update flash and the loops, and the
+    entrances never change a graphic's measured box (makeRoom measures it): clip-path, opacity and filter only."""
+    import re
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    presets = re.findall(r"(\w+): \"", re.search(r"const PRESETS = \{([^}]*)\}", prod).group(1))
+    css = page.split("/* ---------- MOTION")[1].split("/* ---------- /LOOKS")[0]
+    for p in presets:
+        if p in ("imsa", "arcade"):
+            continue                                   # imsa is the default (:root), arcade keeps its own entrances
+        assert ':root[data-preset="%s"]{--m-in:' % p in css
+        assert ':root[data-preset="%s"] .lk-hit .inner::after' % p in css
+    for name in ("mWipeL", "mWipeR", "mDrop", "mRise", "mOpen", "mPower", "mNeon"):
+        body = re.search(r"@keyframes %s\{(.*?)\}\}" % name, css).group(1)
+        props = set(re.findall(r"([a-z-]+):", body))
+        assert props <= {"clip-path", "opacity", "filter"}, (name, props)
+    assert 'dataset.motion = th.motion === "off" || th.motion === "calm"' in page
+    assert ':root[data-motion="on"] .tw-head::before' in css          # the loops are Animated only
+    assert 'data-motion="${k}"' in prod and "ds.motion" in prod
