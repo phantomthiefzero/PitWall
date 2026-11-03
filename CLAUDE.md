@@ -223,7 +223,11 @@ Broadcast (broadcast/)
   asks for the real state again) and is never sent to share-link guests. A show screen hides every other graphic on
   every OBS source, not only the one showing the screen. Default positions keep the graphics that are on together
   apart (the speed trap above the card's right end, picture in picture beside the map); the producer's Position
-  settings move any of them.
+  settings move any of them. Graphics on air together never overlap (overlay makeRoom, every 250 ms): placed in
+  ROOM_ORDER by measured size, one that would touch a graphic already placed slides along its edge (ROOM_UP slide up,
+  the rest down, then the other way, at most ROOM_SLIDE) or steps off air (.roomoff) while there is no room; one
+  placed by hand in Arrange stays put; Arrange mode shows the real positions. The corner track map steps aside while
+  "where they're faster" (which draws its own map, colours only: no cars on it, the user's call) is up.
 - Camera in the app window: WebView2 asks the app before a page may use a camera, and pywebview never answers
   (refused: the monitor showed "no camera access"). suite.app.allow_local_camera answers it on the window's UI thread,
   camera only and only for the suite's own pages (camera_allowed: http on 127.0.0.1 / localhost). If it is still

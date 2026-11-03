@@ -37,6 +37,8 @@ body{font-family:var(--body);color:var(--text);-webkit-font-smoothing:antialiase
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
 .layer{position:absolute;opacity:0;pointer-events:none;transition:opacity .35s ease}
 .layer.on{opacity:1}
+.layer{transition:opacity .35s ease,translate .45s cubic-bezier(.2,.8,.2,1)}
+.layer.on.roomoff{opacity:0}   /* no room on screen beside the graphics already up (makeRoom) */
 /* Arrange mode (&edit=1, the producer's "Arrange graphics"): every graphic on screen can be dragged, and resized
    by its corner or the mouse wheel; double-click puts it back. */
 body.edit .layer.on:not(#stinger):not(#scene){pointer-events:auto;cursor:move}
@@ -366,7 +368,7 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 
 /* ---------- tyres, speed trap ---------- */
 #tyres{left:800px;bottom:190px}
-#trap{left:1000px;bottom:200px;width:360px}
+#trap{left:1016px;bottom:200px;width:360px}
 .mini{background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
 .mini-h{background:var(--head);color:var(--headText);padding:7px 12px 6px;font:800 14px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;display:flex;gap:8px;align-items:center}
 .mini-r{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--line);font:600 18px/1 var(--display);text-transform:var(--caps);white-space:nowrap}
@@ -945,6 +947,50 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
+
+  // ---------------------------------------------------------------- making room
+  // Graphics that are on air together never sit on each other. Each pass places them in ROOM_ORDER: one that would
+  // touch a graphic already placed slides along its own edge (top ones down, bottom ones up, then the other way)
+  // until it is clear, and steps off air while there is no room. Sizes are measured, so a long tower or a growing
+  // race control list moves what is below or above it. A graphic placed by hand (Arrange, theme.layout) stays where
+  // it was put; the others make room around it. Arrange mode shows the real positions.
+  const ROOM_ORDER = ["strip", "tower", "banner", "replay", "card", "board", "grid", "league", "podium", "battle", "qlap",
+    "h2h", "faster", "pip", "map", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"];
+  const ROOM_UP = new Set(["strip", "card", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"]);
+  const ROOM_GAP = 8, ROOM_SLIDE = 420, ROOM = {};   // further than ROOM_SLIDE from its place it is off air instead
+  function stageK() { return Math.min(innerWidth / 1920, innerHeight / 1080) || 1; }
+  function makeRoom() {
+    if (EDIT) return;
+    const k = stageK(), lay = (S.gfx.theme || {}).layout || {}, placed = [];
+    const hit = (r, dy) => placed.find(p => r.l < p.r + ROOM_GAP && r.r + ROOM_GAP > p.l && r.t + dy < p.b + ROOM_GAP && r.b + dy + ROOM_GAP > p.t);
+    for (const id of ROOM_ORDER) {
+      const sec = $(id), cur = ROOM[id] || { dy: 0, off: false };
+      if (!sec.classList.contains("on")) continue;     // fading out where it was; placed again when it comes back
+      const el = sec.querySelector(".inner") || sec, b = el.getBoundingClientRect();
+      if (b.width < 4 || b.height < 4) continue;
+      const now = parseFloat((getComputedStyle(sec).translate || "0 0").split(" ")[1]) || 0;   // where a slide has got to
+      const r = { l: b.left / k, r: b.right / k, t: b.top / k - now, b: b.bottom / k - now };
+      const own = lay[id] && (Number(lay[id].x) || Number(lay[id].y));
+      let dy = 0, off = false;
+      if (!own && hit(r, 0)) {
+        const tryDir = down => {
+          let d = 0;
+          for (let i = 0; i < 12; i++) {
+            const p = hit(r, d); if (!p) break;
+            d = down ? p.b + ROOM_GAP - r.t : p.t - ROOM_GAP - r.b;
+          }
+          return !hit(r, d) && r.t + d >= 8 && r.b + d <= 1072 && Math.abs(d) <= ROOM_SLIDE ? d : null;
+        };
+        const first = tryDir(!ROOM_UP.has(id)), other = first == null ? tryDir(ROOM_UP.has(id)) : null;
+        if (first != null) dy = first; else if (other != null) dy = other; else off = true;
+      }
+      if (dy !== cur.dy) sec.style.translate = dy ? `0 ${Math.round(dy)}px` : "";
+      sec.classList.toggle("roomoff", off);
+      ROOM[id] = { dy, off };
+      if (!off) placed.push({ l: r.l, r: r.r, t: r.t + dy, b: r.b + dy });
+    }
+  }
+  setInterval(makeRoom, 250);
 
   // ---------------------------------------------------------------- Arrange mode
   const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip"];
@@ -1660,6 +1706,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const fsCtx = $("fsCv").getContext("2d");
   function drawFaster(now) {
     const f = FS.pair; if (!f || !$("faster").classList.contains("on")) return;
+    const dk = FS.key + "|" + (S.map ? 1 : 0); if (FS.drawn === dk) return;     // drawn in full: nothing moves after the sweep
     const W = 800, pad = 70, size = W - pad * 2, g = fsCtx, pts = S.map && S.map.points, K = f.gainS.length;
     g.clearRect(0, 0, W, W);
     const P = pct => { pct = ((pct % 1) + 1) % 1;
@@ -1678,15 +1725,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     g.globalAlpha = 1; g.shadowBlur = 0;
     const [sx, sy] = P(0); g.save(); g.translate(sx, sy); g.fillStyle = "#fff"; for (let r = 0; r < 4; r++) for (let c = 0; c < 2; c++) if ((r + c) % 2) g.fillRect(-12 + c * 12, -24 + r * 12, 12, 12); g.restore();
-    if (sweep < 1) return;
-    // the two best laps, racing round on a loop at three times real speed
-    const lapLen = Math.max(f.lapA[K], f.lapB[K]), t = (((now - FS.shownAt) / 1000 - 1.6) * 3) % (lapLen + 2);
-    const at = (L, tt) => { if (tt <= 0) return 0; if (tt >= L[K]) return 1; let k = 0; while (k < K && L[k + 1] < tt) k++; return (k + (tt - L[k]) / ((L[k + 1] - L[k]) || 1)) / K; };
-    [[f.lapB, FS.cb], [f.lapA, FS.ca]].forEach(([L, col]) => {
-      const q = at(L, t);
-      for (let tr = 6; tr >= 1; tr--) { const [x, y] = P(at(L, t - tr * 0.08)); g.globalAlpha = 0.12 * (7 - tr) / 6; g.fillStyle = col; g.beginPath(); g.arc(x, y, 14, 0, 7); g.fill(); }
-      g.globalAlpha = 1; const [x, y] = P(q); g.fillStyle = col; g.strokeStyle = "#000"; g.lineWidth = 4; g.beginPath(); g.arc(x, y, 18, 0, 7); g.fill(); g.stroke();
-    });
+    if (sweep >= 1) FS.drawn = dk;
+    // just the map: who is quicker where (the two cars racing round it as dots were too busy, the user's call)
   }
 
   // ---------------------------------------------------------------- driver card
@@ -1773,7 +1813,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   }
   const cv = $("mapCv"), ctx = cv.getContext("2d");
   function drawMap() {
-    const on = shown("map") && !!S.cars;
+    // the "where they're faster" panel draws its own map: the corner map steps aside while it is up
+    const on = shown("map") && !!S.cars && !$("faster").classList.contains("on");
     $("map").classList.toggle("on", on);
     if (!on) return;
     const W = 720, pad = 44, size = W - pad * 2;
