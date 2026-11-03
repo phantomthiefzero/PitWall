@@ -1642,3 +1642,20 @@ def test_every_look_moves_its_own_way():
     assert 'dataset.motion = th.motion === "off" || th.motion === "calm"' in page
     assert ':root[data-motion="on"] .tw-head::before' in css          # the loops are Animated only
     assert 'data-motion="${k}"' in prod and "ds.motion" in prod
+
+
+def test_producer_is_a_control_room():
+    """The producer panel fits one screen: four columns, settings in the Setup drawer, every graphic a tile."""
+    import re
+    prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    for col in ("colCam", "colField", "colGfx", "colRight"):
+        assert '<div id="%s">' % col in prod
+    main = prod.split('<main id="main"')[1].split("</main>")[0]
+    for pane in ("show", "look", "studio", "liveries", "obs"):
+        assert 'data-pane="%s"' % pane not in main                        # settings are not in the columns
+        assert 'data-pane="%s"' % pane in prod.split('<div id="setup"')[1]
+    layers = set(re.findall(r'\["(\w+)", "', prod.split("const LAYERS = [")[1].split("];")[0]))
+    tiled = set(re.findall(r'"(\w+)"', prod.split("const TILE_GROUPS = [")[1].split("]];")[0])) - {"Always", "Race", "Alerts", "Qualifying", "Show"}
+    assert layers == tiled, layers ^ tiled
+    for sec in set(re.findall(r'(set[A-Z]\w+)"', prod.split("const GEAR = {")[1].split("};")[0])):
+        assert 'id="%s"' % sec in prod, sec

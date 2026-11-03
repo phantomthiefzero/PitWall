@@ -367,7 +367,7 @@ class AppWindowApiTest(unittest.TestCase):
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
                                   "update_open_key_page", "save_report", "save_image",
                                   "record_start", "record_stop", "record_info", "record_show",
-                                  "second_start", "second_stop", "second_info", "open_in_browser"})
+                                  "second_start", "second_stop", "second_info", "open_in_browser", "camera_status"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
 
@@ -380,6 +380,22 @@ class AppWindowApiTest(unittest.TestCase):
         for uri in ("https://vdo.ninja/?view=abc", "http://127.0.0.1.evil.example/", "https://127.0.0.1/", "", None):
             self.assertFalse(camera_allowed(True, uri), uri)
         self.assertFalse(camera_allowed(False, "http://127.0.0.1:8765/"), "the microphone and the rest stay refused")
+
+    def test_the_app_window_is_started_with_media_granted(self):
+        """The permission handler alone did not get OBS Virtual Camera into the app window, so the window's browser
+        is also started with --use-fake-ui-for-media-stream (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, which wins over
+        pywebview's own arguments: its flag is kept). Added once, next to anything already set."""
+        from suite.app import grant_media_in_window, CAMERA, Api
+        env = {}
+        v = grant_media_in_window(env)
+        self.assertIn("--use-fake-ui-for-media-stream", v)
+        self.assertIn("--disable-features=ElasticOverscroll", v)
+        env2 = {"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS": "--foo --use-fake-ui-for-media-stream"}
+        v2 = grant_media_in_window(env2)
+        self.assertEqual(v2.count("--use-fake-ui-for-media-stream"), 1)
+        self.assertTrue(v2.startswith("--foo"))
+        self.assertTrue(CAMERA["flag"])
+        self.assertEqual(set(Api(None).camera_status()), {"flag", "handler", "last", "error"})
 
     def test_race_report_is_saved_where_the_save_dialog_says(self):
         """The app window (WebView2) drops page downloads, so the Race report button

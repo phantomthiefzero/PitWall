@@ -46,7 +46,6 @@ header h1{margin:0;font:800 24px/1 var(--num);letter-spacing:.02em}
 .badge.replay{background:var(--bad);color:#fff}
 #me{width:110px}
 main{display:grid;grid-template-columns:minmax(300px,360px) minmax(360px,1fr) minmax(320px,420px);gap:12px;padding:12px 14px 40px;align-items:start}
-@media (max-width:1150px){main{grid-template-columns:1fr 1fr}#colMid{grid-column:1/-1;order:-1}}
 @media (max-width:740px){main{grid-template-columns:1fr}}
 main>*{min-width:0}   /* a column may shrink below its widest row; long rows wrap instead of widening the page */
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:12px}
@@ -170,7 +169,123 @@ body:not(.bc-off) .lookOff{display:none}
 .scn span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #bcOff{margin:10px 14px 0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--mut);font-size:14px}
 #bcOff b{color:var(--fg,#fff)}
-body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4;pointer-events:none;user-select:none}
+body.bc-off #colCam>section:not(#monitor),body.bc-off #colField,body.bc-off #battles{opacity:.4;pointer-events:none;user-select:none}
+
+/* ---------- Control room: the whole panel on one screen. The page does not scroll; a column scrolls on its own
+   only when its list is longer than the screen. Settings live in the Setup drawer (⚙ on a tile opens its part). */
+@media (min-width:1180px){
+  html,body{height:100%;overflow:hidden}
+  body{display:flex;flex-direction:column}
+  header,#bcOff{flex:none}
+  main{flex:1;min-height:0;padding:10px 12px;gap:10px;align-items:stretch;
+    grid-template-columns:minmax(420px,1.25fr) minmax(250px,.8fr) minmax(250px,.78fr) minmax(300px,1fr)}
+  main>div{min-height:0;overflow:auto;scrollbar-width:thin}
+  #colField{display:flex;flex-direction:column}
+  #colField>section{flex:1;display:flex;flex-direction:column;min-height:0;margin:0}
+  #colField .field{max-height:none;min-height:0;flex:1}
+  #colRight{display:flex;flex-direction:column}
+  #colRight>section{flex:1;min-height:0;display:flex;flex-direction:column;margin:0}
+  #colRight .list,#colRight .log,#colRight #battles{flex:1;max-height:none;min-height:0;overflow:auto}
+}
+@media (max-width:1179px){main{grid-template-columns:1fr 1fr}#colCam{grid-column:1/-1}}
+@media (max-width:740px){main{grid-template-columns:1fr}}
+#monitor{grid-column:auto;margin-bottom:10px;padding:8px 10px}
+#monitor .mon-bar{gap:6px}
+#monitor .mon-bar button,#monitor .mon-bar select{min-height:28px;padding:2px 8px;font-size:13px}
+#monScreens{margin-top:8px}
+#monScreens:not(.two) .scr{max-width:none}
+#monScreens.two{grid-template-columns:1fr 1fr;grid-template-areas:"pvw pgm" "take take"}
+#monScreens.two #scrPvw{grid-area:pvw}#monScreens.two #scrPgm{grid-area:pgm}#monScreens.two #takeBox{grid-area:take;flex-direction:row;justify-content:center}
+#monScreens.two .take #takeBtn{padding:9px 28px;font-size:17px}
+section{padding:9px 11px;margin-bottom:10px}
+h2{font-size:18px;margin-bottom:7px}
+h3{margin:9px 0 5px;font-size:12px}
+.opts{gap:4px;padding-bottom:4px}
+.opts button{min-height:28px;padding:2px 8px;font-size:13px}
+.owner{padding:6px 9px}
+.owner .who b{font-size:16px}
+/* On air tiles */
+#onAir{margin:0}
+#onAir h3:first-of-type{margin-top:10px}
+.autotile{display:block;width:100%;text-align:left;padding:8px 11px;min-height:0;border-radius:8px}
+.autotile b{display:block;font:800 17px/1.1 var(--num);letter-spacing:.02em}
+.autotile span{display:block;font-size:12px;color:var(--mut);margin-top:2px}
+.autotile.on{background:var(--acc);border-color:var(--acc);color:var(--ink)}
+.autotile.on span{color:color-mix(in srgb,var(--ink) 75%,var(--acc))}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:5px}
+.tile{display:flex;min-width:0;border:1px solid var(--line);border-radius:6px;background:var(--panel2);overflow:hidden}
+.tile>button{border:0;border-radius:0;background:transparent;min-height:34px;font-size:13px;font-weight:600}
+.tile>button[data-layer]{flex:1;min-width:0;text-align:left;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile>.gear{flex:none;width:28px;padding:0;color:var(--mut);border-left:1px solid var(--line);font-size:14px}
+.tile>.gear:hover{color:var(--fg)}
+.tile.on{background:var(--acc);border-color:var(--acc)}
+.tile.on>button{color:var(--ink);font-weight:700}
+.tile.on>.gear{border-left-color:color-mix(in srgb,var(--ink) 25%,var(--acc));color:color-mix(in srgb,var(--ink) 70%,var(--acc))}
+/* the right-hand tabs */
+.rtabs{display:flex;gap:4px;margin-bottom:8px;flex:none}
+.rtabs button{flex:1;min-height:30px;padding:2px 6px;font-size:13px;white-space:nowrap}
+.rtabs i{font-style:normal;font-size:11px;font-weight:700;margin-left:3px;opacity:.8}
+.rtabs i:empty{display:none}
+[data-rpane]:not(.on){display:none!important}
+/* (i): a long explanation, folded */
+.ib{min-height:0;width:20px;height:20px;padding:0;border-radius:50%;font:italic 700 12px/1 Georgia,serif;color:var(--mut);flex:none;vertical-align:middle;margin-left:4px}
+.ib.on{background:var(--fg);color:var(--ink);border-color:var(--fg)}
+h2 .ib{margin-left:4px}
+/* Setup drawer */
+#setup{position:fixed;top:0;right:0;bottom:0;width:min(1100px,94vw);z-index:30;background:var(--bg);border-left:1px solid var(--line);box-shadow:-20px 0 60px rgba(0,0,0,.55);display:flex;flex-direction:column}
+#setup .su-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);background:#07090c;flex:none}
+#setup .su-bar>b{font:800 22px/1 var(--num)}
+#setup .su-bar .tabs{flex:1;margin:0;max-width:640px}
+#setup .su-bar .tabs button{min-height:32px;padding:3px 8px}
+#setup .su-body{flex:1;overflow:auto;padding:12px 14px}
+#setup [data-pane]{columns:2 440px;column-gap:12px}
+#setup [data-pane]>section{break-inside:avoid;display:inline-block;width:100%}
+#setup section.flash{animation:suFlash 1.2s ease-out}
+@keyframes suFlash{from{box-shadow:0 0 0 2px var(--acc)}to{box-shadow:0 0 0 2px transparent}}
+body.su-open::after{content:"";position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:29}
+#suOpen{font-weight:700}
+#bcOff{margin:0;padding:7px 14px;border-radius:0;border-width:0 0 1px;font-size:13px}
+header{padding:6px 12px}
+
+@media (min-width:1180px){main{grid-template-columns:minmax(400px,1.3fr) minmax(300px,.95fr) minmax(220px,.68fr) minmax(290px,.95fr)}}
+#monitor .mon-bar{flex-wrap:nowrap}
+#monitor .mon-bar h2{font-size:17px}
+#monitor #monSrc{flex:1;min-width:0;max-width:220px}
+#monitor .mon-bar .sp{display:none}
+#monitor details.note{margin-top:5px}
+#packs{font-size:12px;margin:0 0 4px}
+.tiles{grid-template-columns:repeat(auto-fill,minmax(98px,1fr))}
+.tile>button[data-layer]{padding:4px 6px;font-size:12.5px}
+.tile>.gear{width:22px;font-size:12px}
+.car{gap:6px;padding:4px 3px}
+.car .n{width:36px}
+.car .g{width:62px}
+
+@media (min-width:1180px){main{grid-template-columns:minmax(400px,1.25fr) minmax(270px,.85fr) minmax(250px,.78fr) minmax(290px,.95fr)}}
+#monitor .mon-bar h2{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+#monitor #monSrc{min-width:120px}
+#monitor{position:relative}
+
+/* the field: the Card button shows on the row under the mouse (or when pinned), so the name has the room */
+.car{position:relative}
+.car button[data-pin]{position:absolute;right:4px;top:50%;transform:translateY(-50%);box-shadow:-10px 0 10px var(--panel)}
+.car button[data-pin]:not(.on){opacity:0}
+.car.pinned .g{padding-right:52px}
+.car:hover button[data-pin],.car:focus-within button[data-pin],.car.cam button[data-pin]{opacity:1}
+.rtabs{overflow-x:auto;scrollbar-width:none}
+.rtabs button{flex:1 0 auto;padding:2px 8px}
+@media (min-width:1180px) and (max-width:1499px){
+  main{grid-template-columns:minmax(340px,1.1fr) minmax(250px,.85fr) minmax(230px,.75fr) minmax(260px,.9fr)}
+  .tiles{grid-template-columns:repeat(2,1fr)}
+  .car .n{width:30px;font-size:13px}
+  .car .g{width:56px}
+  #monitor .mon-bar button{padding:2px 6px}
+}
+
+#monScreens.two .take{flex-wrap:wrap;align-items:center;gap:6px}
+#monScreens.two .take>*{flex:none}
+#monScreens.two .take button:not(#takeBtn){min-height:30px;padding:3px 9px;font-size:13px;white-space:nowrap}
+#monScreens.two .take div,#monScreens.two .take span{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -186,6 +301,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     <button class="warn hide" id="toLive">Back to live</button>
     <span id="camTxt">No camera car yet</span>
     <input type="text" id="me" placeholder="Your name" aria-label="Your name, shown to the co-host">
+    <button type="button" id="suOpen" data-setup="" title="Graphics settings, look, studio (show screens, commentators, sponsors, league), liveries, OBS">Setup</button>
   </div>
 </header>
 
@@ -198,16 +314,17 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   <button id="cGo" style="margin-top:12px">Connect</button>
 </div>
 
-<div id="bcOff" class="hide"><b>The broadcast is off.</b> Nothing shows on the overlay and nothing here moves the camera: no director, no grid walk at the pace laps, no cuts or replays. Turn it on with <b>Broadcast off</b> at the top when you are ready to go on air. The Look and Liveries tabs can be set up meanwhile.</div>
+<div id="bcOff" class="hide" title="Nothing shows on the overlay and nothing here moves the camera: no director, no grid walk at the pace laps, no cuts or replays."><b>The broadcast is off:</b> nothing is on air and the camera is yours. Switch it on at the top when you are ready; Setup can be done meanwhile.</div>
 <main id="main" class="hide">
+  <div id="colCam">
   <section id="monitor">
     <div class="mon-bar">
       <h2>Monitor</h2>
-      <button data-monmin="1" id="monMin" title="Show or hide the screens (just for you)">Hide screens</button>
-      <label for="monSrc" class="note" style="margin:0">Video</label><select id="monSrc" style="max-width:240px"></select>
+      <button data-monmin="1" id="monMin" title="Show or hide the screens (just for you)">Hide</button>
+      <select id="monSrc" aria-label="Video behind the screens" title="Video behind the screens"></select>
       <input type="text" id="monLink" class="hide" placeholder="VDO.Ninja view link of the game" style="width:240px">
       <span id="monNote" class="note hide" style="margin:0"></span>
-      <button data-arrange="1" title="Move and resize the graphics on the picture itself">Arrange graphics</button>
+      <button data-arrange="1" title="Move and resize the graphics on the picture itself">Arrange</button>
       <span class="sp"></span>
       <span id="studioCtl" style="display:contents"></span>
     </div>
@@ -216,15 +333,62 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       <div class="take hide" id="takeBox"></div>
       <div class="scr pgm" id="scrPgm"><b>Program · on air</b><div class="box"><div class="vid"></div></div></div>
     </div>
-    <details class="note" style="margin-top:8px"><summary>Putting the race video behind the screens</summary>
-      <p>On the PC running OBS: in OBS, next to <b>Start Virtual Camera</b>, open its settings (the gear), set the output to <b>Source</b> and pick your iRacing capture, so the camera carries the game without the overlay. Start it, then choose <b>Find cameras…</b> above and pick <b>OBS Virtual Camera</b>. Your browser asks once to use the camera. Elsewhere (a co-host's PC), use a VDO.Ninja link of the game instead. The video stays in your browser: nothing is sent anywhere.</p>
-      <p>Studio mode: changes wait in Preview until <b>Take</b>, with a cut or the stinger; <b>Camera waits for Take</b> holds a click on a driver until then too. Saved scenes are in the Studio tab.</p></details>
+    <p class="note">Video behind the screens: On the PC running OBS: in OBS, next to <b>Start Virtual Camera</b>, open its settings (the gear), set the output to <b>Source</b> and pick your iRacing capture, so the camera carries the game without the overlay. Start it, then choose <b>Find cameras…</b> above and pick <b>OBS Virtual Camera</b>. Your browser asks once to use the camera. Elsewhere (a co-host's PC), use a VDO.Ninja link of the game instead. The video stays in your browser: nothing is sent anywhere.</p>
+    <p class="note">Studio mode: changes wait in Preview until <b>Take</b>, with a cut or the stinger; <b>Hold cuts</b> keeps a click on a driver until then too; <b>Next one live</b> sends your next change straight to air. Saved scenes are in Setup, Studio.</p>
   </section>
-  <div id="colLeft">
-    <div class="tabs"><button data-tab="show" class="on">Show</button><button data-tab="look">Look</button><button data-tab="studio">Studio</button><button data-tab="liveries">Liveries</button></div>
+    <section>
+      <h2>Cameras <small id="camGroupName"></small></h2>
+      <div id="camWarn" class="warn hide"></div>
+      <p class="note hide" id="camOwn" style="margin:4px 0 0"></p>
+      <div class="owner" id="owner"></div>
+      <h3 style="margin-top:0">Auto-director <span class="note" id="dirNow" style="text-transform:none;letter-spacing:0;font-weight:500"></span></h3>
+      <div class="opts" id="dirCtl"></div>
+      <h3>Replay</h3>
+      <div class="opts" id="replay"></div>
+      <h3>Shots on the car on camera</h3>
+      <div class="opts" id="shots"></div>
+      <h3>All camera groups</h3>
+      <div class="opts" id="groups"></div>
+      <div id="packs" class="note"></div>
+      <h3>Let iRacing choose</h3>
+      <div class="opts" id="focus"></div>
+    </section>
+  </div>
+  <div id="colField">
+    <section>
+      <h2>Field <small id="fieldHint">click a driver to cut to them</small></h2>
+      <div class="field" id="field"></div>
+    </section>
+  </div>
+  <div id="colGfx">
+      <section id="onAir"><h2 title="Tap a graphic to put it on or take it off; ⚙ opens its settings">On air</h2><div id="roleWarn" class="warn hide">This link uses a view-only token: open it with the producer token to make changes.</div><div id="toggles"></div></section>
+  </div>
+  <div id="colRight">
+    <div class="rtabs" id="rtabs"><button data-rtab="mom" class="on">Replays <i id="rtMom"></i></button><button data-rtab="inc">Incidents <i id="rtInc"></i></button><button data-rtab="bat">Battles</button><button data-rtab="tra" id="rtTra" class="hide">Traffic</button><button data-rtab="log">Log</button></div>
+    <section data-rpane="mom">
+      <h2>Replay ready <small id="momCount"></small></h2>
+      <div class="opts" id="momFilter"></div>
+      <div class="list" id="momList"></div>
+      <p class="note">Moments from the race you can put on air: passes for position, incidents, penalties and lead changes. Play goes back to it (from the "Replay from" setting under Incidents) with the camera on the car. Played ones are greyed.</p>
+    </section>
+    <section data-rpane="inc">
+      <h2>Incidents <small id="incCount"></small></h2>
+      <div class="opts" id="incFilter"></div>
+      <div class="opts" id="incPre"></div>
+      <div class="list" id="incList"></div>
+      <div id="tally"></div>
+      <p class="note">iRacing keeps other drivers' incident points hidden until the race ends, so these are <span class="d">predicted</span> from what every car's telemetry does: going off, spinning, losing its speed, two cars losing it together, tows and damage flags. The likely points follow iRacing's table. When the official counts appear after the finish, they are compared here car by car.</p>
+    </section>
+    <section data-rpane="bat"><h2>Battles <small id="btMode"></small></h2><div id="battles"></div></section>
+    <section data-rpane="tra" id="trafficSec" class="hide"><h2>Traffic</h2><div id="trafficList"></div></section>
+    <section data-rpane="log"><h2>Log <small>race news and what changed</small></h2><div class="log" id="log"></div></section>
+  </div>
+</main>
+<div id="setup" class="hide" role="dialog" aria-label="Setup">
+  <div class="su-bar"><b>Setup</b><div class="tabs"><button data-tab="show" class="on">Graphics</button><button data-tab="look">Look</button><button data-tab="studio">Studio</button><button data-tab="liveries">Liveries</button><button data-tab="obs">OBS</button></div><button data-suclose="1" class="su-x" title="Close (Esc)">Close</button></div>
+  <div class="su-body">
     <div data-pane="show">
-      <section><h2>On air</h2><div id="roleWarn" class="warn hide">This link uses a view-only token: open it with the producer token to make changes.</div><div id="toggles"></div></section>
-      <section>
+      <section id="setTower">
         <h2>Timing tower</h2>
         <h3>Layout</h3><div class="opts" id="twLayout"></div>
         <div id="twLayoutOpts"></div>
@@ -232,8 +396,9 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         <h3>Take turns (8 s each)</h3><div class="opts" id="twRot"></div>
         <h3>Cut line after</h3><div class="opts" id="twCut"></div>
       </section>
-      <section><h2>Driver card</h2><div class="opts" id="cardFollow"></div><p class="note" id="cardNote"></p></section>
-      <section>
+      <section id="setCard"><h2>Driver card</h2><div class="opts" id="cardFollow"></div><p class="note" id="cardNote"></p><div id="cardFlags"></div></section>
+<section id="setSound"><h2>Announcer <small>Arcade look</small></h2><div id="soundFlags"></div></section>
+      <section id="setPip">
         <h2>Picture in picture</h2>
         <div class="grid2">
           <label for="pipUrl">Video link</label><input type="text" id="pipUrl" placeholder="VDO.Ninja view link: https://vdo.ninja/?view=…">
@@ -246,13 +411,13 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
           <p>Your co-host spectates the same session in their own iRacing. They open <b>vdo.ninja</b>, choose to share their screen (the iRacing window), and send you the <b>view</b> link it gives; paste it above, then switch Picture in picture on under On air. The video plays inside the overlay, in a framed window you can move and resize under Look, Position.</p>
           <p>If your co-host runs the suite too, they paste your co-host link into <b>Second camera</b> on their home page. Then the caption follows their camera by itself, and picking a car or a shot here moves their camera (only while your broadcast is on).</p></details>
       </section>
-      <section>
+      <section id="setH2h">
         <h2>Head to head</h2>
         <div class="opts" id="h2hPick"></div>
         <p class="note" id="h2hNote"></p>
         <h3>Onboard speed in</h3><div class="opts" id="obUnits"></div>
       </section>
-      <section>
+      <section id="setGrid">
         <h2>Starting grid</h2>
         <div class="opts" id="gridMode"></div>
         <p class="note">Automatic: when the pace laps start, the camera goes down the grid one car at a time, in order, with that driver's card at the bottom of the screen. The full grid board shows before and after the walk. Both come off at the green.</p>
@@ -263,9 +428,8 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
           <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
         <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button id="gwStop">Stop</button></div>
       </section>
-      <section><h2>Race control ticker</h2><div id="tickerOpts"></div></section>
+      <section id="setTicker"><h2>Race control ticker</h2><div id="tickerOpts"></div></section>
     </div>
-
     <div data-pane="look" class="hide">
       <section>
         <h2>Style</h2>
@@ -296,7 +460,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
           <label for="aBanner">Banner logo</label><select id="aBanner"></select>
         </div>
       </section>
-      <section>
+      <section id="setStingers">
         <h2>Stingers <small>the transition into and out of replays, and on Take</small></h2>
         <h3>Built in</h3>
         <div class="opts" id="stBuilt"></div>
@@ -311,7 +475,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         <p class="note">The camera jumps at the cut point, while the stinger covers the screen: for a built-in one, about half its length; for your own video, the moment it fills the frame (each video keeps its own). Making one: 1920 × 1080, about one second, a WebM with transparency (VP9 with alpha) so the race shows around it, or an MP4 that covers the screen. Every video you upload is listed here.</p>
         <div class="opts" style="margin-top:6px"><button id="sTest">Test the stinger</button></div>
       </section>
-      <section>
+      <section id="setPositions">
         <h2>Positions</h2>
         <div class="pos3" id="positions"></div>
         <div class="opts" style="margin-top:8px"><button id="posReset">Reset all positions</button></div>
@@ -333,14 +497,15 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       </section>
     </div>
 
+
     <div data-pane="studio" class="hide">
-      <section>
+      <section id="setScenes">
         <h2>Saved scenes</h2>
         <p class="note" style="margin-top:0">A scene is which graphics are on and how they are set (tower, card, battle, head to head, picture in picture, show screens…). Recall one to put it on air, or into Preview in studio mode. Your look, files and lists are not part of it.</p>
         <div class="row" style="display:flex;gap:6px"><input type="text" id="scnName" placeholder="Name, e.g. Battle focus" style="flex:1"><button data-scnsave="1">Save what is on now</button></div>
         <div id="scnList"></div>
       </section>
-      <section>
+      <section id="setScreens">
         <h2>Show screens</h2>
         <p class="note" style="margin-top:0">A full-screen page in place of the race graphics: before the start, in a break, and at the end.</p>
         <div class="opts" id="scMode"></div>
@@ -355,19 +520,19 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         <div id="scFiles"></div>
         <p class="note">Built in is the animated background. Or use your own: a picture or a looping video you uploaded (Look, Files; a video plays muted), or a web page you made elsewhere (its https address), for something more involved. Tick <b>file only</b> to show it without our words, countdown and lists.</p>
       </section>
-      <section>
+      <section id="setStrap">
         <h2>Commentators</h2>
         <div id="strapList"></div>
         <div class="opts"><button data-strapadd="1">Add a commentator</button><button data-strapoff="1">Take the strap down</button></div>
         <h3>A strap stays up for</h3><div class="opts" id="strapSecs"></div>
       </section>
-      <section>
+      <section id="setSponsors">
         <h2>Sponsors</h2>
         <p class="note" style="margin-top:0">Pick logos from your files (upload them under Look, Files). They take turns in a small box at the bottom left (switch it on under On air) and all sit along the bottom of the show screens.</p>
         <div id="spList" class="assets"></div>
         <h3>Each logo for</h3><div class="opts" id="spEvery"></div>
       </section>
-      <section>
+      <section id="setLeague">
         <h2>League standings</h2>
         <p class="note" style="margin-top:0">Load the league's table from a file or paste it: CSV, TSV or JSON, the way most league sites and spreadsheets export it. Columns are found by their headings (position, driver or name, points, number, class, customer id); without headings, the text column is the name and the last number the points. Drivers in this session show where they are now.</p>
         <div class="grid2">
@@ -379,14 +544,15 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         <div class="opts"><button data-lgload="1">Use the pasted table</button><button data-lgclr="1">Clear</button></div>
         <div id="lgPrev" class="note"></div>
       </section>
-      <section>
+      <section id="setPodium">
         <h2>Podium</h2>
         <p class="note" style="margin-top:0">The top three, with their pictures. Switch it on under On air.</p>
         <div class="opts" id="pdCls"></div>
       </section>
     </div>
+
     <div data-pane="liveries" class="hide">
-      <section>
+      <section id="setCars">
         <h2>Car pictures</h2>
         <p class="note" style="margin-top:0">Automatic: iRacing draws each car with its paint, Trading Paints included, the same way its own screens do. Nothing to set up; keep Trading Paints running so the paints are on this PC. <b id="rnCount"></b></p>
         <h3>Optional: photos from the broadcast</h3>
@@ -411,59 +577,17 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
         <div id="photoList" class="assets"></div>
       </section>
     </div>
-  </div>
 
-  <div id="colMid">
-    <section>
-      <h2>Cameras <small id="camGroupName"></small></h2>
-      <div id="camWarn" class="warn hide"></div>
-      <p class="note hide" id="camOwn" style="margin:4px 0 0"></p>
-      <div class="owner" id="owner"></div>
-      <h3 style="margin-top:0">Shots on the car on camera</h3>
-      <div class="opts" id="shots"></div>
-      <h3>All camera groups</h3>
-      <div class="opts" id="groups"></div>
-      <div id="packs" class="note"></div>
-      <h3>Auto-director</h3>
-      <div class="opts" id="dirCtl"></div>
-      <p class="note" id="dirNow"></p>
-      <h3>Let iRacing choose</h3>
-      <div class="opts" id="focus"></div>
-      <h3>Replay</h3>
-      <div class="opts" id="replay"></div>
-    </section>
-    <section>
-      <h2>Field <small id="fieldHint">click a driver to cut to them</small></h2>
-      <div class="field" id="field"></div>
-    </section>
-  </div>
-
-  <div id="colRight">
-    <section>
-      <h2>Replay ready <small id="momCount"></small></h2>
-      <div class="opts" id="momFilter"></div>
-      <div class="list" id="momList"></div>
-      <p class="note">Moments from the race you can put on air: passes for position, incidents, penalties and lead changes. Play goes back to it (from the "Replay from" setting under Incidents) with the camera on the car. Played ones are greyed.</p>
-    </section>
-    <section>
-      <h2>Incidents <small id="incCount"></small></h2>
-      <div class="opts" id="incFilter"></div>
-      <div class="opts" id="incPre"></div>
-      <div class="list" id="incList"></div>
-      <div id="tally"></div>
-      <p class="note">iRacing keeps other drivers' incident points hidden until the race ends, so these are <span class="d">predicted</span> from what every car's telemetry does: going off, spinning, losing its speed, two cars losing it together, tows and damage flags. The likely points follow iRacing's table. When the official counts appear after the finish, they are compared here car by car.</p>
-    </section>
-    <section><h2>Battles <small id="btMode"></small></h2><div id="battles"></div></section>
-    <section id="trafficSec" class="hide"><h2>Traffic</h2><div id="trafficList"></div></section>
-    <section><h2>Log <small>race news and what changed</small></h2><div class="log" id="log"></div></section>
+    <div data-pane="obs" class="hide">
     <section class="urls">
       <h2>Overlay for OBS</h2>
       <p class="note" style="margin-top:0">Browser Source, 1920 × 1080. It uses the view token, not yours.</p>
       <code id="obsUrl">Ask whoever runs the relay for the view token.</code>
       <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors, pip, qlap, tyres, trap, strip, league) to give one graphic its own source.</p>
     </section>
+    </div>
   </div>
-</main>
+</div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="arrange" class="hide">
   <div class="bar">
@@ -680,6 +804,13 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     n.innerHTML = `No camera access${e && e.name === "NotFoundError" ? " (no camera found: is OBS Virtual Camera started?)" : ""}.` +
       (inApp ? ` <button data-monbrowser="1">Open in your browser</button>` : " Allow the camera for this page in the browser's address bar, then pick it again.");
     toast("No camera access: " + (e && (e.message || e.name) || "refused"), true);
+    // in the app: say what the window did with the request, so the reason is on screen (suite.app CAMERA)
+    if (inApp && window.pywebview.api.camera_status) window.pywebview.api.camera_status().then(c => {
+      if (!c) return;
+      const why = [c.flag ? "browser flag on" : "browser flag off", c.handler ? "permission handler in" : "no permission handler",
+        c.last ? "last request " + c.last : "no request seen", c.error ? c.error : ""].filter(Boolean).join(" · ");
+      n.insertAdjacentHTML("beforeend", `<br><small>App window: ${esc(why)} · ${esc(e && e.name || "")}</small>`);
+    }).catch(() => {});
   }
   document.addEventListener("click", e => {
     const b = e.target.closest && e.target.closest("[data-monbrowser]"); if (!b) return;
@@ -711,7 +842,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   }
   function renderScreens() {
     const st = studioOn();
-    $("monitor").classList.toggle("min", MON.min); $("monMin").textContent = MON.min ? "Show screens" : "Hide screens";
+    $("monitor").classList.toggle("min", MON.min); $("monMin").textContent = MON.min ? "Show" : "Hide";
     $("monScreens").classList.toggle("two", st); $("scrPvw").classList.toggle("hide", !st); $("takeBox").classList.toggle("hide", !st);
     // A screen that is not shown is emptied: each one is a whole overlay (its own connection, the race at
     // 30 updates a second) plus the video, too much to keep running out of sight.
@@ -772,13 +903,13 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     const tr = stu.transition || "cut", hold = !!stu.holdCuts, n = pvCount(stu.pv), cut = stu.cut;
     const key = JSON.stringify([on, tr, hold, n, cut && cut.label, straightNext, dis, !!(S.director && S.director.live)]);
     if (MON.keys.ctl === key) return; MON.keys.ctl = key;
-    $("studioCtl").innerHTML = `<button data-studio="1" class="${on ? "on" : ""}" ${dis} title="Changes wait in Preview until you press Take">Studio mode ${on ? "on" : "off"}</button>`;
+    $("studioCtl").innerHTML = `<button data-studio="1" class="${on ? "on" : ""}" ${dis} title="Studio mode ${on ? "on" : "off"}: ${on ? "changes wait in Preview until you press Take" : "changes go straight to air"}">Studio</button>`;
     $("takeBox").innerHTML = on ? `<button id="takeBtn" data-take="1" ${dis || (n || cut ? "" : "disabled")}>Take</button>` +
       `<p class="note">${n ? n + (n === 1 ? " change" : " changes") : "Nothing staged"}${cut ? "<br>then " + esc(cut.label) : ""}</p>` +
       `<div class="opts" style="justify-content:center">${[["cut", "Cut"], ["stinger", "Stinger"]].map(([k, l]) => `<button data-trans="${k}" class="${tr === k ? "on" : ""}" ${dis}>${l}</button>`).join("")}</div>` +
-      `<button data-holdcuts="1" class="${hold ? "on" : ""}" ${dis} title="Clicking a driver stages the camera cut for Take instead of cutting now">Camera waits for Take</button>` +
-      `<button data-straight="1" class="${straightNext ? "on" : ""}" ${dis} title="Your next change goes on air at once, skipping Preview">Next change straight to air</button>` +
-      `<button data-clearpv="1" ${dis || (n || cut ? "" : "disabled")}>Clear Preview</button>` : "";
+      `<button data-holdcuts="1" class="${hold ? "on" : ""}" ${dis} title="Camera waits for Take: clicking a driver stages the camera cut for Take instead of cutting now">Hold cuts</button>` +
+      `<button data-straight="1" class="${straightNext ? "on" : ""}" ${dis} title="Your next change goes on air at once, skipping Preview">Next one live</button>` +
+      `<button data-clearpv="1" title="Clear Preview" ${dis || (n || cut ? "" : "disabled")}>Clear</button>` : "";
   }
   function take() {
     const stu = S.gfx.studio || {}, patch = dec(JSON.parse(JSON.stringify(stu.pv || {}))), cut = stu.cut;
@@ -976,6 +1107,41 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     else if (t.id === "lgSubIn") setGfxSoon("lgs", { league: { sub: t.value } });
   });
 
+  // ------------------------------------------------------------- Setup drawer and the right-hand tabs
+  function openSetup(sec) {
+    $("setup").classList.remove("hide"); document.body.classList.add("su-open");
+    const el = sec && $(sec);
+    if (el) {
+      const pane = el.closest("[data-pane]");
+      if (pane && pane.classList.contains("hide")) document.querySelector(`[data-tab="${pane.dataset.pane}"]`)?.click();
+      setTimeout(() => { el.scrollIntoView({ block: "start", behavior: "smooth" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }, 30);
+    }
+  }
+  function closeSetup() { $("setup").classList.add("hide"); document.body.classList.remove("su-open"); }
+  document.addEventListener("click", e => {
+    const g = e.target.closest && e.target.closest("[data-setup],[data-suclose],[data-rtab]"); if (!g) return;
+    if (g.dataset.setup != null) openSetup(g.dataset.setup);
+    else if (g.dataset.suclose) closeSetup();
+    else {
+      document.querySelectorAll("[data-rtab]").forEach(x => x.classList.toggle("on", x === g));
+      document.querySelectorAll("[data-rpane]").forEach(p => p.classList.toggle("on", p.dataset.rpane === g.dataset.rtab));
+      try { localStorage.setItem("pw.producer.rtab", g.dataset.rtab); } catch (err) {}
+    }
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("setup").classList.contains("hide") && $("arrange").classList.contains("hide")) closeSetup(); });
+  try { const t = localStorage.getItem("pw.producer.rtab"); (document.querySelector(`[data-rtab="${t}"]`) || document.querySelector("[data-rtab]")).click(); } catch (e) { document.querySelector("[data-rtab]").click(); }
+  // Long explanations fold behind a small (i) button: the panel is for running the show, the words are for the first time
+  function hintTidy(root) {
+    (root || document).querySelectorAll("p.note:not([id]):not(.keep):not(.lookOff)").forEach(n => {
+      if (n.dataset.hint || n.textContent.trim().length < 110) return;
+      n.dataset.hint = "1"; n.classList.add("hint", "hide");
+      const b = document.createElement("button"); b.type = "button"; b.className = "ib"; b.textContent = "i"; b.title = "What is this?"; b.setAttribute("aria-label", "Explain");
+      b.onclick = () => { n.classList.toggle("hide"); b.classList.toggle("on", !n.classList.contains("hide")); };
+      const h = n.parentElement.querySelector(".mon-bar") || n.parentElement.querySelector("h2"); if (h && !(n.previousElementSibling && n.previousElementSibling.tagName === "H3")) h.appendChild(b); else n.before(b);
+    });
+  }
+  hintTidy();
+
   // ------------------------------------------------------------- tabs
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
     document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("on", x === b));
@@ -997,17 +1163,37 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
     ["strip", "Running order crawl (oval style, along the bottom)", false], ["league", "League standings (loaded in Studio)", false], ["onboard", "Onboard: gear, speed, revs, wheel (camera car)", false], ["ticker", "Race control ticker", true],
     ["board", "Standings board", false], ["replay", "Replay bug (shows during replays)", true]];
   // Not a layer: lets the overlay bring up "where they're faster" in a close battle and the results at the finish.
-  const AUTO_SW = () => sw("sw-auto", G("auto.on", false), `data-auto="1"`, "Pick graphics for me: they follow the camera (the driver card for a few seconds on a new car, the battle box on a battle, onboard on an onboard camera) and the race (close battles, traffic, fastest laps, penalties, qualifying laps, the speed trap, results at the finish)") +
-    sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
+  const CARD_SW = () => sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
-    sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)") +
-    sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles and flags (Arcade look; in OBS tick Control audio via OBS)") +
+    sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)");
+  const SOUND_SW = () => sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles and flags (Arcade look; in OBS tick Control audio via OBS)") +
     sw("sw-voice", G("sound.man", false), `data-gflag="sound.man"`, "Announcer: a man's voice (off: a woman's)");
+  // On air: one tile per graphic, grouped; the ⚙ beside a tile opens its settings in Setup
+  const TILE_GROUPS = [["Always", ["tower", "banner", "card", "ticker", "replay"]], ["Race", ["battle", "faster", "h2h", "onboard", "map", "traffic", "strip"]],
+    ["Alerts", ["fastlap", "penalty"]], ["Qualifying", ["qlap", "tyres", "trap"]], ["Show", ["board", "podium", "league", "sponsors", "pip"]]];
+  const SHORT = { tower: "Tower", banner: "Banner", card: "Driver card", ticker: "Race control", replay: "Replay bug", battle: "Battle", faster: "Where faster",
+    h2h: "Head to head", onboard: "Onboard", map: "Track map", traffic: "Traffic", strip: "Crawl", fastlap: "Fastest lap", penalty: "Penalties",
+    qlap: "Quali lap", tyres: "Tyres", trap: "Speed trap", board: "Standings", podium: "Podium", league: "League", sponsors: "Sponsors", pip: "Pic in pic" };
+  const GEAR = { tower: "setTower", card: "setCard", ticker: "setTicker", battle: "setTower", h2h: "setH2h", onboard: "setH2h", pip: "setPip", board: "setGrid",
+    podium: "setPodium", league: "setLeague", sponsors: "setSponsors", replay: "setStingers" };
+  function tiles() {
+    const dis = canProduce() ? "" : "disabled";
+    const auto = G("auto.on", false);
+    return `<button class="autotile${auto ? " on" : ""}" id="sw-auto" data-auto="1" ${dis} title="${esc(LAYERS_AUTO_HELP)}"><b>Auto graphics</b><span>${auto ? "On: they follow the camera and the race" : "Off: only what you switch on"}</span></button>` +
+      TILE_GROUPS.map(([g, ids]) => `<h3>${g}</h3><div class="tiles">` + ids.map(k => {
+        const L = LAYERS.find(x => x[0] === k); if (!L) return "";
+        const on = G(k + ".show", L[2]);
+        return `<div class="tile${on ? " on" : ""}"><button id="sw-${k}" data-layer="${k}" role="switch" aria-checked="${!!on}" title="${esc(L[1])}" ${dis}>${SHORT[k] || L[1]}</button>` +
+          (GEAR[k] ? `<button class="gear" data-setup="${GEAR[k]}" title="${esc(SHORT[k] || L[1])} settings" aria-label="${esc(SHORT[k] || L[1])} settings">⚙</button>` : "") + `</div>`;
+      }).join("") + `</div>`).join("");
+  }
+  const LAYERS_AUTO_HELP = "Pick graphics for me: they follow the camera (the driver card for a few seconds on a new car, the battle box on a battle, onboard on an onboard camera) and the race (close battles, traffic, fastest laps, penalties, qualifying laps, the speed trap, results at the finish). What you switch on stays on.";
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
     const prod = canProduce(), dis = prod ? "" : "disabled";
     $("roleWarn").classList.toggle("hide", prod || S.role == null);
-    $("toggles").innerHTML = AUTO_SW() + LAYERS.map(([k, label, d]) => sw("sw-" + k, G(k + ".show", d), `data-layer="${k}"`, label)).join("");
+    $("toggles").innerHTML = tiles();
+    $("cardFlags").innerHTML = CARD_SW(); $("soundFlags").innerHTML = SOUND_SW();
     const lay = G("tower.layout", multi() ? "classes" : "overall");
     $("twLayout").innerHTML = [["overall", "Overall"], ["classes", "Every class, split"], ["class", "One class"]]
       .map(([k, l]) => `<button data-twl="${k}" class="${lay === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
@@ -1267,12 +1453,12 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
       const d = c.derived || {};
       const g = race ? (c.pos === 1 ? "Leader" : d.intervalLaps >= 1 ? D("+" + d.intervalLaps + (d.intervalLaps === 1 ? " lap" : " laps")) : d.liveIntervalS != null ? D(gap(d.liveIntervalS)) : "–") : lap(c.bestLapS);
       const has = S.liveries.has(liveryKey(c));
-      return `<div class="car${c.idx === cam ? " cam" : ""}" data-idx="${c.idx}" tabindex="0" role="button" aria-label="Cut to ${esc(c.name)}">` +
+      return `<div class="car${c.idx === cam ? " cam" : ""}${pin === c.idx ? " pinned" : ""}" data-idx="${c.idx}" tabindex="0" role="button" aria-label="Cut to ${esc(c.name)}">` +
         `<span class="p">${c.pos > 0 ? esc(c.pos) : ""}</span><span class="bar" style="background:${m ? css(c.classColor) : "transparent"}"></span>` +
         `<span class="n">#${esc(c.num ?? "")}</span><span class="nm">${esc(c.name || "car " + c.idx)}</span>` +
         (c.onPitRoad ? `<span class="pit">PIT</span>` : "") + `<span class="lvok" title="${has ? "Car picture ready" : ""}">${has ? "●" : ""}</span>` +
         `<span class="g">${g}</span><button data-pin="${c.idx}" class="${pin === c.idx ? "on" : ""}" ${canProduce() ? "" : "disabled"}>Card</button>` +
-        `<button data-snap="${c.idx}" title="Take an OBS photo of this car now (camera must be on it)" ${canCamera() && S.lv && S.lv.config && S.lv.config.source ? "" : "disabled"}>Photo</button></div>`;
+        (S.lv && S.lv.config && S.lv.config.source ? `<button data-snap="${c.idx}" title="Take an OBS photo of this car now (camera must be on it)" ${canCamera() ? "" : "disabled"}>Photo</button>` : "") + `</div>`;
     };
     $("field").innerHTML = cars.map(row).join("") + unscored.map(row).join("") || `<p class="note">The field appears once the bridge is streaming.</p>`;
   }
@@ -1280,7 +1466,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   // traffic warning would show, for the people running the show.
   function renderTraffic() {
     const L = ((S.cars && S.cars.derived && S.cars.derived.classTraffic) || []).filter(x => carByIdx(x.idx) && carByIdx(x.aheadIdx));
-    $("trafficSec").classList.toggle("hide", !multi());
+    $("trafficSec").classList.toggle("hide", !multi()); $("rtTra").classList.toggle("hide", !multi());
     if (!multi()) return;
     const nm = c => "#" + esc(c.num) + " " + esc((c.name || "").split(" ").slice(-1)[0]);
     const h = L.length ? L.map(x => { const a = carByIdx(x.idx), b = carByIdx(x.aheadIdx);
@@ -1367,7 +1553,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   function carShort(i) { const c = carByIdx(i); return c ? "#" + esc(c.num) + " " + esc(c.name) : "car " + esc(i); }
   function renderIncidents() {
     let list = S.feed.events.filter(e => e.kind === "race_incident");
-    $("incCount").textContent = list.length ? list.length + " predicted" : "";
+    $("incCount").textContent = list.length ? list.length + " predicted" : ""; $("rtInc").textContent = list.length || "";
     const filters = [["all", "All"], ["contact", "Contact"], ["spin", "Spins"], ["lost_speed", "Lost speed"], ["off_track", "Off track"]];
     $("incFilter").innerHTML = filters.map(([k, l]) => `<button data-incf="${k}" class="${incFilter === k ? "on" : ""}">${l}</button>`).join("");
     if (incFilter !== "all") list = list.filter(e => e.what === incFilter);
@@ -1438,7 +1624,7 @@ body.bc-off [data-pane=show],body.bc-off #colMid,body.bc-off #battles{opacity:.4
   }
   function renderMoments() {
     let list = moments();
-    $("momCount").textContent = list.length ? list.length + " moments" : "";
+    $("momCount").textContent = list.length ? list.length + " moments" : ""; $("rtMom").textContent = list.length || "";
     const filters = [["all", "All"], ["pass", "Passes"], ["race_incident", "Incidents"], ["car_flag", "Penalties"], ["class_lead", "Lead changes"]];
     $("momFilter").innerHTML = filters.map(([k, l]) => `<button data-mfilt="${k}" class="${momFilter === k ? "on" : ""}">${l}</button>`).join("");
     if (momFilter !== "all") list = list.filter(e => e.kind === momFilter);

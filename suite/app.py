@@ -313,6 +313,11 @@ class Api:
     def second_info(self):
         return self._engine.second.info()
 
+    def camera_status(self):
+        """How the app window answers a page's camera request (CAMERA, see allow_local_camera): the producer shows
+        it when a camera is refused, so the reason is on screen instead of in a console nobody sees."""
+        return dict(CAMERA)
+
     def open_in_browser(self, url):
         """Open one of the suite's own pages (the producer panel) in the default browser. Only this PC's
         addresses: a page cannot use this to open anything else."""
@@ -430,6 +435,28 @@ def camera_allowed(is_camera: bool, uri: str) -> bool:
     return bool(is_camera) and u.scheme == "http" and u.hostname in ("127.0.0.1", "localhost")
 
 
+# What the app window does about cameras: "flag" when the browser was started with media requests granted (the
+# suite's window only ever shows the suite's own pages), "handler" once the WebView2 permission handler is in,
+# "asked"/"allowed"/"refused" for the last request it saw, "error" with the reason when something failed.
+CAMERA = {"flag": False, "handler": False, "last": None, "error": None}
+CAMERA_ARGS = "--use-fake-ui-for-media-stream"
+
+
+def grant_media_in_window(environ=None):
+    """Before the app window starts: WebView2 reads extra browser arguments from WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+    (it wins over the ones pywebview passes, so pywebview's own flag is repeated here). --use-fake-ui-for-media-stream
+    answers a page's camera request with yes, as if the user had clicked Allow. The window only ever loads the suite's
+    own pages, and the web pages it embeds (a VDO.Ninja picture, a show screen's page) are iframes without
+    allow="camera", which the browser refuses before asking; allow_local_camera's handler, once in, also says no to
+    any page that is not the suite's own. The handler alone did not get the camera through."""
+    env = os.environ if environ is None else environ
+    have = env.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+    want = ["--disable-features=ElasticOverscroll", CAMERA_ARGS]
+    env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = " ".join([have] + [w for w in want if w not in have]).strip()
+    CAMERA["flag"] = True
+    return env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"]
+
+
 def allow_local_camera(window, log=print):
     """WebView2 asks the app whether a page may use the camera; pywebview never answers, so the request was
     refused ("no camera access" in the producer's monitor). Answer it, for camera_allowed() pages only. Installed
@@ -443,11 +470,22 @@ def allow_local_camera(window, log=print):
 
         def on_permission(sender, args):
             try:
+                CAMERA["last"] = "asked"
                 if camera_allowed(args.PermissionKind == CoreWebView2PermissionKind.Camera, args.Uri):
                     args.State = CoreWebView2PermissionState.Allow
+                    try:
+                        args.Handled = True              # an iframe's request: answered here, not asked again
+                    except Exception:
+                        pass
+                    CAMERA["last"] = "allowed"
+                elif args.PermissionKind in (CoreWebView2PermissionKind.Camera, CoreWebView2PermissionKind.Microphone):
+                    args.State = CoreWebView2PermissionState.Deny     # not the suite's: the browser flag would say yes
+                    CAMERA["last"] = "refused (%s)" % args.Uri
             except Exception as e:  # noqa: BLE001  (a refusal stays a refusal)
+                CAMERA["error"] = "permission: %s" % e
                 log("camera permission: %s" % e)
         core.PermissionRequested += on_permission
+        CAMERA["handler"] = True
         log("camera access allowed for the suite's own pages")
 
     def on_loaded(*_a):
@@ -458,6 +496,7 @@ def allow_local_camera(window, log=print):
             from System import Action
             window.native.Invoke(Action(install))
         except Exception as e:  # noqa: BLE001
+            CAMERA["error"] = "handler not installed: %s: %s" % (type(e).__name__, e)
             log("camera permission handler not installed: %s: %s" % (type(e).__name__, e))
     try:
         window.events.loaded += on_loaded
@@ -535,6 +574,7 @@ def _main():
     if not a.browser:
         try:
             import webview
+            grant_media_in_window()
             api = Api(engine)
             window = webview.create_window("iRacing Suite", engine.url, js_api=api,
                                            width=1440, height=920, min_size=(900, 600))
