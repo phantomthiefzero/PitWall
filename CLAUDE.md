@@ -344,7 +344,8 @@ Broadcast (broadcast/)
   car's gap is held as it takes the flag (finish_gaps: F2Time at the line, laps down); one still on its last lap shows
   iRacing's at its last crossing.
   A spectator's SessionFlags carry no white or checkered at all (Summit Point), so race_flags also reads them from the
-  race: checkered from the session state, white while racing with a timed race's clock out or one lap to go.
+  race: checkered at the leader's crossing (race_end), white from the end coming (a timed race's clock out, one lap
+  to go, the state) until then.
   The overlay calls them on screen (flagcall, a tile under Alerts, on by default): green as a race goes racing or
   after a caution or red, white for the final lap, checkered with the winner; only on a change it sees.
   The leader's laps never go back in a session (race_length: ResultsPositions and the most seen are a floor), and
