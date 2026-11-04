@@ -63,6 +63,12 @@ STYLES = {
 BATTLE_SHOTS = [("chase", "back"), ("rear", "front"), ("trackside", "back"),
                 ("aerial", "front"), ("onboard", "back")]
 
+# The grid walk, car by car: the pole and each class's pole from in front (rear chase: the car coming at the
+# camera, livery and driver), held longer; the rest take turns between that and the chase, so the walk does not
+# look the same 30 times over.
+GRID_SHOTS = ["rear chase", "chase"]
+GRID_POLE_HOLD = 1.6         # a pole sitter's hold, times the walk's
+
 FRESH_INCIDENT_S = 20.0     # an incident older than this is not news
 FRESH_MOMENT_S = 12.0       # a pass or a lead change older than this is not worth cutting to
 SEGMENT_MIN_S = 14.0        # a story gets at least this long (two or three shots) unless something bigger happens
@@ -176,6 +182,12 @@ class Director:
             return False
         self.grid = [c for c in cars if c.get("num") is not None]
         self.grid_total = len(self.grid)
+        # the pole and the first car of each class in this order (the walk goes down the grid)
+        seen_cls, self._grid_poles = set(), set()
+        for c in self.grid:
+            if c.get("classId") not in seen_cls:
+                seen_cls.add(c.get("classId"))
+                self._grid_poles.add(c.get("idx"))
         if hold_s is not None:
             self.grid_hold_s = max(2.0, min(20.0, float(hold_s)))
         self.on_grid_car = on_car
@@ -500,14 +512,20 @@ class Director:
             self._end_temporary("grid walk done")
             return
         car = self.grid.pop(0)
-        chase = [g for g in groups.get("chase", []) if (g.get("name") or "").lower() == "chase"] or groups.get("chase") \
-            or groups.get("trackside") or []
-        if not chase:
-            return
-        g = {**chase[0], "kind": "chase"}
-        if self._do_cut(car, g, "starting grid"):
+        k = self.grid_total - len(self.grid) - 1                 # this car's place in the walk, from 0
+        pole = car.get("idx") in getattr(self, "_grid_poles", set())
+        by_name = {(g.get("name") or "").lower(): g for gs in groups.values() for g in gs}
+        want = GRID_SHOTS[0] if pole else GRID_SHOTS[k % len(GRID_SHOTS)]
+        pick = by_name.get(want) or by_name.get("chase")
+        if pick is None:
+            chase = groups.get("chase") or groups.get("trackside") or []
+            if not chase:
+                return
+            pick = chase[0]
+        g = {**pick, "kind": group_kind(pick.get("name"))}
+        if self._do_cut(car, g, "starting grid" + (": pole" if pole else "")):
             self.current["gridPos"] = self.grid_total - len(self.grid)
             if self.on_grid_car:
                 self.on_grid_car(car)
         self.changed = True
-        self._next_at = now + self.grid_hold_s
+        self._next_at = now + self.grid_hold_s * (GRID_POLE_HOLD if pole else 1.0)

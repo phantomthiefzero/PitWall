@@ -241,6 +241,12 @@ Broadcast (broadcast/)
   Log as tabs. Every setting lives in the Setup drawer (Graphics, Look, Studio, Liveries, OBS; Esc closes; data-setup
   opens it at a section). Long notes fold behind (i) (hintTidy). Keep it so: a new setting goes into Setup, not the
   columns, and a new graphic is a tile (TILE_GROUPS, SHORT, GEAR).
+- Grid walk (director GRID_SHOTS, overlay gwalk + gladder): the pole and each class's first car from in front (rear
+  chase) and held GRID_POLE_HOLD times longer, the rest take turns between rear chase and chase. On air it is a TV
+  grid slot (gwalk, bottom left: place, row, livery, name, quali lap, gaps to pole and class pole, the lap it was set
+  on, a pole badge, the class's name and size at its first car) and the grid beside it (gladder, top right: two
+  staggered columns, the car lit, the ones walked dimmed). Gaps and rows come from normalize (_grid_derived, each grid
+  row's `derived`); the driver card stays down while walking. Arrange's "show every graphic" lays both on the pole.
 - Booth notes (broadcast/notes.html, the producer header's "Booth notes", opens on its own for a second screen): for the
   commentators. The driver on camera (or one picked) with what is worth saying (start to now, laps led, best and last
   lap, stint, stops, next stop by their longest stint, consistency, top speed, iRating, tyre runs, their battle),
