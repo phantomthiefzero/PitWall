@@ -1873,7 +1873,10 @@ class Deriver:
                 self._inc_lap = (lc, inc_now)
         if t is None:
             return
-        flags = set(race_flags(session.get("flags"), session.get("state")))     # no checkered before the leader finishes
+        # the race's flags as build_state read them (no checkered before the leader finishes; white and checkered
+        # from the race itself when a spectator's SessionFlags carry neither)
+        flags = set(session.get("raceFlags") if session.get("raceFlags") is not None
+                    else race_flags(session.get("flags"), session.get("state")))
         if ev["flags"] is not None:
             for f in self.FLAG_EVENTS:
                 if f in flags and f not in ev["flags"]:
@@ -2517,7 +2520,11 @@ class Deriver:
         active = "caution" in flags or "caution_waving" in flags
         st = self._caut
         inferred = False
-        if not flags:                         # no flags at all: a replay (live always carries some bits)
+        # No racing flag at all: a replay (no bits), or a spectator, whose SessionFlags carry only the start-light
+        # and service bits once the race is under way (Summit Point, Nov 2026): read the caution from the field.
+        racing_bits = {"green", "yellow", "yellow_waving", "caution", "caution_waving", "white", "checkered", "red",
+                       "green_held", "debris", "crossed", "one_lap_to_green"}
+        if not racing_bits & set(flags):
             slow = []
             for c in cars:
                 v = (c.get("derived") or {}).get("speedMs")
@@ -3333,7 +3340,7 @@ def build_state(src: TelemetrySource, deriver: Deriver, session_msg: dict | None
     player_live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5 or (player["rpm"] or 0) > 500
     derived.update(deriver.trends(session["timeS"], weather, player, player_live))
     derived["weatherOutlook"] = deriver.weather_outlook(session["timeS"], weather, session, session_msg)
-    deriver.state_events(session["timeS"], session, player, weather)
+    deriver.state_events(session["timeS"], dict(session, raceFlags=derived["raceFlags"]), player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
             "session": session, "weather": weather, "player": player, "camera": camera, "derived": derived}
 
@@ -3650,7 +3657,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             results = []
         race = race_length(session_msg, session_num, ordered, _num(g("SessionTimeRemain")),
                            deriver, race_flags(decode_bits(g("SessionFlags"), FLAG_BITS),
-                                               SESSION_STATE.get(g("SessionState"))), results=results)
+                                               SESSION_STATE.get(g("SessionState"))), results=results,
+                           state=SESSION_STATE.get(g("SessionState")))
         fi = deriver._fuel_info or {}
         deriver.stop_forecast(cars, race if is_race else None, own_idx if own is not None else None,
                               fi.get("fpl"), deriver.tank_l, fi.get("fuelL"))
@@ -3903,7 +3911,7 @@ def race_flags(flags, state, time_remain_s=None, timed=False, laps_to_go=None) -
     return out
 
 
-def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver, flags, results=None) -> dict:
+def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver, flags, results=None, state=None) -> dict:
     """How much of the session is left, from the LEADER, not the player.
 
     SessionLapsRemainEx is the player's own count, and a spectator has no car:
@@ -3944,6 +3952,9 @@ def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver,
         ends = "time"
     else:
         ends = "laps" if total else None
+    if state is not None:
+        # white and checkered as build_state reads them (a spectator's SessionFlags carry neither)
+        flags = race_flags(flags, state, remain, bool(limit_s), to_go)
     return {"totalLaps": total, "leaderLapsDone": done,
             "leaderLap": leader.get("lap") if leader else None,
             "lapsToGo": to_go, "timeRemainS": remain if limit_s or not total else remain,

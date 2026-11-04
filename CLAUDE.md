@@ -346,6 +346,11 @@ Broadcast (broadcast/)
   The leader's laps never go back in a session (race_length: ResultsPositions and the most seen are a floor), and
   while a replay holds the picture the bridge keeps the race's clock (SessionTimeRemain) and laps (results) running.
   The banner's clock changes in place; only laps and words roll in (a roll each second flashed).
+  What a spectator is not sent is filled in everywhere it is used: raceFlags feeds race control's flag events
+  (state_events), the race summary's white / checkered (race_length, state given), PitWall's header, and the
+  director (the finish story; no replays in a timed race's last laps, lapsByTime). The caution is read from the
+  field's speed whenever no racing flag comes (a spectator's flags carry only start lights after the start), not
+  only when there are no bits at all. tests: test_what_a_spectator_is_not_sent_is_filled_in_everywhere.
 - Producer buttons: camera, replay and director buttons are off while the broadcast is off (the bridge refuses
   them); with the director, grid walk or a followed battle holding the camera they are dimmed and a line says a
   click takes it back. The battle list's buttons all switch off with a second click (unfollow: director end_battle).
