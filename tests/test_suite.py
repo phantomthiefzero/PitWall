@@ -1097,6 +1097,7 @@ class LastSessionTest(unittest.TestCase):
         self.assertEqual((t[2], t[3], t[5], t[6]), (86.361, 84.866, 84.033, 84.452))
         self.assertEqual(s["best"], 84.033)                   # iRacing's own best lap in the file
         self.assertEqual(s["clean"], 22)                      # the Lap Analyzer's "Clean laps in your .ibt (22)"
+        self.assertEqual(s["timed"], 29)                      # and its "29 complete and timed": no in, out or pit-begun laps
         self.assertEqual(s["spreadS"], 0.419)                 # and its consistency, ± 0.419 s
 
 
