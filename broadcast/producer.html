@@ -437,6 +437,9 @@ header{padding:6px 12px}
         <h3>Walk the grid</h3>
         <div id="gwAuto"></div>
         <div class="opts" id="gwBy" style="margin-top:6px"></div>
+        <h3>The grid board first</h3>
+        <div class="opts" id="gwBoard"></div>
+        <p class="note">Every car on one screen, with its picture, a light running down the grid while the camera stays wide; then the row cards. Automatic: at a standing start (no pace laps, cars still arriving) and when the pace laps are too short for every car.</p>
         <p class="note" id="gwNow"></p>
         <div class="grid2"><label for="gwHold">Seconds per car</label><input type="number" id="gwHold" min="2" max="20" value="5">
           <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
@@ -607,7 +610,7 @@ header{padding:6px 12px}
       <h2>Overlay for OBS</h2>
       <p class="note" style="margin-top:0">Browser Source, 1920 × 1080. It uses the view token, not yours.</p>
       <code id="obsUrl">Ask whoever runs the relay for the view token.</code>
-      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors, pip, qlap, tyres, trap, strip, league, gwalk, gladder) to give one graphic its own source.</p>
+      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors, pip, qlap, tyres, trap, strip, league, gwalk, gladder, gboard) to give one graphic its own source.</p>
     </section>
     </div>
   </div>
@@ -1358,6 +1361,8 @@ header{padding:6px 12px}
     $("gwAuto").innerHTML = sw("sw-gwauto", dr.autoGrid !== false, 'data-gwauto="1"', "Start it when the pace laps begin");
     { const byRow = dr.gridByRow !== false;
       $("gwBy").innerHTML = `<button data-gwby="1" class="${byRow ? "on" : ""}" ${dis}>A row at a time</button><button data-gwby="0" class="${byRow ? "" : "on"}" ${dis}>One car at a time</button>`; }
+    { const bm = dr.gridBoardMode || "auto";
+      $("gwBoard").innerHTML = [["auto", "Automatic"], ["always", "Always"], ["never", "Never"]].map(([k, l]) => `<button data-gwboard="${k}" class="${bm === k ? "on" : ""}" ${dis}>${l}</button>`).join(""); }
     if (dr.gridHoldS && document.activeElement !== $("gwHold")) $("gwHold").value = dr.gridHoldS;
     const minInc = G("ticker.minIncident", "spin");
     $("tickerOpts").innerHTML = sw("sw-pits", G("ticker.pits", true), 'data-tk="pits"', "Pit stops") +
@@ -1451,7 +1456,7 @@ header{padding:6px 12px}
     const now = d.current && o !== "you" ? `Now: #${esc(d.current.num)} ${esc(c ? c.name : "")} · ${esc(d.current.groupName || "")}.` : "";
     const after = d.resume === "race" ? " Then back to the director." : o === "grid" || o === "battle" ? " Then the camera is yours again." : "";
     const head = { you: "You have the camera", race: "The auto-director has the camera",
-      grid: `${d.gridPaused ? "Grid walk, held" : "Walking the grid"}${d.gridTotal && d.gridAt != null ? ": car " + Math.max(1, d.gridAt + 1) + " of " + d.gridTotal : ""}`,
+      grid: d.gridBoard ? `The grid board: row ${Math.max(1, d.gridBoard.row || 1)} of ${d.gridBoard.rows}` : `${d.gridPaused ? "Grid walk, held" : "Walking the grid"}${d.gridTotal && d.gridAt != null ? ": car " + Math.max(1, d.gridAt + 1) + " of " + d.gridTotal : ""}`,
       battle: "Following " + battleName(d.battle) }[o] || o;
     const sub = o === "you" ? "Nothing moves it until you cut, start the director, follow a battle or walk the grid." :
       `${now}${after} Any cut you make takes it back.`;
@@ -1504,6 +1509,7 @@ header{padding:6px 12px}
     else if (ds.gwgo) cmd({ cmd: "director", action: "grid_walk", holdS: Number($("gwHold").value) || 5, capture: $("gwSnap").checked, manual: ds.gwgo === "hand" },
       ds.gwgo === "hand" ? "Grid walk by hand: Next, Previous, or click a driver" : "Walking the grid");
     else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
+    else if (ds.gwboard) cmd({ cmd: "director", action: "set", gridBoard: ds.gwboard }, "Grid board first: " + ({ auto: "automatic", always: "always", never: "never" }[ds.gwboard] || ds.gwboard));
     else if (ds.dirrep) cmd({ cmd: "director", action: "set", replays: !(S.director && S.director.replays !== false) }, "Director replays");
     else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");
     else if (ds.btfollow) {           // a second click stops following (the camera goes back to whoever had it)
@@ -1865,7 +1871,7 @@ header{padding:6px 12px}
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
-  const POS_LABELS = { faster: "Where they're faster", tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", strip: "Running order", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League", gwalk: "Grid walk", gladder: "Grid walk: the grid" };
+  const POS_LABELS = { faster: "Where they're faster", tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", strip: "Running order", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League", gwalk: "Grid walk", gladder: "Grid walk: the grid", gboard: "Grid board" };
   const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
   function renderLook() {
     const th = S.gfx.theme || {}, preset = th.preset || "imsa";

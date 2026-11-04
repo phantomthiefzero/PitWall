@@ -449,6 +449,7 @@ small{margin-right:4px}
 
 /* ---------- grid walk: the car the camera is on, as a TV grid slot, and the grid beside it ---------- */
 #gwalk{left:36px;bottom:54px;width:1240px}
+#gwalk.pair{width:1480px}
 .gw{position:relative}
 .gw-tags{display:flex;align-items:stretch;gap:8px;margin-bottom:8px}
 .gw-tags:not(:has(:not(.hide))){display:none}
@@ -485,10 +486,10 @@ small{margin-right:4px}
 .gw-badge{display:inline-flex;align-items:center;padding:8px 16px 7px;font:800 24px/1 var(--display);letter-spacing:.1em;text-transform:uppercase;
   color:#1a1300;background:linear-gradient(100deg,#b88a1e,#ffe08a 45%,#d9a42b 60%,#ffe9a8);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.4)}
 /* a row at a time: both cars of the row, side by side, the one on camera lit */
-.gw-pair{display:flex;align-items:stretch;height:150px;border-radius:var(--r);overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.45)}
+.gw-pair{display:flex;align-items:stretch;height:200px;border-radius:var(--r);overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.45)}
 .gw-pair .rw{width:118px;flex:none;background:var(--head);color:var(--headText);display:flex;flex-direction:column;align-items:center;justify-content:center}
 .gw-pair .rw small{font:700 14px/1 var(--body);letter-spacing:.14em;text-transform:uppercase;opacity:.8}
-.gw-pair .rw b{font:800 76px/.86 var(--display);margin-top:6px}
+.gw-pair .rw b{font:800 88px/.86 var(--display);margin-top:6px}
 .gw-half{flex:1 1 0;min-width:0;display:flex;align-items:stretch;background:var(--ink);position:relative;transition:filter .4s,opacity .4s}
 .gw-half+.gw-half{border-left:2px solid var(--line)}
 .gw-half:not(.now){filter:brightness(.7) saturate(.8)}
@@ -496,7 +497,7 @@ small{margin-right:4px}
 .gw-half .ps{width:84px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--ink2)}
 .gw-half .ps b{font:800 54px/.9 var(--display);font-variant-numeric:tabular-nums}
 .gw-half .ps span{font:700 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-top:4px;white-space:nowrap}
-.gw-half .lvh{width:150px;flex:none;position:relative;overflow:hidden;background:linear-gradient(160deg,var(--ink2),var(--ink))}
+.gw-half .lvh{width:300px;flex:none;position:relative;overflow:hidden;background:linear-gradient(160deg,var(--ink2),var(--ink))}
 .gw-half .lvh:empty{display:none}
 .gw-half .lvh img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);object-fit:contain}
 .gw-half .lvh img:not(.render){inset:0;width:100%;height:100%;object-fit:cover}
@@ -517,6 +518,40 @@ small{margin-right:4px}
 :root[data-look="arcade"] .gw-half .gq div b{font:900 italic 26px/1.05 var(--num);color:var(--accent)}
 :root[data-look="pitwall"] .gw-pair{box-shadow:0 0 0 5px #16181b,0 0 0 6px #2a2e33,0 14px 30px rgba(0,0,0,.55)}
 :root[data-look="pitwall"] .gw-half .gq div b{font-family:var(--seg)!important;font-size:21px}
+/* ---------- the grid board: the whole grid on one screen, every car's picture in its slot, a light running
+   down it from pole (the director's gridBoard: the row it is on; 0 while it comes in) ---------- */
+#gboard{left:50%;top:60px;width:1760px;margin-left:-880px}
+.gbd{border-radius:var(--r);overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+.gbd .pn-head small{font:700 18px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-left:6px}
+.gbd-win{background:color-mix(in srgb,var(--ink) 96%,transparent);overflow:hidden;position:relative}
+.gbd-cols{display:grid;gap:0 28px;padding:16px 20px 20px;transition:translate .7s cubic-bezier(.2,.8,.2,1)}
+.gbd-col{display:flex;flex-direction:column;gap:var(--gbGap);min-width:0}
+.gbs{display:flex;align-items:stretch;height:var(--gbH);background:var(--ink2);border-radius:var(--r);overflow:hidden;position:relative;transition:box-shadow .45s,filter .45s,background .45s}
+.gbs i{width:6px;flex:none}
+.gbs .p{width:calc(var(--gbH) * .62);flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--head);color:var(--headText)}
+.gbs .p b{font:800 calc(var(--gbH) * .42)/.9 var(--display);font-variant-numeric:tabular-nums}
+.gbs .p span{font:700 12px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-top:3px;white-space:nowrap}
+.gbs .lv{width:calc(var(--gbH) * 2.3);flex:none;position:relative;overflow:hidden;background:linear-gradient(160deg,var(--ink2),var(--ink))}
+.gbs .lv img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);object-fit:contain}
+.gbs .lv img:not(.render){inset:0;width:100%;height:100%;object-fit:cover}
+.gbs .who{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;padding:0 16px}
+.gbs .who b{font:800 calc(min(34px, var(--gbH) * .3))/1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gbs .who b .plate{margin-right:10px;vertical-align:3px}
+.gbs .who span{color:var(--muted);font:600 15px/1.25 var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:6px}
+.gbs .tm{padding:0 18px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;font:700 calc(min(28px, var(--gbH) * .24))/1 var(--display);font-variant-numeric:tabular-nums}
+.gbs .tm span{color:var(--muted);font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em;margin-top:5px}
+.gbs .tm em{font-style:normal;color:var(--muted);font-size:.7em;margin-top:4px}
+.gbs::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;transition:box-shadow .45s}
+.gbs.lit{box-shadow:0 0 28px color-mix(in srgb,var(--accent) 45%,transparent);background:color-mix(in srgb,var(--accent) 16%,var(--ink2))}
+.gbs.lit::after{box-shadow:inset 0 0 0 3px var(--accent)}
+.gbs.lit .lv img{animation:gwLv .6s cubic-bezier(.15,.9,.25,1) both}
+.gbs.away{filter:saturate(.45) brightness(.78)}
+.gbs .who .out{font-style:normal;color:var(--text);font-weight:700}
+#gboard.gb-in .gbs{animation:gbIn .55s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--k) * 45ms)}
+@keyframes gbIn{from{opacity:0;translate:0 24px;filter:blur(4px)}}
+:root[data-look="arcade"] .gbs{clip-path:polygon(0 0,100% 0,98.8% 100%,0 100%);border-radius:0}
+:root[data-look="arcade"] .gbs .who b,:root[data-look="arcade"] .gbs .p b{font-style:italic}
+:root[data-look="pitwall"] .gbs .tm{font-family:var(--seg)!important}
 /* the grid beside it: two columns, staggered like the cars, the one on camera lit, the ones walked dimmed */
 #gladder{right:36px;top:110px;width:300px}
 .gl{background:color-mix(in srgb,var(--ink) 94%,transparent);border-radius:var(--r);overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.45)}
@@ -848,6 +883,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     <div class="gw-pair hide" id="gwPair"></div>
   </div></div></section>
 
+  <section class="layer" id="gboard"><div class="inner"><div class="gbd">
+    <div class="pn-head"><b id="gbTitle">Starting grid</b><small id="gbKind"></small><span id="gbSub"></span></div>
+    <div class="gbd-win" id="gbWin"><div class="gbd-cols" id="gbCols"></div></div>
+  </div></div></section>
+
   <section class="layer" id="gladder"><div class="inner"><div class="gl">
     <div class="gl-head"><b id="glTitle">Starting grid</b><span id="glCount"></span></div>
     <div class="gl-win"><div class="gl-slots" id="glSlots"></div></div>
@@ -1033,8 +1073,13 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // the car it is on, with its starting position, instead of the full board.
   const gridWalkCar = () => {
     const d = S.director;
-    if (!d || d.owner !== "grid" || !d.current || G("grid.mode", "auto") === "off") return null;
+    if (!d || d.owner !== "grid" || !d.current || d.gridBoard || G("grid.mode", "auto") === "off") return null;
     return carByIdx(d.current.car);
+  };
+  // the grid board first (the director's gridBoard: the walk would not fit, or a standing start)
+  const gridBoardOn = () => {
+    const d = S.director;
+    return d && d.owner === "grid" && d.gridBoard && G("grid.mode", "auto") !== "off" ? d.gridBoard : null;
   };
   const allCars = () => S.cars && S.cars.cars ? Object.values(S.cars.cars) : [];
   const carByIdx = i => i == null ? null : allCars().find(c => c.idx === i) || null;
@@ -1166,7 +1211,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${(Number(l.s) || 1) * (id === "strip" ? 1 : size)})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0", gwalk: "0 100%", gladder: "100% 0" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0", gwalk: "0 100%", gladder: "100% 0", gboard: "50% 0" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -1177,7 +1222,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // until it is clear, and steps off air while there is no room. Sizes are measured, so a long tower or a growing
   // race control list moves what is below or above it. A graphic placed by hand (Arrange, theme.layout) stays where
   // it was put; the others make room around it. Arrange mode shows the real positions.
-  const ROOM_ORDER = ["strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "board", "grid", "league", "podium", "battle", "qlap",
+  const ROOM_ORDER = ["gboard", "strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "board", "grid", "league", "podium", "battle", "qlap",
     "h2h", "faster", "pip", "map", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"];
   const ROOM_UP = new Set(["strip", "card", "gwalk", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"]);
   const ROOM_GAP = 8, ROOM_SLIDE = 420, ROOM = {};   // further than ROOM_SLIDE from its place it is off air instead
@@ -1216,11 +1261,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
   setInterval(makeRoom, 250);
 
   // ---------------------------------------------------------------- Arrange mode
-  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip", "gwalk", "gladder"];
+  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip", "gwalk", "gladder", "gboard"];
   const ED_NAMES = { tower: "Timing tower", banner: "Banner", replay: "Replay bug", battle: "Battle box", card: "Driver card", map: "Track map", ticker: "Race control",
     board: "Standings", grid: "Grid", faster: "Where they're faster", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head",
     onboard: "Onboard", podium: "Podium", strap: "Commentator", sponsors: "Sponsors", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", strip: "Running order",
-    league: "League", pip: "Picture in picture", gwalk: "Grid walk", gladder: "Grid walk: the grid" };
+    league: "League", pip: "Picture in picture", gwalk: "Grid walk", gladder: "Grid walk: the grid", gboard: "Grid board" };
   // Dragging changes this page only; the result goes to the producer panel (postMessage), which saves it as the
   // look's layout (theme.layout) so every OBS source follows.
   const ED = { id: null };
@@ -2089,6 +2134,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const byRow = (S.director || {}).gridByRow !== false && mates.length === 2;
     $("gwBox").querySelector(".gw-row").classList.toggle("hide", byRow);
     $("gwPair").classList.toggle("hide", !byRow);
+    $("gwalk").classList.toggle("pair", byRow);
     if (byRow) {
       const half = x => {
         const k = carByIdx(x.idx) || {}, dx = x.derived || {}, q = x.timeS ? fmt.lap(x.timeS) : "No time";
@@ -2333,10 +2379,58 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const st = S.state && S.state.session && S.state.session.state;
     return isRace() && (st === "parade_laps" || st === "warmup");
   }
+  // The grid board: every car in its grid slot (columns as the grid forms up: StartingGrid's cars a row, each
+  // column a little behind the one before), iRacing's picture of each car, its qualifying lap and gap to pole
+  // (normalize), a light down the rows from pole. A car not on the grid yet is still shown (the picture is the
+  // render, not the camera), marked. The window follows the light on a big grid.
+  const GB = { on: false, key: "" };
+  function renderGBoard() {
+    const gb = gridBoardOn();
+    const grid = (S.session && S.session.grid) || {}, rows = grid.rows || [];
+    const on = !!gb && rows.length > 0 && !!S.cars && (!ONLY || ["gboard", "grid"].includes(ONLY)) && !sceneUp();
+    $("gboard").classList.toggle("on", on);
+    if (!on) { GB.on = false; return; }
+    const per = Math.max(1, Math.min(4, grid.perRow || 2)), m = multi();
+    const rowOf = x => (x.derived || {}).row || Math.ceil((x.pos || 1) / per);
+    const nRows = Math.max(1, ...rows.map(rowOf));
+    const winH = 880, gap = 10, stag = per > 1 ? 0.5 : 0;
+    const h = Math.max(84, Math.min(150, Math.floor((winH - 36) / (nRows + stag) - gap)));
+    const t = S.session.track;
+    $("gbTitle").textContent = T("text.gridTitle", "") || "Starting grid";
+    $("gbKind").textContent = rows.length + " starters";
+    $("gbSub").innerHTML = esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + (t && t.TrackConfigName ? "<br>" + esc(t.TrackConfigName) : "");
+    const cols = Array.from({ length: per }, () => []);
+    rows.forEach((x, i) => cols[(x.pos ? x.pos - 1 : i) % per].push(x));
+    const slot = (x, k) => {
+      const c = carByIdx(x.idx), d = x.derived || {}, rw = rowOf(x);
+      const cls = rw === gb.row ? "lit" : "";
+      if (!c) return `<div class="gbs ${cls}" style="--k:${k}"><div class="p"><b>${esc(x.pos)}</b></div></div>`;
+      const away = c.surface === "not_in_world";
+      const tag = d.pole ? "Pole" : m && d.classPole ? esc(c.className || "Class") + " pole" : m && x.classPos ? esc(c.className || "Class") + " P" + x.classPos : "";
+      const gapH = d.poleGapS != null && !d.pole ? `<em>${fmt.gap(d.poleGapS)}</em>` : "";
+      return `<div class="gbs ${cls}${away ? " away" : ""}" style="--k:${k}"><i style="background:${m ? css(c.classColor) || "#444" : "var(--accent)"}"></i>` +
+        `<div class="p"><b>${esc(x.pos)}</b><span>${tag}</span></div><div class="lv">${liveryHtml(c)}</div>` +
+        `<div class="who"><b>${plate(c)}${nameHtml(c.name)}</b><span>${away ? '<em class="out">Not on the grid yet</em> · ' : ""}${esc([c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · "))}</span></div>` +
+        `<div class="tm">${x.timeS ? fmt.lap(x.timeS) : "No time"}<span>Qualifying</span>${gapH}</div></div>`;
+    };
+    let k = 0;
+    const html = cols.map((col, ci) => `<div class="gbd-col" style="padding-top:${Math.round(ci * (h + gap) / per)}px">${col.map(x => slot(x, k++)).join("")}</div>`).join("");
+    const box = $("gbCols");
+    box.style.gridTemplateColumns = `repeat(${per}, 1fr)`;
+    box.style.setProperty("--gbH", h + "px"); box.style.setProperty("--gbGap", gap + "px");
+    if (box.innerHTML !== html) box.innerHTML = html;
+    // a big grid: the window follows the light (two rows above it in view)
+    const need = (nRows + stag) * (h + gap) + 36, over = Math.max(0, Math.ceil((need - winH) / (h + gap)));
+    const at = Math.max(0, Math.min(over, (gb.row || 1) - 3));
+    box.style.translate = `0 ${-at * (h + gap)}px`;
+    $("gbWin").style.height = Math.min(winH, need) + "px";
+    if (!GB.on) { GB.on = true; replay($("gboard"), "gb-in"); }
+  }
+
   function renderGrid() {
     const rows = (S.session && S.session.grid && S.session.grid.rows) || [];
-    gridUp = (rows.length > 0 && gridWanted() && !!S.cars) || !!gridWalkCar();
-    const on = allowed("grid") && !sceneUp() && rows.length > 0 && gridWanted() && !!S.cars && !gridWalkCar();
+    gridUp = (rows.length > 0 && gridWanted() && !!S.cars) || !!gridWalkCar() || !!gridBoardOn();
+    const on = allowed("grid") && !sceneUp() && rows.length > 0 && gridWanted() && !!S.cars && !gridWalkCar() && !gridBoardOn();
     $("grid").classList.toggle("on", on);
     if (!on) return;
     const t = S.session.track;
@@ -2473,7 +2567,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderGridWalk(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
+      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderGridWalk(); renderGBoard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
     }
     drawMap(); drawFaster(t);
     pumpTicker();

@@ -400,7 +400,7 @@ class Bridge:
                 self.director.configure(on=msg.get("on"), style=msg.get("style"), hold_s=msg.get("holdS"),
                                         auto_grid=msg.get("autoGrid"), grid_rows=msg.get("gridRows"),
                                         replays=msg.get("replays"), stinger=msg.get("stinger"),
-                                        stinger_cut_ms=msg.get("stingerCutMs"))
+                                        stinger_cut_ms=msg.get("stingerCutMs"), grid_board=msg.get("gridBoard"))
                 if msg.get("gridHoldS") is not None:
                     self.director.grid_hold_s = max(2.0, min(20.0, float(msg["gridHoldS"])))
             elif action == "follow_battle":
