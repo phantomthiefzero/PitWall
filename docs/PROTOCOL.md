@@ -470,6 +470,17 @@ bannerLogo, stinger: {style: wipe|chevrons|checker|panels|iris, video, cuts: {<v
 layout: {<graphic>: {x, y, s}}}`. A rejected patch gets
 `gfx_result {ok:false, error}`.
 
+### `notes` (producer → relay → every viewer but guests)
+The booth notes page (`/broadcast/notes.html`): the commentators' own words.
+```json
+{"type":"notes","set":{"drivers":{"300000":"Say it AN-drew","300001":null},"show":"Break at lap 10"},"by":"Andrew"}
+```
+`drivers` is keyed by iRacing user id (digits); a text replaces that driver's note, `null` or blank removes it
+(600 characters each). `show` replaces the show note (4000). The relay keeps them on disk (`.booth_notes.json` in
+the uploads folder, never listed or served as an upload) and sends everyone the whole set:
+`{"type":"notes","notes":{"drivers":{...},"show":"..."},"by":"Andrew"}`, also on connect. Producer token only;
+a refused one gets `notes_result {ok:false, error}`, a kept one `notes_result {ok:true}`.
+
 ### `resend` (viewer → relay)
 Asks for everything a page needs to start (`session`, `map`, the latest keyframes, the
 race feed and gap chart so far, graphics, assets). The relay answers from what it holds,
