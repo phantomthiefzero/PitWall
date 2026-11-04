@@ -205,11 +205,13 @@ class CommandGate:
         try:
             import time
             import irsdk
+            from . import simlog
             ir = src.irsdk()  # raises for non-live sources
             for method, args in steps:
                 if method == "sleep":
                     time.sleep(args[0])
                     continue
+                simlog.note("%s %s" % (method, args))
                 if method == "replay_search":
                     args = (getattr(irsdk.RpySrchMode, args[0]),)
                 getattr(ir, method)(*args)
