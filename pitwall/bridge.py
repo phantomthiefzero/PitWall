@@ -232,9 +232,21 @@ class Bridge:
             edge = ((self._last_state or {}).get("derived") or {}).get("liveEdge") or {}
             held = edge.get("atLive") is False and self._last_live_cars is not None
             if held:
-                cars_msg = hold_cars(self._last_live_cars,
-                                     results_positions(self.src.session_info("SessionInfo"), self.src.get("SessionNum")),
-                                     edge, edge.get("tLive"))
+                results = results_positions(self.src.session_info("SessionInfo"), self.src.get("SessionNum"))
+                cars_msg = hold_cars(self._last_live_cars, results, edge, edge.get("tLive"))
+                # the race's clock and laps keep going while the picture is held (they froze for a whole replay,
+                # then jumped): SessionTimeRemain is the live clock, like SessionTime; the results have the laps
+                race = (cars_msg.get("derived") or {}).get("race")
+                if race:
+                    rem = self.src.get("SessionTimeRemain")
+                    if isinstance(rem, (int, float)) and 0 <= rem < 7 * 86400:
+                        race["timeRemainS"] = rem
+                    lead = max([r.get("LapsComplete") for r in results if r.get("Position") == 1
+                                and isinstance(r.get("LapsComplete"), int)] or [-1])
+                    if lead >= 0 and (race.get("leaderLapsDone") is None or lead > race["leaderLapsDone"]):
+                        race["leaderLapsDone"] = lead
+                        if race.get("totalLaps"):
+                            race["lapsToGo"] = max(0, race["totalLaps"] - lead)
             else:
                 cars_msg = build_cars(self.src, self.session_msg, self.deriver)
                 self._last_live_cars = cars_msg

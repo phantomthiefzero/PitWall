@@ -339,6 +339,13 @@ Broadcast (broadcast/)
   and qualifying to the line (stories "push", up to 150 s) and the leader on the last lap ("finish").
 - The checkered flag waits for the leader (normalize.race_flags, state derived.raceFlags): iRacing raises it when a
   timed race's clock runs out, a lap early; until SessionState turns checkered it reads as the white flag.
+  A spectator's SessionFlags carry no white or checkered at all (Summit Point), so race_flags also reads them from the
+  race: checkered from the session state, white while racing with a timed race's clock out or one lap to go.
+  The overlay calls them on screen (flagcall, a tile under Alerts, on by default): green as a race goes racing or
+  after a caution or red, white for the final lap, checkered with the winner; only on a change it sees.
+  The leader's laps never go back in a session (race_length: ResultsPositions and the most seen are a floor), and
+  while a replay holds the picture the bridge keeps the race's clock (SessionTimeRemain) and laps (results) running.
+  The banner's clock changes in place; only laps and words roll in (a roll each second flashed).
 - Producer buttons: camera, replay and director buttons are off while the broadcast is off (the bridge refuses
   them); with the director, grid walk or a followed battle holding the camera they are dimmed and a line says a
   click takes it back. The battle list's buttons all switch off with a second click (unfollow: director end_battle).

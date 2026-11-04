@@ -329,6 +329,11 @@ director cut by cut (it found the faults below, now fixed):
 - **Moments carry their session.** A qualifying spin (session 1) was replayed in the race: the replay clock is per
   session. Replays now come only from the session on air.
 - **A pass and the lead change it makes are one moment** (two feed events, same cars, seconds apart): replayed once.
+- **A spectator's SessionFlags carry no white or checkered.** Green (with start_ready/set/go) at the start, then
+  only start_hidden to the end; SessionState did go checkered (5) as the leader crossed, ~30 s after the clock
+  reached 0. White and checkered are now read from the race (normalize.race_flags: the clock out in a timed race,
+  one lap to go in a lap race, the checkered state). **Assumed, not seen:** that SessionTimeRemain keeps the live
+  clock while a replay plays behind live (the bridge copies it into the held race; ReplaySessionTime is the playhead).
 - Camera pack groups seen: "Turn 1", "Drone Cam", "Scenic Drone Cam", "SF Line", plus iRacing's own including
   Gearbox and the four Susp cams (a wheel close-up; now "detail", never a battle's shot).
 

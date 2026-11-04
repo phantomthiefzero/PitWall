@@ -199,6 +199,17 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 
 /* ---------- race control: penalties and warnings for one car ---------- */
 #penalty{right:36px;bottom:360px;width:480px}
+/* the race's big flags called on screen: green (the start, a restart), white (the final lap), checkered (the winner) */
+#flagcall{left:50%;top:36px;width:860px;margin-left:-430px}
+.fc{display:flex;align-items:stretch;height:112px;background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.5)}
+.fc-flag{width:150px;flex:none;position:relative}
+.fc-flag.checkered{background:repeating-conic-gradient(#111 0 25%,#f4f4f4 0 50%) 0 0/37.5px 37.5px!important}
+.fc-txt{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;padding:0 26px}
+.fc-txt b{font:800 54px/1 var(--display);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+.fc-txt span{color:var(--text);opacity:.85;font:700 22px/1.2 var(--display);text-transform:var(--caps);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc-txt span .plate{margin-right:8px;vertical-align:2px}
+:root[data-look="arcade"] .fc{clip-path:polygon(0 0,100% 0,97.5% 100%,0 100%);border-radius:0}
+:root[data-look="arcade"] .fc-txt b{font-style:italic}
 .pen{display:flex;align-items:stretch;border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45);animation:flaIn .45s cubic-bezier(.15,.9,.25,1) both}
 .pen .fg{width:64px;flex:none;background:#0b0d12;position:relative;border-right:1px solid var(--line)}
 .pen .fg.furled{background:linear-gradient(135deg,#fff 0 50%,#0b0d12 50%)}
@@ -850,6 +861,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   <section class="layer" id="scene"><div class="sc" id="scBox"><div class="sc-own" id="scOwn"></div><div class="sc-fx"><i class="g1"></i><i class="g2"></i><b></b><u></u></div><div class="sc-in"><div class="sc-top"><img id="scLogo" class="hide" alt=""><div class="sc-k" id="scKick"></div></div>
     <h1 id="scTitle"></h1><div class="sc-sub" id="scSub"></div><div class="sc-cd" id="scCd"></div><div class="sc-body" id="scBody"></div></div><div class="sc-sp" id="scSp"></div></div></section>
   <section class="layer" id="penalty"><div class="inner" id="penBox"></div></section>
+  <section class="layer" id="flagcall"><div class="inner"><div class="fc"><i class="fc-flag" id="fcFlag"></i><div class="fc-txt"><b id="fcTitle"></b><span id="fcSub"></span></div></div></div></section>
   <section class="layer" id="h2h"><div class="inner" id="hhBox"></div></section>
   <section class="layer" id="onboard"><div class="inner"><div class="ob"><div class="gr" id="obGear">–</div><div class="vals"><div><b id="obSpd">–</b><small id="obUnit">km/h</small></div><div><b id="obRpm">–</b><small>rpm</small></div></div>
     <svg id="obWheel" viewBox="-30 -30 60 60" aria-hidden="true"><circle r="25" fill="none" stroke="currentColor" stroke-width="6"/><path d="M-25 0H25M0 0V25" stroke="currentColor" stroke-width="6"/><rect x="-3" y="-30" width="6" height="9" fill="var(--accent)"/></svg></div></div></section>
@@ -1005,7 +1017,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return v === undefined ? dflt : v;
   }
   const T = (k, d) => G("theme." + k, d);
-  const DEFAULT_ON = { tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false, qlap: false, tyres: false, trap: false, strip: false, league: false, pip: false };
+  const DEFAULT_ON = { flagcall: true, tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false, qlap: false, tyres: false, trap: false, strip: false, league: false, pip: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
   // Automatic graphics (producer: "Pick graphics for me"): the battle's "where they're faster" when the two
@@ -1073,6 +1085,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const now = performance.now(), race = isRace(), f = racingFlag(), caution = f === "caution" || f === "red";
     const done = race && f === "checkered", since = now - CTX.flagAt, racing = race && sessState() === "racing";
     if (name === "trap") return ctxWants("trap");
+    if (name === "flagcall") return true;                  // on its own timing: only as a flag changes
     if (name === "board") return done ? since < 35000 : race ? racing && pastLapOne() && !camBattle() && every(300000, 12000, 150000)
       : !qlapCar() && every(240000, 15000, 60000);
     if (name === "podium") return done && since >= 35000;
@@ -1253,7 +1266,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${(Number(l.s) || 1) * (id === "strip" ? 1 : size)})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0", gwalk: "0 100%", gladder: "100% 0", gboard: "50% 0" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0", gwalk: "0 100%", gladder: "100% 0", gboard: "50% 0", flagcall: "50% 0" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -1264,7 +1277,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // until it is clear, and steps off air while there is no room. Sizes are measured, so a long tower or a growing
   // race control list moves what is below or above it. A graphic placed by hand (Arrange, theme.layout) stays where
   // it was put; the others make room around it. Arrange mode shows the real positions.
-  const ROOM_ORDER = ["gboard", "strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "board", "grid", "league", "podium", "battle", "qlap",
+  const ROOM_ORDER = ["gboard", "flagcall", "strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "board", "grid", "league", "podium", "battle", "qlap",
     "h2h", "faster", "pip", "map", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"];
   const ROOM_UP = new Set(["strip", "card", "gwalk", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"]);
   const ROOM_GAP = 8, ROOM_SLIDE = 420, ROOM = {};   // further than ROOM_SLIDE from its place it is off air instead
@@ -1303,11 +1316,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
   setInterval(makeRoom, 250);
 
   // ---------------------------------------------------------------- Arrange mode
-  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip", "gwalk", "gladder", "gboard"];
+  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip", "gwalk", "gladder", "gboard", "flagcall"];
   const ED_NAMES = { tower: "Timing tower", banner: "Banner", replay: "Replay bug", battle: "Battle box", card: "Driver card", map: "Track map", ticker: "Race control",
     board: "Standings", grid: "Grid", faster: "Where they're faster", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head",
     onboard: "Onboard", podium: "Podium", strap: "Commentator", sponsors: "Sponsors", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", strip: "Running order",
-    league: "League", pip: "Picture in picture", gwalk: "Grid walk", gladder: "Grid walk: the grid", gboard: "Grid board" };
+    league: "League", pip: "Picture in picture", gwalk: "Grid walk", gladder: "Grid walk: the grid", gboard: "Grid board", flagcall: "Flag calls" };
   // Dragging changes this page only; the result goes to the producer panel (postMessage), which saves it as the
   // look's layout (theme.layout) so every OBS source follows.
   const ED = { id: null };
@@ -1942,7 +1955,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("bnTrack").textContent = T("text.event", "") || (t ? (t.TrackDisplayShortName || t.TrackDisplayName || "") : "");
     $("bnEvent").textContent = t ? (t.TrackDisplayName || "") + (t.TrackConfigName ? " · " + t.TrackConfigName : "") : "";
     const rs = raceState(), f = racingFlag();
-    roll($("bnMain"), rs.main);
+    // a clock ticks every second: it changes in place (rolling it in each second flashed); laps and words roll in
+    if (/^\d+:\d\d/.test(rs.main) || rs.main === "–") { if ($("bnMain").innerHTML !== rs.main) $("bnMain").innerHTML = rs.main; }
+    else roll($("bnMain"), rs.main);
     const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Checkered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
     $("bnSub").textContent = [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · ");
     $("bnFlag").style.background = f ? FLAG_BG[f] : "var(--muted)"; waveFlag($("bnFlag"), f);
@@ -1959,6 +1974,34 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const lbl = dr && dr.label ? dr.label : G("replay.label", "");
     $("rpLabel").classList.toggle("hide", !lbl);
     $("rpLabel").textContent = sp === 0 ? "Paused" : cam.replaySlowMotion ? "Slow motion" + (lbl ? " · " + lbl : "") : lbl;
+  }
+
+  // ---------------------------------------------------------------- flag calls
+  // Green as a race goes racing (from the grid or the pace laps) and after a full-course caution or a red; white as
+  // the leader starts the final lap; checkered as the leader takes it (normalize.race_flags waits for the leader),
+  // with the winner. Fired on the change this page sees; the first state it sees only sets the scene.
+  const FC = { f: undefined, st: undefined, until: 0 };
+  function renderFlagCall() {
+    const now = performance.now(), f = racingFlag(), st = sessState(), race = isRace();
+    if (FC.f !== undefined && race) {
+      let call = null;
+      if (st === "racing" && ["get_in_car", "warmup", "parade_laps"].includes(FC.st)) call = ["green", "Green flag", "The race is on"];
+      else if (f === "green" && (FC.f === "caution" || FC.f === "red")) call = ["green", "Green flag", "Racing resumes"];
+      else if (f === "white" && FC.f !== "white") call = ["white", "White flag", "Final lap"];
+      else if (f === "checkered" && FC.f !== "checkered") {
+        const w = allCars().find(c => c.pos === 1);
+        call = ["checkered", "Checkered flag", w ? `${plate(w)}${nameHtml(w.name, "full")} wins` : ""];
+      }
+      if (call) {
+        FC.until = now + (call[0] === "checkered" ? 9000 : 6000);
+        $("fcFlag").className = "fc-flag" + (call[0] === "checkered" ? " checkered" : "");
+        $("fcFlag").style.background = FLAG_BG[call[0]];
+        waveFlag($("fcFlag"), call[0] === "green" ? null : call[0]);
+        $("fcTitle").textContent = call[1]; $("fcSub").innerHTML = call[2];
+      }
+    }
+    FC.f = f; FC.st = st;
+    $("flagcall").classList.toggle("on", now < FC.until && shown("flagcall"));
   }
 
   // ---------------------------------------------------------------- battle
@@ -2609,7 +2652,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function frame(t) {
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderGridWalk(); renderGBoard(); renderBoard(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
+      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderGridWalk(); renderGBoard(); renderBoard(); renderFlagCall(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
     }
     drawMap(); drawFaster(t);
     pumpTicker();
