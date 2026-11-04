@@ -1569,7 +1569,9 @@ def test_director_tells_stories_and_moves_on():
         nxt = log[i + 1][0] if i + 1 < len(log) else t
         if i + 1 == len(log) or log[i + 1][1] != key:
             runs.append((key, nxt - start))
-    assert max(s for _, s in runs) <= SEGMENT_MAX_S + 12, runs
+    from pitwall.director import BATTLE_HOT_MAX_S
+    assert max(s for k, s in runs if not k.startswith("battle:")) <= SEGMENT_MAX_S + 12, runs
+    assert max(s for _, s in runs) <= BATTLE_HOT_MAX_S + 12, runs      # a close battle may stay to its end
     keys = [k for _, k, _ in log if k]
     assert len(set(keys)) >= 4, set(keys)
     top = max(set(keys), key=keys.count)
@@ -2206,3 +2208,44 @@ def test_broadcast_pages_scripts_parse(page):
                 "for(const x of s){try{new Function(x)}catch(err){e.push(err.message)}}console.log(JSON.stringify(e))",
                 stdin=json.dumps(scripts))
     assert out == [], out
+
+
+def test_a_close_battle_keeps_the_air_to_its_end():
+    # Summit Point, Nov 2026: battles left at SEGMENT_MAX_S while within 0.1 s, the pass for the lead a second later;
+    # a spin in the battle cut away to a lone trackside shot; cars swapping places made it "another" battle.
+    from pitwall.director import SEGMENT_MAX_S, BATTLE_HOT_MAX_S
+    close = [{"id": "1:0", "cars": [0, 1], "gapsS": [0.2], "closingSPerLap": [0.0], "forClassPos": 1}]
+    loose = [{"id": "5:4", "cars": [4, 5], "gapsS": [1.6], "closingSPerLap": [0.0], "forClassPos": 5}]
+    d, sess, msg, t, log, kinds = _craft_rig(n=8, battles=close + loose)
+    msg["cars"][6]["derived"]["posGained"] = 9                         # a charge elsewhere, to tempt it away
+    passes = [{"kind": "pass", "idx": 6, "t": 480.0 + i, "replayT": 480.0 + i, "sessionNum": 2, "classPos": 7 - i} for i in range(2)]
+    spin = {"kind": "race_incident", "what": "spin", "idx": 3, "t": 540.0, "replayT": 540.0, "sessionNum": 2, "id": 77, "confidence": "high"}
+    keys = []
+    for k in range(int((SEGMENT_MAX_S + 60) * 10)):
+        t[0] += 0.1
+        tl = 500.0 + k * 0.1
+        d.tick(sess, msg, _state(tl), passes + ([spin] if tl >= 540.0 else []))
+        keys.append(d.segment and d.segment["key"])
+    assert all(k == "battle:1:0" for k in keys[200:]), set(keys[200:])
+    assert not any(c == 3 for c, _, at in log["cuts"]), "a spin elsewhere waits for a replay"
+    assert not log["replay"], "no replay over a close battle"
+    # the cars swap places: a new id, the same story
+    msg["derived"]["battles"] = [{"id": "0:1", "cars": [1, 0], "gapsS": [0.1], "closingSPerLap": [0.0], "forClassPos": 1}] + loose
+    for k in range(300):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(600.0 + k * 0.1), [])
+    assert d.segment["key"] == "battle:0:1" and d.segment["start"] < t[0] - 60
+    # a spin in it: the camera stays on the battle (held), no lone trackside shot
+    n = len(log["cuts"])
+    spin2 = {"kind": "race_incident", "what": "spin", "idx": 1, "t": 631.0, "replayT": 631.0, "sessionNum": 2, "id": 78, "confidence": "high"}
+    for k in range(40):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(631.0 + k * 0.1), [spin2])
+    assert len(log["cuts"]) == n and d.segment["key"] == "battle:0:1"
+    # it opens up: away within its usual time
+    msg["derived"]["battles"] = [{"id": "0:1", "cars": [1, 0], "gapsS": [1.7], "closingSPerLap": [-0.2], "forClassPos": 1}] + loose
+    for k in range(100):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(640.0 + k * 0.1), [])
+    assert d.segment["key"] != "battle:0:1"
+    assert BATTLE_HOT_MAX_S > SEGMENT_MAX_S

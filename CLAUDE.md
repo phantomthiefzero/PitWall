@@ -321,6 +321,13 @@ Broadcast (broadcast/)
   opening lap (the start is its own story, "start": the front of the field, wide shots, up to 150 s), only from the
   session on air (moments keyed by sessionNum), one moment once (a pass and the lead change it made are one).
   A pass between two cars still in a battle adds to that battle's score instead of making its own story.
+  A close battle keeps the air to its end (Summit Point: four left at SEGMENT_MAX_S within 0.1-0.7 s, the pass for
+  the lead a second later): "hot" (within BATTLE_HOT_S, or closing within BATTLE_WARM_S) it may stay to
+  BATTLE_HOT_MAX_S, tires slowly (BATTLE_HOT_FATIGUE) and another story needs BATTLE_STAY more to take over; no
+  replay over it, and a spin elsewhere waits for its replay. An incident to a car IN the battle on air holds the shot
+  (no cut to a lone trackside angle). Its cars swapping places (a new id) or the battle dropping out of the list for a
+  moment (BATTLE_GRACE_S) is the same story (_battle_continuity). On the opening lap a fight among the front three
+  is part of "the start". tests: test_a_close_battle_keeps_the_air_to_its_end.
   Camera packs: names with "scenic" are never used, drone/heli/sky are aerial; Gearbox and Susp cams are "detail".
   Far Chase is the main shot (its own kind "far"; the Chase stands in where a pack has none): first in every
   sequence and twice a round in a battle (on the last car: the whole fight). Rear Chase looks back, so it is only
