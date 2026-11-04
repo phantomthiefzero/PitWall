@@ -290,6 +290,8 @@ header{padding:6px 12px}
 .lg-ed{display:grid;grid-template-columns:44px 1fr 52px 64px 84px 28px;gap:3px 4px;align-items:center;max-height:320px;overflow:auto;margin:4px 0 6px}
 .lg-ed input{min-height:28px;padding:2px 6px;font-size:13px;width:100%}
 .lg-ed button{min-height:26px;padding:0;width:26px}
+#notesLink{display:inline-flex;align-items:center;min-height:34px;padding:6px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--fg);text-decoration:none;font-weight:700}
+#notesLink:hover{border-color:var(--fg)}
 </style>
 </head>
 <body>
@@ -305,6 +307,7 @@ header{padding:6px 12px}
     <button class="warn hide" id="toLive">Back to live</button>
     <span id="camTxt">No camera car yet</span>
     <input type="text" id="me" placeholder="Your name" aria-label="Your name, shown to the co-host">
+    <a id="notesLink" class="hide" target="_blank" rel="noopener" title="Booth notes for the commentators: the driver on camera, storylines, race news and your own notes per driver (opens on its own, for a second screen)">Booth notes</a>
     <button type="button" id="suOpen" data-setup="" title="Graphics settings, look, studio (show screens, commentators, sponsors, league), liveries, OBS">Setup</button>
   </div>
 </header>
@@ -2003,6 +2006,9 @@ header{padding:6px 12px}
       $("connect").classList.add("hide"); $("main").classList.remove("hide");
       try { handle(m); } catch (e) { console.error("producer: could not handle " + m.type, e); }
     };
+    // Booth notes: the same token, on its own page (a second screen, or the co-host's)
+    const nb = location.protocol.startsWith("http") ? location.origin + location.pathname.replace(/producer\.html$/, "") : "";
+    if (nb) { $("notesLink").href = nb + "notes.html?token=" + encodeURIComponent(token) + (Q.get("relay") ? "&relay=" + encodeURIComponent(relay) : ""); $("notesLink").classList.remove("hide"); }
     const view = Q.get("view");
     const base = location.protocol.startsWith("http") ? location.origin + location.pathname.replace(/producer\.html$/, "") : "";
     if (view && base) $("obsUrl").textContent = base + "overlay.html?token=" + encodeURIComponent(view) + (Q.get("relay") ? "&relay=" + encodeURIComponent(relay) : "");
