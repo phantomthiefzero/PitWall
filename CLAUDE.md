@@ -241,6 +241,13 @@ Broadcast (broadcast/)
   Log as tabs. Every setting lives in the Setup drawer (Graphics, Look, Studio, Liveries, OBS; Esc closes; data-setup
   opens it at a section). Long notes fold behind (i) (hintTidy). Keep it so: a new setting goes into Setup, not the
   columns, and a new graphic is a tile (TILE_GROUPS, SHORT, GEAR).
+- Booth notes (broadcast/notes.html, the producer header's "Booth notes", opens on its own for a second screen): for the
+  commentators. The driver on camera (or one picked) with what is worth saying (start to now, laps led, best and last
+  lap, stint, stops, next stop by their longest stint, consistency, top speed, iRating, tyre runs, their battle),
+  storylines (battles, movers, class leaders and best laps, strategy), race news from the feed's events, the field,
+  and their own notes: one per driver by iRacing user id and one for the show, kept by the relay on disk
+  (Relay.notes, `.booth_notes.json` in the uploads folder; message `notes`, producer token only, never to guests).
+  The page words the feed's numbers and works none out (the test checks for arithmetic on race values).
 - Show screens move slowly and quietly (drifting glows, a light sweeping by, specks rising, the stripes easing;
   the words and lists come in once per screen change, never on each refresh). Each screen can use your own file
   instead (gfx scene.files[mode]: an uploaded picture or looping muted video, or an https page) with a dark backing
