@@ -1830,6 +1830,65 @@ def test_the_relay_loads_a_league_link_only_from_a_public_address():
         srv.shutdown()
     src = open(rs.__file__, encoding="utf-8").read()
     assert 'only the producer token can load a link' in src and "run_in_executor(None, fetch_text" in src
+
+
+def test_the_grid_walk_by_hand():
+    """Previous, Next, Hold and a jump to any car, from the producer; a walk by hand starts on pole and waits,
+    and is never shortened to fit the pace laps. Nothing works without a walk running."""
+    third = 4
+    rows, cars = [], []
+    for i in range(12):
+        rows.append({"pos": i + 1, "classPos": i % third + 1, "idx": i, "derived": {"row": i // 2 + 1}})
+        cars.append({"idx": i, "num": str(100 + i), "classId": i // third, "pct": 0.5, "lap": 0, "pos": i + 1})
+    sess = {"grid": {"rows": rows}, "cameras": [{"num": 1, "name": "Chase"}, {"num": 2, "name": "Rear Chase"}]}
+    t, cuts = [0.0], []
+    d = Director(lambda num, g: cuts.append(int(num) - 100) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
+    msg, st = {"cars": cars, "derived": {"isRace": True}}, {"session": {"state": "warmup", "num": 2}}
+    assert not d.grid_next() and not d.grid_prev() and not d.grid_jump(3) and not d.grid_pause(True)
+
+    def run(seconds):
+        for _ in range(int(seconds * 10)):
+            t[0] += 0.1
+            d.tick(sess, msg, st, [])
+    d.set_live(True)
+    d.start_grid_walk(cars, hold_s=3, manual=True)
+    run(20)
+    assert cuts == [0] and d.status()["gridPaused"] and d.status()["gridAt"] == 0, "on pole, waiting"
+    assert d.grid_next(); run(0.3)
+    assert d.grid_next(); run(0.3)
+    assert cuts[-2:] == [1, 2] and d.status()["gridAt"] == 2
+    assert d.grid_prev(); run(0.3)
+    assert cuts[-1] == 1
+    assert d.grid_jump(9); run(0.3)
+    assert cuts[-1] == 9 and d.current["gridPos"] == 10
+    assert not d.grid_jump(99)
+    assert d.grid_pause(False); run(3.5)                           # carries on by itself from there
+    assert cuts[-1] == 10
+    assert d.grid_pause(True); n = len(cuts); run(10)
+    assert len(cuts) == n, "held"
+    d.grid_next(); run(0.3); assert cuts[-1] == 11
+    assert d.grid_next() and d.owner != "grid", "Next past the last car ends the walk"
+    # by hand, the pace laps never shorten it
+    d.start_grid_walk(cars, hold_s=3, manual=True)
+    st = {"session": {"state": "parade_laps", "num": 2}}
+    for k in range(40):
+        t[0] += 0.1
+        cars[0]["pct"] = 0.5 + 0.02 * k
+        d.tick(sess, msg, st, [])
+    for _ in range(11):
+        d.grid_next(); run(0.2)
+    assert not d.grid_short and cuts[-12:] == list(range(12))
+
+
+def test_the_bridge_takes_the_walk_by_hand_commands():
+    src = open(os.path.join(os.path.dirname(__file__), "..", "pitwall", "bridge.py"), encoding="utf-8").read()
+    for a in ("grid_next", "grid_prev", "grid_pause", "grid_jump"):
+        assert '"%s"' % a in src
+    assert 'manual=bool(msg.get("manual"))' in src
+    prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    assert 'action: "grid_jump"' in prod and 'ArrowRight: "next"' in prod and 'data-gwgo="hand"' in prod
+
+
 def test_booth_notes_are_kept_by_the_relay():
     """Booth notes (broadcast/notes.html): one per driver by iRacing user id and one for the show, written with the
     producer token, kept on disk (there again next race), never listed or served as an upload, never to guests."""

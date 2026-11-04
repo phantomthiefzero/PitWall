@@ -252,6 +252,10 @@ Broadcast (broadcast/)
   start is the one the field rolls over, so a lap more): shorter holds down to GRID_ROW_MIN_S a row, then only the
   front GRID_FRONT_ROWS rows and each class's pole row (grid_short). iRacing gives no count of pace laps, so ending
   early (back to the director) is the safe side. tests: test_the_grid_walk_goes_by_rows_and_fits_the_pace_laps.
+  By hand (Director.grid_next / grid_prev / grid_pause / grid_jump; bridge actions of the same names, only while a
+  walk has the camera): the producer's Previous / Hold / Next under the camera owner, ← → and the space bar, and a
+  click on a driver on the grid moves the walk to them instead of ending it. "Walk by hand" (grid_walk manual) starts
+  on pole held; a held or by-hand walk is never shortened, and the pace laps starting do not replace it.
 - Championship (gfx league.rows, the league's own points): from a link (the relay fetches it for the producer token:
   relay.fetch_text, public addresses only, redirects checked, 2 MB, off the loop; a Google Sheet's share link becomes
   its CSV export; "keep it up to date" reloads every 10 min), a file or paste (CSV, TSV, JSON, or a web page: its best

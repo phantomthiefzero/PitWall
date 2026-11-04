@@ -407,8 +407,17 @@ class Bridge:
                 def on_car(car):
                     if snap:
                         threading.Timer(LiveryCapture.SETTLE_S, self.capture.snap, args=(dict(car),)).start()
-                if not self.director.start_grid_walk(order, hold_s=msg.get("holdS"), on_car=on_car):
+                if not self.director.start_grid_walk(order, hold_s=msg.get("holdS"), on_car=on_car,
+                                                     manual=bool(msg.get("manual"))):
                     res["error"] = BROADCAST_OFF
+                    return res
+            elif action in ("grid_next", "grid_prev", "grid_pause", "grid_jump"):
+                # the walk by hand: only while a walk has the camera
+                d = self.director
+                done = (d.grid_next() if action == "grid_next" else d.grid_prev() if action == "grid_prev" else
+                        d.grid_pause(msg.get("on")) if action == "grid_pause" else d.grid_jump(msg.get("car")))
+                if not done:
+                    res["error"] = "no grid walk is running" if d.owner != "grid" else "that car is not on the grid"
                     return res
             elif action == "unfollow":
                 self.director.end_battle()

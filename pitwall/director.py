@@ -118,6 +118,12 @@ class Director:
         self.grid_hold_s = 5.0
         self.grid_by_row = True           # the walk goes a row at a time (both cars, inside then outside)
         self.grid_short = False           # the walk was shortened to fit the pace laps
+        # By hand (the producer's Previous / Next / Hold, or "Walk by hand"): a held walk stays on its car until told;
+        # it is never shortened. The whole order is kept, so Previous and a jump to any car work.
+        self.grid_paused = False
+        self.grid_manual = False
+        self._grid_order = []
+        self._grid_force = False
         self._pace = []                   # (t, laps) of the leader during the pace laps
         self.pace_eta = None              # seconds until the leader reaches the line, while the pace laps run
         self.on_grid_car = None           # callback(car) when the walk reaches a car
@@ -193,12 +199,16 @@ class Director:
         self._set_owner(None, why)
         return True
 
-    def start_grid_walk(self, cars: list[dict], hold_s: float | None = None, on_car=None):
+    def start_grid_walk(self, cars: list[dict], hold_s: float | None = None, on_car=None, manual: bool = False):
         if not self.live:
             return False
         self.grid = [c for c in cars if c.get("num") is not None]
         self.grid_total = len(self.grid)
+        self._grid_order = list(self.grid)
         self.grid_short = False
+        self.grid_manual = self.grid_paused = bool(manual)
+        self._grid_row = None
+        self._grid_force = True                       # the first car at once, held or not
         # the pole and the first car of each class in this order (the walk goes down the grid)
         seen_cls, self._grid_poles = set(), set()
         for c in self.grid:
@@ -214,6 +224,50 @@ class Director:
         self.battle = None
         self.note = "walking the grid"
         self._next_at = 0.0
+        self.changed = True
+        return True
+
+    # ------------------------------------------------------------------ the walk by hand
+    def _grid_at(self) -> int:
+        """Where the walk is: the index in its order of the car on camera (-1 before the first)."""
+        cur = (self.current or {}).get("car") if self.owner == "grid" else None
+        return next((i for i, c in enumerate(self._grid_order) if c.get("idx") == cur), -1)
+
+    def grid_goto(self, k: int) -> bool:
+        """Put the walk on the k-th car of its order at once (Previous, Next, a click on a driver)."""
+        if self.owner != "grid" or not self._grid_order:
+            return False
+        k = max(0, min(len(self._grid_order) - 1, int(k)))
+        self.grid = list(self._grid_order[k:])
+        self._grid_row = None
+        self._grid_force = True
+        self._next_at = 0.0
+        self.changed = True
+        return True
+
+    def grid_next(self) -> bool:
+        if self.owner != "grid":
+            return False
+        if not self.grid:                              # past the last car: the walk is done
+            self.current = None
+            self._end_temporary("grid walk done")
+            return True
+        return self.grid_goto(self._grid_at() + 1)
+
+    def grid_prev(self) -> bool:
+        return self.grid_goto(max(0, self._grid_at() - 1)) if self.owner == "grid" else False
+
+    def grid_jump(self, car_idx) -> bool:
+        k = next((i for i, c in enumerate(self._grid_order) if c.get("idx") == car_idx), None)
+        return self.grid_goto(k) if k is not None else False
+
+    def grid_pause(self, on: bool | None = None) -> bool:
+        """Hold the walk on its car (on=True), or let it carry on by itself (False); None toggles."""
+        if self.owner != "grid":
+            return False
+        self.grid_paused = (not self.grid_paused) if on is None else bool(on)
+        if not self.grid_paused:
+            self._next_at = self.clock() + self.grid_hold_s
         self.changed = True
         return True
 
@@ -250,6 +304,9 @@ class Director:
                 "gridLeft": len(self.grid) if self.owner == "grid" else None,
                 "gridTotal": self.grid_total if self.owner == "grid" else None,
                 "gridByRow": self.grid_by_row, "gridShort": self.grid_short if self.owner == "grid" else None,
+                "gridPaused": self.grid_paused if self.owner == "grid" else None,
+                "gridManual": self.grid_manual if self.owner == "grid" else None,
+                "gridAt": self._grid_at() if self.owner == "grid" else None,
                 "battle": list(self.battle["cars"]) if self.battle else None,
                 "note": self.note, "current": self.current, "styles": sorted(STYLES)}
 
@@ -310,8 +367,11 @@ class Director:
         if edge.get("atLive") is False or busy:
             return                                   # a replay / a photo sweep: leave the camera alone
         now = self.clock()
-        if now < self._next_at:
+        if self.mode == "grid" and self.grid_paused and not self._grid_force:
+            return                                   # held by the producer: stays on this car
+        if now < self._next_at and not self._grid_force:
             return
+        self._grid_force = False
         groups = self._groups(session)
         if self.mode == "grid":
             self._grid_step(groups, now, session)
@@ -334,7 +394,7 @@ class Director:
             self._end_temporary("the green flag: grid walk over")
             return
         if (self.auto_grid and is_race and race_state == "parade_laps" and was != "parade_laps"
-                and snum not in self._grid_walked and self.owner != "battle"):
+                and snum not in self._grid_walked and self.owner not in ("battle", "grid")):   # a walk already running (by hand) carries on
             rows = (session.get("grid") or {}).get("rows") or []
             by = {c["idx"]: c for c in cars_msg.get("cars") or []}
             order = [by[r["idx"]] for r in rows if r.get("idx") in by]
@@ -569,8 +629,8 @@ class Director:
                 units[u] = []
                 order.append(u)
             units[u].append(c)
-        if self.pace_eta is None:
-            return hold
+        if self.pace_eta is None or self.grid_paused or self.grid_manual:
+            return hold                               # by hand: the producer sets the pace, nothing is left out
         budget = self.pace_eta * GRID_SAFETY
         n = sum(len(v) for v in units.values())
         if n * hold <= budget:
@@ -623,7 +683,7 @@ class Director:
             pick = chase[0]
         g = {**pick, "kind": group_kind(pick.get("name"))}
         if self._do_cut(car, g, "starting grid" + (": pole" if pole else "")):
-            self.current["gridPos"] = self.grid_total - len(self.grid)
+            self.current["gridPos"] = self._grid_at() + 1
             if self.on_grid_car:
                 self.on_grid_car(car)
         self.changed = True
