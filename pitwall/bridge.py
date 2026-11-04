@@ -63,7 +63,7 @@ class Bridge:
         # so --allow-camera governs them exactly as it governs a producer.
         self._extra: list[dict] = []              # messages made off the event loop
         self._loop = None
-        self.director = Director(self._cut, log=log)
+        self.director = Director(self._cut, log=log, replay=self._replay)
         self.livery_store = LiveryStore(livery_dir)
         self.capture = LiveryCapture(self.livery_store, self._cut, self._emit, log=log)
         # iRacing's own picture of every car with its paint (Trading Paints included)
@@ -291,6 +291,14 @@ class Bridge:
         return self.gate.execute(self.src, {"cmd": "camera", "action": "car", "car": str(car_number),
                                             "group": int(group), "camera": 0})
 
+    def _replay(self, cmd: dict) -> dict:
+        """The director's own replay commands, through the same gate as the producer's. A jump pauses between its
+        seek and its play, so it runs on a thread of its own: the stream never waits for it."""
+        if not self.gate.camera:
+            return {"ok": False, "error": "camera control is off"}
+        threading.Thread(target=self.gate.execute, args=(self.src, dict(cmd)), daemon=True).start()
+        return {"ok": True}
+
     def _car_color(self, key: str, color: str):
         """Each car's paint colour, from iRacing's picture of it (Trading Paints included): one small
         message with all of them, kept by the relay for pages that join later."""
@@ -327,7 +335,7 @@ class Bridge:
 
     def _broadcast_tick(self, cars_msg: dict, outbox: list):
         # incidents, and the moments a director cuts to: passes for position and lead changes
-        recent = [e for e in self.deriver.feed_events[-60:] if e.get("kind") in ("race_incident", "pass", "class_lead")]
+        recent = [e for e in self.deriver.feed_events[-60:] if e.get("kind") in ("race_incident", "pass", "class_lead", "fastest_lap")]
         if self.gate.camera:
             try:
                 self.director.tick(self.session_msg, cars_msg, self._last_state, recent,
@@ -390,7 +398,9 @@ class Bridge:
         if kind == "director":
             if action == "set":
                 self.director.configure(on=msg.get("on"), style=msg.get("style"), hold_s=msg.get("holdS"),
-                                        auto_grid=msg.get("autoGrid"), grid_rows=msg.get("gridRows"))
+                                        auto_grid=msg.get("autoGrid"), grid_rows=msg.get("gridRows"),
+                                        replays=msg.get("replays"), stinger=msg.get("stinger"),
+                                        stinger_cut_ms=msg.get("stingerCutMs"))
                 if msg.get("gridHoldS") is not None:
                     self.director.grid_hold_s = max(2.0, min(20.0, float(msg["gridHoldS"])))
             elif action == "follow_battle":
