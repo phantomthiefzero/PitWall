@@ -337,8 +337,12 @@ Broadcast (broadcast/)
   start, sponsors now and then; the timed ones are staggered (every(): this machine's clock). Picture in picture
   stays the producer's (it needs their link). Outside a race the tower's Interval column reads the gap to pole. The director also follows push laps in practice
   and qualifying to the line (stories "push", up to 150 s) and the leader on the last lap ("finish").
-- The checkered flag waits for the leader (normalize.race_flags, state derived.raceFlags): iRacing raises it when a
-  timed race's clock runs out, a lap early; until SessionState turns checkered it reads as the white flag.
+- The checkered flag waits for the leader (normalize.race_flags, state derived.raceFlags): iRacing raises the bit when
+  a timed race's clock runs out, and SessionState turned checkered 24 s before the leader reached the line (Summit
+  Point). Deriver.race_end decides it: a lap race when the leader has the laps, else the leader's first crossing after
+  the end came (clock out, or the state); until then it is the white flag (race.finished, raceFlags). After it, each
+  car's gap is held as it takes the flag (finish_gaps: F2Time at the line, laps down); one still on its last lap shows
+  iRacing's at its last crossing.
   A spectator's SessionFlags carry no white or checkered at all (Summit Point), so race_flags also reads them from the
   race: checkered from the session state, white while racing with a timed race's clock out or one lap to go.
   The overlay calls them on screen (flagcall, a tile under Alerts, on by default): green as a race goes racing or
@@ -351,6 +355,15 @@ Broadcast (broadcast/)
   director (the finish story; no replays in a timed race's last laps, lapsByTime). The caution is read from the
   field's speed whenever no racing flag comes (a spectator's flags carry only start lights after the start), not
   only when there are no bits at all. tests: test_what_a_spectator_is_not_sent_is_filled_in_everywhere.
+- Audited against Summit Point (Nov 2026), each now in place: battles are read from the live class gap (a stale
+  F2Time had two cars 8 s apart "within a second"; the battle box showed 7.917); a car ahead of the one scored ahead
+  has no live gap (gap_between: it read +1:17.0 round the lap); practice and qualifying best laps come from
+  ResultsPositions (telemetry had -1 for the pole and a lap that did not count as "pole"); a car in the lane past
+  PIT_LONG_S is not a pit stop on air; where-faster needs comparable laps (FASTER_COMPARABLE); a car first seen off
+  the grid gets its first stint when it appears; the next stop is a lap still to come from a stint of STINT_MIN_LAPS+;
+  race news carries the race's lap while spectating (the leader's); the driver card shows the gap to the car ahead in
+  a race and to pole outside one; strategy hides the next-stop column when none is known; the lap chart labels sit
+  at each car's place now. tests: test_what_the_summit_point_audit_found.
 - Race TV graphics, from our own measures (Deriver.race_tv, battle_history, lap_chart; tiles under Race and Show):
   Pit stop (the camera car's, else the best placed in the lane: the box time running, where it should come out,
   then its stationary time and the place it came out in), Closing in (a car catching the one ahead in class, s a

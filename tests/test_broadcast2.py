@@ -2261,10 +2261,15 @@ def test_what_a_spectator_is_not_sent_is_filled_in_everywhere():
     d.state_events(130.0, {"flags": ["start_hidden"], "state": "checkered", "raceFlags": ["start_hidden", "checkered"]}, {}, {})
     assert [e["flag"] for e in d.feed_events if e["kind"] == "flag"] == ["white", "checkered"]
     sess = {"sessions": [{"SessionNum": 2, "SessionLaps": "unlimited", "SessionTime": "720.0000 sec"}]}
-    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 8, "lap": 9}], 0.0, Deriver(), ["start_hidden"], state="racing")
+    # Summit Point: the clock ran out (white), SessionState turned checkered 24 s before the leader reached the line
+    # (still white), and the checkered came with the leader's crossing
+    dd = Deriver()
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 8, "lap": 9}], 0.0, dd, ["start_hidden"], state="racing")
     assert r["white"] and not r["checkered"]
-    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 9, "lap": 10}], 125.0, Deriver(), ["start_hidden"], state="checkered")
-    assert r["checkered"] and not r["white"]
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 8, "lap": 9}], 125.0, dd, ["start_hidden"], state="checkered")
+    assert r["white"] and not r["checkered"] and r["finished"] is False
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 9, "lap": 10}], 124.0, dd, ["start_hidden"], state="checkered")
+    assert r["checkered"] and not r["white"] and r["finished"] is True
     r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 0, "lap": 0}], 0.0, Deriver(), ["start_hidden"], state="warmup")
     assert not r["white"], "the clock at 0 before the start is not a last lap"
     client = open(os.path.join(os.path.dirname(__file__), "..", "client", "index.html"), encoding="utf-8").read()
@@ -2341,3 +2346,46 @@ def test_race_tv_graphics_show_only_normalize_numbers():
     assert "b.swaps" in page and "b.sinceS" in page
     board = page.split("function renderBoard() {")[1].split("\n  }\n")[0]
     assert '"Stops", "Led"' in board, "the full result at the finish"
+
+
+def test_what_the_summit_point_audit_found():
+    from pitwall.normalize import gap_between, race_flags
+    # a battle is read from the live gap, not a stale F2Time (two cars 8 s apart were "within a second")
+    d = Deriver()
+    a = {"idx": 1, "classId": 1, "classPos": 4, "pos": 4, "gapValid": True, "f2TimeS": 10.0, "onPitRoad": False,
+         "derived": {"liveClassIntervalS": None}}
+    b = {"idx": 2, "classId": 1, "classPos": 5, "pos": 5, "gapValid": True, "f2TimeS": 10.9, "onPitRoad": False,
+         "derived": {"liveClassIntervalS": 7.917, "classIntervalLaps": 0}}
+    assert d.battles([a, b], {2: 1}, True) == []
+    b["derived"]["liveClassIntervalS"] = 0.6
+    assert d.battles([a, b], {2: 1}, True)[0]["gapsS"] == [0.6]
+    # a car that passed since the order was scored is not "+1:17.0" behind (read round the lap)
+    ahead = {"lap": 9, "pct": 0.50, "classId": 1, "estTimeS": 40.0, "classEstLapS": 85.0}
+    passed = {"lap": 9, "pct": 0.51, "classId": 1, "estTimeS": 41.0, "classEstLapS": 85.0}
+    assert gap_between(ahead, passed) == (None, None)
+    # the checkered comes with the leader's crossing, not with SessionState (24 s early at Summit Point)
+    assert race_flags(["start_hidden"], "checkered", 125.0, True, None, False) == ["start_hidden", "white"]
+    assert race_flags(["start_hidden"], "checkered", 125.0, True, None, True) == ["start_hidden", "checkered"]
+    # after the flag each car's gap is held as it finishes; one still on its last lap keeps iRacing's
+    d = Deriver()
+    cars = [{"idx": 0, "lapCompleted": 9, "f2TimeS": 0.0, "classId": 1, "derived": {}},
+            {"idx": 1, "lapCompleted": 9, "f2TimeS": 7.38, "classId": 1, "derived": {}},
+            {"idx": 2, "lapCompleted": 9, "f2TimeS": 13.94, "classId": 1, "derived": {}}]
+    d.finish_gaps(cars, None, 860.0)                    # racing: the laps are noted
+    cars[0]["lapCompleted"] = 10
+    d.finish_gaps(cars, "checkered", 865.6)             # the winner crosses
+    cars[1]["lapCompleted"], cars[1]["f2TimeS"] = 10, 7.381
+    d.finish_gaps(cars, "checkered", 873.0)             # P2 crosses
+    assert cars[1]["derived"]["finished"] and cars[1]["derived"]["liveGapS"] == 7.381
+    assert cars[2]["derived"]["liveGapS"] == 13.94 and not cars[2]["derived"].get("finished")
+    assert cars[2]["derived"]["liveIntervalS"] == round(13.94 - 7.381, 3)
+    # where-faster needs two laps that compare (1:36.0 against 1:24.9 said nothing)
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    assert "f.comparable !== false" in page
+    # a car in the lane for minutes is not a pit stop to put on air
+    assert Deriver.PIT_LONG_S <= 300
+    # race news is on the race's lap while spectating
+    d = Deriver()
+    d._player_lap, d._lead_lap = None, 6
+    d.event(1.0, "pass", idx=3)
+    assert d.feed_events[-1]["lap"] == 6

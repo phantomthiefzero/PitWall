@@ -407,6 +407,7 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 .tb-r .v.g{color:#3fd47a}.tb-r .v.b{color:#ff6b6b}
 .tb-h{display:flex;gap:8px;padding:5px 12px 3px;color:var(--muted);font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
 .tb-h .sp{flex:1}.tb-h .c{width:86px;text-align:right}
+.tb-r .v.w,.tb-h .c.w{width:118px}
 .lc-svg{display:block;width:100%;height:auto;background:var(--ink)}
 .lc-svg text{font-family:var(--display);font-weight:700}
 #trap{left:1016px;bottom:200px;width:360px}
@@ -2070,7 +2071,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function renderPace() {
     const cls = tableClass(), list = allCars().filter(c => c.classPos > 0 && c.classId === cls && c.derived && c.derived.recentPaceS)
       .sort((a, b) => a.classPos - b.classPos).slice(0, 10);
-    $("pace").classList.toggle("on", list.length >= 3 && shown("pace"));
+    $("pace").classList.toggle("on", isRace() && list.length >= 3 && shown("pace"));
     if (list.length < 3) return;
     const best = Math.min(...list.map(c => c.derived.recentPaceS));
     const k = classes().find(x => x.id === cls);
@@ -2084,16 +2085,19 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const anyStops = () => allCars().some(c => c.derived && c.derived.stopsSeen > 0);
   function renderStrategy() {
     const cls = tableClass(), list = allCars().filter(c => c.classPos > 0 && c.classId === cls).sort((a, b) => a.classPos - b.classPos).slice(0, 10);
-    $("strategy").classList.toggle("on", list.length > 0 && shown("strategy"));
+    $("strategy").classList.toggle("on", isRace() && list.length > 0 && shown("strategy"));
     if (!list.length) return;
     const k = classes().find(x => x.id === cls);
+    // the next stop only where it is known (from stints watched): a sprint with no stops seen has no column of dashes
+    const anyDue = list.some(c => c.onPitRoad || (c.derived && c.derived.stopDue));
     const h = `<div class="mini-h">Strategy<span>${multi() && k ? esc(k.name) : ""}</span></div>` +
-      `<div class="tb-h"><span style="width:26px"></span><span class="sp">Driver</span><span class="c">Stops</span><span class="c">Tyres</span><span class="c">This stint</span><span class="c">Next stop</span></div>` +
+      `<div class="tb-h"><span style="width:26px"></span><span class="sp">Driver</span><span class="c">Stops</span><span class="c">Tyres</span><span class="c">This stint</span>${anyDue ? '<span class="c w">Next stop</span>' : ""}</div>` +
       list.map(c => { const d = c.derived || {}, sd = d.stopDue;
         const next = c.onPitRoad ? "In the pits" : !sd ? "–" : sd.overdue ? "Due" : sd.stopsOwed === 0 ? "To the end" : "Lap " + sd.lap;
         return `<div class="tb-r"><span class="p">${esc(c.classPos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span>` +
           `<span class="v">${esc(d.stopsSeen ?? "–")}</span><span class="v">${c.compound != null && c.compound >= 0 ? tyreHtml(c.compound) : "–"}</span>` +
-          `<span class="v m">${d.lapsThisStint != null ? d.lapsThisStint + (d.lapsThisStint === 1 ? " lap" : " laps") : "–"}</span><span class="v${sd && sd.overdue ? " b" : ""}">${esc(next)}</span></div>`; }).join("");
+          `<span class="v m">${d.lapsThisStint != null && d.lapsThisStint >= 0 ? d.lapsThisStint + (d.lapsThisStint === 1 ? " lap" : " laps") : "–"}</span>` +
+          (anyDue ? `<span class="v w${sd && sd.overdue ? " b" : ""}">${esc(next)}</span>` : "") + `</div>`; }).join("");
     if ($("stBox").innerHTML !== h) $("stBox").innerHTML = h;
   }
   // the lap chart: every car's place lap by lap (the class of the camera car in a multiclass race), the top ten named
@@ -2108,7 +2112,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const W = 1400, H = Math.min(760, 80 + n * 34), L = 70, R = 270, T = 30, B = 40;
     const X = lap => L + (maxLap <= 1 ? 0 : (lap - 1) / (maxLap - 1)) * (W - L - R), Y = p => T + (p - 1) / Math.max(1, n - 1) * (H - T - B);
     const pal = ["#ffb23f", "#3a86ff", "#ff5d8f", "#3fd47a", "#b388ff", "#ffd166", "#06d6a0", "#ef476f", "#118ab2", "#f78c6b"];
-    const now = series.slice().sort((a, b) => (P(a.laps[a.laps.length - 1]) || 99) - (P(b.laps[b.laps.length - 1]) || 99));
+    const curP = s => (m ? s.c.classPos : s.c.pos) || P(s.laps[s.laps.length - 1]) || 99;
+    const now = series.slice().sort((a, b) => curP(a) - curP(b));
     const col = new Map(now.map((s, k) => [s.c.idx, k < pal.length ? pal[k] : "#59606b"]));
     let g = "";
     for (let p = 1; p <= n; p++) g += `<line x1="${L}" x2="${W - R}" y1="${Y(p)}" y2="${Y(p)}" stroke="rgba(255,255,255,.07)"/><text x="${L - 14}" y="${Y(p) + 6}" fill="#8a93a0" font-size="17" text-anchor="end">${p}</text>`;
@@ -2117,7 +2122,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     for (const s of now.slice().reverse()) {
       const pts = s.laps.filter(x => P(x)).map(x => `${X(x[0]).toFixed(1)},${Y(P(x)).toFixed(1)}`).join(" "), cc = col.get(s.c.idx), last = s.laps[s.laps.length - 1];
       g += `<polyline points="${pts}" fill="none" stroke="${cc}" stroke-width="${now.indexOf(s) < 10 ? 4 : 2}" stroke-linejoin="round" opacity="${now.indexOf(s) < 10 ? 1 : .55}"/>`;
-      if (now.indexOf(s) < 10 && P(last)) g += `<text x="${W - R + 14}" y="${Y(P(last)) + 6}" fill="${cc}" font-size="19">${esc(P(last))} #${esc(s.c.num)} ${esc(String(s.c.name || "").split(/\s+/).slice(-1)[0])}</text>`;
+      const cur = m ? s.c.classPos : s.c.pos, at = cur > 0 ? cur : P(last);       // labelled at its place now, one a row
+      if (now.indexOf(s) < 10 && at) g += `<text x="${W - R + 14}" y="${Y(Math.min(n, at)) + 6}" fill="${cc}" font-size="19">${esc(at)} #${esc(s.c.num)} ${esc(String(s.c.name || "").split(/\s+/).slice(-1)[0])}</text>`;
     }
     $("lcSub").textContent = `${maxLap} ${maxLap === 1 ? "lap" : "laps"}${m ? " · " + ((classes().find(x => x.id === cls) || {}).name || "") : ""}`;
     const h = `<svg class="lc-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lap chart">${g}</svg>`;
@@ -2212,7 +2218,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const b = currentBattle(), L = (S.cars && S.cars.derived && S.cars.derived.faster) || [];
     if (!b) return null;
     const [x, y] = b.cars.slice(-2);
-    return L.find(f => f.a === x && f.b === y) || null;
+    return L.find(f => f.a === x && f.b === y && f.comparable !== false) || null;   // one slow lap says nothing
   }
   function renderFaster() {
     const f = shown("faster") ? fasterPair() : null, el = $("faster");
@@ -2294,9 +2300,16 @@ body.bc-off>*:not(script){visibility:hidden!important}
     // the class position is on the number; in a multi-class field this is the overall one
     const stats = [[m ? "Overall" : "Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];
     if (isRace()) {
+      // the gap, as the tower has it: to the car ahead in class, the leader's own "Leader"
+      const lead = (m ? c.classPos : c.pos) === 1;
+      const gapV = lead ? "Leader" : m ? (d.classIntervalLaps >= 1 ? fmt.laps(d.classIntervalLaps) : d.liveClassIntervalS != null ? fmt.gap(d.liveClassIntervalS) : null)
+        : (d.intervalLaps >= 1 ? fmt.laps(d.intervalLaps) : d.liveIntervalS != null ? fmt.gap(d.liveIntervalS) : null);
+      if (gapV) stats.splice(1, 0, [lead ? "Running" : "To the car ahead", gapV]);
       if (d.stintLaps != null) stats.push(["Stint", d.stintLaps + (d.stintLaps === 1 ? " lap" : " laps")]);
       stats.push(["Pit stops", d.stopsSeen != null ? String(d.stopsSeen) : "–"]);
     }
+    else if (d.classPoleGapS != null && d.classPoleGapS > 0) stats.splice(1, 0, [m ? "To class pole" : "To pole", fmt.gap(d.classPoleGapS)]);
+    else if (d.classPoleGapS === 0 && c.bestLapS > 0) stats.splice(1, 0, ["Quickest", m ? "in class" : "of all"]);
     if (c.incidents != null && c.incidents >= 0 && officialPublished()) {
       const lim = S.session && S.session.options ? parseInt(S.session.options.IncidentLimit, 10) : NaN;
       stats.push(["Incidents", c.incidents + "x" + (lim > 0 ? " / " + lim : "")]);

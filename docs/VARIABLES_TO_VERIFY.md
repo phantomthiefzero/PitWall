@@ -334,6 +334,14 @@ director cut by cut (it found the faults below, now fixed):
   reached 0. White and checkered are now read from the race (normalize.race_flags: the clock out in a timed race,
   one lap to go in a lap race, the checkered state). **Assumed, not seen:** that SessionTimeRemain keeps the live
   clock while a replay plays behind live (the bridge copies it into the held race; ReplaySessionTime is the playhead).
+- **SessionState checkered is not the leader crossing.** In the timed race the clock reached 0 at 812 s, the state
+  turned checkered (5) at 841.9 s with the leader at 0.69 of the lap, and the leader crossed at 865.6 s (lap
+  completed 8 -> 9; ResultsPositions LapsComplete 9 at ~870 s). The checkered is now the leader's crossing.
+- **Lone Qualify: CarIdxBestLapTime is not the qualifying time.** At 317 s the pole (1:23.500) and P2 (1:24.914) read
+  -1 (they ran before the recording) and P4 read 1:25.618 against a counted 1:27.421; ResultsPositions FastestTime
+  and CarIdxPosition agreed with each other. Outside a race the results are now the best laps.
+- **CarIdxF2Time lags by most of a lap** (known): battles built on it held two cars 8 s apart. Battles now use the
+  live class gap.
 - Camera pack groups seen: "Turn 1", "Drone Cam", "Scenic Drone Cam", "SF Line", plus iRacing's own including
   Gearbox and the four Susp cams (a wheel close-up; now "detail", never a battle's shot).
 
