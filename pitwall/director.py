@@ -80,6 +80,19 @@ GRID_ROW_MIN_S = 5.0
 GRID_SAFETY = 0.85
 GRID_FRONT_ROWS = 3
 GRID_JUST_AHEAD = 0.15       # a line closer than this (in laps) at the start is the one the field rolls over
+# The grid board (the overlay's gboard): the whole grid on one screen, every car's picture in its slot, a light
+# running down it from pole while the camera stays wide. It goes first when the camera walk will not fit: always
+# at a standing start (no pace laps: the cars are still arriving on the grid), and on the pace laps when every car
+# even at the shortest holds would not fit. Then the walk carries on a row at a time with the row cards (the front first).
+# Its length: GRID_BOARD_BASE_S plus GRID_BOARD_ROW_S a row, within GRID_BOARD_MIN_S..GRID_BOARD_MAX_S; the first
+# GRID_BOARD_IN_S is the board coming in, then the light goes down a row at a time.
+GRID_BOARD_BASE_S = 4.0
+GRID_BOARD_ROW_S = 1.2
+GRID_BOARD_MIN_S = 8.0
+GRID_BOARD_MAX_S = 18.0
+GRID_BOARD_IN_S = 1.5
+GRID_PLAN_WAIT_S = 3.0       # on the pace laps, how long the walk waits for the pace before deciding
+GRID_WIDE = ("aerial", "trackside", "chase")    # the board's shot (and a car not on the grid yet): wide, over the grid
 
 # Shots in a story come in an order, not by chance: wide to set the scene, then closer, then inside the car (each
 # style its own order; a story can bring its own: traffic is best from behind the leader, a fresh fastest lap from
@@ -164,6 +177,10 @@ class Director:
         self.grid_hold_s = 5.0
         self.grid_by_row = True           # the walk goes a row at a time (both cars, inside then outside)
         self.grid_short = False           # the walk was shortened to fit the pace laps
+        self.grid_board = "auto"          # the grid board first: auto (when the walk will not fit) / always / never
+        self.grid_board_row = None        # the board on air: the row its light is on (0 while it comes in)
+        self._board_rows = 1
+        self._board = None                # this walk: None undecided, "on" showing, "done", "no"
         # By hand (the producer's Previous / Next / Hold, or "Walk by hand"): a held walk stays on its car until told;
         # it is never shortened. The whole order is kept, so Previous and a jump to any car work.
         self.grid_paused = False
@@ -223,7 +240,7 @@ class Director:
         self.changed = True
 
     def configure(self, on=None, style=None, hold_s=None, auto_grid=None, grid_rows=None,
-                  replays=None, stinger=None, stinger_cut_ms=None):
+                  replays=None, stinger=None, stinger_cut_ms=None, grid_board=None):
         if on and not self.live:
             on = None                                 # the director runs only with the broadcast on
         if on is not None:
@@ -237,6 +254,8 @@ class Director:
             self.auto_grid = bool(auto_grid)
         if grid_rows is not None:
             self.grid_by_row = bool(grid_rows)
+        if grid_board in ("auto", "always", "never"):
+            self.grid_board = grid_board
         if replays is not None:
             self.replays_on = bool(replays)
         if stinger is not None:
@@ -253,14 +272,19 @@ class Director:
         self._set_owner(None, why)
         return True
 
-    def start_grid_walk(self, cars: list[dict], hold_s: float | None = None, on_car=None, manual: bool = False):
+    def start_grid_walk(self, cars: list[dict], hold_s: float | None = None, on_car=None, manual: bool = False,
+                        standing: bool = False):
         if not self.live:
             return False
+        self._standing = bool(standing)
+        self._board = "no" if manual else None
+        self._board_t0 = None
+        self.grid_board_row = None
+        self._walk_t0 = self.clock()
         self.grid = [c for c in cars if c.get("num") is not None]
         self.grid_total = len(self.grid)
         self._grid_order = list(self.grid)
         self.grid_short = False
-        self._grid_deferred = set()
         self.grid_manual = self.grid_paused = bool(manual)
         self._grid_row = None
         self._grid_force = True                       # the first car at once, held or not
@@ -293,6 +317,8 @@ class Director:
         if self.owner != "grid" or not self._grid_order:
             return False
         k = max(0, min(len(self._grid_order) - 1, int(k)))
+        if self._board == "on":
+            self._board, self.grid_board_row = "done", None    # by hand: off the board, to that car
         self.grid = list(self._grid_order[k:])
         self._grid_row = None
         self._grid_force = True
@@ -362,6 +388,9 @@ class Director:
                 "gridPaused": self.grid_paused if self.owner == "grid" else None,
                 "gridManual": self.grid_manual if self.owner == "grid" else None,
                 "gridAt": self._grid_at() if self.owner == "grid" else None,
+                "gridBoard": ({"row": self.grid_board_row, "rows": self._board_rows}
+                              if self.owner == "grid" and self._board == "on" else None),
+                "gridBoardMode": self.grid_board,
                 "replays": self.replays_on, "stinger": self.stinger,
                 "replay": {"label": self.rp["label"], "car": self.rp["car"], "phase": self.rp["phase"]} if self.rp else None,
                 "battle": list(self.battle["cars"]) if self.battle else None,
@@ -431,6 +460,8 @@ class Director:
         edge = ((state or {}).get("derived") or {}).get("liveEdge") or {}
         if edge.get("atLive") is False or busy:
             return                                   # a replay / a photo sweep: leave the camera alone
+        if self.mode == "grid" and self._board_step(session, cars_msg, race_state, now):
+            return                                   # the grid board is on air (or the walk waits for the pace)
         if self.mode == "grid" and self.grid_paused and not self._grid_force:
             return                                   # held by the producer: stays on this car
         if now < self._next_at and not self._grid_force:
@@ -479,7 +510,7 @@ class Director:
             there = [c for c in order if c.get("surface") != "not_in_world"]
             if order and len(there) >= max(2, int(0.6 * len(order))):
                 self._grid_walked.add(snum)
-                self.start_grid_walk(order, on_car=self.on_grid_car)
+                self.start_grid_walk(order, on_car=self.on_grid_car, standing=True)
                 self.note = "standing start: walking the grid"
 
     def _race_step(self, groups, cars, by, cars_msg, state, race_state, recent_incidents, edge, now):
@@ -947,8 +978,12 @@ class Director:
                 units[u] = []
                 order.append(u)
             units[u].append(c)
-        if self.pace_eta is None or self.grid_paused or self.grid_manual:
+        if self.grid_paused or self.grid_manual:
             return hold                               # by hand: the producer sets the pace, nothing is left out
+        if getattr(self, "_standing", False):
+            return min(hold, GRID_ROW_MIN_S / 2)      # a standing start: no pace to fit, little time, a row in 5 s
+        if self.pace_eta is None:
+            return hold
         budget = self.pace_eta * GRID_SAFETY
         n = sum(len(v) for v in units.values())
         if n * hold <= budget:
@@ -959,7 +994,8 @@ class Director:
         # leave rows out: the front rows and the rows with a class's pole first, then the rest from the front
         poles = getattr(self, "_grid_poles", set())
         front = lambda u: (rows_of.get(units[u][0].get("idx")) or 99) <= GRID_FRONT_ROWS
-        first = [u for u in order if front(u) or any(c.get("idx") in poles for c in units[u])]
+        polar = [u for u in order if any(c.get("idx") in poles for c in units[u])]   # the pole and each class's
+        first = polar + [u for u in order if front(u) and u not in polar]
         rest = [u for u in order if u not in first]
         keep, used = [], 0.0
         for u in first + rest:
@@ -984,16 +1020,7 @@ class Director:
             self._end_temporary("grid walk done")
             return
         car = self.grid.pop(0)
-        # not on the grid yet (still in the garage at a standing start): to the end of the walk, once; then left out
         live = {c.get("idx"): c for c in (cars_msg or {}).get("cars") or []}
-        if live and (car.get("idx") not in live or live[car.get("idx")].get("surface") == "not_in_world"):
-            deferred = getattr(self, "_grid_deferred", set())
-            if car.get("idx") not in deferred and self.grid:
-                deferred.add(car.get("idx"))
-                self._grid_deferred = deferred
-                self.grid.append(car)
-            self._next_at = now
-            return
         rows_of = self._grid_rows(session)
         row_start = not self.grid_by_row or getattr(self, "_grid_row", None) != rows_of.get(car.get("idx"))
         self._grid_row = rows_of.get(car.get("idx"))
@@ -1001,6 +1028,24 @@ class Director:
             self._grid_hold = self._grid_plan(session, car)
         k = self.grid_total - len(self.grid) - 1                 # this car's place in the walk, from 0
         pole = car.get("idx") in getattr(self, "_grid_poles", set())
+        hold = getattr(self, "_grid_hold", self.grid_hold_s)
+        # not on the grid yet (still in the garage at a standing start): its row card still shows it (the picture
+        # is iRacing's render, not the camera's), with the camera wide over the grid on a car that is there
+        if live and (car.get("idx") not in live or live[car.get("idx")].get("surface") == "not_in_world"):
+            row = rows_of.get(car.get("idx"))
+            there = [c for c in self._grid_order if c.get("idx") in live and live[c["idx"]].get("surface") != "not_in_world"]
+            mate = next((c for c in there if row is not None and rows_of.get(c.get("idx")) == row), None)
+            on = mate or (there[0] if there else None)
+            g = self._wide_group(groups)
+            if on is not None and g is not None and self._do_cut(on, g, "starting grid: not out yet"):
+                pass
+            self.current = {"car": car.get("idx"), "num": car.get("num"), "group": (g or {}).get("num"),
+                            "groupName": (g or {}).get("name"), "reason": "starting grid: not out yet",
+                            "camCar": on.get("idx") if on else None}
+            self.current["gridPos"] = self._grid_at() + 1
+            self.changed = True
+            self._next_at = now + hold
+            return
         by_name = {(g.get("name") or "").lower(): g for gs in groups.values() for g in gs}
         want = GRID_SHOTS[0] if pole else GRID_SHOTS[k % len(GRID_SHOTS)]
         pick = by_name.get(want) or by_name.get("chase")
@@ -1015,5 +1060,56 @@ class Director:
             if self.on_grid_car:
                 self.on_grid_car(car)
         self.changed = True
-        hold = getattr(self, "_grid_hold", self.grid_hold_s)
         self._next_at = now + hold * (GRID_POLE_HOLD if pole and hold >= self.grid_hold_s else 1.0)
+
+    def _wide_group(self, groups):
+        for kind in GRID_WIDE:
+            if groups.get(kind):
+                g = groups[kind][0]
+                return {**g, "kind": kind}
+        return None
+
+    def _board_step(self, session, cars_msg, race_state, now) -> bool:
+        """The grid board first, when the walk will not fit (see GRID_BOARD_*). True while it holds the camera
+        (or the walk waits a moment for the pace laps' pace to decide)."""
+        if self._board in ("done", "no"):
+            return False
+        rows_of = self._grid_rows(session)
+        if self._board is None:
+            if self.grid_board == "never":
+                self._board = "no"
+            elif self.grid_board == "always" or getattr(self, "_standing", False):
+                self._board = "on"
+            elif race_state == "parade_laps" and self.pace_eta is None and now - getattr(self, "_walk_t0", now) < GRID_PLAN_WAIT_S:
+                return True                           # a moment for the pace: the camera stays where it is
+            else:
+                # only when even the shortest holds would leave cars out: then every car is seen on the board
+                n = len(self.grid)
+                self._board = "on" if (self.pace_eta is not None and n * GRID_ROW_MIN_S / 2 > self.pace_eta * GRID_SAFETY) else "no"
+            if self._board != "on":
+                return False
+            self._board_rows = max([rows_of.get(c.get("idx")) or 0 for c in self.grid] or [1]) or 1
+            self._board_len = max(GRID_BOARD_MIN_S, min(GRID_BOARD_MAX_S, GRID_BOARD_BASE_S + GRID_BOARD_ROW_S * self._board_rows))
+            self._board_t0 = now
+            self.grid_board_row = 0
+            self.note = "the grid board" + (": standing start" if getattr(self, "_standing", False) else "")
+            # the shot: wide over the grid, on the pole car if it is there, else the first car that is
+            live = {c.get("idx"): c for c in cars_msg.get("cars") or []}
+            there = [c for c in self.grid if c.get("idx") in live and live[c["idx"]].get("surface") != "not_in_world"]
+            g = self._wide_group(self._groups(session))
+            if there and g is not None:
+                self._do_cut(there[0], g, "starting grid: the board")
+            self.changed = True
+            return True
+        el = now - self._board_t0
+        if el >= self._board_len:
+            self._board, self.grid_board_row = "done", None
+            self._grid_force, self._grid_row = True, None   # the row cards at once
+            self.changed = True
+            return False
+        per = (self._board_len - GRID_BOARD_IN_S) / self._board_rows
+        row = 0 if el < GRID_BOARD_IN_S else min(self._board_rows, int((el - GRID_BOARD_IN_S) / per) + 1)
+        if row != self.grid_board_row:
+            self.grid_board_row = row
+            self.changed = True
+        return True

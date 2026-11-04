@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import random
+import re
 import sys
 import tempfile
 import threading
@@ -16,7 +17,7 @@ import pytest  # noqa: E402
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pitwall.commands import CommandGate  # noqa: E402
-from pitwall.director import Director, group_kind  # noqa: E402
+from pitwall.director import Director, group_kind, GRID_BOARD_MIN_S  # noqa: E402
 from pitwall.liveries import LiveryCapture, LiveryStore, livery_key  # noqa: E402
 from pitwall.normalize import Deriver, build_cars, build_session, build_state, _qual_rows  # noqa: E402
 from pitwall.obs import OBSClient, OBSError, auth_string  # noqa: E402
@@ -1724,10 +1725,13 @@ def test_the_grid_walk_goes_by_rows_and_fits_the_pace_laps():
     eta = 0.8 * 100
     assert seen == list(range(24)) and not d.grid_short
     assert at[-1] < eta, "done before the leader reaches the line"
-    # far too little: the front rows and each class's pole row, nothing cut off by the green
+    # far too little: the grid board first (every car on one screen, the camera wide on the pole), then the front
+    # rows and each class's pole row, nothing cut off by the green
     seen, at, d, third = _walk_rig(lead_start=0.6, rate=1 / 100)
+    assert d._board == "done" and seen[0] == 0 and at[1] - at[0] >= GRID_BOARD_MIN_S
+    seen, at = seen[1:], at[1:]
     assert d.grid_short and at[-1] < 40
-    assert seen[:6] == [0, 1, 2, 3, 4, 5], "the front three rows"
+    assert seen[:2] == [0, 1], "the front row"
     assert third in seen and 2 * third in seen, "each class's pole"
     assert seen == sorted(seen), "still down the grid in order"
     rows_seen = {i // 2 for i in seen}
@@ -2051,18 +2055,18 @@ def test_booth_notes_page_shows_only_feed_numbers():
 
 def test_a_standing_start_walks_the_grid_while_the_cars_get_in():
     # Summit Point, Nov 2026: a standing start has no pace laps (get in car, 10 s of warm-up, green), and the cars
-    # arrive on the grid one by one during "get in car". The walk starts once most are there; a late one goes last.
+    # arrive on the grid one by one during "get in car". Once most are there: the grid board (every car's picture,
+    # the camera wide), then a row at a time, quickly; a car still in the garage keeps its row card, camera wide.
     n = 6
     rows = [{"pos": i + 1, "classPos": i + 1, "idx": i, "derived": {"row": i // 2 + 1}} for i in range(n)]
     cars = [{"idx": i, "num": str(100 + i), "classId": 1, "pct": 0.0, "lap": 0, "pos": i + 1,
              "surface": "not_in_world"} for i in range(n)]
     sess = {"grid": {"rows": rows}, "options": {"StandingStart": "1"},
-            "cameras": [{"num": 1, "name": "Chase"}, {"num": 2, "name": "Rear Chase"}]}
+            "cameras": [{"num": 1, "name": "Chase"}, {"num": 2, "name": "Rear Chase"}, {"num": 3, "name": "Drone Cam"}]}
     t = [0.0]
-    cuts = []
-    d = Director(lambda num, g: cuts.append(int(num) - 100) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
+    cuts, boards = [], []
+    d = Director(lambda num, g: cuts.append((int(num) - 100, g, t[0])) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
     d.set_live(True)
-    d.grid_hold_s = 2.0
     msg = {"cars": cars, "derived": {"isRace": True}}
     state = {"session": {"state": "get_in_car", "num": 2}}
     for k in range(2):
@@ -2072,41 +2076,44 @@ def test_a_standing_start_walks_the_grid_while_the_cars_get_in():
         d.tick(sess, msg, state, [])
     assert d.owner != "grid" and not cuts
     for k in (2, 3, 4):
-        cars[k]["surface"] = "in_pit_stall"                 # five of six: walk; car 5 still in the garage
-    seen = []
-    for k in range(400):
+        cars[k]["surface"] = "in_pit_stall"                 # five of six: the walk; car 5 still in the garage
+    shown = []
+    for k in range(600):
         t[0] = 2.0 + k * 0.1
-        if k == 30:
-            cars[5]["surface"] = "not_in_world"             # still not there on its second turn: left out
         d.tick(sess, msg, state, [])
+        st = d.status()
+        if st["gridBoard"] and (not boards or boards[-1] != st["gridBoard"]["row"]):
+            boards.append(st["gridBoard"]["row"])
+        if st["owner"] == "grid" and not st["gridBoard"] and st["current"] and (not shown or shown[-1] != st["current"]["car"]):
+            shown.append(st["current"]["car"])
         if d.owner != "grid" and cuts:
             break
-    assert d.note.startswith("standing start") or cuts
-    assert cuts[:5] == [0, 1, 2, 3, 4] and 5 not in cuts, cuts
-    # the same with car 5 arriving while the others are walked: it is shown last
-    cuts.clear()
-    for c in cars:
-        c["surface"] = "in_pit_stall"
-    cars[5]["surface"] = "not_in_world"
-    d = Director(lambda num, g: cuts.append(int(num) - 100) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
-    d.set_live(True)
-    d.grid_hold_s = 2.0
-    for k in range(400):
-        t[0] = 100.0 + k * 0.1
-        if k == 20:
-            cars[5]["surface"] = "in_pit_stall"
-        d.tick(sess, msg, state, [])
-        if d.owner != "grid" and cuts:
-            break
-    assert cuts[:6] == [0, 1, 2, 3, 4, 5], cuts
+    assert d.note.startswith("grid walk done") or d.owner != "grid"
+    assert cuts[0][0] == 0 and cuts[0][1] == 3, "the board: wide (the drone), on the pole car"
+    assert boards == [0, 1, 2, 3], "the board's light goes down the rows"
+    assert shown == [0, 1, 2, 3, 4, 5], "then every car a row at a time, the late one too"
+    late = [c for c in cuts if c[2] >= cuts[-1][2] - 0.01]
+    assert late[-1][0] == 4 and late[-1][1] == 3, "car 5 not out: the camera wide on its row mate"
+    walk_t = [at for _, _, at in cuts]
+    assert walk_t[-1] - walk_t[1] <= 6 * 2.5 + 0.5, "quick holds: a row in 5 s"
     # a rolling start keeps the pace-lap walk: nothing during "get in car"
     cuts.clear()
     d = Director(lambda num, g: cuts.append(int(num) - 100) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
     d.set_live(True)
+    for c in cars:
+        c["surface"] = "in_pit_stall"
     for k in range(50):
         t[0] = 200.0 + k * 0.1
         d.tick(dict(sess, options={"StandingStart": "0"}), msg, state, [])
     assert d.owner != "grid"
+    # the producer can turn the board off: straight to the cars
+    d = Director(lambda num, g: cuts.append(int(num) - 100) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
+    d.set_live(True)
+    d.configure(grid_board="never")
+    for k in range(5):
+        t[0] = 300.0 + k * 0.1
+        d.tick(sess, msg, state, [])
+    assert d.owner == "grid" and d.status()["gridBoard"] is None and d.current["car"] == 0
 
 
 def test_replays_stay_in_their_session_and_show_a_moment_once():
@@ -2150,3 +2157,15 @@ def test_starting_grid_rows_and_camera_names_from_the_summit_point_race():
     assert grid_per_row("9x9") == 2 and grid_per_row("single file") == 2
     assert group_kind("Drone Cam") == "aerial" and group_kind("Scenic Drone Cam") == "never"
     assert group_kind("Gearbox") == "detail" and group_kind("LF Susp") == "detail"
+
+
+def test_the_grid_board_is_its_own_screen_and_the_walk_card_waits_for_it():
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    walk = page.split("const gridWalkCar = () => {")[1][:300]
+    assert "d.gridBoard" in walk, "no walk card or grid beside it while the board is up"
+    assert "renderGBoard();" in page and 'id="gboard"' in page
+    board = page.split("function renderGBoard() {")[1].split("\n  }\n")[0]
+    assert "liveryHtml(c)" in board and "poleGapS" in board and "not_in_world" in board
+    assert not re.search(r"timeS\s*[-+]", board), "gaps come from normalize, not worked out here"
+    prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    assert 'data-gwboard="${k}"' in prod and "gridBoard: ds.gwboard" in prod
