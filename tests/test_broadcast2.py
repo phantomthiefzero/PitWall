@@ -1887,3 +1887,42 @@ def test_the_bridge_takes_the_walk_by_hand_commands():
     assert 'manual=bool(msg.get("manual"))' in src
     prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
     assert 'action: "grid_jump"' in prod and 'ArrowRight: "next"' in prod and 'data-gwgo="hand"' in prod
+
+
+def test_booth_notes_are_kept_by_the_relay():
+    """Booth notes (broadcast/notes.html): one per driver by iRacing user id and one for the show, written with the
+    producer token, kept on disk (there again next race), never listed or served as an upload, never to guests."""
+    import tempfile
+    import relay.server as relay_mod
+    d = tempfile.mkdtemp()
+    r = relay_mod.Relay("B", "V", None, producer_token="P", assets_dir=d)
+    assert r.notes == {"drivers": {}, "show": ""}
+    assert r.apply_notes({"drivers": {"300000": "Say it AN-drew"}, "show": "Break at lap 10"})["ok"]
+    assert r.apply_notes({"drivers": {"300001": "x" * 5000}})["ok"]
+    assert len(r.notes["drivers"]["300001"]) == relay_mod.NOTE_MAX_CHARS
+    assert r.apply_notes({"drivers": {"300001": None}})["ok"] and "300001" not in r.notes["drivers"]
+    assert r.apply_notes({"drivers": {"300000": "   "}})["ok"] is True and "300000" not in r.notes["drivers"]
+    r.apply_notes({"drivers": {"300000": "Say it AN-drew"}})
+    for bad in ({"drivers": {"../x": "a"}}, {"drivers": {"12": 5}}, {"gfx": {}}, "text", {"show": 3}):
+        assert not r.apply_notes(bad)["ok"], bad
+    again = relay_mod.Relay("B", "V", None, producer_token="P", assets_dir=d)
+    assert again.notes == {"drivers": {"300000": "Say it AN-drew"}, "show": "Break at lap 10"}
+    assert all(a["name"] != ".booth_notes.json" for a in again._asset_list())
+    assert relay_mod.safe_asset_name(".booth_notes.json") is None
+    assert relay_mod.BROADCAST_PAGES["/broadcast/notes.html"] == "notes.html"
+    src = open(os.path.join(os.path.dirname(__file__), "..", "relay", "server.py"), encoding="utf-8").read()
+    snap = src.split("def _queue_snapshot")[1].split("def _gfx_message")[0]
+    assert "if not guest:" in snap and "_notes_message()" in snap.split("if not guest:")[1]
+    assert 'only the producer token can write notes' in src
+
+
+def test_booth_notes_page_shows_only_feed_numbers():
+    """The notes page puts words around numbers the feed already carries; it works none out (CLAUDE.md, hard rule)."""
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "notes.html"), encoding="utf-8").read()
+    for key in ("posGained", "gridPos", "lapsLedSeen", "nextStopLapEst", "lapsThisStint", "closingSPerLap", "stopsSeen"):
+        assert key in page
+    # no arithmetic on two race values in the page: only unit conversions (speed) and sorting (a comparator orders
+    # the cars, it shows nothing)
+    import re
+    page = re.sub(r"\.sort\(\(a, b\) => [^)]*\)", ".sort()", page)
+    assert not re.search(r"(bestLapS|lastLapS|gapsS\[[^\]]*\]|pos)\s*-\s*\w+\.(bestLapS|lastLapS|pos)\b", page)

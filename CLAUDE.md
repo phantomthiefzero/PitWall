@@ -262,6 +262,13 @@ Broadcast (broadcast/)
   <table>), or typed and fixed in the table editor. Drivers are found by customer id, else name (accents, "Last,
   First"; iRacing's added digits only when one row fits), else a car number only one row has (leagueRowFor, the same
   in the overlay and the producer, which says who it did not find). Shown on the League graphic and the grid walk.
+- Booth notes (broadcast/notes.html, the producer header's "Booth notes", opens on its own for a second screen): for the
+  commentators. The driver on camera (or one picked) with what is worth saying (start to now, laps led, best and last
+  lap, stint, stops, next stop by their longest stint, consistency, top speed, iRating, tyre runs, their battle),
+  storylines (battles, movers, class leaders and best laps, strategy), race news from the feed's events, the field,
+  and their own notes: one per driver by iRacing user id and one for the show, kept by the relay on disk
+  (Relay.notes, `.booth_notes.json` in the uploads folder; message `notes`, producer token only, never to guests).
+  The page words the feed's numbers and works none out (the test checks for arithmetic on race values).
 - Show screens move slowly and quietly (drifting glows, a light sweeping by, specks rising, the stripes easing;
   the words and lists come in once per screen change, never on each refresh). Each screen can use your own file
   instead (gfx scene.files[mode]: an uploaded picture or looping muted video, or an https page) with a dark backing
