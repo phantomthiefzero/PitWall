@@ -208,7 +208,7 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
 - `session.grid` `{source, sessionNum, rows: [{pos, classPos, idx, timeS, lap, derived: {row, pole, classPole, poleGapS, classPoleGapS}}]}` from a race's
   QualifyPositions or QualifyResultsInfo; iRacing's 0-based positions shown from 1.
 - `director` (bridge): `{owner: you|race|grid|battle, on, mode, resume, style, holdS, autoGrid,
-  gridHoldS, gridLeft, gridTotal, battle: [idx]|null, note, current: {car, num, group, groupName,
+  gridHoldS, gridLeft, gridTotal, gridByRow, gridShort, battle: [idx]|null, note, current: {car, num, group, groupName,
   reason, gridPos?}, styles}`. One owner moves the camera at a time. Any `camera` command (a cut by
   hand) makes the owner `you`; `grid` and `battle` are temporary and hand back to `resume` when they
   end. The grid walk starts by itself when a race's pace laps begin (`autoGrid`) and ends at the green.
@@ -418,7 +418,7 @@ Broadcast commands (producer token only; the bridge refuses them unless started 
 Director and liveries (producer token, `--allow-camera`):
 ```json
 {"type":"cmd","cmd":"director","action":"broadcast","on":true}
-{"type":"cmd","cmd":"director","action":"set","on":true,"style":"cinematic"|"onboard"|"tv","holdS":8,"autoGrid":true,"gridHoldS":5}
+{"type":"cmd","cmd":"director","action":"set","on":true,"style":"cinematic"|"onboard"|"tv","holdS":8,"autoGrid":true,"gridHoldS":5,"gridRows":true}
 {"type":"cmd","cmd":"director","action":"grid_walk","holdS":5,"capture":true}
 {"type":"cmd","cmd":"director","action":"follow_battle","cars":[12,7]}
 {"type":"cmd","cmd":"director","action":"stop"}
@@ -470,6 +470,11 @@ bannerLogo, stinger: {style: wipe|chevrons|checker|panels|iris, video, cuts: {<v
 layout: {<graphic>: {x, y, s}}}`. A rejected patch gets
 `gfx_result {ok:false, error}`.
 
+### `fetch_text` (producer → relay)
+`{"type":"fetch_text","id":"lg3","url":"https://league.example/standings"}`: the relay fetches a league table for
+the producer page (a page cannot read another site). Public http(s) addresses only (never this PC or a private
+network, redirects included), 2 MB, 15 s. Answer: `{"type":"fetch_result","id":"lg3","ok":true,"text":"...",
+"contentType":"text/csv","url":"<after redirects>"}` or `{ok:false, error}`. Producer token only.
 ### `notes` (producer → relay → every viewer but guests)
 The booth notes page (`/broadcast/notes.html`): the commentators' own words.
 ```json

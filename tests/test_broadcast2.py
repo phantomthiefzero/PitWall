@@ -1687,6 +1687,149 @@ def test_producer_is_a_control_room():
         assert 'id="%s"' % sec in prod, sec
 
 
+def _walk_rig(lead_start, rate, n=24, hold=4.0):
+    """A pace-lap walk against a field whose leader moves at `rate` laps a second from `lead_start` (lap + pct).
+    Three classes of n/3 cars, the grid in order. Returns the cars visited, the times, and the director."""
+    third = n // 3
+    rows, cars = [], []
+    for i in range(n):
+        cls = i // third
+        rows.append({"pos": i + 1, "classPos": i % third + 1, "idx": i, "derived": {"row": i // 2 + 1}})
+        cars.append({"idx": i, "num": str(100 + i), "classId": cls, "pct": 0.0, "lap": 0, "pos": i + 1})
+    sess = {"grid": {"rows": rows}, "cameras": [{"num": 1, "name": "Chase"}, {"num": 2, "name": "Rear Chase"}]}
+    t = [0.0]
+    cuts = []
+    d = Director(lambda num, g: cuts.append((int(num) - 100, g, t[0])) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
+    d.set_live(True)
+    d.grid_hold_s = hold
+    state = {"session": {"state": "warmup", "num": 2}}
+    msg = {"cars": cars, "derived": {"isRace": True}}
+    for k in range(0, 4000):
+        t[0] = k * 0.1
+        lead = lead_start + rate * t[0]
+        cars[0]["lap"], cars[0]["pct"] = int(lead), lead - int(lead)
+        state = {"session": {"state": "parade_laps" if t[0] > 0.5 else "warmup", "num": 2}}
+        d.tick(sess, msg, state, [])
+        if d.owner != "grid" and t[0] > 5:
+            break
+    return [c for c, _, _ in cuts], [at for _, _, at in cuts], d, third
+
+
+def test_the_grid_walk_goes_by_rows_and_fits_the_pace_laps():
+    # plenty of time (the field rolls over the line first, then a whole lap): every car, in order, at its hold
+    seen, at, d, third = _walk_rig(lead_start=0.97, rate=1 / 300)
+    assert seen == list(range(24)) and not d.grid_short
+    # a lap of ~100 s from mid-lap: less than 24 x 4 s, so the holds shorten and every car is still seen in time
+    seen, at, d, third = _walk_rig(lead_start=0.2, rate=1 / 100)
+    eta = 0.8 * 100
+    assert seen == list(range(24)) and not d.grid_short
+    assert at[-1] < eta, "done before the leader reaches the line"
+    # far too little: the front rows and each class's pole row, nothing cut off by the green
+    seen, at, d, third = _walk_rig(lead_start=0.6, rate=1 / 100)
+    assert d.grid_short and at[-1] < 40
+    assert seen[:6] == [0, 1, 2, 3, 4, 5], "the front three rows"
+    assert third in seen and 2 * third in seen, "each class's pole"
+    assert seen == sorted(seen), "still down the grid in order"
+    rows_seen = {i // 2 for i in seen}
+    assert all(i in seen for r in rows_seen for i in (2 * r, 2 * r + 1)), "a row is never split"
+
+
+def _page_fn(path, name):
+    import re
+    page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "broadcast", path), encoding="utf-8").read()
+    m = re.search(r"\n  function %s\(.*?\) \{[\s\S]*?\n  \}\n" % name, page)
+    assert m, name
+    return m.group(0)
+
+
+def _node(js, stdin=""):
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+    r = subprocess.run([node, "-e", js], input=stdin, capture_output=True, text=True, encoding="utf-8", timeout=30)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_league_tables_from_web_pages_links_and_by_hand():
+    """Championship points however the league has them: a standings page (its best table, entities and all), a
+    Google Sheet's share link (its CSV export), and drivers found by customer id, name or car number."""
+    html = """<html><head><style>td{}</style></head><body><table><tr><td>Home</td><td>Rules</td></tr></table>
+    <table class="standings"><thead><tr><th>Pos</th><th>Driver</th><th>Car #</th><th>Points</th></tr></thead>
+    <tbody><tr><td>1</td><td><a href="/d/1">Jos&eacute; P&eacute;rez</a></td><td>7</td><td>120</td></tr>
+    <tr><td>2</td><td>Smith,&nbsp;John</td><td>12</td><td>101</td></tr>
+    <tr><td>3</td><td>Kim&nbsp;Park<br>(rookie)</td><td>3</td><td>88</td></tr></tbody></table></body></html>"""
+    rows = _node(_page_fn("producer.html", "parseLeague") + "\nconsole.log(JSON.stringify(parseLeague(require('fs').readFileSync(0,'utf8'))));", html)
+    assert [(r["pos"], r["num"], r["points"]) for r in rows] == [("1", "7", "120"), ("2", "12", "101"), ("3", "3", "88")]
+    assert rows[1]["name"] == "Smith, John" and rows[2]["name"].startswith("Kim Park")
+    links = _node(_page_fn("producer.html", "leagueLink") + """
+console.log(JSON.stringify([
+  leagueLink("https://docs.google.com/spreadsheets/d/AbC-123/edit#gid=456"),
+  leagueLink("https://docs.google.com/spreadsheets/d/e/2PACX-x/pubhtml"),
+  leagueLink("https://docs.google.com/spreadsheets/d/AbC-123/export?format=csv"),
+  leagueLink(" https://league.example/standings.json ")]));""")
+    assert links == ["https://docs.google.com/spreadsheets/d/AbC-123/export?format=csv&gid=456",
+                     "https://docs.google.com/spreadsheets/d/e/2PACX-x/pub?output=csv",
+                     "https://docs.google.com/spreadsheets/d/AbC-123/export?format=csv",
+                     "https://league.example/standings.json"]
+    table = [{"pos": "1", "name": "José Pérez", "num": "7", "points": "120", "uid": None},
+             {"pos": "2", "name": "Smith, John", "num": "12", "points": "101", "uid": None},
+             {"pos": "3", "name": "Ana Lopez", "num": "33", "points": "90", "uid": "555"},
+             {"pos": "4", "name": "Someone Else", "num": "9", "points": "80", "uid": None}]
+    found = _node(_page_fn("overlay.html", "leagueKeys") + _page_fn("overlay.html", "leagueRowFor") + "\nconst G = () => ({});\n" +
+                  "const rows = %s;\nconsole.log(JSON.stringify([" % json.dumps(table) +
+                  "{name: 'Jose Perez', num: 70}, {name: 'John Smith2', num: 1}, {name: 'A. Lopez', userId: 555},"
+                  "{name: 'Renamed Driver', num: 9}, {name: 'Nobody', num: 99}].map(c => (leagueRowFor(c, rows) || {}).pos || null)));")
+    assert found == ["1", "2", "3", "4", None]
+    # names that differ only by their digits are different drivers ("Driver 03" is not "Driver 12")
+    field = [{"pos": "1", "name": "Driver 12", "points": "200"}, {"pos": "2", "name": "Driver 03", "points": "193"}]
+    found = _node(_page_fn("overlay.html", "leagueKeys") + _page_fn("overlay.html", "leagueRowFor") + "\nconst G = () => ({});\n" +
+                  "const rows = %s;\nconsole.log(JSON.stringify([{name: 'Driver 03'}, {name: 'Driver 12'}, {name: 'Driver 05'}]" % json.dumps(field) +
+                  ".map(c => (leagueRowFor(c, rows) || {}).pos || null)));")
+    assert found == ["2", "1", None]
+
+
+def test_the_relay_loads_a_league_link_only_from_a_public_address():
+    """From a link: the relay fetches for the producer, never this PC or the home network (a co-host's link must
+    not reach into the host's network), redirects checked the same way, and a size cap."""
+    import http.server
+    import threading
+    import relay.server as rs
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/away":
+                self.send_response(302)
+                self.send_header("Location", "http://192.168.1.1/admin")
+                self.end_headers()
+                return
+            body = ("Pos,Driver,Points\n1,Ana Lopez,101\n" if self.path != "/big" else "x" * (rs.FETCH_MAX_BYTES + 10)).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = "http://127.0.0.1:%d" % srv.server_address[1]
+        assert not rs.fetch_text(base + "/t.csv")["ok"], "this PC is not a public address"
+        assert not rs._public_host("192.168.1.1") and not rs._public_host("localhost") and not rs._public_host("10.0.0.5")
+        ok = rs.fetch_text(base + "/t.csv", public=lambda h: h == "127.0.0.1")
+        assert ok["ok"] and "Ana Lopez" in ok["text"] and ok["contentType"].startswith("text/csv")
+        assert not rs.fetch_text(base + "/away", public=lambda h: h == "127.0.0.1")["ok"], "a redirect home is refused"
+        assert not rs.fetch_text(base + "/big", public=lambda h: True)["ok"]
+        for bad in ("file:///etc/passwd", "ftp://x/y", "", None, "https://"):
+            assert not rs.fetch_text(bad)["ok"], bad
+    finally:
+        srv.shutdown()
+    src = open(rs.__file__, encoding="utf-8").read()
+    assert 'only the producer token can load a link' in src and "run_in_executor(None, fetch_text" in src
 def test_booth_notes_are_kept_by_the_relay():
     """Booth notes (broadcast/notes.html): one per driver by iRacing user id and one for the show, written with the
     producer token, kept on disk (there again next race), never listed or served as an upload, never to guests."""

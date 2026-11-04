@@ -287,6 +287,9 @@ header{padding:6px 12px}
 #monScreens.two .take button:not(#takeBtn){min-height:30px;padding:3px 9px;font-size:13px;white-space:nowrap}
 #monScreens.two .take div,#monScreens.two .take span{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
 
+.lg-ed{display:grid;grid-template-columns:44px 1fr 52px 64px 84px 28px;gap:3px 4px;align-items:center;max-height:320px;overflow:auto;margin:4px 0 6px}
+.lg-ed input{min-height:28px;padding:2px 6px;font-size:13px;width:100%}
+.lg-ed button{min-height:26px;padding:0;width:26px}
 #notesLink{display:inline-flex;align-items:center;min-height:34px;padding:6px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--fg);text-decoration:none;font-weight:700}
 #notesLink:hover{border-color:var(--fg)}
 </style>
@@ -424,9 +427,10 @@ header{padding:6px 12px}
       <section id="setGrid">
         <h2>Starting grid</h2>
         <div class="opts" id="gridMode"></div>
-        <p class="note">Automatic: when the pace laps start, the camera goes down the grid one car at a time, in order, with that driver's card at the bottom of the screen. The full grid board shows before and after the walk. Both come off at the green.</p>
+        <p class="note">Automatic: when the pace laps start, the camera goes down the grid in order, a row at a time (both cars on screen, the camera on each in turn) or one car at a time, with the grid beside it. It fits the walk into the pace laps: shorter holds when time is short, and if even that will not fit, the front rows and each class's pole. The full grid board shows before and after the walk. Both come off at the green.</p>
         <h3>Walk the grid</h3>
         <div id="gwAuto"></div>
+        <div class="opts" id="gwBy" style="margin-top:6px"></div>
         <p class="note" id="gwNow"></p>
         <div class="grid2"><label for="gwHold">Seconds per car</label><input type="number" id="gwHold" min="2" max="20" value="5">
           <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
@@ -538,14 +542,19 @@ header{padding:6px 12px}
       </section>
       <section id="setLeague">
         <h2>League standings</h2>
-        <p class="note" style="margin-top:0">Load the league's table from a file or paste it: CSV, TSV or JSON, the way most league sites and spreadsheets export it. Columns are found by their headings (position, driver or name, points, number, class, customer id); without headings, the text column is the name and the last number the points. Drivers in this session show where they are now.</p>
+        <p class="note" style="margin-top:0">The league's own table, however you have it: a link to the league's standings page or a shared Google Sheet, a file (CSV, TSV, JSON or a saved web page), a table pasted from anywhere, or typed in below. Columns are found by their headings (position, driver or name, points, number, class, customer id); without headings, the text column is the name and the last number the points. Drivers are matched by customer id, else by name (iRacing's added digits and "Last, First" are fine), else by car number. The points are the league's: nothing is worked out here. They show on the League graphic and the grid walk.</p>
         <div class="grid2">
           <label for="lgTitleIn">Title</label><input type="text" id="lgTitleIn" placeholder="Championship">
           <label for="lgSubIn">Line beside it</label><input type="text" id="lgSubIn" placeholder="after round 4 of 10">
-          <label for="lgFile">File</label><input type="file" id="lgFile" accept=".csv,.tsv,.txt,.json">
+          <label for="lgUrl">From a link</label><span style="display:flex;gap:6px;flex-wrap:wrap"><input type="text" id="lgUrl" placeholder="https://… the standings page, a Google Sheet, a .csv or .json" style="flex:1;min-width:200px"><button data-lgurl="1">Load</button></span>
+          <span></span><label class="note" style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="lgAuto"> keep it up to date (loads it again every 10 minutes)</label>
+          <label for="lgFile">File</label><input type="file" id="lgFile" accept=".csv,.tsv,.txt,.json,.html,.htm">
         </div>
-        <textarea id="lgPaste" rows="4" style="width:100%;margin-top:8px" placeholder="…or paste the table here"></textarea>
+        <textarea id="lgPaste" rows="3" style="width:100%;margin-top:8px" placeholder="…or paste the table here (copied from a web page or a spreadsheet)"></textarea>
         <div class="opts"><button data-lgload="1">Use the pasted table</button><button data-lgclr="1">Clear</button></div>
+        <h3>The table <span class="note" id="lgMatch" style="text-transform:none;letter-spacing:0;font-weight:500"></span></h3>
+        <div id="lgEdit"></div>
+        <div class="opts"><button data-lgadd="1">Add a driver</button></div>
         <div id="lgPrev" class="note"></div>
       </section>
       <section id="setPodium">
@@ -947,7 +956,7 @@ header{padding:6px 12px}
   // What a scene holds: every layer's on/off, and how the graphics are set. Not the look, files, lists or
   // anything that belongs to one moment (a replay's caption, the stinger, a second camera's report).
   const SCENE_SKIP = { theme: 1, photos: 1, scenes: 1, studio: 1, stinger: 1, replay: 1 };
-  const SCENE_SKIP_IN = { pip: ["second", "want", "url"], league: ["rows", "title", "sub"], straps: ["list", "at", "idx"], sponsors: ["logos"], scene: ["untilMs"] };
+  const SCENE_SKIP_IN = { pip: ["second", "want", "url"], league: ["rows", "title", "sub", "src"], straps: ["list", "at", "idx"], sponsors: ["logos"], scene: ["untilMs"] };
   function sceneNow() {
     const g = JSON.parse(JSON.stringify(gview())), out = {};
     for (const [k, v] of Object.entries(g)) {
@@ -1005,6 +1014,10 @@ header{padding:6px 12px}
     $("spEvery").innerHTML = [8, 15, 30].map(n => `<button data-spevery="${n}" class="${ev === n ? "on" : ""}" ${dis}>${n} s</button>`).join("");
     for (const [id, k] of [["lgTitleIn", "title"], ["lgSubIn", "sub"]]) if (document.activeElement !== $(id)) $(id).value = G("league." + k, "") || "";
     const lr = G("league.rows", []) || [];
+    { const src = G("league.src", {}) || {};
+      if (document.activeElement !== $("lgUrl")) $("lgUrl").value = src.url || "";
+      $("lgAuto").checked = !!src.auto;
+      renderLeagueEdit(dis); }
     $("lgPrev").innerHTML = lr.length ? `${lr.length} drivers: ` + lr.slice(0, 5).map(r => `${esc(r.pos)}. ${esc(r.name)} <b>${esc(r.points)}</b>`).join(" · ") + (lr.length > 5 ? " …" : "") + ". Switch it on under On air." : "No table loaded.";
     const pc = G("podium.classId", null), cl = classes();
     $("pdCls").innerHTML = cl.length > 1 ? `<button data-pdcls="" class="${pc == null ? "on" : ""}" ${dis}>Each class in turn</button>` +
@@ -1016,6 +1029,18 @@ header{padding:6px 12px}
   function parseLeague(text) {
     text = String(text || "").replace(/^\uFEFF/, "").trim();
     if (!text) return [];
+    // a web page (a league site's standings, a Google Sheet published as a page): the table that reads best
+    if (/<table[\s>]/i.test(text)) {
+      const ent = t => t.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'").replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCharCode(parseInt(n, 16)))
+        .replace(/&[a-z]+;/gi, m => { if (typeof document === "undefined") return m; const ta = document.createElement("textarea"); ta.innerHTML = m; return ta.value; });
+      const cell = h => ent(h.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, " ")).replace(/[\t\s]+/g, " ").trim();
+      const tables = (text.replace(/<(script|style)[\s\S]*?<\/\1>/gi, "").match(/<table[\s\S]*?<\/table>/gi) || []).map(t =>
+        (t.match(/<tr[\s\S]*?<\/tr>/gi) || []).map(r => (r.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/gi) || []).map(cell).join("\t")).filter(l => l.replace(/\t/g, "").trim()).join("\n"));
+      let best = [];
+      for (const t of tables) { try { const r = parseLeague(t); if (r.length > best.length) best = r; } catch (e) {} }
+      return best;
+    }
     let rows;
     if (/^[\[{]/.test(text)) {
       let j = JSON.parse(text); if (!Array.isArray(j)) j = j.standings || j.rows || j.drivers || Object.values(j).find(Array.isArray) || [];
@@ -1056,6 +1081,79 @@ header{padding:6px 12px}
       setGfx({ league: { rows } }); toast(rows.length + " drivers loaded"); dirty.studio = true; }
     catch (e) { toast("That table could not be read: " + e.message, true); }
   }
+  // the league table typed in or fixed by hand, and its link's "keep it up to date"
+  document.addEventListener("change", e => {
+    const t = e.target, ds = t.dataset || {};
+    if (ds.lged) {
+      const [i, k] = ds.lged.split("."), rows = (G("league.rows", []) || []).map(r => ({ ...r }));
+      if (!rows[+i]) return;
+      rows[+i][k] = t.value.trim() || (k === "name" || k === "points" ? "" : null);
+      setGfx({ league: { rows } }); dirty.studio = true;
+    } else if (t.id === "lgAuto") setGfx({ league: { src: { auto: t.checked } } });
+  });
+  // From a link: the relay fetches it (a page cannot read another site); a Google Sheet's share link becomes its
+  // CSV export. "Keep it up to date" loads it again every 10 minutes while this panel is open.
+  function leagueLink(u) {
+    u = String(u || "").trim();
+    const g = u.match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/(e\/)?([\w-]+)/);
+    if (g && !/[?&](format|output)=(csv|tsv)/.test(u)) {
+      const gid = (u.match(/[#&?]gid=(\d+)/) || [])[1];
+      return g[1] ? `https://docs.google.com/spreadsheets/d/e/${g[2]}/pub?output=csv${gid ? "&gid=" + gid : ""}`
+        : `https://docs.google.com/spreadsheets/d/${g[2]}/export?format=csv${gid ? "&gid=" + gid : ""}`;
+    }
+    return u;
+  }
+  const FETCH = { seq: 0, want: {} };
+  function loadLeagueLink(quiet) {
+    const u = (G("league.src", {}) || {}).url; if (!u) return;
+    const id = "lg" + (++FETCH.seq); FETCH.want[id] = quiet ? "quiet" : "loud";
+    send({ type: "fetch_text", id, url: leagueLink(u) });
+    if (!quiet) toast("Loading the table…");
+  }
+  function leagueFetched(m) {
+    const how = FETCH.want[m.id]; if (!how) return; delete FETCH.want[m.id];
+    if (!m.ok) { if (how === "loud") toast("Could not load that link: " + (m.error || "failed"), true); else log(esc("League table: " + (m.error || "not loaded")), true); return; }
+    let rows = []; try { rows = parseLeague(m.text); } catch (e) {}
+    if (!rows.length) { if (how === "loud") toast("No table of drivers found at that link", true); return; }
+    const before = JSON.stringify(G("league.rows", []));
+    if (JSON.stringify(rows) !== before) { setGfx({ league: { rows, src: { loadedAt: Date.now() } } }); if (how !== "loud") log("League table updated from its link"); }
+    if (how === "loud") toast(rows.length + " drivers loaded from the link");
+    dirty.studio = true;
+  }
+  setInterval(() => { const src = G("league.src", {}) || {}; if (src.url && src.auto && canProduce()) loadLeagueLink(true); }, 10 * 60 * 1000);
+  // The table itself, by hand: fix a name, add a driver, change the points
+  function renderLeagueEdit(dis) {
+    const box = $("lgEdit");
+    if (document.activeElement && box.contains(document.activeElement)) return;
+    const rows = G("league.rows", []) || [];
+    box.innerHTML = rows.length ? `<div class="lg-ed"><span class="note">Pos</span><span class="note">Driver</span><span class="note">Car</span><span class="note">Points</span><span class="note">Cust id</span><span></span>` +
+      rows.map((r, i) => ["pos", "name", "num", "points", "uid"].map(k => `<input type="text" data-lged="${i}.${k}" value="${esc(r[k] ?? "")}" ${dis}>`).join("") +
+        `<button data-lgdel="${i}" title="Remove" ${dis}>×</button>`).join("") + `</div>` : `<p class="note">No table yet.</p>`;
+    // who in this session the table finds, and who it does not
+    const cars = allCars().filter(c => c.pos > 0 || c.num != null);
+    const found = cars.filter(c => leagueRowFor(c, rows));
+    const missing = cars.filter(c => !leagueRowFor(c, rows)).map(c => "#" + (c.num ?? "") + " " + (c.name || ""));
+    $("lgMatch").innerHTML = rows.length && cars.length ? `· ${found.length} of ${cars.length} drivers here found` +
+      (missing.length && missing.length <= 12 ? `; not found: ${esc(missing.join(", "))}` : "") : "";
+  }
+  function leagueKeys(n) {
+    const s = String(n || "").trim(), sw = s.includes(",") ? s.split(",").map(x => x.trim()).reverse().join(" ") : s;
+    const k = x => x.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+    return [...new Set([k(s), k(sw)])].filter(Boolean);
+  }
+  function leagueRowFor(c, rows) {
+    if (!c) return null;
+    const uid = c.userId != null ? String(c.userId) : "";
+    let r = uid && rows.find(x => x.uid && String(x.uid) === uid); if (r) return r;
+    const ks = leagueKeys(c.name);
+    r = rows.find(x => leagueKeys(x.name).some(k => ks.includes(k))); if (r) return r;
+    // iRacing adds a digit to a name it already has ("John Smith2"): without the digits, if only one row fits
+    const bare = a => a.map(k => k.replace(/\d+$/, "")).filter(k => k.length > 3);
+    const kb = bare(ks), loose = kb.length ? rows.filter(x => bare(leagueKeys(x.name)).some(k => kb.includes(k))) : [];
+    if (loose.length === 1) return loose[0];
+    const byNum = rows.filter(x => x.num != null && x.num !== "" && String(x.num) === String(c.num ?? ""));
+    return byNum.length === 1 ? byNum[0] : null;
+  }
   $("lgFile").onchange = async e => { const f = e.target.files[0]; if (f) useLeague(await f.text()); e.target.value = ""; };
   // Each show screen's own file (gfx scene.files[mode]: an uploaded picture or video, or an https page) and
   // whether it shows alone (scene.bare[mode]).
@@ -1080,7 +1178,7 @@ header{padding:6px 12px}
   });
   const strapList = () => ((G("straps", {}) || {}).list || []).map(p => ({ ...p }));
   document.addEventListener("click", e => {
-    const b = e.target.closest && e.target.closest("[data-scmode],[data-sccd],[data-strapadd],[data-strapoff],[data-strapon],[data-strapdel],[data-strapsecs],[data-spon],[data-spevery],[data-pdcls],[data-lgload],[data-lgclr]");
+    const b = e.target.closest && e.target.closest("[data-scmode],[data-sccd],[data-strapadd],[data-strapoff],[data-strapon],[data-strapdel],[data-strapsecs],[data-spon],[data-spevery],[data-pdcls],[data-lgload],[data-lgclr],[data-lgurl],[data-lgadd],[data-lgdel]");
     if (!b || b.disabled) return;
     const ds = b.dataset;
     if (ds.scmode != null) setGfx({ scene: { mode: ds.scmode || null } });
@@ -1095,6 +1193,10 @@ header{padding:6px 12px}
     else if (ds.pdcls != null) setGfx({ podium: { classId: ds.pdcls === "" ? null : Number(ds.pdcls) } });
     else if (ds.lgload) useLeague($("lgPaste").value);
     else if (ds.lgclr) setGfx({ league: { rows: null } });
+    else if (ds.lgurl) { const u = $("lgUrl").value.trim(); if (!/^https?:\/\//i.test(u)) { toast("A link starts with https://", true); return; }
+      setGfx({ league: { src: { url: u, auto: $("lgAuto").checked } } }); setTimeout(() => loadLeagueLink(false), 50); }
+    else if (ds.lgadd) { const rows = (G("league.rows", []) || []).map(r => ({ ...r })); rows.push({ pos: String(rows.length + 1), name: "", points: "", num: null, cls: null, uid: null }); setGfx({ league: { rows } }); dirty.studio = true; }
+    else if (ds.lgdel != null) { const rows = (G("league.rows", []) || []).filter((r, i) => i !== Number(ds.lgdel)); setGfx({ league: { rows: rows.length ? rows : null } }); dirty.studio = true; }
     dirty.studio = true;
   });
   document.addEventListener("input", e => {
@@ -1234,6 +1336,8 @@ header{padding:6px 12px}
     $("gwSnapNote").textContent = S.lv && S.lv.config && S.lv.config.source ? "" : "(connect OBS in Liveries first)";
     const dr = S.director || {};
     $("gwAuto").innerHTML = sw("sw-gwauto", dr.autoGrid !== false, 'data-gwauto="1"', "Start it when the pace laps begin");
+    { const byRow = dr.gridByRow !== false;
+      $("gwBy").innerHTML = `<button data-gwby="1" class="${byRow ? "on" : ""}" ${dis}>A row at a time</button><button data-gwby="0" class="${byRow ? "" : "on"}" ${dis}>One car at a time</button>`; }
     if (dr.gridHoldS && document.activeElement !== $("gwHold")) $("gwHold").value = dr.gridHoldS;
     const minInc = G("ticker.minIncident", "spin");
     $("tickerOpts").innerHTML = sw("sw-pits", G("ticker.pits", true), 'data-tk="pits"', "Pit stops") +
@@ -1368,6 +1472,7 @@ header{padding:6px 12px}
       if (c) cutToCar(c, Number(ds.group)); else cmd({ cmd: "camera", action: "focus", focus: "exciting", group: Number(ds.group), camera: 0 }, "Camera group");
     }
     else if (ds.own) cmd({ cmd: "director", action: "stop" }, "You have the camera");
+    else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
     else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");
     else if (ds.btfollow) {           // a second click stops following (the camera goes back to whoever had it)
       const cars = ds.btfollow.split(",").map(Number);
@@ -1951,6 +2056,7 @@ header{padding:6px 12px}
         dirty.ctl = dirty.field = true; break;
       }
       // a refused change: this panel already showed it, so ask the relay for the real state again
+      case "fetch_result": leagueFetched(m); break;
       case "gfx_result": if (!m.ok) { toast(m.error, true); log(esc(m.error), true); setTimeout(() => send({ type: "resend" }), 300); } break;
       case "cmd_result": {
         const label = pending.shift() || "Command";

@@ -390,7 +390,7 @@ class Bridge:
         if kind == "director":
             if action == "set":
                 self.director.configure(on=msg.get("on"), style=msg.get("style"), hold_s=msg.get("holdS"),
-                                        auto_grid=msg.get("autoGrid"))
+                                        auto_grid=msg.get("autoGrid"), grid_rows=msg.get("gridRows"))
                 if msg.get("gridHoldS") is not None:
                     self.director.grid_hold_s = max(2.0, min(20.0, float(msg["gridHoldS"])))
             elif action == "follow_battle":
