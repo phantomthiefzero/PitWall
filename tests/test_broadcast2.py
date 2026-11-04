@@ -103,7 +103,7 @@ def _director_rig(style="cinematic"):
 
 
 def test_group_kinds_cover_iracings_groups_and_custom_ones():
-    assert group_kind("Rear Chase") == "rear" and group_kind("Chopper") == "aerial"
+    assert group_kind("Rear Chase") == "rear" and group_kind("Chopper") == "aerial" and group_kind("Far Chase") == "far"
     assert group_kind("Cockpit") == "onboard" and group_kind("TV3") == "trackside"
     assert group_kind("Scenic") == "never"
     assert group_kind("Turn 1 Hill Cam") == "trackside", "a camera pack's group is a trackside shot"
@@ -170,7 +170,7 @@ def test_grid_walk_visits_the_grid_in_order_with_a_chase_camera_then_stops():
     seen = []
     d.configure(on=False)
     d.start_grid_walk(order, hold_s=2, on_car=lambda c: seen.append(c["idx"]))
-    chase = next(g["num"] for g in sess["cameras"] if g["name"] == "Chase")
+    chase = next(g["num"] for g in sess["cameras"] if g["name"] == "Far Chase")
     for step in range(20):
         clock[0] = step * 1.0
         d.tick(sess, cars, st, [])
@@ -289,7 +289,8 @@ def test_the_pace_laps_start_a_grid_walk_in_order_that_ends_at_the_green():
     walk = [(n, g) for n, g, at in cuts if 20 <= at < 200][:len(grid_nums)]
     assert [n for n, _ in walk] == grid_nums, "every car, down the grid, in order"
     rear = next((g["num"] for g in sess["cameras"] if g["name"] == "Rear Chase"), chase)
-    assert {g for _, g in walk} <= {chase, rear} and walk[0][1] == rear, "the pole from in front, then turns"
+    far = next(g["num"] for g in sess["cameras"] if g["name"] == "Far Chase")
+    assert {g for _, g in walk} <= {far, rear} and walk[0][1] == rear, "the pole from in front, then turns"
     walking = [at for at, o in owners if o == "grid"]
     assert walking and min(walking) < 21 and max(walking) < 20 + 4 * 25 + 12, "about 4 s a car (poles a little longer), from the pace laps"
     assert any(o == "race" for at, o in owners if max(walking) < at < 200), \
@@ -1975,10 +1976,18 @@ def test_shots_come_in_an_order_and_a_close_fight_is_held():
         t[0] += 0.1
         d.tick(sess, msg, _state(500.0 + k * 0.1), [])
     shots = [kinds[g] for _, g, _ in log["cuts"]]
-    seq = SEQUENCES_CINEMATIC = ["trackside", "chase", "gyro", "rear", "aerial", "onboard"]
-    # every leader story's shots walk the cinematic order (wherever a new story starts it from the top)
-    for a, b in zip(shots, shots[1:]):
-        assert b == seq[(seq.index(a) + 1) % len(seq)] or b == seq[0], (a, b, shots)
+    groups = [g for _, g, _ in log["cuts"]]
+    seq = ["far", "trackside", "chase", "aerial", "far", "gyro", "trackside", "onboard"]   # the cinematic order
+    # every leader story walks the cinematic order from its start, skipping only the shot already on air
+    i = 0
+    for a in shots:
+        while seq[i % len(seq)] != a:
+            i += 1
+            assert i < 400, shots
+        i += 1
+    assert "rear" not in shots, "a car on its own is never shot looking backwards"
+    assert shots.count("far") == max(shots.count(k) for k in set(shots)), "Far Chase is the main shot"
+    assert all(a != b for a, b in zip(groups, groups[1:])), "never the same camera twice in a row"
     # side by side: the shot stays
     close = [{"id": "1:0", "cars": [0, 1], "gapsS": [0.15], "closingSPerLap": [0.05], "forClassPos": 1}]
     d, sess, msg, t, log, kinds = _craft_rig(battles=close)
@@ -1997,7 +2006,7 @@ def test_the_director_finds_traffic_charges_and_fastest_laps():
     for k in range(30):
         t[0] += 0.1
         d.tick(sess, msg, _state(500.0 + k * 0.1), [])
-    assert d.segment and d.segment["key"] == "traffic:0" and kinds[log["cuts"][-1][1]] == "chase"
+    assert d.segment and d.segment["key"] == "traffic:0" and kinds[log["cuts"][-1][1]] == "far"
     d, sess, msg, t, log, kinds = _craft_rig()
     fl = {"kind": "fastest_lap", "idx": 4, "t": 499.0, "lapS": 90.1, "overall": True}
     for k in range(10):
@@ -2145,7 +2154,7 @@ def test_the_opening_lap_is_one_story_and_a_pass_in_a_fight_stays_with_the_fight
     keys = [s["key"] for s in stories]
     assert "start" in keys and not any(k.startswith("pass:") for k in keys), keys
     assert d.segment["key"] == "start" and not log["replay"], "lap one: the start on air, no replays"
-    assert {kinds[g] for _, g, _ in log["cuts"]} <= {"aerial", "trackside", "rear", "chase"}
+    assert {kinds[g] for _, g, _ in log["cuts"]} <= {"aerial", "trackside", "rear", "far"}
     msg["cars"][0]["lap"] = 2
     assert "start" not in [s["key"] for s in d._stories(msg["cars"], by, msg, pas, 500.0, t[0])]
 
@@ -2169,3 +2178,31 @@ def test_the_grid_board_is_its_own_screen_and_the_walk_card_waits_for_it():
     assert not re.search(r"timeS\s*[-+]", board), "gaps come from normalize, not worked out here"
     prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
     assert 'data-gwboard="${k}"' in prod and "gridBoard: ds.gwboard" in prod
+
+
+def test_auto_graphics_use_every_graphic_but_picture_in_picture():
+    # "Pick graphics for me" covers every tile the producer has (Nov 2026: it only ever used half of them). Picture in
+    # picture stays the producer's: it needs their video link.
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    groups = re.findall(r'\["(\w+)", \[([^\]]*)\]\]', prod.split("const TILE_GROUPS = [")[1].split("]];")[0] + "]]")
+    tiles = {t for g, names in groups if g != "Always" for t in re.findall(r'"(\w+)"', names)}
+    auto = page.split("function autoWants(name) {")[1].split("\n  }\n")[0]
+    ctx = page.split("const CONTEXTUAL = {")[1].split("};")[0]
+    handled = set(re.findall(r'name [!=]== "(\w+)"', auto)) | set(re.findall(r'(\w+): \(\)', ctx))
+    assert tiles - handled == {"pip"}, tiles - handled
+    for timed in ("board", "map", "strip", "sponsors", "league"):
+        assert re.search(r'name === "%s"\) return[^;]*every\(' % timed, auto), timed    # now and then, staggered
+
+
+@pytest.mark.parametrize("page", ["overlay.html", "producer.html", "notes.html"])
+def test_broadcast_pages_scripts_parse(page):
+    # A duplicate declaration stops the whole page (Nov 2026: a second `now` in autoWants left the overlay blank but
+    # for one graphic); nothing else in the suite runs these scripts end to end.
+    src = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", page), encoding="utf-8").read()
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", src)
+    assert scripts
+    out = _node("const fs=require('fs');const s=JSON.parse(fs.readFileSync(0,'utf8'));const e=[];"
+                "for(const x of s){try{new Function(x)}catch(err){e.push(err.message)}}console.log(JSON.stringify(e))",
+                stdin=json.dumps(scripts))
+    assert out == [], out

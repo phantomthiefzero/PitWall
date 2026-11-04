@@ -322,11 +322,20 @@ Broadcast (broadcast/)
   session on air (moments keyed by sessionNum), one moment once (a pass and the lead change it made are one).
   A pass between two cars still in a battle adds to that battle's score instead of making its own story.
   Camera packs: names with "scenic" are never used, drone/heli/sky are aerial; Gearbox and Susp cams are "detail".
+  Far Chase is the main shot (its own kind "far"; the Chase stands in where a pack has none): first in every
+  sequence and twice a round in a battle (on the last car: the whole fight). Rear Chase looks back, so it is only
+  for what is behind a car: the chaser in a battle (on the front car), the pack behind the leader at the start, a
+  car on the grid from the front; never a car on its own (Summit Point: it was the most used shot, 21 of 101).
+  A new shot is never the camera already on air (_fresh). tests: test_shots_come_in_an_order_and_a_close_fight_is_held.
 - Auto ("Pick graphics for me") is contextual (overlay ctxWants / CONTEXTUAL): the driver card comes up for a few
   seconds when the camera finds a new car and now and then on a long shot (never over a battle box or a qualifying
   lap, which name the cars), the battle box shows the battle the camera is on, the onboard graphic follows onboard
   cameras, the speed trap comes up now and then outside a race; a pinned card or a battle picked by hand still rules.
-  Outside a race the tower's Interval column reads the gap to pole. The director also follows push laps in practice
+  Auto also runs every other tile (autoWants; test_auto_graphics_use_every_graphic_but_picture_in_picture): head to
+  head on a top-five battle held 12 s, the track map and crawl under a caution and now and then, the standings now
+  and then and 35 s at the finish then the podium, tyres as the camera car leaves the pits, the league before the
+  start, sponsors now and then; the timed ones are staggered (every(): this machine's clock). Picture in picture
+  stays the producer's (it needs their link). Outside a race the tower's Interval column reads the gap to pole. The director also follows push laps in practice
   and qualifying to the line (stories "push", up to 150 s) and the leader on the last lap ("finish").
 - The checkered flag waits for the leader (normalize.race_flags, state derived.raceFlags): iRacing raises it when a
   timed race's clock runs out, a lap early; until SessionState turns checkered it reads as the white flag.

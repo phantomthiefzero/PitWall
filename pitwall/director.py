@@ -44,7 +44,11 @@ import time
 # camera group names (lower case) by kind; anything not listed is "trackside",
 # which is where camera packs' custom groups land.
 GROUP_KIND = {
-    "chase": "chase", "far chase": "chase", "rear chase": "rear",
+    # Far Chase is the race's main shot (the car and the road ahead of it, the cars it is racing); the tight Chase
+    # is a closer look; Rear Chase looks BACK from in front of the car, so it is for what is behind it (a chaser in
+    # a battle, the pack behind the leader at the start, a car on the grid from the front), never a car on its own
+    # (Summit Point, Nov 2026: Rear Chase was the director's most used shot, 21 of 101 cuts).
+    "chase": "chase", "far chase": "far", "rear chase": "rear",
     "chopper": "aerial", "blimp": "aerial", "gyro": "gyro",
     "cockpit": "onboard", "roll bar": "onboard", "nose": "onboard",
     # close-ups on a wheel or the gearbox: a moment's detail, not a shot to sit on (Summit Point, Nov 2026: the
@@ -55,21 +59,21 @@ GROUP_KIND = {
 
 STYLES = {
     # weights per kind
-    "cinematic": {"trackside": 4, "chase": 3, "rear": 3, "gyro": 2, "aerial": 2, "onboard": 2},
-    "tv": {"trackside": 6, "chase": 2, "rear": 1, "aerial": 1},
-    "onboard": {"onboard": 5, "chase": 2, "rear": 2, "trackside": 1},
+    "cinematic": {"far": 5, "trackside": 4, "chase": 2, "gyro": 2, "aerial": 2, "onboard": 2},
+    "tv": {"trackside": 6, "far": 4, "chase": 1, "aerial": 1},
+    "onboard": {"onboard": 5, "far": 3, "chase": 1, "trackside": 1},
 }
 
-# A battle, shot by shot: (kind, which car). "rear" on the car in FRONT looks
-# back at it and shows the chaser behind; "chase" on the LAST car shows the
-# whole train ahead of it.
-BATTLE_SHOTS = [("chase", "back"), ("rear", "front"), ("trackside", "back"),
-                ("aerial", "front"), ("onboard", "back")]
+# A battle, shot by shot: (kind, which car). "far" on the LAST car shows the whole fight ahead of it (the main
+# shot, twice a round); "rear" on the car in FRONT looks back and shows the chaser behind (once); "chase" on the
+# LAST car is the closer look.
+BATTLE_SHOTS = [("far", "back"), ("trackside", "back"), ("rear", "front"), ("far", "back"),
+                ("aerial", "front"), ("chase", "back"), ("onboard", "back")]
 
 # The grid walk, car by car: the pole and each class's pole from in front (rear chase: the car coming at the
 # camera, livery and driver), held longer; the rest take turns between that and the chase, so the walk does not
 # look the same 30 times over.
-GRID_SHOTS = ["rear chase", "chase"]
+GRID_SHOTS = ["rear chase", "far chase"]
 GRID_POLE_HOLD = 1.6         # a pole sitter's hold, times the walk's
 # The walk fits the pace laps: while they run, the time until the leader reaches the line (its pace over the last
 # few seconds, the distance to the next crossing; one that is just ahead is the line the field rolls over on its
@@ -92,23 +96,23 @@ GRID_BOARD_MIN_S = 8.0
 GRID_BOARD_MAX_S = 18.0
 GRID_BOARD_IN_S = 1.5
 GRID_PLAN_WAIT_S = 3.0       # on the pace laps, how long the walk waits for the pace before deciding
-GRID_WIDE = ("aerial", "trackside", "chase")    # the board's shot (and a car not on the grid yet): wide, over the grid
+GRID_WIDE = ("aerial", "trackside", "far", "chase")    # the board's shot (and a car not on the grid yet): wide, over the grid
 
 # Shots in a story come in an order, not by chance: wide to set the scene, then closer, then inside the car (each
 # style its own order; a story can bring its own: traffic is best from behind the leader, a fresh fastest lap from
 # close). Kinds the track has no camera for are skipped.
 SEQUENCES = {
-    "cinematic": ["trackside", "chase", "gyro", "rear", "aerial", "onboard", "trackside", "detail"],
-    "tv": ["trackside", "trackside", "chase", "aerial", "trackside", "rear"],
-    "onboard": ["chase", "onboard", "rear", "onboard", "trackside", "onboard"],
+    "cinematic": ["far", "trackside", "chase", "aerial", "far", "gyro", "trackside", "onboard"],
+    "tv": ["far", "trackside", "trackside", "far", "aerial", "trackside"],
+    "onboard": ["far", "onboard", "chase", "onboard", "trackside", "onboard"],
 }
 STORY_SEQ = {
-    "traffic": ["chase", "aerial", "rear", "chase"],
-    "fastlap": ["chase", "rear", "trackside"],
-    "finish": ["trackside", "chase", "aerial", "trackside"],
-    "charge": ["chase", "rear", "trackside", "onboard"],
+    "traffic": ["far", "aerial", "chase", "far"],
+    "fastlap": ["far", "trackside", "chase"],
+    "finish": ["trackside", "far", "aerial", "trackside"],
+    "charge": ["far", "trackside", "onboard", "far"],
     # the first lap: the front of the field from above and from the side, the pack behind the leader, the pack ahead
-    "start": ["aerial", "trackside", "rear", "aerial", "chase", "trackside"],
+    "start": ["aerial", "trackside", "rear", "aerial", "far", "trackside"],
 }
 MOVE_GAP_S = 0.3            # a battle this close and closing: the move may come, so inside the chasing car
 HOLD_CLOSE_S = 0.25         # side by side: the shot is held (2 s at a time, HOLD_MAX_S at most) instead of cut away
@@ -406,6 +410,9 @@ class Director:
             if k == "never":
                 continue
             out.setdefault(k, []).append(g)
+        # no Far Chase (a camera pack without one): the Chase does its job
+        if not out.get("far") and out.get("chase"):
+            out["far"] = list(out["chase"])
         return out
 
     def _pick_group(self, groups, kinds_weights: dict) -> dict | None:
@@ -530,7 +537,7 @@ class Director:
                 continue
             c = by.get(inc.get("idx"))
             if c:
-                g = self._pick_group(groups, {"trackside": 5, "chase": 2, "aerial": 1})
+                g = self._pick_group(groups, {"trackside": 5, "far": 2, "aerial": 1})
                 if g and self._do_cut(c, g, f"incident: {inc.get('what')}"):
                     self._next_at = now + max(hold, 6.0)
                     self._end_segment(now)
@@ -541,7 +548,7 @@ class Director:
         # 2. the start: wide
         if race_state in ("parade_laps", "warmup"):
             if leader:
-                g = self._pick_group(groups, {"aerial": 4, "trackside": 2, "rear": 1})
+                g = self._pick_group(groups, {"aerial": 4, "trackside": 2, "far": 1})
                 if g and self._do_cut(leader, g, "the start"):
                     self._next_at = now + hold
                     self._end_segment(now)
@@ -711,7 +718,7 @@ class Director:
             car, g = cs[0], self._pick_group(groups, {"pit": 1})
         elif seg.get("seq") == "start":
             g = self._sequence_shot(groups, seg, weights)
-            car = cs[-1] if g and g.get("kind") == "chase" else cs[0]
+            car = cs[-1] if g and g.get("kind") in ("chase", "far") else cs[0]
         elif len(cs) >= 2 and self._move_coming(cars_msg, seg, now) and groups.get("onboard"):
             # close and closing: inside the chasing car, where the move would come from (once in a while)
             car, g = cs[-1], self._pick_group(groups, {"onboard": 1})
@@ -720,7 +727,7 @@ class Director:
             car, g = None, None
             for k in range(len(BATTLE_SHOTS)):
                 kind, who = BATTLE_SHOTS[(seg["shot"] + k) % len(BATTLE_SHOTS)]
-                if groups.get(kind):
+                if self._fresh(groups, kind):
                     car, g = (cs[0] if who == "front" else cs[-1]), self._pick_group(groups, {kind: 1})
                     seg["shot"] = (seg["shot"] + k + 1) % len(BATTLE_SHOTS)
                     break
@@ -735,13 +742,18 @@ class Director:
             self._next_at = now + hold
 
     # ------------------------------------------------------------------ shots in order
+    def _fresh(self, groups, kind) -> bool:
+        """The track has a camera of this kind other than the one on air (a new story starting on the shot the
+        last one ended on would be no cut at all: two stories, one picture)."""
+        return any(g["num"] != self._last_group for g in groups.get(kind) or [])
+
     def _sequence_shot(self, groups, seg, weights):
         """The next shot of a single-car story: the story's own order, else the style's, skipping kinds the track has
         no camera for; within a kind the group avoids repeating the last one."""
         seq = STORY_SEQ.get(seg.get("seq")) or SEQUENCES.get(self.style) or SEQUENCES["cinematic"]
         for k in range(len(seq)):
             kind = seq[(seg["shot"] + k) % len(seq)]
-            if groups.get(kind):
+            if self._fresh(groups, kind):
                 seg["shot"] = (seg["shot"] + k + 1) % len(seq)
                 return self._pick_group(groups, {kind: 1})
         return self._pick_group(groups, weights)
@@ -847,7 +859,7 @@ class Director:
         c = by[e["idx"]]
         kind = e.get("kind")
         g = self._pick_group(groups, {"trackside": 3, "aerial": 2} if kind == "race_incident" else
-                             {"chase": 2, "rear": 2, "trackside": 1} if kind == "pass" else {"trackside": 2, "aerial": 1})
+                             {"far": 3, "trackside": 1} if kind == "pass" else {"trackside": 2, "aerial": 1})
         if not g:
             return False
         what = {"race_incident": {"contact": "contact", "spin": "spin", "lost_speed": "trouble"}.get(e.get("what"), "incident"),
@@ -1048,7 +1060,7 @@ class Director:
             return
         by_name = {(g.get("name") or "").lower(): g for gs in groups.values() for g in gs}
         want = GRID_SHOTS[0] if pole else GRID_SHOTS[k % len(GRID_SHOTS)]
-        pick = by_name.get(want) or by_name.get("chase")
+        pick = by_name.get(want) or by_name.get("far chase") or by_name.get("chase")
         if pick is None:
             chase = groups.get("chase") or groups.get("trackside") or []
             if not chase:
