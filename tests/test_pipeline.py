@@ -2154,6 +2154,31 @@ def test_caution_option_appears_and_wins_when_the_stop_is_cheaper():
     assert "caution_now" not in [o["kind"] for o in s["options"]]
 
 
+def test_the_tyre_stop_is_weighed_fairly_and_a_past_forecast_lap_is_dropped():
+    d = Deriver()
+    _with_pace(d, [0, 1, 2], 100.0)
+    _loss_sample(d)                                                  # 42 s a green stop
+    race = {"endsBy": "laps", "lapsToGo": 20, "lapsByTime": None}
+    cars = [_car(1, f2TimeS=0.0), _car(0, f2TimeS=10.0, lap=12), _car(2, f2TimeS=30.0)]
+    for c in cars:
+        c["derived"]["stopDue"] = {"stopsOwed": 1, "lap": 10}       # lap 10 has gone by
+    cars[1]["derived"].update({"degSPerLap": 0.05, "stintLaps": 10})
+    s = d.strategy(cars, 0, race, None, own_idx=None)
+    f = next(o for o in s["options"] if o["kind"] == "as_forecast")
+    assert f["lap"] is None
+    t = next(o for o in s["options"] if o["kind"] == "tyres")
+    assert t["tyreGainS"] == 10.0 and t["netS"] == round(t["lossS"] - 10.0, 1)
+    # the best is the best finish, not the smallest number
+    best = min(s["options"], key=lambda o: (o["finishClassPos"] or 999, o["netS"]))
+    assert s["best"] == best["kind"]
+    # under a caution, or with a fall-off no tyre has, there is no tyre stop to weigh
+    s = d.strategy(cars, 0, race, {"active": True, "lossNowS": None}, own_idx=None)
+    assert "tyres" not in [o["kind"] for o in s["options"]]
+    cars[1]["derived"]["degSPerLap"] = 1.5
+    s = d.strategy(cars, 0, race, None, own_idx=None)
+    assert "tyres" not in [o["kind"] for o in s["options"]]
+
+
 def test_targets_catch_the_car_ahead_and_hold_the_one_behind():
     d = Deriver()
     _with_pace(d, [0], 100.0)

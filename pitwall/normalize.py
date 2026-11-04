@@ -1438,6 +1438,21 @@ class Deriver:
     QUALI_PUSH_S = 3.0          # further behind the pole lap than this: not a push lap (an out- or cool-down lap)
     QUALI_MIN_STRETCH = 2       # a delta needs a couple of stretches behind it
 
+    @staticmethod
+    def best_intervals(cars: list) -> None:
+        """Practice and qualifying: each car's best lap against the best of the car ahead of it in its class
+        (derived.classBestIntervalS), the interval a timing screen shows outside a race."""
+        by: dict = {}
+        for c in cars:
+            if c.get("classPos") and c["classPos"] > 0:
+                by.setdefault(c.get("classId"), []).append(c)
+        for L in by.values():
+            L.sort(key=lambda c: c["classPos"])
+            for x, y in zip(L, L[1:]):
+                bx, by_ = x.get("bestLapS"), y.get("bestLapS")
+                if bx and bx > 0 and by_ and by_ > 0:
+                    y.setdefault("derived", {})["classBestIntervalS"] = round(by_ - bx, 3)
+
     def quali_laps(self, cars: list) -> None:
         """Sets each car's derived.classPoleGapS (its best lap against its class's best, iRacing's best
         laps) and, on a push lap, derived.qualiLap: {stretch, of, deltaPoleS, deltaOwnS, poleIdx,
@@ -1460,6 +1475,7 @@ class Deriver:
             d = c.setdefault("derived", {})
             b, cb = c.get("bestLapS"), best.get(c.get("classId"))
             d["classPoleGapS"] = round(b - cb, 3) if b and b > 0 and cb else None
+            d["classBestIntervalS"] = None
             d["qualiLap"] = None
             sp, pole = self._split.get(c.get("idx")) or {}, poles.get(c.get("classId"))
             cr = sp.get("cross")
@@ -2546,6 +2562,9 @@ class Deriver:
     # it leaves (the session info that names the driver can lag the stop).
     PIT_CHANGE_WINDOW_S = 120.0
     STINT_MIN_LAPS = 3
+    # tyre fall-off a stop for fresh tyres is weighed on (s a lap per lap of age)
+    TYRE_DEG_MIN = 0.03
+    TYRE_DEG_MAX = 0.5
 
     def car_extras(self, c, t, grid_by_idx, fast_limit, is_race, team_race) -> dict:
         idx = c["idx"]
@@ -2574,10 +2593,11 @@ class Deriver:
         out["stintsSeen"] = stints
         out["stintStartLap"] = start
         out["lapsThisStint"] = (c["lap"] - start) if start is not None and c.get("lap") is not None else None
-        out["longestStintLaps"] = max(stints) if stints else None
-        # only a stint long enough to stand for a tank (a first stint cut short by damage said "in around lap 2" on
-        # lap 6), and only a lap still to come
-        est = start + max(stints) if stints and start is not None and max(stints) >= self.STINT_MIN_LAPS else None
+        # only stints long enough to stand for a tank: a first stint cut short by damage said "in around lap 2" on
+        # lap 6, and "overdue, 4 stops to make" in a 12-minute sprint (Summit Point); and only a lap still to come
+        full = [x for x in stints if x >= self.STINT_MIN_LAPS]
+        out["longestStintLaps"] = max(full) if full else None
+        est = start + max(full) if full and start is not None else None
         out["nextStopLapEst"] = est if est is not None and c.get("lap") is not None and est > c["lap"] else None
         # Tyres: a compound change is the only tyre fact iRacing gives for
         # another car (same-compound changes are invisible).
@@ -2699,7 +2719,7 @@ class Deriver:
         by_class: dict = {}
         for c in cars:
             for s in (c["derived"].get("stintsSeen") or []):
-                if s and s > 0:
+                if s and s >= self.STINT_MIN_LAPS:
                     by_class.setdefault(c.get("classId"), []).append(s)
         own = next((c for c in cars if c["idx"] == own_idx), None)
         fuel_range = math.floor(tank_l / fpl) if fpl and tank_l and fpl > 0 else None
@@ -2860,10 +2880,16 @@ class Deriver:
             sd = md.get("stopDue") or {}
             owed = sd.get("stopsOwed")
             if owed is not None:
-                opts.append({"kind": "as_forecast", "stops": owed, "lossS": owed * green, "lap": sd.get("lap") if owed else None})
+                due, now_lap = sd.get("lap"), me.get("lap")
+                if due is not None and now_lap is not None and due < now_lap:
+                    due = None                  # a forecast lap already gone by says nothing
+                opts.append({"kind": "as_forecast", "stops": owed, "lossS": owed * green, "lap": due if owed else None})
         # fresh tyres: worth a stop when the stint's fall-off over the laps left beats the stop
         deg, age = md.get("degSPerLap"), md.get("stintLaps")
-        if lane is not None and deg and deg >= 0.03 and age and age >= 5 and to_go >= 3 and opts:
+        # not under a caution (the laps are slow for everyone, so they say nothing about the tyres)
+        # and not from a fall-off no tyre has (over TYRE_DEG_MAX s a lap is traffic or a caution in the stint)
+        if (lane is not None and deg and self.TYRE_DEG_MIN <= deg <= self.TYRE_DEG_MAX and age and age >= 5
+                and to_go >= 3 and opts and not (caution and caution.get("active"))):
             base = min(o["lossS"] for o in opts)
             gain = deg * age * to_go
             opts.append({"kind": "tyres", "stops": min(o["stops"] for o in opts) + 1,
@@ -2884,14 +2910,13 @@ class Deriver:
                              "rejoin": self.predict_rejoin(cars, ref, caution["lossNowS"])})
         for o in opts:
             o["lossS"] = round(o["lossS"], 1)
-            o.update(self._finish_estimate(cars, me, o["lossS"], to_go, green))
-        tyres = [o for o in opts if o["kind"] == "tyres"]
-        for o in tyres:                 # the tyre gain comes off its time
-            o["netS"] = round(o["lossS"] - o["tyreGainS"], 1)
-        for o in opts:
-            o.setdefault("netS", o["lossS"])
+            # the tyre gain comes off its time, and its finish is worked out with it
+            o["netS"] = round(o["lossS"] - o["tyreGainS"], 1) if o["kind"] == "tyres" else o["lossS"]
+            o.update(self._finish_estimate(cars, me, o["netS"], to_go, green))
         if opts:
-            out["best"] = min(opts, key=lambda o: (o["netS"], o.get("savePct") or 0))["kind"]
+            # the best is the best finish; time decides between equal finishes (and when none is known)
+            out["best"] = min(opts, key=lambda o: (o.get("finishClassPos") or 999, o["netS"],
+                                                   o.get("savePct") or 0))["kind"]
         out["options"] = opts
         return out
 
@@ -3913,6 +3938,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         if live_edge(g)["atLive"]:
             deriver.lap_splits(cars, now)
         deriver.quali_laps(cars)
+        if not is_race:
+            Deriver.best_intervals(cars)
         meet = deriver.meetings(cars, player_idx, now)
         class_best_sectors = Deriver.sector_marks(cars)
         battles = deriver.battles(cars, ahead_of, is_race)

@@ -1367,6 +1367,10 @@ def test_quali_lap_against_the_class_pole_lap():
     assert abs(q["deltaPoleS"] - 0.3) < 0.01 and abs(q["deltaOwnS"] - (-0.7)) < 0.01
     assert abs(q["projectedS"] - 100.3) < 0.01 and q["projectedPos"] == 2, "between the pole and car 2's 101.0"
     assert [c["derived"]["classPoleGapS"] for c in cars] == [0.0, 1.0, 2.0, 0.0]
+    for c, cp in zip(cars, (1, 2, 3, 1)):
+        c["classPos"] = cp
+    d.best_intervals(cars)                 # the standings' Int column outside a race: to the car ahead's best
+    assert [c["derived"]["classBestIntervalS"] for c in cars] == [None, 1.0, 1.0, None]
     assert cars[3]["derived"]["qualiLap"] is None
     # a slow lap (an out- or cool-down lap) is not a push lap
     d._split[3]["cross"] = _prof(110.0, upto=12)
