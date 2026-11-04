@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Booth notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Booth notes: what the commentators talk about. Every number is one the feed already carries (a car's own
+   values or its derived ones from pitwall/normalize.py); the words are put together here, the numbers are not. */
+:root{--bg:#0e1116;--panel:#161b23;--panel2:#1d2430;--line:#2a3443;--fg:#eef1f5;--mut:#93a0b2;--acc:#ffcc00;--ink:#0e1116;--good:#2fd27a;--bad:#ff5b5b;
+  --num:"Barlow Condensed","Arial Narrow",sans-serif;--txt:"Barlow","Segoe UI",system-ui,sans-serif}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;color:var(--fg);font:500 15px/1.4 var(--txt);background:var(--bg)}
+button,select,input,textarea{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer;min-height:30px}
+button:hover:not(:disabled){border-color:var(--fg)}
+button.on{background:var(--acc);color:var(--ink);border-color:var(--acc);font-weight:700}
+button:focus-visible,textarea:focus-visible,.pick:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;resize:vertical;line-height:1.45;font-size:15px}
+textarea[readonly]{opacity:.7}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 14px;background:#07090c;border-bottom:1px solid var(--line)}
+header h1{margin:0;font:800 24px/1 var(--num);letter-spacing:.02em}
+header .race{font:800 22px/1 var(--num);color:var(--acc)}
+header .race small{font:600 14px/1 var(--txt);color:var(--mut);margin-left:6px}
+header .sess{color:var(--mut);font-size:14px}
+header .sp{flex:1}
+.flag{width:14px;height:14px;border-radius:3px;background:var(--mut);display:inline-block;vertical-align:-2px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--bad);display:inline-block;margin-right:6px}
+.dot.on{background:var(--good)}
+.stat{color:var(--mut);font-size:14px;display:flex;align-items:center}
+main{display:grid;grid-template-columns:minmax(360px,1.05fr) minmax(320px,1fr) minmax(300px,.9fr);gap:10px;padding:10px 12px}
+@media (min-width:1100px){html,body{height:100%;overflow:hidden}body{display:flex;flex-direction:column}main{flex:1;min-height:0}main>div{min-height:0;overflow:auto;scrollbar-width:thin}}
+@media (max-width:1099px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+h2{margin:0 0 8px;font:800 19px/1 var(--num);letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
+h3{margin:10px 0 5px;font:700 12px/1 var(--txt);color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.note{color:var(--mut);font-size:13px;margin:6px 0 0}
+.hide{display:none!important}
+/* the driver */
+.who{display:flex;align-items:flex-start;gap:12px}
+.who .no{font:800 46px/.9 var(--num);min-width:76px;text-align:center;padding:6px 6px 4px;border-radius:6px;background:var(--panel2)}
+.who .nm{font:800 30px/1 var(--num);letter-spacing:.01em}
+.who .sub{color:var(--mut);font-size:14px;margin-top:3px}
+.chip{display:inline-block;font:700 12px/1 var(--txt);padding:3px 6px 2px;border-radius:4px;letter-spacing:.04em;vertical-align:1px}
+.facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:6px;margin-top:10px}
+.fact{background:var(--panel2);border-radius:6px;padding:6px 8px}
+.fact b{display:block;font:800 22px/1.05 var(--num);font-variant-numeric:tabular-nums}
+.fact span{font-size:12px;color:var(--mut)}
+.fact .up{color:var(--good)}.fact .dn{color:var(--bad)}
+.line{font-size:14px;margin-top:8px;padding:6px 8px;border-left:3px solid var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);border-radius:0 6px 6px 0}
+#noteBox textarea{min-height:110px;margin-top:4px;font-size:16px}
+#showNote{min-height:160px}
+.saved{font-size:12px;color:var(--mut);margin-left:auto}
+/* storylines */
+.story{display:flex;gap:10px;align-items:baseline;padding:6px 4px;border-top:1px solid var(--line);cursor:pointer;border-radius:4px}
+.story:first-of-type{border-top:0}
+.story:hover{background:var(--panel2)}
+.story .k{flex:none;width:64px;font:700 11px/1.2 var(--txt);letter-spacing:.05em;text-transform:uppercase;color:var(--mut)}
+.story .t{flex:1;min-width:0;font-size:14.5px;line-height:1.35}
+.story .t b{font-weight:700}
+.story .t i{font-style:normal;color:var(--mut)}
+.story .pen{flex:none;color:var(--acc);font-size:13px}
+.news{display:flex;gap:8px;padding:4px 2px;border-top:1px solid var(--line);font-size:14px;cursor:pointer}
+.news time{flex:none;width:48px;color:var(--mut);font-variant-numeric:tabular-nums;font-size:13px}
+/* the field */
+.car{display:flex;align-items:center;gap:7px;padding:5px 4px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:4px}
+.car:hover{background:var(--panel2)}
+.car.sel{background:rgba(255,204,0,.12)}
+.car.cam .p{color:var(--acc)}
+.car .p{width:26px;text-align:right;font:800 18px/1 var(--num);font-variant-numeric:tabular-nums}
+.car .bar{width:4px;align-self:stretch;border-radius:2px}
+.car .n{width:36px;color:var(--mut);font:700 14px/1 var(--num)}
+.car .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.car .mv{width:34px;text-align:right;font:700 13px/1 var(--num)}
+.car .mv.up{color:var(--good)}.car .mv.dn{color:var(--bad)}
+.car .pen{width:16px;color:var(--acc);font-size:12px;text-align:center}
+.car .bl{width:64px;text-align:right;color:var(--mut);font-variant-numeric:tabular-nums;font-size:13px}
+#connect{max-width:520px;margin:60px auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Booth notes</h1>
+  <span class="race" id="race"></span>
+  <span class="sess" id="sess"></span>
+  <span class="sp"></span>
+  <span class="stat" id="camTxt"></span>
+  <button id="units" title="Speeds in km/h or mph (just for you)">km/h</button>
+  <span class="stat"><span class="dot" id="dRelay"></span>Live</span>
+</header>
+<div id="connect" class="hide"><h2>Open this from the producer panel</h2><p class="note" id="cErr">This page needs the producer link's token (or the view token to read only).</p></div>
+<main id="main">
+  <div id="col1">
+    <section id="whoSec">
+      <h2><span id="whoHead">On camera</span><small><button id="follow" class="on" title="Follow the car on camera, or keep the one you picked">Follow the camera</button></small></h2>
+      <div id="who"><p class="note">The driver on camera shows here, with everything worth saying about them.</p></div>
+      <div id="noteBox" class="hide">
+        <h3 style="display:flex;align-items:center">Your note on <span id="noteFor" style="margin-left:4px;text-transform:none;letter-spacing:0;color:var(--fg)"></span><span class="saved" id="noteSaved"></span></h3>
+        <textarea id="driverNote" maxlength="600" placeholder="How to say the name, where they're from, their story, what to watch for… Kept for every race by their iRacing ID, shared with your co-host."></textarea>
+      </div>
+    </section>
+    <section>
+      <h2>Show notes <small id="showSaved"></small></h2>
+      <textarea id="showNote" maxlength="4000" placeholder="Your running order, sponsor reads, things to mention at the break… Shared with your co-host, kept for next time."></textarea>
+    </section>
+  </div>
+  <div id="col2">
+    <section><h2>Storylines <small>click one to bring up the driver</small></h2><div id="stories"><p class="note">Waiting for the field.</p></div></section>
+    <section><h2>Race news</h2><div id="news"><p class="note">Nothing yet.</p></div></section>
+  </div>
+  <div id="col3">
+    <section><h2>Field <small id="fieldHint">✎ has a note · start → now</small></h2><div id="field"></div></section>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const Q = new URLSearchParams(location.search);
+  const S = { session: null, state: null, cars: null, feed: { events: [] }, notes: { drivers: {}, show: "" }, role: null, pick: null };
+  const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  const esc = v => v == null ? "" : String(v).replace(/[&<>"']/g, ch => ESC[ch]);
+  function merge(into, from) {
+    for (const k of Object.keys(from)) {
+      const v = from[k];
+      if (v === null) { delete into[k]; continue; }
+      if (v && typeof v === "object" && !Array.isArray(v) && into[k] && typeof into[k] === "object" && !Array.isArray(into[k])) merge(into[k], v);
+      else into[k] = v;
+    }
+    return into;
+  }
+  const lap = s => { if (s == null || !(s > 0)) return "–"; const m = Math.floor(s / 60), r = s - m * 60; return (m ? m + ":" + (r < 10 ? "0" : "") : "") + r.toFixed(3); };
+  const clock = s => { if (s == null) return ""; s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
+  const css = v => v == null ? "transparent" : "#" + (Number(v) & 0xFFFFFF).toString(16).padStart(6, "0");
+  const inkOn = hex => { const n = parseInt(String(hex).slice(1), 16); if (isNaN(n)) return "#fff"; const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255; return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#000" : "#fff"; };
+  let mph = false; try { mph = localStorage.getItem("pw.notes.mph") === "1"; } catch (e) {}
+  const speed = ms => ms == null ? "–" : mph ? Math.round(ms * 2.23694) + " mph" : Math.round(ms * 3.6) + " km/h";
+  const allCars = () => S.cars && S.cars.cars ? Object.values(S.cars.cars) : [];
+  const carByIdx = i => i == null ? null : allCars().find(c => c.idx === i) || null;
+  const isRace = () => !!(S.cars && S.cars.derived && S.cars.derived.isRace);
+  const camIdx = () => S.state && S.state.camera ? S.state.camera.carIdx : null;
+  const drv = i => ((S.session && S.session.drivers) || []).find(d => d.CarIdx === i) || {};
+  const uidOf = c => { const d = c && drv(c.idx); return d && d.UserID != null && d.UserID >= 0 ? String(d.UserID) : null; };
+  const noteOf = c => { const u = uidOf(c); return u ? (S.notes.drivers || {})[u] || "" : ""; };
+  const multi = () => new Set(allCars().filter(c => c.pos > 0).map(c => c.classId)).size > 1;
+  const nm = i => { const c = carByIdx(i); return c ? `<b>#${esc(c.num ?? "")} ${esc(c.name || "")}</b>` : "a car"; };
+  const clsChip = c => multi() && c && c.className ? `<span class="chip" style="background:${css(c.classColor)};color:${inkOn(css(c.classColor))}">${esc(c.className)}</span> ` : "";
+  const canWrite = () => S.role === "producer";
+  const shown = () => S.pick != null ? carByIdx(S.pick) : carByIdx(camIdx());
+
+  // ------------------------------------------------------------ header
+  function renderHeader() {
+    const r = S.cars && S.cars.derived && S.cars.derived.race, st = S.state && S.state.session;
+    let race = "";
+    if (r && isRace() && r.endsBy === "laps" && r.totalLaps) race = `Lap ${esc(r.leaderLap ?? "")}<small>of ${esc(r.totalLaps)}${r.lapsToGo != null ? " · " + esc(r.lapsToGo) + " to go" : ""}</small>`;
+    else if (r && r.timeRemainS != null) race = `${clock(r.timeRemainS)}<small>left</small>`;
+    $("race").innerHTML = race;
+    const t = S.session && S.session.track, sess = st && S.session && (S.session.sessions || []).find(x => x.SessionNum === st.num);
+    $("sess").textContent = [sess && sess.SessionType, t && (t.TrackDisplayName || t.TrackDisplayShortName)].filter(Boolean).join(" · ");
+    const c = carByIdx(camIdx());
+    $("camTxt").innerHTML = c ? `On camera <b style="color:var(--acc);margin:0 4px">#${esc(c.num ?? "")}</b>${esc(c.name || "")}` : "";
+  }
+
+  // ------------------------------------------------------------ the driver on camera (or picked)
+  function fact(v, label, cls) { return `<div class="fact"><b class="${cls || ""}">${v}</b><span>${label}</span></div>`; }
+  function battleLine(c) {
+    for (const b of (S.cars && S.cars.derived && S.cars.derived.battles) || []) {
+      const i = b.cars.indexOf(c.idx); if (i < 0) continue;
+      const parts = [];
+      if (i > 0) parts.push(`${b.gapsS[i - 1] != null ? b.gapsS[i - 1].toFixed(2) + " s behind " : "behind "}${nm(b.cars[i - 1])}` +
+        (b.closingSPerLap[i - 1] > 0 ? `, closing ${b.closingSPerLap[i - 1].toFixed(2)} s a lap` : ""));
+      if (i < b.cars.length - 1) parts.push(`${b.gapsS[i] != null ? b.gapsS[i].toFixed(2) + " s ahead of " : "ahead of "}${nm(b.cars[i + 1])}` +
+        (b.closingSPerLap[i] > 0 ? `, who is closing ${b.closingSPerLap[i].toFixed(2)} s a lap` : ""));
+      return `In the battle for P${esc(b.forClassPos)}${multi() ? " in class" : ""}: ` + parts.join("; ") + ".";
+    }
+    return "";
+  }
+  let whoKey = "";
+  function renderWho() {
+    const c = shown();
+    $("follow").classList.toggle("on", S.pick == null);
+    $("follow").textContent = S.pick == null ? "Following the camera" : "Follow the camera";
+    $("whoHead").textContent = S.pick == null ? "On camera" : "Picked";
+    if (!c) { $("who").innerHTML = `<p class="note">The driver on camera shows here, with everything worth saying about them.</p>`; $("noteBox").classList.add("hide"); whoKey = ""; return; }
+    const d = c.derived || {}, dr = drv(c.idx), race = isRace();
+    const runs = (d.tyreRuns || []).map(r => tyreName(r.compound) + (r.laps != null ? " " + r.laps : "")).join(" → ");
+    const facts = [
+      fact(race ? "P" + esc(c.pos || "–") : "P" + esc(c.pos || "–"), multi() ? `overall · P${esc(c.classPos || "–")} in class` : "position"),
+      race && d.gridPos ? fact(`${d.gridPos} → ${c.pos || "–"}`, d.posGained > 0 ? `up ${d.posGained} from the start` : d.posGained < 0 ? `down ${-d.posGained} from the start` : "same as the start", d.posGained > 0 ? "up" : d.posGained < 0 ? "dn" : "") : "",
+      race && d.lapsLedSeen ? fact(esc(d.lapsLedSeen), d.lapsLedSeen === 1 ? "lap led" : "laps led") : "",
+      fact(lap(c.bestLapS), "best lap" + (c.bestLapNum ? " (lap " + esc(c.bestLapNum) + ")" : "")),
+      fact(lap(c.lastLapS), "last lap"),
+      d.lapsThisStint != null ? fact(esc(d.lapsThisStint), "laps this stint") : "",
+      d.stopsSeen != null ? fact(esc(d.stopsSeen), d.stopsSeen === 1 ? "pit stop" : "pit stops") : "",
+      d.nextStopLapEst != null && race ? fact("~" + esc(d.nextStopLapEst), "next stop, by their longest stint") : "",
+      d.consistencyS != null ? fact("±" + d.consistencyS.toFixed(2), "consistency (s)") : "",
+      d.topSpeedBestMs != null ? fact(speed(d.topSpeedBestMs), "top speed") : "",
+      dr.IRating ? fact(esc(dr.IRating), "iRating · " + esc(dr.LicString || "")) : ""
+    ].filter(Boolean).join("");
+    const bl = race ? battleLine(c) : "";
+    const html = `<div class="who"><div class="no" style="${multi() ? `background:${css(c.classColor)};color:${inkOn(css(c.classColor))}` : ""}">${esc(c.num ?? "")}</div>` +
+      `<div><div class="nm">${esc(c.name || "")}</div><div class="sub">${clsChip(c)}${esc([dr.TeamName && dr.TeamName !== c.name ? dr.TeamName : "", dr.CarScreenNameShort].filter(Boolean).join(" · "))}${c.onPitRoad ? ` · <b style="color:var(--acc)">in the pits</b>` : ""}</div></div></div>` +
+      `<div class="facts">${facts}</div>` + (runs ? `<div class="note">Tyres: ${esc(runs)}</div>` : "") + (bl ? `<div class="line">${bl}</div>` : "");
+    if (html !== whoKey) { whoKey = html; $("who").innerHTML = html; }
+    const u = uidOf(c);
+    $("noteBox").classList.toggle("hide", !u);
+    $("noteFor").textContent = c.name || "";
+    const ta = $("driverNote");
+    if (ta.dataset.uid !== (u || "") || document.activeElement !== ta) { ta.dataset.uid = u || ""; if (ta.value !== noteOf(c) && !(ta.dataset.dirty === "1" && document.activeElement === ta)) ta.value = noteOf(c); }
+    ta.readOnly = !canWrite();
+  }
+  function tyreName(i) {
+    const t = ((S.session && S.session.driverTires) || []).find(x => x.index === i), n = t && t.type ? String(t.type) : "";
+    return n ? n.replace(/^./, ch => ch.toUpperCase()) : "Compound " + i;
+  }
+
+  // ------------------------------------------------------------ storylines
+  // Picked from what the feed already says, never worked out here: battles (gap and closing rate), who has gained
+  // or lost the most from the start, class leaders and laps led, who holds each class's best lap, who has the most
+  // laps on their tyres against their longest stint.
+  function stories() {
+    const out = [], cars = allCars().filter(c => c.pos > 0), race = isRace(), byClass = new Map();
+    for (const c of cars) { if (!byClass.has(c.classId)) byClass.set(c.classId, []); byClass.get(c.classId).push(c); }
+    const cls = c => multi() && c.className ? ` <i>${esc(c.className)}</i>` : "";
+    if (race) for (const b of (S.cars.derived.battles || []).slice(0, 6)) {
+      const a = carByIdx(b.cars[0]), z = carByIdx(b.cars[b.cars.length - 1]); if (!a || !z) continue;
+      const cl = b.closingSPerLap[b.cars.length - 2];
+      out.push({ k: "Battle", idx: z.idx, t: `For P${esc(b.forClassPos)}${cls(a)}: ${b.cars.map(i => nm(i)).join(", then ")}` +
+        `${b.gapsS.length === 1 ? ", " + b.gapsS[0].toFixed(2) + " s apart" : ""}${cl > 0 ? `, closing ${cl.toFixed(2)} s a lap` : ""}.` });
+    }
+    if (race) {
+      const movers = cars.filter(c => c.derived && c.derived.posGained != null && c.derived.gridPos);
+      const up = movers.filter(c => c.derived.posGained >= 3).sort((a, b) => b.derived.posGained - a.derived.posGained).slice(0, 3);
+      const dn = movers.filter(c => c.derived.posGained <= -3).sort((a, b) => a.derived.posGained - b.derived.posGained).slice(0, 2);
+      for (const c of up) out.push({ k: "Charging", idx: c.idx, t: `${nm(c.idx)} is up ${c.derived.posGained} places: started P${c.derived.gridPos}, now P${c.pos}.` });
+      for (const c of dn) out.push({ k: "Dropping", idx: c.idx, t: `${nm(c.idx)} has lost ${-c.derived.posGained}: started P${c.derived.gridPos}, now P${c.pos}.` });
+    }
+    for (const [, list] of byClass) {
+      const lead = list.find(c => c.classPos === 1) || list.slice().sort((a, b) => a.pos - b.pos)[0];
+      if (lead) out.push({ k: "Leader", idx: lead.idx, t: `${nm(lead.idx)} leads${cls(lead)}` +
+        (race && lead.derived && lead.derived.lapsLedSeen ? `, ${lead.derived.lapsLedSeen} ${lead.derived.lapsLedSeen === 1 ? "lap" : "laps"} led so far` : "") + "." });
+      const best = list.filter(c => c.bestLapS > 0).sort((a, b) => a.bestLapS - b.bestLapS)[0];
+      if (best) out.push({ k: "Quickest", idx: best.idx, t: `${nm(best.idx)} has the best lap${cls(best)}: ${lap(best.bestLapS)}${best.bestLapNum ? " on lap " + best.bestLapNum : ""}.` });
+    }
+    if (race) {
+      const due = cars.filter(c => c.derived && c.derived.nextStopLapEst != null && c.derived.lapsThisStint != null && !c.onPitRoad)
+        .sort((a, b) => a.derived.nextStopLapEst - b.derived.nextStopLapEst).slice(0, 3);
+      for (const c of due) out.push({ k: "Strategy", idx: c.idx, t: `${nm(c.idx)}: ${c.derived.lapsThisStint} laps on this stint; their longest so far would bring them in around lap ${c.derived.nextStopLapEst}.` });
+    }
+    return out;
+  }
+  let storyKey = "";
+  function renderStories() {
+    const list = stories();
+    const html = list.length ? list.map(s => { const c = carByIdx(s.idx); return `<div class="story pick" data-idx="${s.idx}" tabindex="0"><span class="k">${s.k}</span><span class="t">${s.t}</span>${noteOf(c) ? `<span class="pen" title="You have a note on this driver">✎</span>` : ""}</div>`; }).join("")
+      : `<p class="note">Waiting for the field.</p>`;
+    if (html !== storyKey) { storyKey = html; $("stories").innerHTML = html; }
+  }
+
+  // ------------------------------------------------------------ race news (the feed's events)
+  function newsText(e) {
+    switch (e.kind) {
+      case "lead_change": return [e.idx, `${nm(e.idx)} takes the lead` + (e.prevIdx != null ? ` from ${nm(e.prevIdx)}` : "")];
+      case "pass": return [e.idx, `${nm(e.idx)} passes ${(e.passedIdx || []).map(nm).join(" and ")} for P${esc(e.classPos)}${multi() ? " in class" : ""}`];
+      case "fastest_lap": return [e.idx, `${nm(e.idx)}: fastest lap${e.overall ? "" : " in class"}, ${lap(e.lapS)}`];
+      case "pit_in": return isRace() ? [e.idx, `${nm(e.idx)} pits`] : null;
+      case "pit_out": return isRace() ? [e.idx, `${nm(e.idx)} rejoins` + (e.pos ? ` in P${esc(e.pos)}` : "") + (e.stationaryS != null ? ` after ${e.stationaryS.toFixed(1)} s stopped` : "")] : null;
+      case "car_flag": return [e.idx, `${nm(e.idx)}: ${esc({ black: "black flag (a penalty)", furled: "warning (furled black)", disqualify: "disqualified", repair: "meatball (damage)" }[e.flag] || e.flag + " flag")}`];
+      case "penalty_served": return [e.idx, `${nm(e.idx)} has served the penalty`];
+      case "compound_change": return [e.idx, `${nm(e.idx)} changes to ${esc(tyreName(e.toCompound))}`];
+      case "driver_change": return [e.idx, `${nm(e.idx)}: driver change`];
+      default: return null;
+    }
+  }
+  let newsKey = "";
+  function renderNews() {
+    const items = (S.feed.events || []).slice(-80).reverse().map(e => { const x = newsText(e); return x ? { e, idx: x[0], t: x[1] } : null; }).filter(Boolean).slice(0, 30);
+    const html = items.length ? items.map(x => `<div class="news pick" data-idx="${x.idx}" tabindex="0"><time>${x.e.t != null ? clock(x.e.t) : ""}</time><span>${x.t}</span></div>`).join("")
+      : `<p class="note">Nothing yet.</p>`;
+    if (html !== newsKey) { newsKey = html; $("news").innerHTML = html; }
+  }
+
+  // ------------------------------------------------------------ the field
+  let fieldKey = "";
+  function renderField() {
+    const race = isRace(), cam = camIdx(), sel = shown();
+    const cars = allCars().filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
+    const m = multi();
+    const html = cars.map(c => {
+      const d = c.derived || {};
+      const mv = race && d.posGained != null && d.gridPos ? (d.posGained > 0 ? `<span class="mv up">▲${d.posGained}</span>` : d.posGained < 0 ? `<span class="mv dn">▼${-d.posGained}</span>` : `<span class="mv">–</span>`) : `<span class="mv"></span>`;
+      return `<div class="car pick${c.idx === cam ? " cam" : ""}${sel && sel.idx === c.idx ? " sel" : ""}" data-idx="${c.idx}" tabindex="0" title="${esc(noteOf(c))}">` +
+        `<span class="p">${esc(c.pos)}</span><span class="bar" style="background:${m ? css(c.classColor) : "transparent"}"></span><span class="n">#${esc(c.num ?? "")}</span>` +
+        `<span class="nm">${esc(c.name || "")}</span><span class="pen">${noteOf(c) ? "✎" : ""}</span>${mv}<span class="bl">${lap(c.bestLapS)}</span></div>`;
+    }).join("") || `<p class="note">The field appears once the race is streaming.</p>`;
+    if (html !== fieldKey) { fieldKey = html; $("field").innerHTML = html; }
+  }
+
+  // ------------------------------------------------------------ notes: typed here, kept by the relay
+  const timers = {};
+  function save(which, set) {
+    clearTimeout(timers[which]);
+    timers[which] = setTimeout(() => send({ type: "notes", set, by: myName() }), 600);
+  }
+  const myName = () => { try { return localStorage.getItem("pw.producer.name") || "Booth"; } catch (e) { return "Booth"; } };
+  $("driverNote").addEventListener("input", e => {
+    const u = e.target.dataset.uid; if (!u || !canWrite()) return;
+    e.target.dataset.dirty = "1"; $("noteSaved").textContent = "Saving…";
+    save("d" + u, { drivers: { [u]: e.target.value } });
+  });
+  $("driverNote").addEventListener("blur", e => { e.target.dataset.dirty = ""; });
+  $("showNote").addEventListener("input", e => { if (!canWrite()) return; $("showSaved").textContent = "Saving…"; save("show", { show: e.target.value }); });
+  function renderNotes() {
+    const sn = $("showNote");
+    if (document.activeElement !== sn && sn.value !== (S.notes.show || "")) sn.value = S.notes.show || "";
+    sn.readOnly = !canWrite();
+    if (!canWrite() && S.role) { sn.placeholder = "Read only: open this page from the producer panel to write."; $("driverNote").placeholder = sn.placeholder; }
+  }
+
+  // ------------------------------------------------------------ clicks
+  document.addEventListener("click", e => {
+    const p = e.target.closest && e.target.closest(".pick");
+    if (p) { const i = Number(p.dataset.idx); S.pick = camIdx() === i ? null : i; render(); return; }
+    if (e.target.closest("#follow")) { S.pick = null; render(); }
+    if (e.target.closest("#units")) { mph = !mph; try { localStorage.setItem("pw.notes.mph", mph ? "1" : "0"); } catch (x) {} $("units").textContent = mph ? "mph" : "km/h"; whoKey = ""; render(); }
+  });
+  document.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.classList && e.target.classList.contains("pick")) { e.preventDefault(); e.target.click(); } });
+  $("units").textContent = mph ? "mph" : "km/h";
+
+  function render() { renderHeader(); renderWho(); renderStories(); renderNews(); renderField(); renderNotes(); }
+
+  // ------------------------------------------------------------ connection (as the producer panel)
+  let ws = null;
+  const send = obj => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
+  function relayUrl() {
+    const q = Q.get("relay"); if (q) return q;
+    return location.protocol.startsWith("http") ? (location.protocol === "https:" ? "wss://" : "ws://") + location.host : "";
+  }
+  function connect() {
+    const token = Q.get("token") || "";
+    if (!token || !relayUrl()) { $("connect").classList.remove("hide"); $("main").classList.add("hide"); return; }
+    const url = new URL(relayUrl().replace(/\/+$/, "") + "/view"); url.searchParams.set("token", token);
+    const sock = new WebSocket(url.href); ws = sock;
+    sock.onopen = () => $("dRelay").classList.add("on");
+    sock.onclose = ev => {
+      $("dRelay").classList.remove("on");
+      if (ev.code === 4001) { $("connect").classList.remove("hide"); $("main").classList.add("hide"); $("cErr").textContent = "The relay refused that token."; return; }
+      setTimeout(connect, 3000);
+    };
+    sock.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } try { handle(m); } catch (e) { console.error("notes: " + m.type, e); } };
+  }
+  let dirty = true;
+  function handle(m) {
+    switch (m.type) {
+      case "relay": if (m.role) S.role = m.role; dirty = true; break;
+      case "session": S.session = m; dirty = true; break;
+      case "state": if (!m.full && !S.state) return; S.state = m.full ? m : merge(S.state, m); dirty = true; break;
+      case "cars": if (!m.full && !S.cars) return; S.cars = m.full ? m : merge(S.cars, m); dirty = true; break;
+      case "feed":
+        if (m.full) S.feed = { events: (m.events || []).slice(-300) };
+        else if (m.events && m.events.length) S.feed.events = S.feed.events.concat(m.events).slice(-300);
+        dirty = true; break;
+      case "notes": S.notes = m.notes || { drivers: {}, show: "" }; dirty = true; break;
+      case "notes_result":
+        if (m.ok) { $("noteSaved").textContent = "Saved"; $("showSaved").textContent = "Saved"; }
+        else { $("noteSaved").textContent = $("showSaved").textContent = m.error || "Not saved"; }
+        break;
+    }
+  }
+  setInterval(() => { if (dirty) { dirty = false; render(); } }, 400);
+  connect();
+})();
+</script>
+</body>
+</html>
