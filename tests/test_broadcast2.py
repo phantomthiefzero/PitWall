@@ -2047,3 +2047,106 @@ def test_booth_notes_page_shows_only_feed_numbers():
     import re
     page = re.sub(r"\.sort\(\(a, b\) => [^)]*\)", ".sort()", page)
     assert not re.search(r"(bestLapS|lastLapS|gapsS\[[^\]]*\]|pos)\s*-\s*\w+\.(bestLapS|lastLapS|pos)\b", page)
+
+
+def test_a_standing_start_walks_the_grid_while_the_cars_get_in():
+    # Summit Point, Nov 2026: a standing start has no pace laps (get in car, 10 s of warm-up, green), and the cars
+    # arrive on the grid one by one during "get in car". The walk starts once most are there; a late one goes last.
+    n = 6
+    rows = [{"pos": i + 1, "classPos": i + 1, "idx": i, "derived": {"row": i // 2 + 1}} for i in range(n)]
+    cars = [{"idx": i, "num": str(100 + i), "classId": 1, "pct": 0.0, "lap": 0, "pos": i + 1,
+             "surface": "not_in_world"} for i in range(n)]
+    sess = {"grid": {"rows": rows}, "options": {"StandingStart": "1"},
+            "cameras": [{"num": 1, "name": "Chase"}, {"num": 2, "name": "Rear Chase"}]}
+    t = [0.0]
+    cuts = []
+    d = Director(lambda num, g: cuts.append(int(num) - 100) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
+    d.set_live(True)
+    d.grid_hold_s = 2.0
+    msg = {"cars": cars, "derived": {"isRace": True}}
+    state = {"session": {"state": "get_in_car", "num": 2}}
+    for k in range(2):
+        cars[k]["surface"] = "in_pit_stall"                 # a third of the grid: not yet
+    for k in range(20):
+        t[0] = k * 0.1
+        d.tick(sess, msg, state, [])
+    assert d.owner != "grid" and not cuts
+    for k in (2, 3, 4):
+        cars[k]["surface"] = "in_pit_stall"                 # five of six: walk; car 5 still in the garage
+    seen = []
+    for k in range(400):
+        t[0] = 2.0 + k * 0.1
+        if k == 30:
+            cars[5]["surface"] = "not_in_world"             # still not there on its second turn: left out
+        d.tick(sess, msg, state, [])
+        if d.owner != "grid" and cuts:
+            break
+    assert d.note.startswith("standing start") or cuts
+    assert cuts[:5] == [0, 1, 2, 3, 4] and 5 not in cuts, cuts
+    # the same with car 5 arriving while the others are walked: it is shown last
+    cuts.clear()
+    for c in cars:
+        c["surface"] = "in_pit_stall"
+    cars[5]["surface"] = "not_in_world"
+    d = Director(lambda num, g: cuts.append(int(num) - 100) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
+    d.set_live(True)
+    d.grid_hold_s = 2.0
+    for k in range(400):
+        t[0] = 100.0 + k * 0.1
+        if k == 20:
+            cars[5]["surface"] = "in_pit_stall"
+        d.tick(sess, msg, state, [])
+        if d.owner != "grid" and cuts:
+            break
+    assert cuts[:6] == [0, 1, 2, 3, 4, 5], cuts
+    # a rolling start keeps the pace-lap walk: nothing during "get in car"
+    cuts.clear()
+    d = Director(lambda num, g: cuts.append(int(num) - 100) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
+    d.set_live(True)
+    for k in range(50):
+        t[0] = 200.0 + k * 0.1
+        d.tick(dict(sess, options={"StandingStart": "0"}), msg, state, [])
+    assert d.owner != "grid"
+
+
+def test_replays_stay_in_their_session_and_show_a_moment_once():
+    d, sess, msg, t, log, kinds = _craft_rig()
+    by = {c["idx"]: c for c in msg["cars"]}
+    quali_spin = {"kind": "race_incident", "what": "spin", "idx": 2, "t": 470.0, "replayT": 470.0, "sessionNum": 1}
+    lead = {"kind": "class_lead", "idx": 3, "prevIdx": 1, "t": 471.0, "replayT": 466.0, "sessionNum": 2, "classId": 1}
+    pas = {"kind": "pass", "idx": 3, "passedIdx": [1], "t": 470.5, "replayT": 466.5, "sessionNum": 2, "classPos": 1}
+    d._keep_moments([quali_spin, lead, pas], _state(500.0))
+    key, e = d._replay_candidate(by, 500.0, snum=2)
+    assert e is lead, "this session's moment, never qualifying's spin on another clock"
+    d._replayed.add(key)
+    assert d._replay_candidate(by, 500.0, snum=2) is None, "the pass that made the lead change is the same moment"
+    assert d._replay_candidate(by, 500.0, snum=1)[1] is quali_spin
+
+
+def test_the_opening_lap_is_one_story_and_a_pass_in_a_fight_stays_with_the_fight():
+    fight = [{"id": "3:2", "cars": [2, 3], "gapsS": [0.4], "closingSPerLap": [0.0], "forClassPos": 3}]
+    d, sess, msg, t, log, kinds = _craft_rig(battles=fight)
+    for c in msg["cars"]:
+        c["lap"] = 1
+    pas = [{"kind": "pass", "idx": 3, "passedIdx": [2], "t": 499.0 + i, "replayT": 499.0, "sessionNum": 2,
+            "classPos": 3} for i in range(3)]
+    for k in range(300):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), pas)
+    by = {c["idx"]: c for c in msg["cars"]}
+    stories = d._stories(msg["cars"], by, msg, pas, 500.0, t[0])
+    keys = [s["key"] for s in stories]
+    assert "start" in keys and not any(k.startswith("pass:") for k in keys), keys
+    assert d.segment["key"] == "start" and not log["replay"], "lap one: the start on air, no replays"
+    assert {kinds[g] for _, g, _ in log["cuts"]} <= {"aerial", "trackside", "rear", "chase"}
+    msg["cars"][0]["lap"] = 2
+    assert "start" not in [s["key"] for s in d._stories(msg["cars"], by, msg, pas, 500.0, t[0])]
+
+
+def test_starting_grid_rows_and_camera_names_from_the_summit_point_race():
+    from pitwall.normalize import grid_per_row
+    assert grid_per_row("2x2 inline pole on left") == 2
+    assert grid_per_row("1x1") == 1 and grid_per_row("3x3 staggered") == 3 and grid_per_row(None) == 2
+    assert grid_per_row("9x9") == 2 and grid_per_row("single file") == 2
+    assert group_kind("Drone Cam") == "aerial" and group_kind("Scenic Drone Cam") == "never"
+    assert group_kind("Gearbox") == "detail" and group_kind("LF Susp") == "detail"

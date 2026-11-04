@@ -316,6 +316,22 @@ trucks, start, three cautions, green-flag stops), recorded while a replay played
 - A lap behind the pace car took ~137 s against ~52 s green: laps over 1.5x the
   car's best are kept out of pace.
 
+### Summit Point (MX-5, spectated, Nov 2026)
+
+`Summit-Point-Raceway-Race_2026-11-03_193904.jsonl.gz` (not in the repo; Lone Qualify then a 12-minute timed race,
+12 cars, PlayerCarIdx 63 throughout, IsReplayPlaying True for most of it while spectating live). Run through the
+director cut by cut (it found the faults below, now fixed):
+
+- **A standing start has no pace laps.** WeekendOptions StandingStart 1, StartingGrid "2x2 inline pole on left".
+  SessionState goes get_in_car (~84 s) -> warmup (10 s) -> racing: no parade_laps at all, so the pace-lap grid walk
+  never ran. The cars appear on the grid (surface in_pit_stall) one by one during get_in_car. The director now walks
+  the grid then, once 60% of it is there, late cars last (9 of 12 walked before the green in this race).
+- **Moments carry their session.** A qualifying spin (session 1) was replayed in the race: the replay clock is per
+  session. Replays now come only from the session on air.
+- **A pass and the lead change it makes are one moment** (two feed events, same cars, seconds apart): replayed once.
+- Camera pack groups seen: "Turn 1", "Drone Cam", "Scenic Drone Cam", "SF Line", plus iRacing's own including
+  Gearbox and the four Susp cams (a wheel close-up; now "detail", never a battle's shot).
+
 ## Findings that are not about a single variable
 
 - **`PitSvFlags` is the request for your NEXT stop, not a record of the last one.**
