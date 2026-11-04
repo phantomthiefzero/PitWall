@@ -2286,3 +2286,58 @@ def test_a_caution_is_read_from_the_field_when_no_racing_flag_comes():
     for k in range(200):
         out = d.caution(cars, ["green"], True, 2000.0, k * 0.5, state="racing")
     assert not out["inferred"], "a real flag is believed"
+
+
+def test_race_tv_extras_from_our_own_measures():
+    # Pit stops (live, with where the car should come out, and just finished), who is closing in, recent race pace
+    # against the class leader, the lap chart and a battle's history: none of it is in iRacing's data.
+    src = FakeSource(realtime=False, spectator=True, incidents=False)
+    src.connect()
+    d, sess = Deriver(), build_session(src)
+    live, done, paced, chart = None, None, False, None
+    for k in range(60 * 760):
+        src.tick()
+        if k % 8:
+            continue
+        build_state(src, d, sess)
+        cm = build_cars(src, sess, d)
+        dv = cm["derived"]
+        for p in dv["pitStops"]:
+            if not p["done"] and p.get("rejoin") and live is None:
+                live = p
+            if p["done"] and done is None and live and p["idx"] == live["idx"]:
+                done = p
+        for c in dv["closing"]:
+            assert 0.1 <= c["closingSPerLap"] <= 3.0 and 1.0 <= c["gapS"] <= 8.0
+        paced = paced or any(c["derived"].get("recentPaceVsLeaderS") is not None for c in cm["cars"])
+        chart = dv["lapChart"]
+        if done and paced:
+            break
+    assert live and live["fromClassPos"] and live["rejoin"]["classPos"] >= 1 and live["laneS"] >= 0
+    assert done and done["stationaryS"] > 0 and done["fromClassPos"] == live["fromClassPos"] and done["classPos"]
+    assert paced
+    leaders = [c for c in cm["cars"] if c.get("classPos") == 1 and c["derived"].get("recentPaceS")]
+    assert all(c["derived"]["recentPaceVsLeaderS"] == 0 for c in leaders)
+    some = next(iter(chart.values()))
+    assert some[0][0] >= 1 and all(len(x) == 3 for x in some)
+    # a battle's swaps survive the battle's id changing
+    d2 = Deriver()
+    g = [{"cars": [1, 2], "id": "1:1"}]
+    d2.battle_history(g, 10.0)
+    g = [{"cars": [2, 1], "id": "1:2"}]
+    d2.battle_history(g, 40.0)
+    g = [{"cars": [1, 2], "id": "1:1"}]
+    d2.battle_history(g, 70.0)
+    assert g[0]["swaps"] == 2 and g[0]["sinceS"] == 60.0
+
+
+def test_race_tv_graphics_show_only_normalize_numbers():
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    for fn in ("renderPitStop", "renderClosing", "renderPace", "renderStrategy", "renderLapChart"):
+        assert "function %s() {" % fn in page and "%s();" % fn in page, fn
+    body = page.split("// ---------------------------------------------------------------- race TV extras")[1].split("// ---------------------------------------------------------------- flag calls")[0]
+    for field in ("pitStops", "closing", "recentPaceS", "recentPaceVsLeaderS", "stopDue", "lapChart"):
+        assert field in body, field
+    assert "b.swaps" in page and "b.sinceS" in page
+    board = page.split("function renderBoard() {")[1].split("\n  }\n")[0]
+    assert '"Stops", "Led"' in board, "the full result at the finish"
