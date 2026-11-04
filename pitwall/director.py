@@ -46,8 +46,10 @@ import time
 GROUP_KIND = {
     "chase": "chase", "far chase": "chase", "rear chase": "rear",
     "chopper": "aerial", "blimp": "aerial", "gyro": "gyro",
-    "cockpit": "onboard", "roll bar": "onboard", "nose": "onboard", "gearbox": "onboard",
-    "lf susp": "onboard", "rf susp": "onboard", "lr susp": "onboard", "rr susp": "onboard",
+    "cockpit": "onboard", "roll bar": "onboard", "nose": "onboard",
+    # close-ups on a wheel or the gearbox: a moment's detail, not a shot to sit on (Summit Point, Nov 2026: the
+    # director spent battles on LR Susp and Gearbox)
+    "gearbox": "detail", "lf susp": "detail", "rf susp": "detail", "lr susp": "detail", "rr susp": "detail",
     "pit lane": "pit", "pit lane 2": "pit", "scenic": "never",
 }
 
@@ -83,7 +85,7 @@ GRID_JUST_AHEAD = 0.15       # a line closer than this (in laps) at the start is
 # style its own order; a story can bring its own: traffic is best from behind the leader, a fresh fastest lap from
 # close). Kinds the track has no camera for are skipped.
 SEQUENCES = {
-    "cinematic": ["trackside", "chase", "gyro", "rear", "aerial", "onboard"],
+    "cinematic": ["trackside", "chase", "gyro", "rear", "aerial", "onboard", "trackside", "detail"],
     "tv": ["trackside", "trackside", "chase", "aerial", "trackside", "rear"],
     "onboard": ["chase", "onboard", "rear", "onboard", "trackside", "onboard"],
 }
@@ -92,6 +94,8 @@ STORY_SEQ = {
     "fastlap": ["chase", "rear", "trackside"],
     "finish": ["trackside", "chase", "aerial", "trackside"],
     "charge": ["chase", "rear", "trackside", "onboard"],
+    # the first lap: the front of the field from above and from the side, the pack behind the leader, the pack ahead
+    "start": ["aerial", "trackside", "rear", "aerial", "chase", "trackside"],
 }
 MOVE_GAP_S = 0.3            # a battle this close and closing: the move may come, so inside the chasing car
 HOLD_CLOSE_S = 0.25         # side by side: the shot is held (2 s at a time, HOLD_MAX_S at most) instead of cut away
@@ -101,7 +105,9 @@ HOLD_MAX_S = 8.0
 # stinger in and out (the overlay runs it from the director's status; the camera moves at its cut point).
 REPLAY_AFTER_S = 8.0        # a moment this fresh is still live news, not a replay
 REPLAY_WINDOW_S = 150.0     # and one older than this is too old
-REPLAY_GAP_S = 75.0         # at least this between two replays
+REPLAY_GAP_S = 120.0        # at least this between two replays (a 12-minute sprint at Summit Point got seven at 75)
+REPLAY_MIN = 50.0           # a moment worth less than this (after its age) is not replayed
+REPLAY_SAME_S = 15.0        # a pass and the lead change it made are one moment: never both
 REPLAY_CALM = 62.0          # only when nothing live scores above this
 REPLAY_PREROLL_S = 3.0
 
@@ -118,6 +124,11 @@ def group_kind(name: str | None) -> str:
     n = (name or "").strip().lower()
     if n in GROUP_KIND:
         return GROUP_KIND[n]
+    # camera packs name their own: "Scenic Drone Cam" is scenery, "Drone Cam" flies above
+    if "scenic" in n:
+        return "never"
+    if any(w in n for w in ("drone", "heli", "blimp", "chopper", "aerial", "sky")):
+        return "aerial"
     return "trackside"
 
 
@@ -249,6 +260,7 @@ class Director:
         self.grid_total = len(self.grid)
         self._grid_order = list(self.grid)
         self.grid_short = False
+        self._grid_deferred = set()
         self.grid_manual = self.grid_paused = bool(manual)
         self._grid_row = None
         self._grid_force = True                       # the first car at once, held or not
@@ -404,6 +416,9 @@ class Director:
         if not self.live or not session or not cars_msg:
             return                                   # broadcast off: nothing runs, not even the grid walk
         race_state = ((state or {}).get("session") or {}).get("state")
+        snum = ((state or {}).get("session") or {}).get("num")
+        if snum != getattr(self, "_snum", None):
+            self._snum, self._moments, self._replayed = snum, {}, set()
         self._watch_session(session, cars_msg, state, race_state)
         self._sample_pace(session, cars_msg, race_state, self.clock())
         self._keep_moments(recent_incidents, state)
@@ -423,7 +438,7 @@ class Director:
         self._grid_force = False
         groups = self._groups(session)
         if self.mode == "grid":
-            self._grid_step(groups, now, session)
+            self._grid_step(groups, now, session, cars_msg)
             return
         cars = [c for c in cars_msg.get("cars") or [] if c.get("num") is not None and c.get("surface") != "not_in_world"]
         if not cars:
@@ -451,6 +466,21 @@ class Director:
                 self._grid_walked.add(snum)
                 self.start_grid_walk(order, on_car=self.on_grid_car)
                 self.note = "pace laps: walking the grid"
+            return
+        # A standing start has no pace laps (Summit Point, Nov 2026: get in car, ten seconds of warm-up, green): the
+        # field forms up on the grid during "get in car", so the walk goes then, once most of the grid is there.
+        # Cars still to arrive are left to the end of the walk (_grid_step).
+        standing = str(((session or {}).get("options") or {}).get("StandingStart") or "0") not in ("0", "False", "false", "")
+        if (self.auto_grid and is_race and standing and race_state in ("get_in_car", "warmup")
+                and snum not in self._grid_walked and self.owner not in ("battle", "grid")):
+            rows = (session.get("grid") or {}).get("rows") or []
+            by = {c["idx"]: c for c in cars_msg.get("cars") or []}
+            order = [by[r["idx"]] for r in rows if r.get("idx") in by]
+            there = [c for c in order if c.get("surface") != "not_in_world"]
+            if order and len(there) >= max(2, int(0.6 * len(order))):
+                self._grid_walked.add(snum)
+                self.start_grid_walk(order, on_car=self.on_grid_car)
+                self.note = "standing start: walking the grid"
 
     def _race_step(self, groups, cars, by, cars_msg, state, race_state, recent_incidents, edge, now):
         weights = STYLES.get(self.style, STYLES["cinematic"])
@@ -478,7 +508,7 @@ class Director:
         if self._hold_close(cars_msg, now):
             return
         # 2. the start: wide
-        if race_state in ("parade_laps", "warmup") or (leader and (leader.get("lap") or 0) <= 1 and self._shots < 3):
+        if race_state in ("parade_laps", "warmup"):
             if leader:
                 g = self._pick_group(groups, {"aerial": 4, "trackside": 2, "rear": 1})
                 if g and self._do_cut(leader, g, "the start"):
@@ -506,6 +536,16 @@ class Director:
         """Every story worth a camera now, with its interest score (before fatigue)."""
         out = []
         multi = len({c.get("classId") for c in cars if c.get("classPos")}) > 1
+        # the first lap: the front of the field is the story (lap one's passes are part of it, not a new story each)
+        if self._opening(cars, cars_msg):
+            top = sorted((c for c in cars if c.get("pos")), key=lambda c: c["pos"])[:3]
+            if top:
+                out.append({"key": "start", "score": 88, "cars": [c["idx"] for c in top], "seq": "start",
+                            "why": "the start", "max": 150.0})
+        # a pass between two cars still racing each other is that battle's story, not a new one (Summit Point:
+        # a story every 8 s on lap one, one per pass)
+        fights = [set(b.get("cars") or []) for b in (cars_msg.get("derived") or {}).get("battles") or []]
+        self._pass_in = {}
         # lead changes and passes for position, just now
         for e in moments:
             if t_live is not None and e.get("t") is not None and t_live - e["t"] > FRESH_MOMENT_S:
@@ -515,6 +555,10 @@ class Director:
                             "cars": [e["idx"]] + ([e["prevIdx"]] if e.get("prevIdx") in by else [])})
             elif e.get("kind") == "pass" and e.get("idx") in by:
                 cp = e.get("classPos") or 99
+                fight = next((f for f in fights if e["idx"] in f and set(e.get("passedIdx") or []) & f), None)
+                if fight is not None:
+                    self._pass_in[frozenset(fight)] = max(self._pass_in.get(frozenset(fight), 0), 25 if cp <= 3 else 15)
+                    continue
                 out.append({"key": "pass:%s:%s" % (e["idx"], cp), "score": 50 + (25 if cp <= 3 else 10 if cp <= 6 else 0),
                             "why": "a pass for %sP%s" % ("class " if multi else "", cp),
                             "cars": [x for x in (e.get("passedIdx") or [])[:1] if x in by] + [e["idx"]]})
@@ -527,7 +571,8 @@ class Director:
             closing = max([x for x in b.get("closingSPerLap") or [] if x is not None] or [0.0])
             fp = b.get("forClassPos") or 99
             score = 35 + (30 if gap < 0.3 else 18 if gap < 0.6 else 6) + (12 if closing > 0.1 else 0) \
-                + (30 if fp == 1 else 18 if fp <= 3 else 8 if fp <= 6 else 0) + 5 * (len(cs) - 2)
+                + (30 if fp == 1 else 18 if fp <= 3 else 8 if fp <= 6 else 0) + 5 * (len(cs) - 2) \
+                + self._pass_in.get(frozenset(b.get("cars") or []), 0)        # places just changed in it
             out.append({"key": "battle:%s" % b.get("id"), "score": score, "cars": cs,
                         "why": "battle for %sP%s" % ("class " if multi else "", fp)})
         # practice and qualifying: a push lap, more the better the place it is on for and the nearer the line;
@@ -633,6 +678,9 @@ class Director:
             return
         if best.get("pit") and groups.get("pit"):
             car, g = cs[0], self._pick_group(groups, {"pit": 1})
+        elif seg.get("seq") == "start":
+            g = self._sequence_shot(groups, seg, weights)
+            car = cs[-1] if g and g.get("kind") == "chase" else cs[0]
         elif len(cs) >= 2 and self._move_coming(cars_msg, seg, now) and groups.get("onboard"):
             # close and closing: inside the chasing car, where the move would come from (once in a while)
             car, g = cs[-1], self._pick_group(groups, {"onboard": 1})
@@ -666,6 +714,13 @@ class Director:
                 seg["shot"] = (seg["shot"] + k + 1) % len(seq)
                 return self._pick_group(groups, {kind: 1})
         return self._pick_group(groups, weights)
+
+    def _opening(self, cars, cars_msg) -> bool:
+        """The race's first lap: the leader has not yet started its second."""
+        if not (cars_msg.get("derived") or {}).get("isRace"):
+            return False
+        lead = min((c for c in cars if c.get("pos")), key=lambda c: c["pos"], default=None)
+        return lead is not None and lead.get("lap") is not None and lead["lap"] <= 1
 
     def _battle_of(self, cars_msg, cars) -> dict | None:
         want = set(cars or [])
@@ -702,17 +757,24 @@ class Director:
         for e in recent or []:
             if e.get("kind") not in ("pass", "class_lead", "race_incident"):
                 continue                              # what a replay can show (and a pass is what a charge is made of)
-            key = "%s:%s:%s" % (e.get("kind"), e.get("idx"), e.get("replayT") if e.get("replayT") is not None else e.get("t"))
+            key = "%s:%s:%s:%s" % (e.get("sessionNum"), e.get("kind"), e.get("idx"), e.get("replayT") if e.get("replayT") is not None else e.get("t"))
             self._moments.setdefault(key, e)
         t_live = (((state or {}).get("derived") or {}).get("liveEdge") or {}).get("tLive")
         if t_live is not None and len(self._moments) > 40:
             self._moments = {k: e for k, e in self._moments.items() if e.get("t") is None or t_live - e["t"] < REPLAY_WINDOW_S * 2}
 
-    def _replay_candidate(self, by, t_live):
-        best, best_s = None, 0.0
+    def _replay_candidate(self, by, t_live, snum=None):
+        best, best_s = None, REPLAY_MIN
+        done = [self._moments[k] for k in self._replayed if k in self._moments]
         for key, e in self._moments.items():
             if key in self._replayed or e.get("replayT") is None or e.get("sessionNum") is None or e.get("idx") not in by:
                 continue
+            if snum is not None and e.get("sessionNum") != snum:
+                continue                              # a moment from qualifying is not this race's (and its clock is another)
+            cars = {e.get("idx")} | set(e.get("passedIdx") or []) | ({e.get("prevIdx")} if e.get("prevIdx") is not None else set())
+            if any(abs(e["replayT"] - x["replayT"]) < REPLAY_SAME_S and cars & ({x.get("idx")} | set(x.get("passedIdx") or [])
+                   | ({x.get("prevIdx")} if x.get("prevIdx") is not None else set())) for x in done if x.get("sessionNum") == e.get("sessionNum")):
+                continue                              # the same moment, already shown
             if t_live is None or e.get("t") is None or not (REPLAY_AFTER_S <= t_live - e["t"] <= REPLAY_WINDOW_S):
                 continue
             k, what = e.get("kind"), e.get("what")
@@ -738,6 +800,8 @@ class Director:
         race = (cars_msg.get("derived") or {}).get("race") or {}
         if race_state != "racing" or (race.get("lapsToGo") is not None and race["lapsToGo"] <= 2):
             return False
+        if self._opening(cars, cars_msg):
+            return False                              # the start is live television: no looking back yet
         if self.segment and now - self.segment["start"] < SEGMENT_MIN_S:
             return False                              # let the story on air have its time first
         if not caution:
@@ -745,7 +809,7 @@ class Director:
                         for st in self._stories(cars, by, cars_msg, moments, t_live, now)), default=0.0)
             if live >= REPLAY_CALM:
                 return False
-        pick = self._replay_candidate(by, t_live)
+        pick = self._replay_candidate(by, t_live, getattr(self, "_snum", None))
         if not pick:
             return False
         key, e = pick
@@ -914,12 +978,22 @@ class Director:
             self.grid = [c for c in self.grid if id(c) in kept]
         return per_car_min
 
-    def _grid_step(self, groups, now, session=None):
+    def _grid_step(self, groups, now, session=None, cars_msg=None):
         if not self.grid:
             self.current = None
             self._end_temporary("grid walk done")
             return
         car = self.grid.pop(0)
+        # not on the grid yet (still in the garage at a standing start): to the end of the walk, once; then left out
+        live = {c.get("idx"): c for c in (cars_msg or {}).get("cars") or []}
+        if live and (car.get("idx") not in live or live[car.get("idx")].get("surface") == "not_in_world"):
+            deferred = getattr(self, "_grid_deferred", set())
+            if car.get("idx") not in deferred and self.grid:
+                deferred.add(car.get("idx"))
+                self._grid_deferred = deferred
+                self.grid.append(car)
+            self._next_at = now
+            return
         rows_of = self._grid_rows(session)
         row_start = not self.grid_by_row or getattr(self, "_grid_row", None) != rows_of.get(car.get("idx"))
         self._grid_row = rows_of.get(car.get("idx"))

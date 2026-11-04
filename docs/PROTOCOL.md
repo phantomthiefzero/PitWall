@@ -205,8 +205,9 @@ completed laps (SessionLapsRemainEx is the player's own and empty for a spectato
 SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the leader's pace.
 
 ### Broadcast messages
-- `session.grid` `{source, sessionNum, rows: [{pos, classPos, idx, timeS, lap, derived: {row, pole, classPole, poleGapS, classPoleGapS}}]}` from a race's
-  QualifyPositions or QualifyResultsInfo; iRacing's 0-based positions shown from 1.
+- `session.grid` `{source, sessionNum, perRow, rows: [{pos, classPos, idx, timeS, lap, derived: {row, pole, classPole, poleGapS, classPoleGapS}}]}` from a race's
+  QualifyPositions or QualifyResultsInfo; iRacing's 0-based positions shown from 1. `perRow` is the first number of
+  WeekendOptions/StartingGrid ("2x2 inline pole on left" -> 2; 2 when unreadable), and `row` counts by it.
 - `director` (bridge): `{owner: you|race|grid|battle, on, mode, resume, style, holdS, autoGrid,
   gridHoldS, gridLeft, gridTotal, gridByRow, gridShort, gridPaused, gridManual, gridAt, replays, stinger: {seq, dir: toReplay|toLive}|null, replay: {label, car, phase}|null, battle: [idx]|null, note, current: {car, num, group, groupName,
   reason, gridPos?}, styles}`. One owner moves the camera at a time. Any `camera` command (a cut by
