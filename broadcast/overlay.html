@@ -1016,13 +1016,28 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // comes up for a few seconds when the camera finds a new car (and now and then on a long shot), the battle box
   // while the camera is on a battle, the onboard graphic on an onboard camera, the speed trap now and then outside
   // a race. Timed from when this page saw the change, never by another machine's clock.
-  const CTX = { cam: null, camAt: 0, group: null, groupAt: 0 };
+  const CTX = { cam: null, camAt: 0, group: null, groupAt: 0, flag: null, flagAt: 0, pit: {}, pitOut: {}, bat: null, batAt: 0 };
   const CARD_SHOW_MS = [1500, 9500], CARD_AGAIN_MS = 45000, CARD_AGAIN_FOR = 7000;
   function ctxTick() {
     const cam = camIdx(), g = S.state && S.state.camera ? S.state.camera.group : null, now = performance.now();
     if (cam !== CTX.cam) { CTX.cam = cam; CTX.camAt = now; }
     if (g !== CTX.group) { CTX.group = g; CTX.groupAt = now; }
+    const f = racingFlag();
+    if (f !== CTX.flag) { CTX.flag = f; CTX.flagAt = now; }
+    // a car leaving pit road (its tyres: the tyres graphic while the camera is on it)
+    for (const c of allCars()) {
+      if (CTX.pit[c.idx] && !c.onPitRoad) CTX.pitOut[c.idx] = now;
+      CTX.pit[c.idx] = !!c.onPitRoad;
+    }
+    const b = camBattle(), bk = b ? b.cars.join("|") : null;
+    if (bk !== CTX.bat) { CTX.bat = bk; CTX.batAt = now; }
   }
+  // Now and then: on for `on` ms out of every `every` ms, from `at` ms into it (staggered so two graphics on a
+  // rhythm do not come up together). This machine's clock, so every OBS source on it agrees.
+  const every = (everyMs, onMs, atMs) => (Date.now() - (atMs || 0) + everyMs) % everyMs < onMs;
+  const sessState = () => (S.state && S.state.session && S.state.session.state) || null;
+  const pastLapOne = () => { const r = S.cars && S.cars.derived && S.cars.derived.race; return !!r && (r.leaderLapsDone ?? 0) >= 1; };
+  const H2H = { pair: null, from: 0, rest: {} };
   const camBattle = () => { const cam = camIdx(); return ((S.cars && S.cars.derived && S.cars.derived.battles) || []).find(b => b.cars.includes(cam)) || null; };
   const ONBOARD = new Set(["cockpit", "roll bar", "nose", "gearbox", "lf susp", "rf susp", "lr susp", "rr susp"]);
   function camKind() {
@@ -1043,10 +1058,37 @@ body.bc-off>*:not(script){visibility:hidden!important}
   }
   // In auto these follow the camera instead of their switch, unless the producer picked something by hand.
   const CONTEXTUAL = { card: () => G("card.follow", "camera") === "camera", battle: () => G("battle.mode", "auto") !== "pick", onboard: () => true };
+  // The rest of the graphics in auto (each only where it tells the viewer something):
+  //   head to head    a battle for the top five the camera has stayed on 12 s: 12 s, a pair every 3 minutes
+  //   track map       under a caution; otherwise 20 s every 2 minutes once the race is past its first lap
+  //   crawl           under a caution; otherwise 30 s every 4 minutes once past the first lap
+  //   standings       the finish (35 s), then the podium; 12 s every 5 minutes off a battle; in practice and
+  //                   qualifying 15 s every 4 minutes
+  //   tyres           the camera car just out of the pits (25 s), in a race or practice and qualifying
+  //   league          before the start of a race (20 s every 2 minutes)
+  //   sponsors        12 s every 5 minutes, off a battle (only with logos added)
+  //   picture in picture stays the producer's: it needs their video link.
   function autoWants(name) {
     if (!G("auto.on", false)) return false;
+    const now = performance.now(), race = isRace(), f = racingFlag(), caution = f === "caution" || f === "red";
+    const done = race && f === "checkered", since = now - CTX.flagAt, racing = race && sessState() === "racing";
     if (name === "trap") return ctxWants("trap");
-    if (name === "board") return isRace() && racingFlag() === "checkered";
+    if (name === "board") return done ? since < 35000 : race ? racing && pastLapOne() && !camBattle() && every(300000, 12000, 150000)
+      : !qlapCar() && every(240000, 15000, 60000);
+    if (name === "podium") return done && since >= 35000;
+    if (name === "map") return racing && pastLapOne() && (caution || every(120000, 20000, 60000));
+    if (name === "strip") return racing && pastLapOne() && (caution || every(240000, 30000, 0));
+    if (name === "tyres") { const c = carByIdx(camIdx()); return !!c && (racing || !race) && now - (CTX.pitOut[c.idx] || -1e9) < 25000; }
+    if (name === "league") return race && !racing && !done && !gridWalkCar() && !gridBoardOn() && every(120000, 20000, 30000);
+    if (name === "sponsors") return !camBattle() && every(300000, 12000, 210000);
+    if (name === "h2h") {
+      const b = camBattle();
+      if (!racing || !b || (b.forClassPos || 99) > 5 || $("faster").classList.contains("on")) { if (!b) H2H.pair = null; return false; }
+      const key = b.cars.join("|");
+      if (H2H.pair === key) { if (now - H2H.from < 12000) return true; H2H.rest[key] = now; H2H.pair = null; return false; }
+      if (now - CTX.batAt < 12000 || now - (H2H.rest[key] || -1e9) < 180000) return false;
+      H2H.pair = key; H2H.from = now; return true;
+    }
     if (name === "traffic") return isRace() && trafficList(20).length > 0;
     if (name === "fastlap" || name === "penalty") return true;
     if (name === "qlap") return !isRace() && !!qlapCar();
@@ -1054,7 +1096,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const b = currentBattle(); if (!b) { AUTO.pair = null; return false; }
     const c2 = carByIdx(b.cars[b.cars.length - 1]), d = c2 && c2.derived || {};
     const gap = d.liveClassIntervalS != null ? d.liveClassIntervalS : b.gapsS[b.gapsS.length - 1];
-    const key = b.cars.slice(-2).join("|"), now = performance.now();
+    const key = b.cars.slice(-2).join("|");
     if (AUTO.pair === key) {
       if (now - AUTO.from < 20000) return true;
       AUTO.rest[key] = now; AUTO.pair = null; return false;
