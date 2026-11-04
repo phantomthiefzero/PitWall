@@ -252,6 +252,9 @@ Broadcast (broadcast/)
   start is the one the field rolls over, so a lap more): shorter holds down to GRID_ROW_MIN_S a row, then only the
   front GRID_FRONT_ROWS rows and each class's pole row (grid_short). iRacing gives no count of pace laps, so ending
   early (back to the director) is the safe side. tests: test_the_grid_walk_goes_by_rows_and_fits_the_pace_laps.
+  A standing start has no pace laps (Summit Point: get in car, 10 s warm-up, green): the walk runs during get_in_car
+  once 60% of the grid is on it; a car still not in the world goes to the end once, then is left out. Rows count by
+  StartingGrid (normalize.grid_per_row, grid.perRow). tests: test_a_standing_start_walks_the_grid_while_the_cars_get_in.
   By hand (Director.grid_next / grid_prev / grid_pause / grid_jump; bridge actions of the same names, only while a
   walk has the camera): the producer's Previous / Hold / Next under the camera owner, ← → and the space bar, and a
   click on a driver on the grid moves the walk to them instead of ending it. "Walk by hand" (grid_walk manual) starts
@@ -307,7 +310,11 @@ Broadcast (broadcast/)
   under a caution, the best recent moment (contact, spin, a top-3 pass, a lead change; 8-150 s old, one per REPLAY_GAP_S)
   through the bridge's _replay (CommandGate, its own thread); the stinger in and out is the overlay's, fired from the
   director's status (stinger {seq, dir}) with the camera moving at stinger_cut_s (the producer keeps it in step with
-  the look); back to live early for a fresh contact, spin or lead change. Never in the last two laps.
+  the look); back to live early for a fresh contact, spin or lead change. Never in the last two laps, never on the
+  opening lap (the start is its own story, "start": the front of the field, wide shots, up to 150 s), only from the
+  session on air (moments keyed by sessionNum), one moment once (a pass and the lead change it made are one).
+  A pass between two cars still in a battle adds to that battle's score instead of making its own story.
+  Camera packs: names with "scenic" are never used, drone/heli/sky are aerial; Gearbox and Susp cams are "detail".
 - Auto ("Pick graphics for me") is contextual (overlay ctxWants / CONTEXTUAL): the driver card comes up for a few
   seconds when the camera finds a new car and now and then on a long shot (never over a battle box or a qualifying
   lap, which name the cars), the battle box shows the battle the camera is on, the onboard graphic follows onboard

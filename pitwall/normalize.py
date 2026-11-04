@@ -194,7 +194,7 @@ def build_session(src: TelemetrySource) -> dict:
         # Race rules the booth needs: the incident limit (a number, or
         # "unlimited") and the fast-repair allowance.
         "options": {k: (wk.get("WeekendOptions") or {}).get(k)
-                    for k in ("IncidentLimit", "FastRepairsLimit", "StandingStart", "NumStarters",
+                    for k in ("IncidentLimit", "FastRepairsLimit", "StandingStart", "NumStarters", "StartingGrid",
                               # the weather settings and the sim's calendar and clock (the sun's path)
                               "WeatherType", "Skies", "WindDirection", "WindSpeed", "WeatherTemp",
                               "RelativeHumidity", "FogLevel", "TimeOfDay", "Date",
@@ -204,11 +204,21 @@ def build_session(src: TelemetrySource) -> dict:
         "sectors": sp.get("Sectors", []) or [],
         "cameras": _camera_groups(src.session_info("CameraInfo")),
         "grid": _grid(src.session_info("QualifyResultsInfo"), si.get("Sessions") or [],
-                      {d.get("CarIdx"): d.get("CarClassID") for d in drivers}),
+                      {d.get("CarIdx"): d.get("CarClassID") for d in drivers},
+                      grid_per_row((wk.get("WeekendOptions") or {}).get("StartingGrid"))),
     }
 
 
-def _qual_rows(rows, class_of=None) -> list[dict]:
+def grid_per_row(starting_grid) -> int:
+    """Cars a row from WeekendOptions/StartingGrid ("2x2 inline pole on left", "1x1 single file", "3x3 ..."):
+    its first number. Two when it says nothing readable, as most grids are."""
+    import re
+    m = re.match(r"\s*(\d)\s*x", str(starting_grid or ""))
+    n = int(m.group(1)) if m else 2
+    return n if 1 <= n <= 4 else 2
+
+
+def _qual_rows(rows, class_of=None, per_row=2) -> list[dict]:
     """QualifyResultsInfo/Results (or a session's QualifyPositions) as a grid.
     iRacing numbers these positions from 0 (pole is Position 0); shown from 1.
     The offset is applied only when a 0 is actually present, so a list that is
@@ -227,11 +237,11 @@ def _qual_rows(rows, class_of=None) -> list[dict]:
                     "timeS": ft if isinstance(ft, (int, float)) and ft > 0 else None,
                     "lap": r.get("FastestLap")})
     out.sort(key=lambda x: x["pos"])
-    _grid_derived(out, class_of or {})
+    _grid_derived(out, class_of or {}, per_row)
     return out
 
 
-def _grid_derived(rows, class_of) -> None:
+def _grid_derived(rows, class_of, per_row=2) -> None:
     """For the grid walk (each row's "derived"): the row of the grid (two cars a row), the gap to pole and to the
     class's pole on the qualifying lap, and whether the car is on pole overall or in its class. The class pole is
     the class's first car (ClassPosition 1), not its quickest time: a grid set by a heat has positions without
@@ -246,7 +256,7 @@ def _grid_derived(rows, class_of) -> None:
         k = class_of.get(r["idx"])
         cp = class_pole.get(k)
         r["derived"] = {
-            "row": (r["pos"] + 1) // 2 if r["pos"] > 0 else None,
+            "row": (r["pos"] + per_row - 1) // per_row if r["pos"] > 0 else None,
             "pole": r["pos"] == 1,
             "classPole": r.get("classPos") == 1,
             "poleGapS": round(r["timeS"] - pole["timeS"], 3) if r["timeS"] and pole and pole["timeS"] and r is not pole else None,
@@ -254,15 +264,15 @@ def _grid_derived(rows, class_of) -> None:
         }
 
 
-def _grid(qri, sessions, class_of=None) -> dict:
+def _grid(qri, sessions, class_of=None, per_row=2) -> dict:
     """The starting order for the race. A heat or a race with its own
     QualifyPositions uses those; otherwise the event's qualifying results."""
     for s in sessions:
         if "race" in str(s.get("SessionType") or "").lower() and s.get("QualifyPositions"):
             return {"source": "race_qualify_positions", "sessionNum": s.get("SessionNum"),
-                    "rows": _qual_rows(s.get("QualifyPositions"), class_of)}
-    rows = _qual_rows((qri or {}).get("Results"), class_of)
-    return {"source": "qualify_results", "sessionNum": None, "rows": rows} if rows else {"source": None, "rows": []}
+                    "rows": _qual_rows(s.get("QualifyPositions"), class_of, per_row), "perRow": per_row}
+    rows = _qual_rows((qri or {}).get("Results"), class_of, per_row)
+    return {"source": "qualify_results", "sessionNum": None, "rows": rows, "perRow": per_row} if rows else {"source": None, "rows": [], "perRow": per_row}
 
 
 def _camera_groups(ci) -> list[dict]:
