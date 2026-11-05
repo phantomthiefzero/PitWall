@@ -1416,12 +1416,15 @@ LK.look = document.documentElement.dataset.look || "basic";
     const st = S.state; if (!st) return;
     const sess = S.session && S.session.sessions && S.session.sessions.find(x => x.SessionNum === st.session.num);
     $("sessionType").textContent = sess ? sess.SessionType : words(st.session.state);
-    const flags = st.session.flags || [];
+    // the race's flags as normalize reads them (raceFlags: no checkered before the leader finishes; white and
+    // checkered from the race itself, since a spectator's SessionFlags carry neither)
+    const flags = (st.derived && st.derived.raceFlags) || st.session.flags || [];
     const prio = ["red", "checkered", "white", "caution", "yellow", "blue", "green"];
     // A replay carries no flags at all: normalize.py then reads a caution from the field's speed.
     const cau = S.cars && S.cars.derived && S.cars.derived.caution;
-    const inferred = !flags.length && !!(cau && cau.active && cau.inferred);
-    const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || (inferred ? "caution" : "");
+    const hit = prio.find(x => flags.includes(x) || flags.includes(x + "_waving"));
+    const inferred = !hit && !!(cau && cau.active && cau.inferred);
+    const f = hit || (inferred ? "caution" : "");
     const el = $("flag"); el.dataset.flag = f; document.body.dataset.flag = f;
     if (LK.flag !== undefined && f !== LK.flag) lkFlag(f, LK.flag);
     LK.flag = f;
@@ -2705,7 +2708,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     const strip = h => String(h).replace(/<[^>]+>/g, "");
     let b = `<h1>${esc(track)}</h1><p class="m">${esc(sType)} · saved ${esc(new Date().toLocaleString())}` +
             (me ? ` · followed car ${esc("#" + (me.num ?? me.idx))} ${esc(me.name || "")}` : "") + `</p>`;
-    b += `<h2>Result</h2><p class="m">As this screen last saw it${st && (st.session.flags || []).includes("checkered") ? " (checkered flag out)" : ""}.</p>` +
+    b += `<h2>Result</h2><p class="m">As this screen last saw it${st && ((st.derived && st.derived.raceFlags) || st.session.flags || []).includes("checkered") ? " (checkered flag out)" : ""}.</p>` +
          `<table><tr><th>Pos</th>${multi ? "<th>Class</th><th>In class</th>" : ""}<th>Car</th><th>Driver</th><th>Laps</th><th>Best</th><th>Last</th><th>Stops seen</th></tr>` +
          cars.map(c => `<tr${me && c.idx === me.idx ? ' class="me"' : ""}><td>P${c.pos}</td>${multi ? `<td>${esc(c.className || "")}</td><td>P${esc(c.classPos)}</td>` : ""}` +
            `<td>#${esc(c.num ?? c.idx)}</td><td>${esc(c.name || "")}</td><td>${esc(c.lap ?? "")}</td><td>${fmt.lap(c.bestLapS)}</td><td>${fmt.lap(c.lastLapS)}</td>` +
@@ -2770,7 +2773,7 @@ LK.look = document.documentElement.dataset.look || "basic";
       best: me.bestLapS, led: multi ? d.classLapsLedSeen : d.lapsLedSeen, stops: d.stopsSeen, laps: me.lap,
       consistency: d.consistencyS, incidents: official, predicted: official == null ? pred : null,
       posByLap: laps.map(l => [l.lap, multi ? (l.classPos || l.pos) : l.pos]), paint: typeof dotMode !== "undefined" && dotMode === "paint" ? paintCss(me) : null,
-      checkered: !!(st && (st.session.flags || []).includes("checkered")) };
+      checkered: !!(st && ((st.derived && st.derived.raceFlags) || st.session.flags || []).includes("checkered")) };
   }
   function drawStory(cv, D) {
     const W = 1200, H = 675, g = cv.getContext("2d"); cv.width = W; cv.height = H;

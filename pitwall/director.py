@@ -894,7 +894,8 @@ class Director:
             return False
         caution = bool(((cars_msg.get("derived") or {}).get("caution") or {}).get("active"))
         race = (cars_msg.get("derived") or {}).get("race") or {}
-        if race_state != "racing" or (race.get("lapsToGo") is not None and race["lapsToGo"] <= 2):
+        left = race.get("lapsToGo") if race.get("lapsToGo") is not None else race.get("lapsByTime")
+        if race_state != "racing" or race.get("white") or (left is not None and left <= 2):   # a timed race too
             return False
         if self._opening(cars, cars_msg):
             return False                              # the start is live television: no looking back yet

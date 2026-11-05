@@ -2253,6 +2253,42 @@ def test_white_and_checkered_without_the_flag_bits():
     assert race_flags(["checkered"], "racing", 0.0, True).count("white") == 1, "iRacing's early checkered is still the white"
 
 
+def test_what_a_spectator_is_not_sent_is_filled_in_everywhere():
+    # Summit Point (spectating): no white or checkered bits, and after the start no racing flag at all. The race's
+    # own reading must reach race control, the race summary (the director's last lap), PitWall's header and the
+    # caution reading; a timed race's last laps count as last laps too.
+    from pitwall.normalize import race_length
+    d = Deriver()
+    d.state_events(100.0, {"flags": ["start_hidden"], "state": "racing", "raceFlags": ["start_hidden"]}, {}, {})
+    d.state_events(101.0, {"flags": ["start_hidden"], "state": "racing", "raceFlags": ["start_hidden", "white"]}, {}, {})
+    d.state_events(130.0, {"flags": ["start_hidden"], "state": "checkered", "raceFlags": ["start_hidden", "checkered"]}, {}, {})
+    assert [e["flag"] for e in d.feed_events if e["kind"] == "flag"] == ["white", "checkered"]
+    sess = {"sessions": [{"SessionNum": 2, "SessionLaps": "unlimited", "SessionTime": "720.0000 sec"}]}
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 8, "lap": 9}], 0.0, Deriver(), ["start_hidden"], state="racing")
+    assert r["white"] and not r["checkered"]
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 9, "lap": 10}], 125.0, Deriver(), ["start_hidden"], state="checkered")
+    assert r["checkered"] and not r["white"]
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 0, "lap": 0}], 0.0, Deriver(), ["start_hidden"], state="warmup")
+    assert not r["white"], "the clock at 0 before the start is not a last lap"
+    client = open(os.path.join(os.path.dirname(__file__), "..", "client", "index.html"), encoding="utf-8").read()
+    assert "st.derived && st.derived.raceFlags" in client.split("function renderHeader() {")[1][:1200]
+    src = open(os.path.join(os.path.dirname(__file__), "..", "pitwall", "director.py"), encoding="utf-8").read()
+    assert 'race.get("lapsByTime")' in src, "no replays in a timed race's last laps either"
+
+
+def test_a_caution_is_read_from_the_field_when_no_racing_flag_comes():
+    from pitwall.normalize import Deriver as D
+    d = D()
+    cars = [{"idx": i, "onPitRoad": False, "surface": "on_track", "bestLapS": 90.0, "derived": {"speedMs": 10.0}} for i in range(8)]
+    t = 0.0
+    for k in range(200):
+        t += 0.5
+        out = d.caution(cars, ["start_hidden"], True, 2000.0, t, state="racing")
+    assert out["active"] and out["inferred"], "a spectator's flags (start lights only): the field's speed says caution"
+    d = D()
+    for k in range(200):
+        out = d.caution(cars, ["green"], True, 2000.0, k * 0.5, state="racing")
+    assert not out["inferred"], "a real flag is believed"
 def test_a_close_battle_keeps_the_air_to_its_end():
     # Summit Point, Nov 2026: battles left at SEGMENT_MAX_S while within 0.1 s, the pass for the lead a second later;
     # a spin in the battle cut away to a lone trackside shot; cars swapping places made it "another" battle.
