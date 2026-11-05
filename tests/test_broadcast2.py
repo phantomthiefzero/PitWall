@@ -839,7 +839,7 @@ def test_car_renderer_renders_each_car_once_and_again_when_its_paint_changes():
         root = os.path.join(d, "paint")
         os.makedirs(os.path.join(root, "gr86"))
         r = CarRenderer(d, out.append, fetch=fetch, root=root)
-        r.RETRY_DOWN_S = 0.2
+        r.RETRY_DOWN_S, r.gap_s = 0.2, 0.0
         drivers = [{"CarPath": "gr86", "CarID": 5, "UserID": 1, "TeamID": 0, "CarNumber": "1"},
                    {"CarPath": "gr86", "CarID": 5, "UserID": 2, "TeamID": 0, "CarNumber": "2"},
                    {"CarPath": "safety", "CarID": 9, "UserID": 0, "CarIsPaceCar": 1}]
@@ -1147,6 +1147,7 @@ def test_helmets_are_rendered_once_and_a_refusal_is_not_retried():
             f.write(b"tga")
         assert find_helmet_paint(1, root).endswith("helmet_1.tga") and find_helmet_paint(2, root) is None
         r = CarRenderer(d, out.append, fetch=fetch, root=root)
+        r.gap_s, r.helmets = 0.0, True        # helmets are off until pk_helmet.png is seen working
         drivers = [{"CarPath": "gr86", "CarID": 5, "UserID": 1, "TeamID": 0, "CarNumber": "1", "HelmetDesignStr": "1,ffffff,ff0000,000000"}]
         r.request(drivers)
         deadline = _t.time() + 3
@@ -2249,3 +2250,60 @@ def test_a_close_battle_keeps_the_air_to_its_end():
         d.tick(sess, msg, _state(640.0 + k * 0.1), [])
     assert d.segment["key"] != "battle:0:1"
     assert BATTLE_HOT_MAX_S > SEGMENT_MAX_S
+def test_car_pictures_are_asked_for_gently_and_everything_asked_of_iracing_is_logged():
+    # Nov 2026: iRacing closing to the desktop now and then with the app running, no error, no crash report. The
+    # pictures go one at a time with a pause, none while you drive, none at all when switched off, no helmets; and
+    # what the app asked of the sim is in sim_log.txt, so the last lines before "sim gone" say what it was doing.
+    import time as _t
+    from pitwall import simlog
+    from pitwall.carrender import CarRenderer, HELMETS, RENDER_GAP_S
+    assert HELMETS is False and RENDER_GAP_S >= 1.0
+    calls, out = [], []
+
+    def fetch(url):
+        calls.append((_t.time(), url))
+        return 200, "image/png", b"\x89PNG c"
+    with tempfile.TemporaryDirectory() as d:
+        simlog.set_path(os.path.join(d, "sim_log.txt"))
+        try:
+            r = CarRenderer(d, out.append, fetch=fetch, root=os.path.join(d, "paint"))
+            r.gap_s = 0.3
+            r.paused = True
+            drivers = [{"CarPath": "gr86", "CarID": 5, "UserID": u, "TeamID": 0, "CarNumber": str(u), "HelmetDesignStr": "1,ffffff,ff0000,000000"}
+                       for u in (1, 2, 3)]
+            r.request(drivers)
+            _t.sleep(0.4)
+            assert not calls, "nothing while you are driving"
+            r.paused, r.enabled = False, False
+            r._wake.set(); _t.sleep(0.4)
+            assert not calls, "nothing when switched off"
+            r.enabled = True
+            r._wake.set()
+            deadline = _t.time() + 4
+            while len(out) < 3 and _t.time() < deadline:
+                _t.sleep(0.05)
+            assert len(out) == 3 and all(m["kind"] == "render" for m in out), "no helmets"
+            gaps = [b[0] - a[0] for a, b in zip(calls, calls[1:])]
+            assert gaps and min(gaps) >= 0.25, "one at a time, with a pause"
+            # a camera command reaching the sim is logged, and the sim going away
+            class IR:
+                def cam_switch_num(self, *a):
+                    pass
+            class Src:
+                def irsdk(self):
+                    return IR()
+            from pitwall.commands import CommandGate
+            res = CommandGate(camera=True).execute(Src(), {"cmd": "camera", "action": "car", "car": "7", "group": 3})
+            log = open(simlog.path(), encoding="utf-8").read()
+            assert log.count("car picture: gr86") == 3 and "helmet" not in log
+            if res["ok"]:                      # pyirsdk is importable here
+                assert "cam_switch_num ('7', 3, 0)" in log
+        finally:
+            simlog.set_path(None)
+
+
+def test_the_producer_can_switch_car_pictures_off():
+    prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    assert 'action: "renders"' in prod and 'data-renders="1"' in prod
+    src = open(os.path.join(os.path.dirname(__file__), "..", "pitwall", "bridge.py"), encoding="utf-8").read()
+    assert 'if action == "renders":' in src and '"renders")):' in src     # also with the broadcast off
