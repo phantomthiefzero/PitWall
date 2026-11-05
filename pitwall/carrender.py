@@ -32,6 +32,11 @@ RENDER_URL = "http://127.0.0.1:32034/pk_car.png"
 # the parameters follow pk_car.png's (hlmtPat/hlmtCol like carPat/carCol). If the server refuses it, the
 # broadcast draws the helmet itself in the driver's iRacing helmet colours.
 HELMET_URL = "http://127.0.0.1:32034/pk_helmet.png"
+# Ask the picture server gently (Nov 2026: iRacing closing to the desktop now and then with the app running; the
+# pictures were asked for back to back, every car and helmet at once, as you joined): one at a time, RENDER_GAP_S
+# apart, none while you are driving (the bridge pauses it), and no helmets until pk_helmet.png has been seen working.
+RENDER_GAP_S = 2.0
+HELMETS = False
 RENDER_VIEW = 1
 RENDER_SIZE = 2          # 0 small, 1 medium, 2 large
 
@@ -181,6 +186,10 @@ class CarRenderer:
         self.status = {"available": None, "rendered": 0, "error": None}
         self.on_color = on_color              # (key, "#rrggbb"): the paint's main colour, for map dots
         self.colors: dict[str, str] = {}
+        self.enabled = True                   # the producer's "Ask iRacing for car pictures" (Liveries)
+        self.paused = False                   # you are driving: the sim's frame time comes first
+        self.gap_s = RENDER_GAP_S
+        self.helmets = HELMETS
         threading.Thread(target=self._run, daemon=True, name="car-render").start()
 
     def path(self, key: str) -> str:
@@ -205,6 +214,8 @@ class CarRenderer:
                 with self._lock:
                     self._queue[key] = (d, paint, sig)
             # the driver's helmet (the driver's own, so by user, not team)
+            if not self.helmets:
+                continue
             hp = find_helmet_paint(d.get("UserID"), self.root)
             hsig = (d.get("HelmetDesignStr"), hp, os.path.getmtime(hp) if hp else None)
             if d.get("HelmetDesignStr") or hp:
@@ -227,7 +238,7 @@ class CarRenderer:
             self._wake.wait(5.0)
             self._wake.clear()
             while True:
-                if time.monotonic() < self._down_until:
+                if time.monotonic() < self._down_until or not self.enabled or self.paused:
                     break
                 with self._lock:
                     if not self._queue:
@@ -235,13 +246,16 @@ class CarRenderer:
                     key = next(iter(self._queue))
                     d, paint, sig = self._queue.pop(key)
                 self._render_one(key, d, paint, sig)
+                time.sleep(self.gap_s)
 
     def _render_one(self, key, d, paint, sig):
         import base64
         if key.endswith("|helmet"):
             self._render_helmet(key, d, paint, sig)
             return
+        from . import simlog
         for url in render_urls(d, paint):
+            simlog.note("car picture: %s #%s %s" % (d.get("CarPath"), d.get("CarNumber"), "own paint" if paint else "iRacing paint"))
             try:
                 status, ctype, body = self.fetch(url)
             except Exception as e:  # noqa: BLE001
@@ -281,6 +295,8 @@ class CarRenderer:
         only a server that is not answering at all is tried again later."""
         import base64
         car_key = key[:-len("|helmet")]
+        from . import simlog
+        simlog.note("helmet picture: user %s" % d.get("UserID"))
         try:
             status, ctype, body = self.fetch(helmet_url(d, paint))
         except Exception as e:  # noqa: BLE001
