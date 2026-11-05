@@ -612,7 +612,7 @@ header{padding:6px 12px}
       <h2>Overlay for OBS</h2>
       <p class="note" style="margin-top:0">Browser Source, 1920 × 1080. It uses the view token, not yours.</p>
       <code id="obsUrl">Ask whoever runs the relay for the view token.</code>
-      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors, pip, qlap, tyres, trap, strip, league, gwalk, gladder, gboard, flagcall) to give one graphic its own source.</p>
+      <p class="note">Add <b>&amp;only=tower</b> (or banner, battle, card, map, ticker, board, grid, replay, stinger, scene, podium, strap, sponsors, pip, qlap, tyres, trap, strip, league, gwalk, gladder, gboard, flagcall, pitstop, closing, pace, strategy, lapchart) to give one graphic its own source.</p>
     </section>
     </div>
   </div>
@@ -1279,7 +1279,9 @@ header{padding:6px 12px}
   // ------------------------------------------------------------- Show tab
   const LAYERS = [["tower", "Timing tower", true], ["banner", "Session banner", true], ["card", "Driver card", true],
     ["battle", "Battle box", false], ["map", "Track map", false], ["faster", "Where they're faster (the battle's two cars)", false],
-    ["traffic", "Traffic warning (class leaders reaching a slower class)", false], ["fastlap", "Fastest-lap alerts (per class)", false], ["flagcall", "Flag calls: green, white and checkered (the winner)", true], ["penalty", "Race control: penalties and warnings", false],
+    ["traffic", "Traffic warning (class leaders reaching a slower class)", false], ["fastlap", "Fastest-lap alerts (per class)", false], ["pitstop", "Pit stop: the stop's time and where the car comes out", false],
+    ["closing", "Closing in: who is catching whom, and in how many laps", false], ["pace", "Race pace: last five laps, against the leader", false],
+    ["strategy", "Strategy: stops, tyres, laps this stint, next stop", false], ["lapchart", "Lap chart: every car's place, lap by lap", false], ["flagcall", "Flag calls: green, white and checkered (the winner)", true], ["penalty", "Race control: penalties and warnings", false],
     ["h2h", "Head to head (two cars side by side)", false], ["podium", "Podium (top three; class picked in Studio)", false],
     ["sponsors", "Sponsor logos (picked in Studio)", false], ["pip", "Picture in picture (second camera)", false], ["qlap", "Qualifying: live lap against pole (camera car)", false],
     ["tyres", "Tyre history (the driver card's car)", false], ["trap", "Speed trap (top speeds)", false],
@@ -1292,10 +1294,10 @@ header{padding:6px 12px}
   const SOUND_SW = () => sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles and flags (Arcade look; in OBS tick Control audio via OBS)") +
     sw("sw-voice", G("sound.man", false), `data-gflag="sound.man"`, "Announcer: a man's voice (off: a woman's)");
   // On air: one tile per graphic, grouped; the ⚙ beside a tile opens its settings in Setup
-  const TILE_GROUPS = [["Always", ["tower", "banner", "card", "ticker", "replay"]], ["Race", ["battle", "faster", "h2h", "onboard", "map", "traffic", "strip"]],
-    ["Alerts", ["flagcall", "fastlap", "penalty"]], ["Qualifying", ["qlap", "tyres", "trap"]], ["Show", ["board", "podium", "league", "sponsors", "pip"]]];
+  const TILE_GROUPS = [["Always", ["tower", "banner", "card", "ticker", "replay"]], ["Race", ["battle", "faster", "h2h", "onboard", "map", "traffic", "strip", "pitstop", "closing", "pace", "strategy"]],
+    ["Alerts", ["flagcall", "fastlap", "penalty"]], ["Qualifying", ["qlap", "tyres", "trap"]], ["Show", ["board", "lapchart", "podium", "league", "sponsors", "pip"]]];
   const SHORT = { tower: "Tower", banner: "Banner", card: "Driver card", ticker: "Race control", replay: "Replay bug", battle: "Battle", faster: "Where faster",
-    h2h: "Head to head", onboard: "Onboard", map: "Track map", traffic: "Traffic", strip: "Crawl", fastlap: "Fastest lap", penalty: "Penalties", flagcall: "Flags",
+    h2h: "Head to head", onboard: "Onboard", map: "Track map", traffic: "Traffic", strip: "Crawl", fastlap: "Fastest lap", penalty: "Penalties", flagcall: "Flags", pitstop: "Pit stop", closing: "Closing in", pace: "Race pace", strategy: "Strategy", lapchart: "Lap chart",
     qlap: "Quali lap", tyres: "Tyres", trap: "Speed trap", board: "Standings", podium: "Podium", league: "League", sponsors: "Sponsors", pip: "Pic in pic" };
   const GEAR = { tower: "setTower", card: "setCard", ticker: "setTicker", battle: "setTower", h2h: "setH2h", onboard: "setH2h", pip: "setPip", board: "setGrid",
     podium: "setPodium", league: "setLeague", sponsors: "setSponsors", replay: "setStingers" };
@@ -1310,7 +1312,7 @@ header{padding:6px 12px}
           (GEAR[k] ? `<button class="gear" data-setup="${GEAR[k]}" title="${esc(SHORT[k] || L[1])} settings" aria-label="${esc(SHORT[k] || L[1])} settings">⚙</button>` : "") + `</div>`;
       }).join("") + `</div>`).join("");
   }
-  const LAYERS_AUTO_HELP = "Pick graphics for me: they follow the camera (the driver card for a few seconds on a new car, the battle box on a battle, onboard on an onboard camera) and the race (close battles and head to head, traffic, fastest laps, penalties, qualifying laps, the speed trap, tyres as a car leaves the pits, the track map and crawl now and then and all through a caution, the standings now and then, the results and podium at the finish, the league before the start, your sponsors now and then). Picture in picture stays yours: it needs your video link. What you switch on stays on.";
+  const LAYERS_AUTO_HELP = "Pick graphics for me: they follow the camera (the driver card for a few seconds on a new car, the battle box on a battle, onboard on an onboard camera) and the race (close battles and head to head, traffic, fastest laps, penalties, qualifying laps, the speed trap, tyres as a car leaves the pits, the pit stop as it happens, who is closing in, race pace and strategy now and then, the lap chart at the finish, the track map and crawl now and then and all through a caution, the standings now and then, the results and podium at the finish, the league before the start, your sponsors now and then). Picture in picture stays yours: it needs your video link. What you switch on stays on.";
   const sw = (id, on, data, label) => `<div class="tog"><label for="${id}">${label}</label><button class="sw${on ? " on" : ""}" id="${id}" ${data} role="switch" aria-checked="${!!on}" ${canProduce() ? "" : "disabled"}></button></div>`;
   function renderControls() {
     const prod = canProduce(), dis = prod ? "" : "disabled";
@@ -1874,7 +1876,7 @@ header{padding:6px 12px}
   const PRESET_FONTS = { imsa: ["Barlow Condensed", "Barlow"], pitboard: ["Big Shoulders Display", "Barlow"], daylight: ["Saira Condensed", "Saira"], neon: ["Chakra Petch", "Barlow"], heritage: ["Oswald", "Barlow"], pitwall: ["Barlow Condensed", "Barlow Semi Condensed"], arcade: ["Russo One", "Exo 2"] };
   const COLOR_LABELS = { ink: "Rows", ink2: "Alternate rows", head: "Headers", headText: "Header text", text: "Text", muted: "Secondary text",
     accent: "Highlight", accentText: "Highlight text", fl: "Fastest lap", plate: "Number plates (one class)" };
-  const POS_LABELS = { faster: "Where they're faster", tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", strip: "Running order", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League", gwalk: "Grid walk", gladder: "Grid walk: the grid", gboard: "Grid board", flagcall: "Flag calls" };
+  const POS_LABELS = { faster: "Where they're faster", tower: "Tower", banner: "Banner", replay: "Replay bug", battle: "Battle", card: "Driver card", map: "Map", ticker: "Race control", board: "Standings", grid: "Grid", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head", onboard: "Onboard", podium: "Podium", strap: "Commentator strap", sponsors: "Sponsors", pip: "Picture in picture", strip: "Running order", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", league: "League", gwalk: "Grid walk", gladder: "Grid walk: the grid", gboard: "Grid board", flagcall: "Flag calls", pitstop: "Pit stop", closing: "Closing in", pace: "Race pace", strategy: "Strategy", lapchart: "Lap chart" };
   const assetOpts = (kind, cur) => `<option value="">None</option>` + S.assets.filter(a => a.type.startsWith(kind)).map(a => `<option ${a.name === cur ? "selected" : ""}>${esc(a.name)}</option>`).join("");
   function renderLook() {
     const th = S.gfx.theme || {}, preset = th.preset || "imsa";

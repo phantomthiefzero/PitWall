@@ -364,6 +364,13 @@ Broadcast (broadcast/)
   director (the finish story; no replays in a timed race's last laps, lapsByTime). The caution is read from the
   field's speed whenever no racing flag comes (a spectator's flags carry only start lights after the start), not
   only when there are no bits at all. tests: test_what_a_spectator_is_not_sent_is_filled_in_everywhere.
+- Race TV graphics, from our own measures (Deriver.race_tv, battle_history, lap_chart; tiles under Race and Show):
+  Pit stop (the camera car's, else the best placed in the lane: the box time running, where it should come out,
+  then its stationary time and the place it came out in), Closing in (a car catching the one ahead in class, s a
+  lap, laps to catch or "not in time"), Race pace (last five racing laps against the class leader), Strategy
+  (stops, tyre, laps this stint, next stop from stopDue), Lap chart (every car's place lap by lap; the finish board
+  35 s, the lap chart to 60 s, then the podium), the full result (+ stops and laps led) and the battle box's
+  history (swapped n times, together m:ss). tests: test_race_tv_extras_from_our_own_measures.
 - Producer buttons: camera, replay and director buttons are off while the broadcast is off (the bridge refuses
   them); with the director, grid walk or a followed battle holding the camera they are dimmed and a line says a
   click takes it back. The battle list's buttons all switch off with a second click (unfollow: director end_battle).

@@ -2229,6 +2229,123 @@ class Deriver:
     def _recent_partner(self, st, j, inc):
         return any(abs(o["t"] - inc["t"]) <= 3.0 for o in st["obs"].get(j, []))
 
+    # ---- what a TV race broadcast shows, from what we measure ------------------
+    PIT_SHOW_AFTER_S = 15.0     # a finished stop stays in the list this long (its time, where it came out)
+    RECENT_PACE_LAPS = 5
+    CLOSING_MIN_S_PER_LAP = 0.1
+    CLOSING_MAX_GAP_S = 8.0
+    CLOSING_MAX_S_PER_LAP = 3.0
+    BATTLE_FORGET_S = 60.0      # a pair apart this long starts its history again
+
+    def race_tv(self, cars: list, t, race: dict | None, ahead_of: dict, is_race: bool) -> dict:
+        """pitStops (live in the lane, and just out), closing (who is catching whom in class, and whether before the
+        end), and each car's recentPaceS / recentPaceVsLeaderS (its last racing laps against its class leader's).
+        Everything from our own lap, gap and pit tracking: iRacing gives none of it."""
+        by = {c["idx"]: c for c in cars}
+        out = {"pitStops": [], "closing": []}
+        # recent race pace
+        lead_pace = {}
+        for c in cars:
+            laps = (self._lapsum.get(c["idx"]) or {}).get("racing", [])[-self.RECENT_PACE_LAPS:]
+            p = round(sum(laps) / len(laps), 3) if len(laps) >= 3 else None
+            c["derived"]["recentPaceS"], c["derived"]["recentPaceLaps"] = p, len(laps)
+            if c.get("classPos") == 1:
+                lead_pace[c.get("classId")] = p
+        for c in cars:
+            p, lp = c["derived"]["recentPaceS"], lead_pace.get(c.get("classId"))
+            c["derived"]["recentPaceVsLeaderS"] = round(p - lp, 3) if p is not None and lp is not None else None
+        if not is_race or t is None:
+            return out
+        # pit stops: the lane and box time running, where it should come out (from the typical loss, fixed at the
+        # lane entry), and a stop just finished with its time and the place it came out in
+        loss = self.typical_loss()
+        recent = getattr(self, "_pit_recent", {})
+        for c in cars:
+            st = self._pit.get(c["idx"])
+            if not st:
+                continue
+            if c.get("onPitRoad") and st.get("enterT") is not None:
+                if st.get("rejoinAt") != st["enterT"]:
+                    st["rejoinAt"] = st["enterT"]
+                    st["rejoin"] = self.predict_rejoin(cars, c["idx"], loss) if loss is not None else None
+                box = (t - st["boxT"]) if st.get("boxT") is not None else st.get("boxS")
+                prev = recent.get(c["idx"]) or {}
+                if prev.get("enterT") != st["enterT"]:          # a new stop: where it came in from, kept for the stop
+                    prev = recent[c["idx"]] = {"enterT": st["enterT"], "fromPos": c.get("pos") or None,
+                                               "fromClassPos": c.get("classPos") or None}
+                prev["rejoin"] = st.get("rejoin")
+                out["pitStops"].append({"idx": c["idx"], "done": False, "laneS": round(t - st["enterT"], 1),
+                                        "boxS": None if box is None else round(box, 1), "inBox": st.get("boxT") is not None,
+                                        "stop": st["stops"] + 1, "rejoin": st.get("rejoin"),
+                                        "fromPos": prev["fromPos"], "fromClassPos": prev["fromClassPos"]})
+            elif c["idx"] in recent and not c.get("onPitRoad"):
+                r = recent[c["idx"]]
+                if "outT" not in r:
+                    r.update(outT=t, stationaryS=st.get("lastStopS"), pos=c.get("pos") or None,
+                             classPos=c.get("classPos") or None, stop=st["stops"])
+                if t - r["outT"] <= self.PIT_SHOW_AFTER_S:
+                    out["pitStops"].append({"idx": c["idx"], "done": True, "stationaryS": r["stationaryS"],
+                                            "stop": r["stop"], "pos": r["pos"], "classPos": r["classPos"],
+                                            "rejoin": r["rejoin"], "outS": round(t - r["outT"], 1),
+                                            "fromPos": r.get("fromPos"), "fromClassPos": r.get("fromClassPos")})
+                else:
+                    recent.pop(c["idx"], None)
+        self._pit_recent = recent
+        # closing in: a car catching the car ahead in its class, how fast, when it gets there, before the end or not
+        left = race_laps_left(race)
+        for c in cars:
+            d, a = c["derived"], by.get(ahead_of.get(c["idx"]))
+            cl, gap = d.get("closingSPerLap"), d.get("intervalS")
+            if a is None or a.get("classId") != c.get("classId") or c.get("onPitRoad") or a.get("onPitRoad"):
+                continue
+            # within a second it is a battle already; over CLOSING_MAX_S_PER_LAP it is a car in trouble, not a chase
+            if cl is None or not (self.CLOSING_MIN_S_PER_LAP <= cl <= self.CLOSING_MAX_S_PER_LAP) or gap is None \
+                    or not (self.BATTLE_ENTER_S < gap <= self.CLOSING_MAX_GAP_S):
+                continue
+            catch = d.get("catchLaps")
+            out["closing"].append({"idx": c["idx"], "aheadIdx": a["idx"], "gapS": round(gap, 2),
+                                   "closingSPerLap": cl, "catchLaps": catch,
+                                   "beforeEnd": None if catch is None or left is None else catch <= left,
+                                   "forClassPos": a.get("classPos") or None})
+        out["closing"].sort(key=lambda x: (x["beforeEnd"] is False, x["forClassPos"] or 99))
+        del out["closing"][6:]
+        return out
+
+    def battle_history(self, groups: list, t) -> None:
+        """Adds swaps (places changed within the battle) and sinceS (how long these cars have been in it) to each
+        battle, from the pairs in it (a pair's history survives the battle id changing as the cars swap)."""
+        hist = getattr(self, "_bhist", {})
+        if t is None:
+            return
+        for g in groups:
+            swaps, since = 0, t
+            for a, b in zip(g["cars"], g["cars"][1:]):
+                k = frozenset((a, b))
+                h = hist.get(k)
+                if h is None or t - h["seen"] > self.BATTLE_FORGET_S:
+                    h = hist[k] = {"since": t, "front": a, "swaps": 0, "seen": t}
+                if h["front"] != a:
+                    h["swaps"] += 1
+                    h["front"] = a
+                h["seen"] = t
+                swaps += h["swaps"]
+                since = min(since, h["since"])
+            g["swaps"], g["sinceS"] = swaps, round(t - since, 1)
+        for k in [k for k, h in hist.items() if t - h["seen"] > self.BATTLE_FORGET_S * 2]:
+            del hist[k]
+        self._bhist = hist
+
+    def lap_chart(self, cars: list) -> dict:
+        """Every car's place at the end of each lap it completed (from the laps we watched): {idx: [[lap, pos,
+        classPos], ...]}, for the lap chart."""
+        out = {}
+        for c in cars:
+            laps = [[e["lap"], e.get("pos"), e.get("classPos")] for e in self._laps.get(c["idx"], [])
+                    if e.get("lap") is not None and e.get("pos")]
+            if laps:
+                out[str(c["idx"])] = laps
+        return out
+
     def predicted_incidents(self) -> dict:
         return dict(self._incst()["predicted"])
 
@@ -3670,6 +3787,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         deriver.quali_laps(cars)
         meet = deriver.meetings(cars, player_idx, now)
         class_best_sectors = Deriver.sector_marks(cars)
+        battles = deriver.battles(cars, ahead_of, is_race)
+        deriver.battle_history(battles, now)
+        tv = deriver.race_tv(cars, now, race if is_race else None, ahead_of, is_race)
         out["derived"] = {
             "caution": caution,
             "strategy": deriver.strategy(cars, player_idx, race, caution, own_idx if own is not None else None)
@@ -3686,7 +3806,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "meetings": meet,
             "compoundPace": deriver.compound_pace(cars),
             "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
-            "battles": deriver.battles(cars, ahead_of, is_race),
+            "battles": battles,
+            **tv,
+            "lapChart": deriver.lap_chart(cars) if is_race else None,
             "classTraffic": deriver.class_traffic(cars, now),
             "classBestSectorS": class_best_sectors,
             "faster": deriver.faster_pairs(cars),
