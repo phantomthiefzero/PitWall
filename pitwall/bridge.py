@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 
@@ -69,6 +70,10 @@ class Bridge:
         # iRacing's own picture of every car with its paint (Trading Paints included)
         self.renderer = CarRenderer(self.livery_store.base, self._emit, log=log,
                                     on_color=self._car_color) if render_cars else None
+        if self.renderer is not None:
+            self.renderer.enabled = self.livery_store.cfg.get("renders", True) is not False
+        from . import simlog
+        simlog.set_path(os.path.join(self.livery_store.base, "sim_log.txt"))
         self._render_check = 0.0
         self.camera_packs_dir = None              # None: Documents\iRacing\cameras
         self.packs_msg = None
@@ -348,6 +353,8 @@ class Bridge:
             outbox.append(self.director.status())
         # Car pictures from iRacing: on every session change, and every 20 s in
         # case Trading Paints has just downloaded a paint (it does, after you join).
+        if self.renderer is not None:
+            self.renderer.paused = bool(self.src.get("IsOnTrack"))      # you are driving
         if self.renderer is not None and self.session_msg is not None and now_m() - self._render_check > 20.0:
             self._render_check = now_m()
             self.renderer.request(self.session_msg.get("drivers") or [])
@@ -392,7 +399,7 @@ class Bridge:
             res.update(ok=True, data=self.director.status())
             return res
         if not self.director.live and not (kind == "director" and action in ("stop", "set") and not msg.get("on")) \
-                and not (kind == "livery" and action in ("setup", "stop")):
+                and not (kind == "livery" and action in ("setup", "stop", "renders")):
             res["error"] = BROADCAST_OFF
             return res
         if kind == "director":
@@ -439,6 +446,14 @@ class Bridge:
             res.update(ok=True, data=self.director.status())
             return res
         if kind == "livery":
+            if action == "renders":                      # ask iRacing for car pictures, or not (kept)
+                self.livery_store.cfg["renders"] = bool(msg.get("on"))
+                self.livery_store.save_cfg()
+                if self.renderer is not None:
+                    self.renderer.enabled = self.livery_store.cfg["renders"]
+                self._emit(self.capture.status_message())
+                res["ok"] = True
+                return res
             if action == "setup":
                 cfg = self.livery_store.cfg
                 url = msg.get("url").strip() if isinstance(msg.get("url"), str) else ""

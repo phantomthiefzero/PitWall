@@ -296,6 +296,12 @@ Broadcast (broadcast/)
 - Other cars' incident counts are hidden from a spectator until the finish (observed), so
   the live incident list is predicted from telemetry (Deriver.incidents); the official counts
   are compared with the prediction when they appear.
+- Asking iRacing for things (Nov 2026: the sim closing to the desktop now and then with the app running, no error,
+  no crash report): car pictures one at a time RENDER_GAP_S apart, never while you drive (renderer.paused from
+  IsOnTrack), none when the producer switches them off (Liveries: "Ask iRacing for car pictures", livery action
+  renders, kept in obs.json), no helmet pictures until pk_helmet.png is seen working (carrender.HELMETS). Everything
+  that reaches into the sim beyond reading telemetry is written to sim_log.txt beside the pictures (pitwall.simlog:
+  pictures, camera / replay / pit commands, "sim found" / "sim gone"); never let logging raise.
 - Director (pitwall/director.py) and livery photos (pitwall/liveries.py, pitwall/obs.py) only
   move the camera through CommandGate, under --allow-camera.
 - Master switch (Director.live, the producer panel's "Broadcast off/ON" at the top): off at every start.
