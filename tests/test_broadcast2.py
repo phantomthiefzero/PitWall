@@ -2211,6 +2211,48 @@ def test_broadcast_pages_scripts_parse(page):
     assert out == [], out
 
 
+def test_race_laps_never_go_back_and_the_clock_does_not_flash():
+    # Nov 2026: "back on lap 1" after the app restarted while iRacing showed a replay (whose frame carries the CarIdx
+    # laps of that moment); the banner's clock rolled in every second, a flash a second.
+    from pitwall.normalize import race_length
+    sess = {"sessions": [{"SessionNum": 2, "SessionLaps": "unlimited", "SessionTime": "720.0000 sec"}]}
+    lead = [{"idx": 3, "lapCompleted": 0, "lap": 1}]
+    results = [{"Position": 1, "CarIdx": 3, "LapsComplete": 7}, {"Position": 2, "CarIdx": 4, "LapsComplete": 7}]
+    d = Deriver()
+    r = race_length(sess, 2, lead, 300.0, d, [], results=results)
+    assert r["leaderLapsDone"] == 7, "the server's results are a floor"
+    r = race_length(sess, 2, lead, 290.0, d, [], results=[])
+    assert r["leaderLapsDone"] == 7, "and so is the most this session has shown"
+    r = race_length(sess, 3, lead, 290.0, d, [], results=[])
+    assert r["leaderLapsDone"] == 0, "a new session starts again"
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    banner = page.split("function renderBanner() {")[1].split("\n  }\n")[0]
+    assert 'roll($("bnMain"), rs.main)' in banner and "\\d+:\\d\\d" in banner, "a ticking clock is not rolled"
+    br = open(os.path.join(os.path.dirname(__file__), "..", "pitwall", "bridge.py"), encoding="utf-8").read()
+    assert 'race["timeRemainS"] = rem' in br, "the clock keeps going while a replay holds the picture"
+
+
+def test_the_flags_are_called_on_screen():
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    fc = page.split("function renderFlagCall() {")[1].split("\n  }\n")[0]
+    for words in ("Green flag", "White flag", "Checkered flag", "wins", "Racing resumes"):
+        assert words in fc, words
+    assert "FC.f !== undefined" in fc, "the first state seen only sets the scene"
+    assert 'shown("flagcall")' in fc and "renderFlagCall();" in page
+
+
+def test_white_and_checkered_without_the_flag_bits():
+    # A spectator's SessionFlags never carried white or checkered at Summit Point (green at the start, then nothing).
+    from pitwall.normalize import race_flags
+    assert race_flags(["start_hidden"], "racing", 120.0, True) == ["start_hidden"]
+    assert "white" in race_flags(["start_hidden"], "racing", 0.0, True), "a timed race's clock ran out: the last lap"
+    assert "white" not in race_flags(["start_hidden"], "racing", 0.0, False), "not a timed race: the clock means nothing"
+    assert "white" in race_flags([], "racing", None, False, laps_to_go=1)
+    f = race_flags(["start_hidden"], "checkered", 0.0, True)
+    assert "checkered" in f and "white" not in f
+    assert race_flags(["checkered"], "racing", 0.0, True).count("white") == 1, "iRacing's early checkered is still the white"
+
+
 def test_a_close_battle_keeps_the_air_to_its_end():
     # Summit Point, Nov 2026: battles left at SEGMENT_MAX_S while within 0.1 s, the pass for the lead a second later;
     # a spin in the battle cut away to a lone trackside shot; cars swapping places made it "another" battle.

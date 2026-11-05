@@ -3322,7 +3322,13 @@ def build_state(src: TelemetrySource, deriver: Deriver, session_msg: dict | None
                            "tankL": deriver.tank_l, "refuelLps": rate}
                           if derived["fuelPerLap"] and player["fuelL"] is not None else None)
     derived["liveEdge"] = live_edge(g)
-    derived["raceFlags"] = race_flags(session.get("flags"), session.get("state"))
+    cur = next((x for x in (session_msg or {}).get("sessions") or [] if x.get("SessionNum") == session.get("num")), {})
+    total, timed = _parse_laps(cur.get("SessionLaps")), bool(_parse_secs(cur.get("SessionTime")))
+    seen = (getattr(deriver, "_race_laps_seen", {}) or {}).get(session.get("num"))
+    to_go = total - seen if total and seen is not None and seen >= 0 else None
+    is_race = "race" in str(cur.get("SessionType") or "").lower()
+    derived["raceFlags"] = race_flags(session.get("flags"), session.get("state"),
+                                      session.get("timeRemainS"), timed and is_race, to_go if is_race else None)
     # "live" as the dashboard judges the player block: spectating leaves it zero.
     player_live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5 or (player["rpm"] or 0) > 500
     derived.update(deriver.trends(session["timeS"], weather, player, player_live))
@@ -3638,9 +3644,13 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                 c["idx"], now, c["derived"].get("toPlayerS"), my_lap, player_idx))
             if me is not None:
                 c["derived"]["vsYou"] = vs_you(c, me, p, deriver.pace(player_idx))
+        try:
+            results = results_positions(src.session_info("SessionInfo"), session_num)
+        except Exception:  # noqa: BLE001
+            results = []
         race = race_length(session_msg, session_num, ordered, _num(g("SessionTimeRemain")),
                            deriver, race_flags(decode_bits(g("SessionFlags"), FLAG_BITS),
-                                               SESSION_STATE.get(g("SessionState"))))
+                                               SESSION_STATE.get(g("SessionState"))), results=results)
         fi = deriver._fuel_info or {}
         deriver.stop_forecast(cars, race if is_race else None, own_idx if own is not None else None,
                               fi.get("fpl"), deriver.tank_l, fi.get("fuelL"))
@@ -3868,7 +3878,7 @@ def _parse_secs(v):
         return None
 
 
-def race_flags(flags, state) -> list:
+def race_flags(flags, state, time_remain_s=None, timed=False, laps_to_go=None) -> list:
     """The flags as the race sees them. iRacing raises the checkered flag the moment a timed race's clock runs
     out, while the leader still has the last lap to drive (observed: the overlay waved it a couple of minutes
     early). SessionState only turns "checkered" when the leader crosses the line. So until then the checkered
@@ -3878,10 +3888,22 @@ def race_flags(flags, state) -> list:
         out.remove("checkered")
         if "white" not in out:
             out.append("white")
+    # A spectator's SessionFlags never carry white or checkered (Summit Point, Nov 2026: green at the start, then
+    # nothing to the end; replays carry no flags at all), so they are read from the race itself: checkered when the
+    # session state is (the leader has crossed the line), white while the racing leader is on the final lap (a lap
+    # race with one lap to go, or a timed race whose clock has run out).
+    if state in ("checkered", "cool_down"):
+        if "checkered" not in out:
+            out.append("checkered")
+        if "white" in out:
+            out.remove("white")
+    elif state == "racing" and "white" not in out and (
+            (timed and time_remain_s is not None and 0 <= time_remain_s <= 0.5) or laps_to_go == 1):
+        out.append("white")
     return out
 
 
-def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver, flags) -> dict:
+def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver, flags, results=None) -> dict:
     """How much of the session is left, from the LEADER, not the player.
 
     SessionLapsRemainEx is the player's own count, and a spectator has no car:
@@ -3897,6 +3919,19 @@ def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver,
     done = leader.get("lapCompleted") if leader else None
     if done is not None and done < 0:
         done = 0
+    # The leader's laps never go back within a session (Nov 2026: "back on lap 1" after the app was restarted while
+    # iRacing showed a replay, whose frame carries the CarIdx laps of that moment): iRacing's scored results
+    # (ResultsPositions, kept current by the server) and the most this session has shown are a floor.
+    floor = max([r.get("LapsComplete") for r in results or []
+                 if r.get("Position") == 1 and isinstance(r.get("LapsComplete"), int)] or [-1])
+    if deriver is not None:
+        seen = getattr(deriver, "_race_laps_seen", {})
+        floor = max(floor, seen.get(session_num, -1))
+        if done is not None or floor >= 0:
+            seen[session_num] = max(floor, done if done is not None else -1)
+            deriver._race_laps_seen = seen
+    if floor >= 0 and (done is None or done < floor):
+        done = floor
     remain = time_remain_s if time_remain_s is not None and 0 <= time_remain_s < 7 * 86400 else None
     to_go = max(0, total - done) if total and done is not None else None
     pace = deriver.pace(leader["idx"]) if (deriver is not None and leader) else None
