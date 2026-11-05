@@ -93,9 +93,17 @@ class LiveSource(TelemetrySource):
     def tick(self) -> bool:
         if not self.ir.is_initialized or not self.ir.is_connected:
             # try to re-attach (sim was closed / reopened)
+            if getattr(self, "_was_on", False):
+                from . import simlog
+                simlog.note("sim gone")
+                self._was_on = False
             self.ir.shutdown()
             if not self.connect():
                 return False
+        if not getattr(self, "_was_on", False):
+            from . import simlog
+            simlog.note("sim found")
+            self._was_on = True
         # freeze gives us one consistent frame for every get() this tick
         self.ir.freeze_var_buffer_latest()
         return True
