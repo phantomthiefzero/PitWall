@@ -582,6 +582,8 @@ header{padding:6px 12px}
       <section id="setCars">
         <h2>Car pictures</h2>
         <p class="note" style="margin-top:0">Automatic: iRacing draws each car with its paint, Trading Paints included, the same way its own screens do. Nothing to set up; keep Trading Paints running so the paints are on this PC. <b id="rnCount"></b></p>
+        <div id="rnOn"></div>
+        <p class="note">Turn this off to test whether iRacing closing by itself has to do with the pictures: the ones already taken are kept and still shown. They are asked for one at a time, and never while you are driving. Everything the app asks of iRacing is written to sim_log.txt in the app's picture folder (<span id="rnLog"></span>), the last lines before "sim gone" being what it was doing when the sim closed.</p>
         <h3>Optional: photos from the broadcast</h3>
         <p class="note" style="margin-top:0">The car as it looked on track, taken from your iRacing picture through OBS. In OBS: Tools &gt; WebSocket Server Settings &gt; Enable, then copy the password here.</p>
         <div class="grid2" style="margin-top:8px">
@@ -1511,6 +1513,7 @@ header{padding:6px 12px}
     else if (ds.gwgo) cmd({ cmd: "director", action: "grid_walk", holdS: Number($("gwHold").value) || 5, capture: $("gwSnap").checked, manual: ds.gwgo === "hand" },
       ds.gwgo === "hand" ? "Grid walk by hand: Next, Previous, or click a driver" : "Walking the grid");
     else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
+    else if (ds.renders) cmd({ cmd: "livery", action: "renders", on: !(S.lv && S.lv.config && S.lv.config.renders !== false) }, "Car pictures from iRacing");
     else if (ds.gwboard) cmd({ cmd: "director", action: "set", gridBoard: ds.gwboard }, "Grid board first: " + ({ auto: "automatic", always: "always", never: "never" }[ds.gwboard] || ds.gwboard));
     else if (ds.dirrep) cmd({ cmd: "director", action: "set", replays: !(S.director && S.director.replays !== false) }, "Director replays");
     else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");
@@ -2025,6 +2028,8 @@ header{padding:6px 12px}
       $("oAuto").checked = cfg.auto !== false;
       $("oPw").placeholder = cfg.hasPassword ? "saved (leave empty to keep)" : "none set";
     }
+    $("rnOn").innerHTML = sw("sw-renders", cfg.renders !== false, 'data-renders="1"', "Ask iRacing for car pictures");
+    $("rnLog").textContent = cfg.logPath || "~/.pitwall";
     $("rnCount").textContent = S.liveries.size ? S.liveries.size + " cars have a picture so far." : "";
     $("oStatus").innerHTML = !st ? "Waiting for the bridge." : st.connected ? `Connected to OBS. ${S.liveries.size} livery photos so far.` :
       st.error ? `<span style="color:var(--bad)">${esc(st.error)}</span>` : "Not connected yet.";
