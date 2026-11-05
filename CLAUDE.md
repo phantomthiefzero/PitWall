@@ -160,7 +160,8 @@ iRacing Suite app (suite/)
   them, by an id from the last listing, never a path from the page; over one WebSocket (/api/library/stream),
   with 96 KB pieces (/api/library/file) as the fallback. The relay never serves them.
 - Your last session (home page, `library.session_summary`): a lap's time is the first new LapLastLapTime after
-  its OWN last sample (iRacing updates it after the line), and clean laps are counted as the Lap Analyzer counts
+  its OWN last sample (iRacing updates it after the line); a lap is timed as the analyzer times it (from the line, no pit
+  lane, its clock agreeing with the time it took: "22 of 29", not of every lap), and clean laps are counted as the Lap Analyzer counts
   them (lap_band = lapBand, then within 7%): the two pages must give the same numbers for the same file.
 - Home page (`suite/web/index.html`): its /ws asks for no telemetry (`?ticks=0`); Hub.send_all sends to
   every client at once, so one slow client cannot hold the pump. Buttons are built when what they offer
@@ -369,6 +370,12 @@ Broadcast (broadcast/)
   director (the finish story; no replays in a timed race's last laps, lapsByTime). The caution is read from the
   field's speed whenever no racing flag comes (a spectator's flags carry only start lights after the start), not
   only when there are no bits at all. tests: test_what_a_spectator_is_not_sent_is_filled_in_everywhere.
+- PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
+  race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
+  option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution
+  or from a fall-off over TYRE_DEG_MAX, and a forecast lap already gone by is not shown; where-faster honours comparable.
+- Looks: Pit wall's bar shows only its numbers under 640 px; :root[data-look] sets overflow-anchor:none (the bar put
+  in after load scrolled the page by its height through scroll anchoring, hiding the title).
 - Audited against Summit Point (Nov 2026), each now in place: battles are read from the live class gap (a stale
   F2Time had two cars 8 s apart "within a second"; the battle box showed 7.917); a car ahead of the one scored ahead
   has no live gap (gap_between: it read +1:17.0 round the lap); practice and qualifying best laps come from

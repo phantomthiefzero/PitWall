@@ -313,6 +313,9 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 :root[data-look="arcade"] .lk-combo{right:10px;top:auto;bottom:16px;padding:8px 10px 6px}
 :root[data-look="arcade"] .lk-combo b{font-size:44px}
 :root[data-look="arcade"] .lk-combo span{font-size:12px}}
+@media (max-width:640px){:root[data-look="pitwall"] .lk-hud>div:not(:has(.seg)){display:none}:root[data-look="pitwall"] .lk-hud>div{flex:1 1 0;padding:6px 8px}:root[data-look="pitwall"] .lk-hud small{font-size:10px;overflow:hidden;text-overflow:ellipsis}:root[data-look="pitwall"] .lk-hud .seg{font-size:15px}}
+/* the bar is put in above the page once it loads: the browser's scroll anchoring then scrolled the page by its height, hiding the title */
+:root[data-look="pitwall"],:root[data-look="arcade"]{overflow-anchor:none}
 /* ---- /LOOKS ---- */
 </style></head><body><div class="wrap">
 <header><h1>iRacing <span>Suite</span></h1><span class="ver"><span id="ver"></span><span id="verBuild"></span></span><details class="sets" id="sets"><summary>⚙ Settings</summary><div class="sets-body">

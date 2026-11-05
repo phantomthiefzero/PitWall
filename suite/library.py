@@ -272,7 +272,7 @@ def session_summary(path, step=6):
                     cur = None
                 if cur is None and lap is not None:
                     cur = {"lap": lap, "start_pct": pct, "pit": False, "off": False, "inc0": rd(r, "PlayerCarMyIncidentCount"),
-                           "inc1": None, "end": None, "lt_before": lt}
+                           "inc1": None, "end": None, "lt_before": lt, "r0": r}
                 if cur is not None:
                     if rd(r, "OnPitRoad"):
                         cur["pit"] = True
@@ -291,9 +291,13 @@ def session_summary(path, step=6):
                         break
                 if not t or not (20 < t < 3600):
                     continue
-                clean = (L["start_pct"] is not None and 0 <= L["start_pct"] < 0.05 and not L["pit"] and not L["off"]
-                         and (L["inc0"] is None or L["inc1"] == L["inc0"]))
-                out.append({"lap": L["lap"], "t": round(t, 3), "clean": bool(clean)})
+                # timed as the Lap Analyzer times a lap: driven from the line, out of the pit lane, and the lap
+                # clock agreeing with the time it took (a lap begun in the pits or a formation lap does not)
+                took = (L["end"] - L["r0"]) / tick
+                timed = (L["start_pct"] is not None and 0 <= L["start_pct"] < 0.05 and not L["pit"]
+                         and abs(took - t) <= max(1.0, 2.0 * step / tick))
+                clean = timed and not L["off"] and (L["inc0"] is None or L["inc1"] == L["inc0"])
+                out.append({"lap": L["lap"], "t": round(t, 3), "clean": bool(clean), "timed": bool(timed)})
             return out
         finally:
             mm.close()
@@ -327,7 +331,7 @@ def summarize_laps(laps):
     if len(srt) >= 3:
         m = sum(srt) / len(srt)
         sd = round((sum((t - m) ** 2 for t in srt) / (len(srt) - 1)) ** 0.5, 3)
-    return {"timed": len(laps), "clean": len(srt), "best": srt[0] if srt else (min((x["t"] for x in laps), default=None)),
+    return {"timed": sum(1 for x in laps if x.get("timed", True)), "clean": len(srt), "best": srt[0] if srt else (min((x["t"] for x in laps), default=None)),
             "median": med, "spreadS": sd, "bestIsClean": bool(srt)}
 
 
