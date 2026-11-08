@@ -2179,7 +2179,7 @@ def test_the_grid_board_is_its_own_screen_and_the_walk_card_waits_for_it():
     page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
     walk = page.split("const gridWalkCar = () => {")[1][:300]
     assert "d.gridBoard" in walk, "no walk card or grid beside it while the board is up"
-    assert "renderGBoard();" in page and 'id="gboard"' in page
+    assert "renderGBoard," in page.split("const RENDERS = [")[1].split("];")[0] and 'id="gboard"' in page
     board = page.split("function renderGBoard() {")[1].split("\n  }\n")[0]
     assert "liveryHtml(c)" in board and "poleGapS" in board and "not_in_world" in board
     assert not re.search(r"timeS\s*[-+]", board), "gaps come from normalize, not worked out here"
@@ -2242,7 +2242,7 @@ def test_the_flags_are_called_on_screen():
     for words in ("Green flag", "White flag", "Checkered flag", "wins", "Racing resumes"):
         assert words in fc, words
     assert "FC.f !== undefined" in fc, "the first state seen only sets the scene"
-    assert 'shown("flagcall")' in fc and "renderFlagCall();" in page
+    assert 'shown("flagcall")' in fc and "renderFlagCall," in page.split("const RENDERS = [")[1].split("];")[0]
 
 
 def test_white_and_checkered_without_the_flag_bits():
@@ -2346,7 +2346,7 @@ def test_race_tv_extras_from_our_own_measures():
 def test_race_tv_graphics_show_only_normalize_numbers():
     page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
     for fn in ("renderPitStop", "renderClosing", "renderPace", "renderStrategy", "renderLapChart"):
-        assert "function %s() {" % fn in page and "%s();" % fn in page, fn
+        assert "function %s() {" % fn in page and fn + "," in page.split("const RENDERS = [")[1].split("];")[0], fn
     body = page.split("// ---------------------------------------------------------------- race TV extras")[1].split("// ---------------------------------------------------------------- flag calls")[0]
     for field in ("pitStops", "closing", "recentPaceS", "recentPaceVsLeaderS", "stopDue", "lapChart"):
         assert field in body, field
@@ -2492,3 +2492,19 @@ def test_the_producer_can_switch_car_pictures_off():
     assert 'action: "renders"' in prod and 'data-renders="1"' in prod
     src = open(os.path.join(os.path.dirname(__file__), "..", "pitwall", "bridge.py"), encoding="utf-8").read()
     assert 'if action == "renders":' in src and '"renders")):' in src     # also with the broadcast off
+
+
+def test_one_graphic_failing_never_takes_the_overlay_off_air():
+    # Nov 2026: the overlay showed nothing in OBS. Every graphic was drawn in one chain inside the frame loop, so one
+    # that threw stopped every graphic after it and the loop itself (requestAnimationFrame was never asked again).
+    src = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    body = src.split("function frame(t) {")[1].split("\n  }")[0]
+    assert body.strip().startswith("requestAnimationFrame(frame);"), "the next frame is asked for before anything can throw"
+    assert "for (const r of RENDERS) safely(r);" in body
+    listed = src.split("const RENDERS = [")[1].split("];")[0]
+    assert listed.count("render") >= 30 and "ctxTick(); renderGrid();" not in src
+    out = _node("""
+      const RENDERS=[()=>{throw new Error('boom')},()=>{globalThis.ok=1}];const failed={};
+      """ + src.split("const failed = {};")[1].split("function frame(t)")[0] + """
+      for (const r of RENDERS) safely(r); console.log(JSON.stringify(globalThis.ok||0));""")
+    assert out == 1, "a graphic after one that throws is still drawn"

@@ -2814,14 +2814,28 @@ body.bc-off>*:not(script){visibility:hidden!important}
     dirty = true;
   }
   let last = 0;
+  // Every graphic is drawn on its own: one that throws on some state of the race must never take the
+  // others off air, and the frame loop must never stop (it did: an error left OBS showing nothing until reloaded).
+  const RENDERS = [ctxTick, renderGrid, renderTower, renderBanner, renderBattle, renderCard, renderGridWalk, renderGBoard,
+    renderBoard, renderFlagCall, renderPitStop, renderClosing, renderPace, renderStrategy, renderLapChart, renderFaster,
+    renderTraffic, renderFastLap, renderPenalty, renderH2H, renderOnboard, renderScene, renderPodium, renderStrap,
+    renderSponsor, renderTyres, renderTrap, renderQlap, renderStrip, renderLeague, renderPip];
+  const failed = {};
+  function safely(fn, ...a) {
+    try { fn(...a); }
+    catch (e) {                      // said once per graphic and message, in the console (OBS: Interact, or remote debugging)
+      const k = fn.name + ": " + (e && e.message);
+      if (!failed[k]) { failed[k] = 1; console.error("[overlay] " + k, e); }
+    }
+  }
   function frame(t) {
+    requestAnimationFrame(frame);
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderGridWalk(); renderGBoard(); renderBoard(); renderFlagCall(); renderPitStop(); renderClosing(); renderPace(); renderStrategy(); renderLapChart(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
+      for (const r of RENDERS) safely(r);
     }
-    drawMap(); drawFaster(t);
-    pumpTicker();
-    requestAnimationFrame(frame);
+    safely(drawMap); safely(drawFaster, t);
+    safely(pumpTicker);
   }
   applyTheme();
   requestAnimationFrame(frame);

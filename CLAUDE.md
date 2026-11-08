@@ -289,6 +289,9 @@ Broadcast (broadcast/)
   video (theme.stinger.video, every uploaded video is listed in Look > Stingers, each with its own cut point in
   theme.stinger.cuts). Adding a built-in: one STINGERS entry and its CSS, and keep it covering 42-58%. The stinger's
   own settings are never staged in studio mode. The first graphics state an overlay sees only sets the stinger mark.
+- The overlay's frame loop asks for the next frame first and draws every graphic on its own (RENDERS, safely()): one
+  graphic throwing on some state of the race once stopped every graphic after it and the loop itself, and OBS showed
+  nothing until the source was reloaded. A new graphic goes into RENDERS. Errors go to the console once each.
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
