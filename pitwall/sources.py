@@ -83,11 +83,16 @@ class LiveSource(TelemetrySource):
         self._irsdk_mod = irsdk
         self.ir = irsdk.IRSDK()
         self._names: set[str] = set()
+        # Bumped on every attach to the sim. iRacing closes the sim after each session and opens a new one
+        # for the next: a consumer that keys anything on the session info's update counter alone can miss
+        # the new session (its counter starts again and may meet the old value), so it watches this too.
+        self.epoch = 0
 
     def connect(self) -> bool:
         ok = self.ir.startup()
         if ok:
             self._names = set(self.ir.var_headers_names)
+            self.epoch += 1
         return bool(ok)
 
     def tick(self) -> bool:

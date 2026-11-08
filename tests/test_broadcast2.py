@@ -2508,3 +2508,39 @@ def test_one_graphic_failing_never_takes_the_overlay_off_air():
       """ + src.split("const failed = {};")[1].split("function frame(t)")[0] + """
       for (const r of RENDERS) safely(r); console.log(JSON.stringify(globalThis.ok||0));""")
     assert out == 1, "a graphic after one that throws is still drawn"
+
+
+def test_a_new_session_while_the_app_runs_is_seen():
+    """Nov 2026: a race, then another at another track with the app still open, and the app went on with the
+    first track. iRacing opens a new sim for each session and its session info counter starts again, so the
+    counter alone can meet the old value. A new attach to the sim, or a new session id, rebuilds the session
+    (track, map, drivers), and another event starts the derived history afresh."""
+    import copy
+    from pitwall.bridge import Bridge
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    with tempfile.TemporaryDirectory() as base:
+        b = Bridge(src, "ws://127.0.0.1:1", "t", log=lambda *a: None, render_cars=False, livery_dir=base)
+        b.camera_packs_dir = base
+        src.tick()
+        out = b._build(0.0)
+        first = [m for m in out if m.get("type") == "session"][0]
+        old_deriver = b.deriver
+        src.tick()
+        assert not [m for m in b._build(0.5) if m.get("type") == "session"], "nothing new, nothing sent"
+        # the next session: a new sim (attached again), another track and event, the same update counter
+        wk = copy.deepcopy(src._session["WeekendInfo"])
+        wk["TrackID"] = (wk.get("TrackID") or 0) + 101
+        wk["TrackDisplayName"] = "Another Raceway"
+        wk["SubSessionID"] = (wk.get("SubSessionID") or 0) + 7
+        src._session["WeekendInfo"] = wk
+        src.epoch = getattr(src, "epoch", 0) + 1
+        src.tick()
+        out = b._build(1.0)
+        sess = [m for m in out if m.get("type") == "session"]
+        assert sess and sess[0]["track"]["TrackID"] == wk["TrackID"] != first["track"]["TrackID"]
+        assert b._map_key[0] == wk["TrackID"], "the map follows the new track"
+        assert b.deriver is not old_deriver, "the last event's history does not carry over"
+        page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+        assert 'case "session": S.session = m; if (S.map && !mapFits(S.map)) S.map = null;' in page, \
+            "the overlay drops the last track's outline"

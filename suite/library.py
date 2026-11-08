@@ -62,6 +62,8 @@ def _yaml_val(y, key):
 def _driver_block(y, idx=None, uid=None):
     for blk in re.split(r"\n\s*-\s*CarIdx:", y)[1:]:
         head = blk.split("\n", 1)[0].strip()
+        if "CarPath:" not in blk:          # a results list ("ResultsFastestLap: - CarIdx: 0") is not a driver
+            continue
         if idx is not None and head == str(idx):
             return blk
         if uid is not None and re.search(r"\n\s*UserID:\s*%s\s*(\n|$)" % re.escape(str(uid)), blk):
@@ -144,7 +146,7 @@ def ibt_info(path):
 G61_RE = re.compile(r"^Garage[ _]61[ _]-[ _](.+?)[ _]-[ _](.+?)[ _]-[ _](.+?)[ _]-[ _](\d+)[._](\d\d)[._](\d{3})[ _]-[ _]", re.I)
 
 
-CACHE_V = 2      # bump when what is read from a file changes, so the cached names are read again
+CACHE_V = 3      # bump when what is read from a file changes, so the cached names are read again
 
 
 def g61_info(path):
@@ -262,7 +264,8 @@ def session_summary(path, step=6):
                 v = var.get(n)
                 return None if v is None else struct.unpack_from(v[0], mm, bo + r * bl + v[1])[0]
             laps, cur, last_lt = [], None, None
-            for r in range(0, rows, step):
+            # the last sample too: a one-lap file is on the next lap only in its very last sample
+            for r in list(range(0, rows, step)) + ([rows - 1] if rows and (rows - 1) % step else []):
                 lap, pct = rd(r, "Lap"), rd(r, "LapDistPct")
                 lt = rd(r, "LapLastLapTime")
                 if cur is not None and lap is not None and lap == cur["lap"] + 1:
@@ -289,6 +292,10 @@ def session_summary(path, step=6):
                     if v and v > 0 and v != L["lt_last"]:
                         t = v
                         break
+                if not t and rows - L["end"] < 4 * tick:
+                    # the file ends just after the line, before iRacing gave the time: a lap cut out of a session
+                    # (one-lap files shared for coaching). Time it by the clock, line to line, at every sample.
+                    t = _clock_lap(rd, L["lap"], max(0, L["r0"] - step), L["end"], tick)
                 if not t or not (20 < t < 3600):
                     continue
                 # timed as the Lap Analyzer times a lap: driven from the line, out of the pit lane, and the lap
@@ -301,6 +308,28 @@ def session_summary(path, step=6):
             return out
         finally:
             mm.close()
+
+
+def _clock_lap(rd, lap, r0, r1, tick):
+    """A lap's time by the session clock from the first sample on `lap` to the first on the next lap,
+    the crossing placed between samples by LapDistPct. None when the lap was not driven from the line."""
+    s = r0
+    while s < r1 and rd(s, "Lap") != lap:
+        s += 1
+    e = r1
+    while e > s and rd(e - 1, "Lap") != lap:
+        e -= 1
+    if e <= s or rd(s, "LapDistPct") is None or rd(s, "LapDistPct") > 0.05 or rd(e, "SessionTime") is None:
+        return None
+
+    def cross(r):            # time at the line between sample r-1 (lap end) and r (lap start)
+        a, b = rd(r - 1, "LapDistPct"), rd(r, "LapDistPct")
+        ta, tb = rd(r - 1, "SessionTime"), rd(r, "SessionTime")
+        if r <= 0 or a is None or b is None or ta is None or a < b:
+            return rd(r, "SessionTime")
+        span = (1.0 - a) + b
+        return ta + (tb - ta) * ((1.0 - a) / span if span > 0 else 1.0)
+    return cross(e) - cross(s)
 
 
 def lap_band(times):
@@ -503,8 +532,9 @@ class Library:
         return made
 
     def last_session(self):
-        """The newest .ibt of yours with timed laps, summarized (cached per file and size)."""
-        files = self._last if self._last is not None else self.scan()
+        """The newest .ibt of yours with timed laps, summarized (cached per file and size). The folders are
+        looked at again each time: the listing kept from the start never had the sessions driven since."""
+        files = self._last = self.scan()
         cache = self.__dict__.setdefault("_sess_cache", {})
         for d in [f for f in files if f.get("kind") == "ibt"][:6]:
             p = (self._ids or {}).get(d.get("id"))

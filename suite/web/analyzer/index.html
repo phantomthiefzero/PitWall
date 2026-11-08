@@ -631,7 +631,7 @@ for(const k in K){ix[k]=h.indexOf(K[k]);if(ix[k]<0&&['Speed','D','Brake','Thrott
 for(let r=0;r<m;r++){const c=L[r+1].split(',');for(const k in K){const v=c[ix[k]];o[k][r]=v==='True'||v==='true'?1:v==='False'||v==='false'?0:+v||0}}
 // Garage 61's name: "Garage 61 - driver - car - track - 01.22.716 - id.csv" (or with underscores)
 const p=(name||'').split(/[ _]-[ _]/),t=(name||'').match(/[ _]-[ _](\d+)[._](\d\d)[._](\d{3})[ _]-[ _]/);
-o.who=(p[1]||'Lap').replace(/_/g,' ');o.lap=t?+t[1]*60+ +t[2]+ +t[3]/1000:(m-1)/60;
+o.who=(p[1]||'Lap').replace(/_/g,' ');o.car=[(p[2]||'').replace(/_/g,' ')];o.track=(p[3]||'').replace(/_/g,' ');o.lap=t?+t[1]*60+ +t[2]+ +t[3]/1000:(m-1)/60;
 o.t=Float64Array.from({length:m},(_,i)=>i*o.lap/(m-1));return o}
 function rs(o,xs){const R={},ks=['Speed','Brake','Throttle','Steer','Gear','Lat','Lon','t','RPM','ABS','LatG','LonG','VertG','YawRate'].concat(xs||[]);ks.forEach(k=>R[k]=new Float64Array(N));let j=0;
 for(let g=0;g<N;g++){const d=g/(N-1);while(j<o.n-2&&o.D[j+1]<d)j++;const f=Math.min(1,Math.max(0,(d-o.D[j])/((o.D[j+1]-o.D[j])||1)));ks.forEach(k=>{const a=o[k];R[k][g]=a[j]+(a[j+1]-a[j])*f})}return R}
@@ -660,7 +660,7 @@ const V={};for(let i=0;i<nv;i++){const p=vo+i*144;V[tx(p+16,32).replace(/[^\w.-]
 for(const k of['Lap','LapDistPct','Speed','Brake','Throttle','SteeringWheelAngle','Gear'])if(!V[k])throw new Error('This does not look like an iRacing telemetry (.ibt) file: missing '+k);
 const rd=(v,r)=>{const a=bo+r*bl+v.o;return v.t===1?u8[a]:v.t===4?dv.getFloat32(a,true):v.t===5?dv.getFloat64(a,true):v.t===2||v.t===3?dv.getInt32(a,true):0};
 const lc=Int32Array.from({length:rc},(_,r)=>rd(V.Lap,r)),laps=[];
-for(let s=0;s<rc;){let e=s;while(e<rc&&lc[e]===lc[s])e++;const l={lap:lc[s],s,e,time:0,ok:false},tick=I(8)||60,span=V.SessionTime?rd(V.SessionTime,e-1)-rd(V.SessionTime,s)+1/tick:(e-s)/tick;let tc=V.LapCurrentLapTime?rd(V.LapCurrentLapTime,e-1):span;if(e<rc&&V.LapLastLapTime)for(let r=e;r<Math.min(rc,e+900);r++){const v=rd(V.LapLastLapTime,r);if(v>0&&Math.abs(v-tc)<.05){tc=v;break}}if(e<rc)l.time=tc;l.span=span;
+for(let s=0;s<rc;){let e=s;while(e<rc&&lc[e]===lc[s])e++;const l={lap:lc[s],s,e,time:0,ok:false},tick=I(8)||60,span=V.SessionTime?rd(V.SessionTime,e-1)-rd(V.SessionTime,s)+1/tick:(e-s)/tick;let tc=V.LapCurrentLapTime?rd(V.LapCurrentLapTime,e-1):span,told=false;if(e<rc&&V.LapLastLapTime)for(let r=e;r<Math.min(rc,e+900);r++){const v=rd(V.LapLastLapTime,r);if(v>0&&Math.abs(v-tc)<.05){tc=v;told=true;break}}if(e<rc&&!told&&s>0&&V.SessionTime&&rc-e<4*tick){const X=r=>{const a=rd(V.LapDistPct,r-1),b=rd(V.LapDistPct,r),ta=rd(V.SessionTime,r-1),tb=rd(V.SessionTime,r),sp=(1-a)+b;return a>=b&&sp>0?ta+(tb-ta)*(1-a)/sp:tb};if(rd(V.LapDistPct,s)<.05){const c=X(e)-X(s);if(c>20&&Math.abs(c-tc)<.5)tc=c}}if(e<rc)l.time=tc;l.span=span;
 const d0=rd(V.LapDistPct,s),d1=rd(V.LapDistPct,e-1);let pit=false;if(V.OnPitRoad)for(let r=s;r<e;r++)if(rd(V.OnPitRoad,r)){pit=true;break}
 let away=false;if(V.IsOnTrack&&!pit){let n0=0,n=0;for(let r=s;r<e;r+=10){n++;if(!rd(V.IsOnTrack,r))n0++}away=n>0&&n0/n>.2}l.away=away;
 // iRacing's active reset (lone practice) moves the car back (or on) to a saved point mid-lap while the clock runs:
@@ -668,7 +668,7 @@ let away=false;if(V.IsOnTrack&&!pit){let n0=0,n=0;for(let r=s;r<e;r+=10){n++;if(
 let reset=false;if(!pit){let pp=d0;for(let r=s+1;r<e;r++){const p=rd(V.LapDistPct,r),dd=p-pp;if(!(pp>.9&&p<.1)&&(dd<-.002||dd>.006)){reset=true;break}pp=p}}l.reset=reset;
 // off the track (iRacing's PlayerTrackSurface: 0 = off track) at any moment of the lap
 let off=false;if(V.PlayerTrackSurface&&!pit)for(let r=s;r<e;r+=2)if(rd(V.PlayerTrackSurface,r)===0){off=true;break}l.off=off;
-l.ok=e<rc&&l.time>0&&Math.abs(l.time-span)<.25&&e-s>=100&&d0<.05&&d1>.95&&!pit&&!away&&!reset;laps.push(l);s=e}
+l.ok=e<rc&&l.time>0&&Math.abs(l.time-span)<.25&&e-s>=100&&d0<.05&&d1>.95&&!pit&&!away&&!reset;if(l.ok||e-s>=tick)laps.push(l);s=e}
 let best=-1;laps.forEach((l,i)=>{if(l.ok&&(best<0||l.time<laps[best].time))best=i});if(best<0)throw new Error('No complete, timed laps found in this file');
 const y=plain(new TextDecoder('latin1').decode(u8.subarray(so,so+sl))),di=+((/DriverCarIdx:\s*(\d+)/.exec(y)||[0,0])[1]),mm=new RegExp('CarIdx:\\s*'+di+'\\s*\\n\\s*UserName:\\s*(.+)').exec(y),team=/TeamRacing:\s*1/.test(y),who=ibtWho(y,mm?mm[1].trim():'',team);
 const blk=mm?y.slice(mm.index,mm.index+3000):'',gx=(re,s)=>{const q=re.exec(s);return q?q[1].trim():''},carPath=gx(/CarPath:\s*(\S+)/,blk),carName=gx(/CarScreenName:\s*([^\n]+)/,blk),track=gx(/TrackDisplayName:\s*([^\n]+)/,y),fuelKg=+gx(/DriverCarFuelKgPerLtr:\s*([\d.]+)/,y)||0;let top=0;if(V.Speed)laps.forEach(l=>{if(!l.ok)return;for(let r=l.s;r<l.e;r++){const v=rd(V.Speed,r);if(v>top)top=v}});
@@ -848,7 +848,7 @@ const CH=[['Speed (km/h)','Speed',3.6],['Brake (%)','Brake',100],['Throttle (%)'
 const IB={};
 function dropSelf(){if(SELF!==null){delete F.b;SELF=null}}
 async function load(f,k,z){dropSelf();if(/\.ibt$/i.test(f.name)){IB[k]=ibt(await f.arrayBuffer());libRecord(IB[k],f.name+'|'+f.size);rbFromFile(IB[k],f.name+'|'+f.size);rhLearn(IB[k]);gbRecord(IB[k].carPath,IB[k].setup);pick(k,z,IB[k].best)}else{delete IB[k];F[k]=parse(await f.text(),f.name);z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap);const s=z.querySelector('select');if(s)s.hidden=true}}
-function pick(k,z,i){const ib=IB[k];F[k]=ib.lapObj(i);F[k].idx=i;z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap)+' (from your .ibt)';let s=z.querySelector('select');if(!s){s=document.createElement('select');s.onclick=e=>e.stopPropagation();z.appendChild(s)}s.hidden=false;s.innerHTML=ib.laps.map((l,j)=>l.ok?`<option value="${j}">Lap ${l.lap} · ${ft(l.time)}</option>`:'').join('');s.value=i;s.onchange=()=>{pick(k,z,+s.value);keepIdx(k,+s.value);run()}}
+function pick(k,z,i){const ib=IB[k];F[k]=ib.lapObj(i);F[k].idx=i;F[k].car=[ib.carPath,ib.carName];F[k].track=ghTrackOf(ib.yaml);z.classList.add('on');z.querySelector('span').textContent=F[k].who+' · '+ft(F[k].lap)+' (from your .ibt)';let s=z.querySelector('select');if(!s){s=document.createElement('select');s.onclick=e=>e.stopPropagation();z.appendChild(s)}s.hidden=false;s.innerHTML=ib.laps.map((l,j)=>l.ok?`<option value="${j}">Lap ${l.lap} · ${ft(l.time)}</option>`:'').join('');s.value=i;s.onchange=()=>{pick(k,z,+s.value);keepIdx(k,+s.value);run()}}
 function setup(z,k){z.dataset.def=z.querySelector('span').textContent;z.querySelector('.clr').onclick=e=>{e.preventDefault();e.stopPropagation();clearFile(k)};const inp=z.querySelector('input');inp.accept='.csv,.ibt';const go=async f=>{if(!f)return;try{$('err').textContent='';await load(f,k,z);keepFiles(k,[f]);run();renderOwn()}catch(e){$('err').textContent=e.message}};z._go=go;
 inp.multiple=k==='b';inp.onchange=()=>k==='b'?goMany(Array.from(inp.files)):go(inp.files[0]);z.ondragover=e=>{e.preventDefault()};z.ondrop=e=>{e.preventDefault();k==='b'?goMany(Array.from(e.dataTransfer.files)):go(e.dataTransfer.files[0])}}
 setup($('za'),'a');setup($('zb'),'b');
@@ -886,8 +886,15 @@ const mp=$('map');if(mp&&mp.width){const s2=Math.min(270/mp.height,560/mp.width)
 T('iRacing Suite · Lap Analyzer',W-48,30,'600 15px '+TF,'#8E9AB5','right');
 const url=cv.toDataURL('image/png'),name='lap-comparison-'+new Date().toISOString().slice(0,10)+'.png',api=window.pywebview&&window.pywebview.api;
 if(api&&api.save_image){api.save_image(url,name);return}const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
-function run(){ensureRef();syncZones();ghRender();if(F.a&&F.b&&F.b.limited){$('out').hidden=true;$('refOnly').hidden=true;R=null;$('lim').innerHTML=limHtml();$('lim').hidden=false;return}$('lim').hidden=true;if(!(F.a&&F.b)){$('out').hidden=true;$('refOnly').hidden=true;R=null;return}$('refOnly').hidden=false;turnsLoad(F.a);if(F.refs&&F.refs.length>1){const act=activeRefs();F.b=groupLap(act.length?act:F.refs)}R=analyze(F.a,F.b);nameCorners(R.cs,IB.a?ghTrackOf(IB.a.yaml):(F.a.track||''));$('out').hidden=false;const s=R.cs.reduce((x,c)=>x+c.dt,0),cl=s>0?'bad':'good';
-$('sum').innerHTML=`<b class="you">${lbl(F.a,1)}</b> ${ft(F.a.lap)} vs <b class="ref">${nm()}</b> ${ft(F.b.lap)}: <b>${R.pct.toFixed(2)}%</b> of the reference (${sg(R.total)} s).${R.total<0?' <span class="good"><b>You are ahead.</b></span>':''}<br><span class="m">In the corner zones: ${sg(s)} s. Between corners: ${sg(R.total-s)} s. If these laps come from different sessions, track temperature, grip and wind differ, so treat small gaps with care.</span>`;
+// Two laps only compare when they were driven at the same track and layout; Coaching also needs the same car,
+// since how a car is best driven (entry or exit, braking, lines) is the car's own. Unknown counts as the same.
+const nzW=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+function sameWhere(a,b){const m=(x,y)=>{x=nzW(x);y=nzW(y);return !x||!y||x===y||x.includes(y)||y.includes(x)},
+  ca=[].concat(a&&a.car||[]).filter(Boolean),cb=[].concat(b&&b.car||[]).filter(Boolean);
+  const car=!ca.length||!cb.length||ca.some(x=>cb.some(y=>m(x,y))),track=m(a&&a.track,b&&b.track);return{car,track,ok:car&&track}}
+function whereTxt(o){const c=[].concat(o&&o.car||[]).filter(Boolean),n=c.length>1?c[1]:c[0];return plain([n,o&&o.track].filter(Boolean).join(' at '))}
+function run(){ensureRef();syncZones();ghRender();if(F.a&&F.b&&F.b.limited){$('out').hidden=true;$('refOnly').hidden=true;R=null;$('lim').innerHTML=limHtml();$('lim').hidden=false;return}$('lim').hidden=true;if(!(F.a&&F.b)){$('out').hidden=true;$('refOnly').hidden=true;R=null;return}const W=sameWhere(F.a,F.b);if(!W.track){$('out').hidden=true;$('refOnly').hidden=true;R=null;$('lim').innerHTML='<p><b>These two laps are on different tracks</b> ('+whereTxt(F.a)+' and '+whereTxt(F.b)+'), so they cannot be compared point by point. Put a lap from the same track and layout in the right box.</p>';$('lim').hidden=false;return}$('refOnly').hidden=false;turnsLoad(F.a);if(F.refs&&F.refs.length>1){const act=activeRefs();F.b=groupLap(act.length?act:F.refs)}R=analyze(F.a,F.b);nameCorners(R.cs,IB.a?ghTrackOf(IB.a.yaml):(F.a.track||''));$('out').hidden=false;const s=R.cs.reduce((x,c)=>x+c.dt,0),cl=s>0?'bad':'good';
+$('sum').innerHTML=`<b class="you">${lbl(F.a,1)}</b> ${ft(F.a.lap)} vs <b class="ref">${nm()}</b> ${ft(F.b.lap)}: <b>${R.pct.toFixed(2)}%</b> of the reference (${sg(R.total)} s).${R.total<0?' <span class="good"><b>You are ahead.</b></span>':''}<br><span class="m">In the corner zones: ${sg(s)} s. Between corners: ${sg(R.total-s)} s. If these laps come from different sessions, track temperature, grip and wind differ, so treat small gaps with care.</span>`+(W.car?'':`<br><b class="bad">Different cars:</b> ${whereTxt(F.a)} against ${whereTxt(F.b)}. The gaps show where each car is faster, not what to change in your driving; Coaching only uses a reference in your car.`);
 $('sum').innerHTML+=xlapsHtml();wireXlaps();
 groupStats();if(F.refs&&F.refs.length>1){$('refs').innerHTML=refsHtml();wireRefs()}tbl();{const lh=linesHtml();$('lines').innerHTML=lh;$('lineFold').hidden=!lh}lapTbl();xTbl();try{renderTyres()}catch(e){console.error('tyres',e)}$('score').innerHTML=scoreHtml();wireStrip();
 const host=$('charts');host.innerHTML='';charts=[];
@@ -2313,7 +2320,7 @@ for(let tries=0;tries<20;tries++){try{localStorage.setItem(COACH_LIVE_KEY,JSON.s
 
 // ---- Coach card ----
 let COACH={src:null,to:'best',grp:'',g61:[],set:null,live:null};
-function coachSources(){const out=[];const ib=IB.a;if(ib&&ib.laps){let S=null;try{S=sessionStats(ib)}catch(e){}const cl=S?S.clean:[];if(cl.length>=2)out.push({id:'ibt',lab:'Clean laps in your .ibt ('+cl.length+')',laps:()=>{const st={};let k=0;S.rows.forEach(r=>{k=r.pit||r.note==='out lap'?0:k+1;st[r.i]=k});return cl.map(r=>{const o=ib.lapObj(r.i),ts=TYRES.map(t=>r.ty[t]&&r.ty[t].s).filter(x=>x!=null);o.cond={f0:r.f0,tt:r.tt,stint:st[r.i],ts:ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:null};return o})},track:ghTrackOf(ib.yaml),car:ib.carPath})}
+function coachSources(){const out=[];const ib=IB.a;if(ib&&ib.laps){let S=null;try{S=sessionStats(ib)}catch(e){}const cl=S?S.clean:[];if(cl.length>=2)out.push({id:'ibt',lab:'Clean laps in your .ibt ('+cl.length+')',laps:()=>{const st={};let k=0;S.rows.forEach(r=>{k=r.pit||r.note==='out lap'?0:k+1;st[r.i]=k});return cl.map(r=>{const o=ib.lapObj(r.i),ts=TYRES.map(t=>r.ty[t]&&r.ty[t].s).filter(x=>x!=null);o.cond={f0:r.f0,tt:r.tt,stint:st[r.i],ts:ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:null};return o})},track:ghTrackOf(ib.yaml),car:ib.carPath,carName:ib.carName})}
 const L=coachLiveLoad();Object.keys(L).forEach(k=>{const keep=usualLaps(L[k],x=>x.lap);if(keep.length<2)return;const[car,track]=k.split('|');out.push({id:'live|'+k,lab:'Saved live laps: '+(track||'?')+' · '+car+' ('+keep.length+')',laps:()=>usualLaps(coachLiveLoad()[k]||[],x=>x.lap).map(coachFromSaved),track,car,key:k})});
 if(COACH.g61.length>=2){const keep=usualLaps(COACH.g61,x=>x.lap);out.push({id:'g61',lab:'Garage 61 laps added here ('+keep.length+(keep.length<COACH.g61.length?' of '+COACH.g61.length+', unusual times left out':'')+')',laps:()=>usualLaps(COACH.g61,x=>x.lap)})}return out}
 // The laps whose times are usual among them (lapBand) and within 7% of the quickest of those.
@@ -2344,12 +2351,15 @@ const X=coachRun0(S);COACH.memo=X?{key:coachKey(S),X}:null;return X}
 function coachRun0(S){const laps=S.laps();if(laps.length<2)return null;
 const G=coachConditions(laps.map(l=>l.cond)),pick=id=>id&&G[id]?G[id].idx.map(i=>laps[i]):null;COACH.groups=G;if(COACH.grp&&!G[COACH.grp])COACH.grp='';
 const mine=pick(COACH.grp)||laps,own=mine.slice().sort((p,q)=>p.lap-q.lap);let best=own[0],bestLab='your best lap ('+ft(best.lap)+')';
+const here={car:[S.car,S.carName],track:coTrack(S)},fits=g=>sameWhere(here,g).ok,g61=COACH.g61.filter(fits),left=COACH.g61.length-g61.length;let skipped=left?left+' Garage 61 lap'+(left>1?'s':'')+' in another car or at another track left out':'';
 if(COACH.to.startsWith('grp:')){const g=G[COACH.to.slice(4)],L=pick(COACH.to.slice(4));if(g&&L&&COACH.to.slice(4)!==COACH.grp){const A=avgLap(L,'Average of '+g.lab.toLowerCase()+' laps ('+L.length+')');const C=coachCompare(avgLap(own),A,own);nameCorners(C.R.cs,coTrack(S));return{S,laps:own,avg:avgLap(own),best:A,bestLab:'your average on '+g.lab.toLowerCase()+' laps ('+L.length+' laps, '+ft(A.lap)+')',C,n:own.length,G}}COACH.to='best'}
-if(COACH.to==='g61near'&&COACH.g61.length){const g=coachG61Near(COACH.g61,best.lap);if(g){best=g;bestLab='a Garage 61 lap a little quicker than yours ('+(g.who||'')+', '+ft(g.lap)+')'}else COACH.to='g61best'}
-if(COACH.to==='g61best'&&COACH.g61.length){const g=COACH.g61.slice().sort((p,q)=>p.lap-q.lap)[0];best=g;bestLab='the fastest Garage 61 lap here ('+(g.who||'')+', '+ft(g.lap)+')'}
+if(COACH.to==='g61near'&&g61.length){const g=coachG61Near(g61,best.lap);if(g){best=g;bestLab='a Garage 61 lap a little quicker than yours ('+(g.who||'')+', '+ft(g.lap)+')'}else COACH.to='g61best'}
+if(COACH.to==='g61best'&&g61.length){const g=g61.slice().sort((p,q)=>p.lap-q.lap)[0];best=g;bestLab='the fastest Garage 61 lap here ('+(g.who||'')+', '+ft(g.lap)+')'}
+else if(COACH.to==='ref'&&F.b&&!SELF&&!fits(F.b)){skipped='the lap in the right box is '+whereTxt(F.b)+', not this car and track, so your own best lap is used';COACH.to='best'}
 else if(COACH.to==='ref'&&F.b&&!SELF){best=F.b;bestLab='the reference lap in the right box ('+(F.b.who||'')+', '+ft(F.b.lap)+')'}
 else if(COACH.to==='before'&&coachBefore(S)){best=coachBefore(S);bestLab='your best before today ('+new Date(best.at).toLocaleDateString()+', '+ft(best.lap)+')'}
 else COACH.to='best';
+if(skipped)bestLab+=' ('+skipped+')';
 const use=COACH.to==='best'?own.slice(1):own,avg=avgLap(use),C=coachCompare(avg,best,use);nameCorners(C.R.cs,coTrack(S));return{S,laps:use,avg,best,bestLab,C,n:use.length,G}}
 // Coaching's map, played. Three ways, one engine:
 //  lap     your average lap and the lap it is compared with, on the same clock from the line

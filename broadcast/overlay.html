@@ -2789,10 +2789,17 @@ body.bc-off>*:not(script){visibility:hidden!important}
     };
   }
   let dirty = true;
+  function mapFits(m) {
+    const t = S.session && S.session.track;
+    if (!t || m.trackId == null) return true;
+    return String(m.trackId) === String(t.TrackID) && (m.config || "default") === (t.TrackConfigName || "default");
+  }
   function handle(m) {
     switch (m.type) {
-      case "session": S.session = m; break;
-      case "map": S.map = m; break;
+      // another track: the old outline goes (the relay may still hold the last session's map); a map only
+      // for this session's track is drawn (the same rule as PitWall's mapMatchesSession)
+      case "session": S.session = m; if (S.map && !mapFits(S.map)) S.map = null; break;
+      case "map": if (mapFits(m)) S.map = m; break;
       case "state": if (!m.full && !S.state) return; S.state = m.full ? m : merge(S.state, m); break;
       case "cars": if (!m.full && !S.cars) return; S.cars = m.full ? m : merge(S.cars, m); trackMotion(); break;
       case "feed": handleFeed(m); break;

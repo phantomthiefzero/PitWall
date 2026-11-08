@@ -136,6 +136,13 @@ iRacing Suite app (suite/)
   3 things). A long grey explanation right after a heading folds behind a small (i) button (hintTidy, plain text
   only). Colour means something is off: "balanced" and good states stay plain or soft, never solid blocks.
   Don't add "click to open" to a summary: the arrow says it.
+- One-lap files (laps cut out of a session and shared for coaching, e.g. AlxanderSpetz_..._2.01.148_...ibt): no
+  LapLastLapTime at all, one sample on the lap before and one on the next. The lap is timed by the clock from line
+  to line with the crossings placed between samples (library._clock_lap and the analyzer's lap parser, the same
+  way: 2:01.148 and 1:49.898 as named); under a second of a lap at either end of a file is not a lap. Two laps are
+  compared only on the same track and layout (sameWhere: car path or name, track by name, unknown counts as the
+  same); a different car is shown with a warning in the Lap Analyzer and never used as Coaching's reference.
+  library._driver_block skips results lists ("ResultsFastestLap: - CarIdx: 0" had blanked the car's name).
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
@@ -151,6 +158,14 @@ iRacing Suite app (suite/)
   token): `suite.bridge.relay_feed` puts the suite Hub's messages through a RemoteClient that never
   blocks the pump (half-rate ticks, always the ones carrying every car's arrays; oldest ticks dropped when slow). The local /ws stays loopback-only.
 
+- A new session while the app runs (Nov 2026: a second race at another track and the app stayed on the first):
+  iRacing opens a new sim for each session and its session info counter starts again, so the bridge rebuilds the
+  session on a new attach (LiveSource.epoch) or a new SessionUniqueID as well as on the counter; another event
+  (WeekendInfo SessionID / SubSessionID / track) starts the derived history afresh (Bridge._event_key,
+  Director.new_event). The overlay drops a map not of the session's track (mapFits, as PitWall's
+  mapMatchesSession). The suite's LiveSource resends the session info on a new SessionUniqueID; its Hub looks for
+  track outlines again on a new track and when a session ends (track_maps_soon, one run at a time); the home
+  page's last session looks at the folders again each time and reloads after the sim closes.
 - Track maps: the suite builds PitWall's outline for each track from your .ibt files by GPS (`Library.build_maps`, on
   its own thread at start) into PitWall's cache (`pitwall.trackmap`, north up, `FRAME`); the bridge looks again every
   10 s while it has none. PitWall's own builder needs your car on track; spectating and replays have no kinematics.

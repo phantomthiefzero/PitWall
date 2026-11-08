@@ -16,6 +16,7 @@ import mmap
 import os
 import struct
 import sys
+import re
 import threading
 import time
 
@@ -161,6 +162,11 @@ class LiveSource:
                         pass
             yaml = None
             hdr = ir._header
+            # a new session (iRacing opens a new sim for each one, and its update counter starts again, so it
+            # can meet the last one's) always sends its session info: the analyzer then has the new car and track
+            uid = values.get("SessionUniqueID")
+            if uid != getattr(self, "_uid", None):
+                self._uid, self.last_update = uid, None
             if hdr.session_info_update != self.last_update:
                 self.last_update = hdr.session_info_update
                 raw = ir._shared_mem[hdr.session_info_offset:hdr.session_info_offset + hdr.session_info_len]
@@ -334,9 +340,16 @@ class Hub:
                 print("Read error:", e)
                 connected, yaml, values = False, None, None
             if connected != self.connected:
+                if self.connected and not connected:
+                    track_maps_soon()             # the session just ended: its .ibt may outline a new track
                 self.connected = connected
                 await self.send_all({"type": "status", "connected": connected, "source": self.source.mode})
             if yaml:
+                tid = re.search(r"\n\s*TrackID:\s*(\d+)", yaml)
+                if tid and tid.group(1) != getattr(self, "_track_id", None):
+                    if getattr(self, "_track_id", None) is not None:
+                        track_maps_soon()         # another track while the app runs: its outline from your files
+                    self._track_id = tid.group(1)
                 self.yaml = yaml
                 self.update += 1
                 await self.send_all({"type": "session", "yaml": yaml, "update": self.update})
@@ -586,6 +599,24 @@ WS_MAX_IN = 64 * 1024
 
 
 _LIB = None
+_MAPS_LOCK = threading.Lock()
+
+
+def track_maps_soon():
+    """Track outlines from your .ibt files again (new files only), on its own thread: the app builds them
+    at start, and a track first driven or watched while it runs had none until the app was opened again."""
+    def go():
+        if not _MAPS_LOCK.acquire(blocking=False):
+            return
+        try:
+            lib = library()
+            lib.build_maps(files=lib.scan(), log=lambda m: print("[maps] " + m))
+        except Exception as e:  # noqa: BLE001  (a map is a nicety)
+            print("[maps] %s: %s" % (type(e).__name__, e))
+        finally:
+            _MAPS_LOCK.release()
+    threading.Thread(target=go, name="track-maps", daemon=True).start()
+
 
 
 def library():

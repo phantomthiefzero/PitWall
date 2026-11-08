@@ -86,11 +86,8 @@ class Engine:
         self.loop.run_until_complete(boot())
 
     def _maps_from_library(self):
-        try:
-            from suite.bridge import library
-            library().build_maps(log=lambda m: print("[maps] " + m))
-        except Exception as e:  # noqa: BLE001  (a map is a nicety; the app runs without it)
-            print("[maps] %s: %s" % (type(e).__name__, e))
+        from suite.bridge import track_maps_soon
+        track_maps_soon()           # the same run as for a new track later on, one at a time
 
     @property
     def url(self):
