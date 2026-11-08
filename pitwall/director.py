@@ -632,8 +632,10 @@ class Director:
                 continue                              # lap one: a fight at the front is part of the start
             if len(cs) < 2 or any(by[i].get("onPitRoad") for i in cs):
                 continue
-            gap = min(b.get("gapsS") or [9.9])
-            closing = max([x for x in b.get("closingSPerLap") or [] if x is not None] or [0.0])
+            # a gap in seconds of this class (normalize class_scale: an MX-5 is close at more seconds, a GTP at fewer)
+            k = b.get("scale") or 1.0
+            gap = min(b.get("gapsS") or [9.9]) / k
+            closing = max([x for x in b.get("closingSPerLap") or [] if x is not None] or [0.0]) / k
             fp = b.get("forClassPos") or 99
             score = 35 + (30 if gap < 0.3 else 18 if gap < 0.6 else 6) + (12 if closing > 0.1 else 0) \
                 + (30 if fp == 1 else 18 if fp <= 3 else 8 if fp <= 6 else 0) + 5 * (len(cs) - 2) \
@@ -835,7 +837,7 @@ class Director:
         if not b or now - seg.get("moveAt", -1e9) < 20.0:
             return False
         gaps, cl = b.get("gapsS") or [], [x for x in b.get("closingSPerLap") or [] if x is not None]
-        return bool(gaps) and min(gaps) < MOVE_GAP_S and bool(cl) and max(cl) > 0
+        return bool(gaps) and min(gaps) < MOVE_GAP_S * (b.get("scale") or 1.0) and bool(cl) and max(cl) > 0
 
     def _hold_close(self, cars_msg, now) -> bool:
         """The cars on air side by side: hold the shot 2 s more (HOLD_MAX_S at most per shot)."""
@@ -843,7 +845,7 @@ class Director:
         if not seg or len(seg.get("cars") or []) < 2:
             return False
         b = self._battle_of(cars_msg, seg["cars"])
-        if not b or not b.get("gapsS") or min(b["gapsS"]) >= HOLD_CLOSE_S:
+        if not b or not b.get("gapsS") or min(b["gapsS"]) >= HOLD_CLOSE_S * (b.get("scale") or 1.0):
             seg["held"] = 0.0
             return False
         if seg.get("held", 0.0) >= HOLD_MAX_S:

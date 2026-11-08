@@ -1369,8 +1369,40 @@ return F.sort((a,b)=>b.sev-a.sev)}
 // Ride heights are offered last, after everything else that could do the job: most setups already run
 // the car as low as it is allowed to go, so a height change is rarely the first thing to reach for.
 function rhLast(L){return L.filter(c=>c[0]!=='rideheight').concat(L.filter(c=>c[0]==='rideheight'))}
+// The fixes for a symptom are in a usual order (GT-style cars); the kind of car moves some earlier or later. A shift
+// is in places, so the usual order still decides between fixes of the same kind:
+//   GT3, GT4, Cup, Supercar   driver aids (TC, ABS) earlier: the car is built around them
+//   prototype, formula        aero balance first where the car is fast (front and rear wing); with slow corners later
+//   junior formula            small wings: a little earlier where fast
+//   momentum (MX-5, GR86)     no aero to speak of: bars and alignment first
+//   front-wheel drive         the rear axle first: it is what turns the car
+// Ride height stays last everywhere (rhLast). A car with front and rear wings gets a front wing fix added.
+function setupCat(k){k=k||'';if(/wing|flap|downforce/.test(k))return 'aero';if(/^tc|^abs/.test(k))return 'aids';if(/brakepressurebias/.test(k))return 'bias';
+ if(/diff/.test(k))return 'diff';if(/arb/.test(k))return 'bar';if(/toein|camber/.test(k))return 'align';if(/spring|bumprubber/.test(k))return 'spring';if(/damping/.test(k))return 'damp';if(/rideheight/.test(k))return 'rh';return ''}
+const SETUP_SHIFT={gt3:{aids:-1,aero:.5},supercar:{aids:-1,aero:.5},gt4:{aids:-1,aero:1},cup:{aids:-1,aero:1},
+ proto:{aero:-2,aids:1},formula:{aero:-2,aids:1},formula_light:{aero:-.5},momentum:{aero:5,bar:-.5,align:-.5},fwd:{rear:-1.5,aids:.5}};
+// pure: a list of [key, axle, direction] for a symptom (sid: its id, or 'us_mid_fast' for a measured finding),
+// in the order to try for this kind of car
+function styleChanges(L,style,sid){const slow=/slow/.test(sid||''),wings=['proto','formula','formula_light'].includes(style),out=L.slice();
+ if(wings&&!slow){const us=/^u_|^us_/.test(sid||'')&&!/turnin|_entry/.test(sid||''),os=/^o_mid|^os_mid/.test(sid||'');
+  if((us||os)&&!out.some(c=>c[0]==='frontwing')){const i=out.findIndex(c=>c[0]==='rearwingangle');out.splice(i<0?0:i,0,['frontwing','',us?1:-1])}}
+ const S=SETUP_SHIFT[style]||{};
+ const sc=(c,i)=>{const k=setupCat(c[0]);let x=i+(S[k]||0);if(k==='aero'&&wings&&slow)x+=3;if(S.rear&&(k==='bar'||k==='align')&&c[1]==='rear')x+=S.rear;return x};
+ return rhLast(out.map((c,i)=>({c,x:sc(c,i)})).sort((a,b)=>a.x-b.x).map(o=>o.c))}
+// pure: what the kind of car adds to a symptom's driving note (rows: the car's setup, to know if it has traction control)
+const STYLE_IN={gt3:'In a GT3',gt4:'In a GT4',cup:'In a Cup car',supercar:'In a Supercar',proto:'In a prototype',formula:'In a formula car',formula_light:'In a junior formula car',momentum:'In a momentum car',fwd:'In a front-wheel-drive car'};
+function styleDrive(sid,style,rows){const noTc=!(rows||[]).some(x=>/^tc/.test(x.k||'')),wings=['proto','formula'].includes(style);
+ if((sid==='o_exit'||sid==='t_rear')&&noTc&&style)return 'There is no traction control: your right foot is the traction control. Roll the throttle on from the apex as the wheel unwinds, never in one step.';
+ if(sid==='u_exit'&&style==='fwd')return 'Power understeer is the nature of the car: wait until it points down the exit before asking for throttle, and ask for it gradually.';
+ if(sid==='u_turnin'&&style==='fwd')return 'Trail the brake deeper into the turn: in a front-driven car that is what makes the rear rotate.';
+ if(sid==='u_mid_fast'&&wings)return 'The downforce needs speed: a lift or a slower minimum speed in a fast corner takes grip away from the front, so commit to the speed before reaching for the setup.';
+ if(sid==='u_mid_slow'&&wings)return 'In slow corners the wings do little: this is mechanical grip (bars, springs, diff), and a slower, earlier-rotated entry often helps more than any change.';
+ if((sid==='u_mid_slow'||sid==='u_mid_fast')&&style==='momentum')return 'Do not over-slow: scrubbing the front with extra steering costs the speed you need on the next straight. Use the whole width and less lock.';
+ return ''}
+function setupStyle(){const S=SETUP_SRC;return S?carStyle(S.carPath,S.carName):null}
 // what to try for each finding: [setting key, axle or corner, +1 raise / -1 lower]
-function adviceChanges(f){const u=f.kind,p=f.p,w=f.where;
+function adviceChanges(f){return styleChanges(adviceChanges0(f),setupStyle(),f.kind+'_'+(f.p||'')+'_'+(Array.isArray(f.where)?'':f.where||''))}
+function adviceChanges0(f){const u=f.kind,p=f.p,w=f.where;
 if(u==='us'){if(p==='entry')return[['brakepressurebias','',-1],['arbblades','front',-1],['arbblades','rear',1]];
 const mech=[['arbblades','front',-1],['arbblades','rear',1]],wing=[['rearwingangle','',-1]],rh=[['rideheight','front',-1]];return rhLast(w==='fast'?wing.concat(mech,rh):mech.concat(w==='both'?wing.concat(rh):[]))}
 if(u==='os'){if(p==='entry')return[['brakepressurebias','',1],['diffpreload','',1],['arbblades','rear',-1]];
@@ -1378,7 +1410,10 @@ if(p==='exit')return[['tcsetting','',0],['arbblades','rear',-1],['rearwingangle'
 if(u==='bottom'){const ax=[...new Set(w.map(x=>x==='front'||x[1]==='F'?'front':'rear'))];return ax.map(a=>['springrate',a,1]).concat(ax.map(a=>['bumprubbergap',a,-1]),ax.map(a=>['rideheight',a,1]))}
 if(u==='camber_more')return[['camber',f.t,-1]];if(u==='camber_less')return[['camber',f.t,1]];if(u==='abs')return[['brakepressurebias','',-1]];return[]}
 const CORNER_OF={LF:'Left front',RF:'Right front',LR:'Left rear',RR:'Right rear'};
-function adviceRow(rows,[k,ax,dir],carPath){const r=rows.find(x=>x.k===k&&!x.calc&&(!ax||(ax.length===2?x.cn===CORNER_OF[ax]:x.ax===ax)));if(!r)return null;
+function adviceRow(rows,[k,ax,dir],carPath){const kbW=carKb(carPath,SETUP_SRC&&SETUP_SRC.carName);if(kbW&&kbW.wings===0&&setupCat(k)==='aero')return null;
+// a front wing, and a rear wing however the car's sheet names it (open-wheel cars: Front/Rear Wing, flap angles)
+const wingRow=end=>rows.find(x=>!x.calc&&/wing|flap/.test(x.k)&&(x.k.includes(end)||x.ax===end));
+const r=rows.find(x=>x.k===k&&!x.calc&&(!ax||(ax.length===2?x.cn===CORNER_OF[ax]:x.ax===ax)))||(k==='frontwing'?wingRow('front'):k==='rearwingangle'?wingRow('rear'):null);if(!r)return null;
 const info=SETUP_INFO[r.ik]||SETUP_INFO[r.k]||{},num=parseFloat(String(r.v).replace(/[^\d.+-]/g,'')),lim=setupLim(r)||((carPath&&SETUP_CAR_LIMITS[carPath])||{})[r.k]||null;let at=null;
 const kb=carKb(carPath,SETUP_SRC&&SETUP_SRC.carName),cat=kbCat(k);if(dir===0&&cat==='tc'&&kb&&kb.tc&&kb.tc.more)dir=1;   // 'more help' once the car says which way that is
 const sg=kbSign(kb,r),nd=dir*sg,ord=kbOrder(kb,r);
@@ -1824,8 +1859,8 @@ if(lo)lo.onchange=save;if(hi)hi.onchange=save;if(md)md.onchange=()=>{try{localSt
 
 // ---- Fix by symptom: pick what the car does, get this car's settings to try, in order ----
 // Directions follow SETUP_INFO (e.g. more diff preload = more off-throttle understeer and
-// more on-throttle oversteer). These are common starting points for GT-style cars, not a
-// model of this car; each one says what it trades away. The driving note is the other
+// more on-throttle oversteer). These are common starting points for GT-style cars, put in this
+// kind of car's order by styleChanges; not a model of this car; each one says what it trades away. The driving note is the other
 // half: the same symptom is often a technique issue the setup would only hide.
 const SYMPTOMS=[
 {g:'Understeer',id:'u_turnin',lab:'Won’t turn in',help:'The front washes wide as you start to turn, often still on the brakes.',
@@ -1884,12 +1919,12 @@ function symptomHtml(){const S=SETUP_SRC;if(!S||!S.setup)return '';const rows=SE
 let h=`<p class="m" style="margin:0 0 8px">Pick what the car does. You get this car's settings to try, most likely first, with what each one trades away.${Object.keys(seen).length?' <b>●</b> marks what your laps in this file show.':''}</p>`;
 h+=groups.map(g=>`<div style="margin:6px 0"><b style="display:inline-block;min-width:120px">${g}</b> `+SYMPTOMS.filter(s=>s.g===g).map(s=>`<button type="button" data-sym="${s.id}" class="${SYM===s.id?'on':''}" style="font:inherit;font-size:13px;padding:3px 9px;margin:2px;border-radius:6px;border:1px solid ${SYM===s.id?'var(--fg)':'var(--ln)'};background:${SYM===s.id?'var(--ln)':'transparent'};color:inherit;cursor:pointer">${seen[s.id]?'● ':''}${plain(s.lab)}</button>`).join('')+`</div>`).join('');
 const s=SYMPTOMS.find(x=>x.id===SYM);if(!s)return h;
-const ch=s.ch.map(c=>adviceRow(rows,c,S.carPath)).filter(Boolean),use=ch.filter(c=>!c.at),blocked=ch.filter(c=>c.at);
+const sty=carStyle(S.carPath,S.carName),ch=styleChanges(s.ch,sty,s.id).map(c=>adviceRow(rows,c,S.carPath)).filter(Boolean),use=ch.filter(c=>!c.at),blocked=ch.filter(c=>c.at);
 h+=`<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px"><b>${plain(s.lab)}</b> <span class="m">${plain(s.help)}</span>`+(seen[s.id]?`<div style="margin-top:4px"><b>●</b> Your laps show it: ${plain(seen[s.id])} <span class="m">(Suggestions tab for the numbers)</span></div>`:'');
 h+=use.length?`<ol style="margin:8px 0 0 18px;padding:0">${use.map(c=>{const i=rows.indexOf(c.r);return `<li style="margin-bottom:6px"><b>${plain(c.label)}</b>: ${plain(c.word.toLowerCase())}, one click at a time <span class="m">(now ${plain(c.cur)})</span> ${i>=0?`<a href="#" data-symgo="${i}" class="m" style="font-size:13px">show in setup</a>`:''}${c.why?`<br><small class="m">${plain(c.why)}</small>`:''}</li>`}).join('')}</ol>`:`<p class="m" style="margin:8px 0 0">This car's setup has none of the settings for this symptom.</p>`;
 if(blocked.length)h+=`<div class="m" style="font-size:13px">${blocked.map(c=>plain(c.label)+' is '+c.at).join('; ')}.</div>`;
-if(s.drive)h+=`<div style="margin-top:8px"><b>Check the driving too:</b> ${plain(s.drive)}</div>`;
-return h+`<p class="m" style="font-size:13px;margin:8px 0 0">Change one thing, run at least 3 clean laps, and check the Suggestions tab (from a new .ibt) or the runs table (live) before the next change. Starting points for GT-style cars, not guarantees.</p></div>`}
+if(s.drive)h+=`<div style="margin-top:8px"><b>Check the driving too:</b> ${plain(s.drive)}</div>`;{const sn=styleDrive(s.id,sty,rows);if(sn)h+=`<div style="margin-top:4px"><b>${plain(STYLE_IN[sty]||'In this car')}:</b> ${plain(sn)}</div>`}
+return h+`<p class="m" style="font-size:13px;margin:8px 0 0">Change one thing, run at least 3 clean laps, and check the Suggestions tab (from a new .ibt) or the runs table (live) before the next change. ${STYLE_IN[sty]?'In the order that usually works '+plain(STYLE_IN[sty].replace(/^In /,'in '))+'; s':'S'}tarting points, not guarantees.</p></div>`}
 function wireSymptoms(el){el.querySelectorAll('[data-sym]').forEach(b=>b.onclick=()=>{SYM=SYM===b.dataset.sym?null:b.dataset.sym;const p=el.querySelector('[data-tabp="symptom"]');if(p)p.innerHTML=symptomHtml();wireSymptoms(el)});
 el.querySelectorAll('[data-symgo]').forEach(a=>a.onclick=e=>{e.preventDefault();const i=+a.dataset.symgo,r=(SETUP_ROWS||[])[i];if(!r)return;SETUP_TAB=r.g;renderSetup();
 const inp=$('setup').querySelector('input[data-si="'+i+'"]');const tr=inp?inp.closest('tr')||inp:null;if(tr){tr.scrollIntoView({block:'center'});tr.style.outline='2px solid var(--acc,#e6b422)';setTimeout(()=>{tr.style.outline=''},2500);if(inp)inp.focus()}})}
@@ -2113,19 +2148,19 @@ const KB_GT4={'Daytona International Speedway':'Low','Circuit des 24 Heures Du M
 // 90% of the way from braking to full throttle and full throttle 0.3 s after it (a V); a Dallara P217 at Suzuka,
 // slowest point at 68% and 1.3 s of rolling throttle after it, 2 g mid-corner (a U). One lap each: a guide.
 const CAR_STYLE={
- gt3:{n:'GT3',entry:1,exit:1.25,shape:'V',lines:['Brake hard and late, then trail the brake off as you turn in: the brake is what rotates the car.','Get it turned early and the slowest point late, so the car is pointed down the exit before you go to power.','Then full throttle as soon as the wheel unwinds: the time is in the exits.']},
- gt4:{n:'GT4',entry:1.05,exit:1.2,shape:'V',lines:['Brake firmly in a straight line and trail it off into the turn; with less downforce, over-slowing costs less than over-driving the entry.','Rotate the car on the brake, slowest point a little late.','Smooth, early throttle: exits carry down every straight.']},
- cup:{n:'Cup car',entry:1.05,exit:1.2,shape:'V',lines:['No aero help and a lot of power: brake hard, trail the brake to turn the car, and be patient.','Slowest point late, car pointed straight before full power.','Exits first: wheelspin and a lazy throttle cost the most.']},
- supercar:{n:'Supercar',entry:1,exit:1.25,shape:'V',lines:['Heavy and powerful: brake deep and hard, rotate it on the brake.','A late apex so you can straighten the wheel early.','Then hard on the power: the exit is the lap.']},
- proto:{n:'Prototype',entry:1.3,exit:0.9,shape:'U',lines:['Downforce pays for speed in the middle of the corner: brake shorter and lighter, and in fast corners a lift or a brush of the brake is often enough.','Trail the brake far into the turn and keep the minimum speed high, with the slowest point earlier and a wide, round line.','Roll onto the throttle over a second or more: the exit follows from the speed you carried.']},
- formula:{n:'Formula car',entry:1.3,exit:0.95,shape:'U',lines:['Very late, very hard braking, released smoothly as the downforce falls away with the speed.','Commit to the entry and carry the minimum speed: the car has the grip.','Progressive throttle from the apex; keep the line round rather than squaring it off.']},
- formula_light:{n:'Junior formula',entry:1.15,exit:1.05,shape:'U',lines:['Light car, little downforce: brake late but release smoothly so the front keeps biting.','Carry speed through the middle with a round line.','Early, smooth throttle: there is little power to make up a slow exit.']},
- momentum:{n:'Momentum car',entry:1.35,exit:0.8,shape:'momentum',lines:['Little power: every km/h you keep is kept all the way down the next straight, so do not over-slow.','Brake as little and as briefly as you can, use the whole width and keep the steering smooth: scrubbing the tyres costs speed you cannot get back.','Back to full throttle early; flat where you dare.']},
- fwd:{n:'Front-wheel drive',entry:1.15,exit:1,shape:'V',lines:['Trail the brake into the turn: with the front tyres doing everything, the brake is how the rear rotates.','Do not ask for throttle until the car is pointed: power early in a front-driven car is understeer.','Then squeeze it on without wheelspin.']}};
+ gt3:{n:'GT3',entry:1,exit:1.25,shape:'V',watch:'throttle',lines:['Brake hard and late, then trail the brake off as you turn in: the brake is what rotates the car.','Get it turned early and the slowest point late, so the car is pointed down the exit before you go to power.','Then full throttle as soon as the wheel unwinds: the time is in the exits.']},
+ gt4:{n:'GT4',entry:1.05,exit:1.2,shape:'V',watch:'throttle',lines:['Brake firmly in a straight line and trail it off into the turn; with less downforce, over-slowing costs less than over-driving the entry.','Rotate the car on the brake, slowest point a little late.','Smooth, early throttle: exits carry down every straight.']},
+ cup:{n:'Cup car',entry:1.05,exit:1.2,shape:'V',watch:'throttle',lines:['No aero help and a lot of power: brake hard, trail the brake to turn the car, and be patient.','Slowest point late, car pointed straight before full power.','Exits first: wheelspin and a lazy throttle cost the most.']},
+ supercar:{n:'Supercar',entry:1,exit:1.25,shape:'V',watch:'throttle',lines:['Heavy and powerful: brake deep and hard, rotate it on the brake.','A late apex so you can straighten the wheel early.','Then hard on the power: the exit is the lap.']},
+ proto:{n:'Prototype',entry:1.3,exit:0.9,shape:'U',watch:'speed',lines:['Downforce pays for speed in the middle of the corner: brake shorter and lighter, and in fast corners a lift or a brush of the brake is often enough.','Trail the brake far into the turn and keep the minimum speed high, with the slowest point earlier and a wide, round line.','Roll onto the throttle over a second or more: the exit follows from the speed you carried.']},
+ formula:{n:'Formula car',entry:1.3,exit:0.95,shape:'U',watch:'speed',lines:['Very late, very hard braking, released smoothly as the downforce falls away with the speed.','Commit to the entry and carry the minimum speed: the car has the grip.','Progressive throttle from the apex; keep the line round rather than squaring it off.']},
+ formula_light:{n:'Junior formula',entry:1.15,exit:1.05,shape:'U',watch:'speed',lines:['Light car, little downforce: brake late but release smoothly so the front keeps biting.','Carry speed through the middle with a round line.','Early, smooth throttle: there is little power to make up a slow exit.']},
+ momentum:{n:'Momentum car',entry:1.35,exit:0.8,shape:'momentum',watch:'speed',lines:['Little power: every km/h you keep is kept all the way down the next straight, so do not over-slow.','Brake as little and as briefly as you can, use the whole width and keep the steering smooth: scrubbing the tyres costs speed you cannot get back.','Back to full throttle early; flat where you dare.']},
+ fwd:{n:'Front-wheel drive',entry:1.15,exit:1,shape:'V',watch:'brake',lines:['Trail the brake into the turn: with the front tyres doing everything, the brake is how the rear rotates.','Do not ask for throttle until the car is pointed: power early in a front-driven car is understeer.','Then squeeze it on without wheelspin.']}};
 function carStyle(path,name){const t=((path||'')+' '+(name||'')).toLowerCase();
  if(/gtp|963|arx|v-?series|hybrid v8|p217|lmp2|lmp3|ligier|js ?p3|p320/.test(t))return 'proto';
- if(/fia ?f4|\bf4\b|formula ?4|skip barber|vee|\bff1600|formula ?1600/.test(t))return 'formula_light';
- if(/sf23|super ?formula|ir18|indycar|ir-?01|w1[2-4]|formula|dallara f3|fr2\.0|\bf3\b/.test(t))return 'formula';
+ if(/fia ?f4|\bf4\b|formula ?4|skip ?barber|vee\b|ff1600|ray ?ff|formula ?1600|usf ?2000|usf-?17|pro ?2000|pm-?18|indypro|formula ?renault|fr ?2\.0|fr20|lotus ?49|formula ?2000/.test(t))return 'formula_light';
+ if(/sf23|super ?formula|ir18|indycar|ir-?01|w1[2-4]|mp4-?30|fw31|dw12|il-?15|indy ?nxt|indy ?lights|lotus ?79|formula|dallara ?f3|dallaraf3|\bf3\b/.test(t))return 'formula';
  if(/mx-?5|mx5|gr ?86|toyota ?86|miata|spec ?racer/.test(t))return 'momentum';
  if(/tcr|elantra|rs ?3|civic|veloster/.test(t))return 'fwd';
  if(/gt4|cayman|570s/.test(t))return 'gt4';
@@ -2144,6 +2179,10 @@ function coWeight(k,w,style,after){const S=CAR_STYLE[style]||null,x=exitWorth(af
 // in metres; the corner zones themselves run into one another, so the gap between them is not the straight
 function coFullAfter(B,ap,mpg){if(!B||!B.Throttle||ap==null)return null;const th=g=>B.Throttle[(g+N)%N],br=g=>B.Brake?B.Brake[(g+N)%N]:0;
  let g=ap,k=0;while(k<N/2&&!(th(g)>=.95&&br(g)<.05)){g++;k++}if(k>=N/2)return null;let n=0;while(n<N&&th(g+n)>=.95&&br(g+n)<.05)n++;return n*mpg}
+// What counts as inconsistent in a corner, in seconds, is set for a 90 s lap: on a longer lap (a slower car, a
+// longer track) the same small mistake costs more seconds, so the threshold grows with the lap; a momentum car
+// (MX-5, GR86), raced in tight packs on little power, is held to a tighter one.
+function consistTol(lap,style){const k=lap>0?Math.max(.7,Math.min(1.5,lap/90)):1;return +(k*(style==='momentum'?.85:1)).toFixed(3)}
 function coFocus(after,u){if(after==null)return '';const L=v=>(v*u.d[0]).toFixed(0)+' '+u.d[1];
  if(after>=500)return 'Exit first: your best lap is flat out for '+L(after)+' after it, and every km/h onto that straight carries all the way down.';
  if(after<150)return 'Only '+L(after)+' flat out before the next corner: entry and mid-corner speed count more than the exit here.';return ''}
@@ -2194,7 +2233,24 @@ const CAR_KB=[
 {m:/sf23|super formula sf/,n:'Super Formula SF23',inv:['ramp']},
 {m:/ir18|indycar/,n:'Dallara IR18',inv:['ramp']},
 {m:/\bf4\b|fiaf4/,n:'FIA F4',lim:{damp:[1,10],arbblades:[1,5]},rh:{front:20,rear:30,rearMax:40}},
-{m:/w12/,n:'Mercedes-AMG W12 E Performance',inv:['eb']},
+{m:/(?<!d)w12/,n:'Mercedes-AMG W12 E Performance',inv:['eb']},
+// Open-wheel cars with no manual notes here yet: named, with what the car has (wings, driver aids), so Setup and
+// Coaching know the kind of car (carStyle) and never offer a wing the car does not have.
+{m:/w13/,n:'Mercedes-AMG W13 E Performance',aids:0},
+{m:/mp4-?30/,n:'McLaren MP4-30',aids:0},
+{m:/fw31/,n:'Williams FW31',aids:0},
+{m:/dw12/,n:'Dallara DW12',aids:0},
+{m:/il-?15|indy ?nxt|indy ?lights|indylights/,n:'Dallara IL-15 (Indy NXT)',aids:0},
+{m:/super ?formula ?lights|superformulalights|\bsfl\b/,n:'Super Formula Lights',aids:0},
+{m:/dallara ?f3|dallaraf3|\bf3\b/,n:'Dallara F3',aids:0},
+{m:/pro ?2000|pm-?18|indypro/,n:'Indy Pro 2000 PM-18',aids:0},
+{m:/usf ?2000|usf2000|usf-?17/,n:'USF 2000',aids:0},
+{m:/formula ?renault|fr ?2\.0|fr20/,n:'Formula Renault 2.0',aids:0},
+{m:/lotus ?79/,n:'Lotus 79',aids:0},
+{m:/lotus ?49/,n:'Lotus 49',aids:0,wings:0},
+{m:/skip ?barber|skipbarber|formula ?2000/,n:'Skip Barber Formula 2000',aids:0,wings:0},
+{m:/ff1600|ray ?ff/,n:'Ray FF1600',aids:0,wings:0},
+{m:/vee\b|formulavee|formula ?vee/,n:'Formula Vee',aids:0,wings:0},
 {m:/cross ?car/,n:'FIA Cross Car',inv:['damp','arm']}];
 let KB_NAMES=(()=>{try{return JSON.parse(localStorage.getItem('carNames')||'{}')||{}}catch(e){return {}}})();
 function kbRemember(path,name){if(!path||!name||KB_NAMES[path]===name)return;KB_NAMES[path]=name;try{localStorage.setItem('carNames',JSON.stringify(KB_NAMES))}catch(e){}}
@@ -2341,7 +2397,7 @@ if(c.dv<=-2)tips.push({k:'apex_speed',w:-c.dv*10,t:'Carry more speed to the apex
 if(c.a.ta>=0&&c.b.ta>=0&&c.dm>=5&&c.dm<=60)tips.push({k:'throttle_earlier',w:c.dm,t:'Back on the power earlier: your best picks up the throttle '+ds2(c.dm)+' sooner after the apex.'});
 if(coast>=8)tips.push({k:'coast',w:coast,t:'Less coasting: '+ds2(coast)+' more with neither pedal than your best. Trail the brake into the turn, or pick up the throttle sooner.'});
 if(c.dp<=-10&&c.a.ba>=0)tips.push({k:'brake_harder',w:-c.dp,t:'Brake harder at the start: your best uses '+Math.abs(c.dp).toFixed(0)+'% more peak brake pressure.'});
-if(sd!=null&&sd>=0.12)tips.push({k:'consistency',w:sd*100,t:'Inconsistent here (±'+sd.toFixed(2)+' s lap to lap): pick one fixed marker for braking and turn-in and repeat it.'});
+if(sd!=null&&sd>=0.12*(COACH.tol||1))tips.push({k:'consistency',w:sd*100,t:'Inconsistent here (±'+sd.toFixed(2)+' s lap to lap): pick one fixed marker for braking and turn-in and repeat it.'});
 tips.sort((p,q)=>q.w-p.w);const after=coFullAfter(R0.B,c.ap,c.mpg);
 const o={n:c.n,ap:c.ap,s:c.s,e:c.e,pos:c.pos,mpg:c.mpg,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips,fx:c.fx,after};o.cause=coachCause(o,u);out.corners.push(o)});
 out.corners.sort((p,q)=>q.dt-p.dt);out.between=R0.total-R0.cs.reduce((s,c)=>s+c.dt,0);return out}
@@ -2404,6 +2460,7 @@ else if(COACH.to==='ref'&&F.b&&!SELF){best=F.b;bestLab='the reference lap in the
 else if(COACH.to==='before'&&coachBefore(S)){best=coachBefore(S);bestLab='your best before today ('+new Date(best.at).toLocaleDateString()+', '+ft(best.lap)+')'}
 else COACH.to='best';
 if(skipped)bestLab+=' ('+skipped+')';
+COACH.tol=consistTol(best.lap,COACH.style);
 const use=COACH.to==='best'?own.slice(1):own,avg=avgLap(use),C=coachCompare(avg,best,use);nameCorners(C.R.cs,coTrack(S));return{S,laps:use,avg,best,bestLab,C,n:use.length,G}}
 // Coaching's map, played. Three ways, one engine:
 //  lap     your average lap and the lap it is compared with, on the same clock from the line
@@ -2547,7 +2604,7 @@ const th=c.tips.length?COACH_THEME[c.tips[0].k]:'line and steering';if(ph.indexO
 function coachPriorities(X,SD,SDiff){const items=[],C=X.C,u=U(),sp=v=>(Math.abs(v)*u.s[0]).toFixed(1)+' '+u.s[1],dm=v=>(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1];
 C.corners.filter(c=>c.dt>0.02).forEach(c=>{const t=c.tips[0],notes=SDiff[c.n]||[],K=c.cause;if(!t&&!notes.length&&!K)return;const rc=C.R.cs.find(q=>q.n===c.n)||c;
 if(K){items.push({kind:'drive',gain:c.dt,title:coName(rc)+': '+K.head,steps:K.steps.map(s=>s.t),target:K.target?K.target.t:'',do:'',why:[],ev:'',cn:c.n});return}
-const ev=[];if(isFinite(c.d)&&Math.abs(c.d)>=3)ev.push('brakes '+dm(c.d)+(c.d<0?' earlier':' later'));if(Math.abs(c.dv)>=1)ev.push(sp(c.dv)+(c.dv<0?' slower':' faster')+' at the apex');if(isFinite(c.dm)&&c.dm>=3&&c.dm<=60)ev.push('throttle '+dm(c.dm)+' later');if(c.coast>=3)ev.push(dm(c.coast)+' more coasting');if(c.sd!=null&&c.sd>=.12)ev.push('±'+c.sd.toFixed(2)+' s lap to lap');
+const ev=[];if(isFinite(c.d)&&Math.abs(c.d)>=3)ev.push('brakes '+dm(c.d)+(c.d<0?' earlier':' later'));if(Math.abs(c.dv)>=1)ev.push(sp(c.dv)+(c.dv<0?' slower':' faster')+' at the apex');if(isFinite(c.dm)&&c.dm>=3&&c.dm<=60)ev.push('throttle '+dm(c.dm)+' later');if(c.coast>=3)ev.push(dm(c.coast)+' more coasting');if(c.sd!=null&&c.sd>=.12*(COACH.tol||1))ev.push('±'+c.sd.toFixed(2)+' s lap to lap');
 items.push({kind:'drive',gain:c.dt,title:coName(rc)+': '+(t?t.t.split(':')[0]:notes[0].t.split('.')[0]),do:t?t.t.slice(t.t.indexOf(':')+1).trim():'',why:notes.map(x=>x.t),ev:ev.join(' · '),cn:c.n})});
 if(SD&&SD.H){SD.picks.forEach(p=>{const G=coachSetupGain(X,p.f,SD.H),pct=p.f.kind==='us'?Math.round((Math.max(...['slow','fast'].map(z=>(SD.H.B[p.f.p+'_'+z]||{}).ui||1))-1)*100):null;
 items.push({kind:'setup',gain:G.g*.5,worth:G.g,title:plain(p.label)+' '+suFmtVal(String(p.from)+(p.u?' '+p.u:''))+' → '+suFmtVal(String(p.to)+(p.u?' '+p.u:'')),
@@ -2650,7 +2707,7 @@ const mx=Math.max(1,...ks.map(k=>O.offs[k]));h+='<div style="display:grid;grid-t
 const only=ki.filter(k=>!O.offs[k]);if(only.length)h+='<p class="m" style="margin:6px 0 0">Incident points without leaving the track (a spin or contact): '+only.map(k=>plain(coNn(k))+' '+O.inc[k]+'x').join(', ')+'.</p>';
 return h+'<p class="m" style="font-size:13px;margin:6px 0 0">Every timed lap in the file counts here, not only the clean ones. A lap that goes off is left out of your average, so these corners cost more than the average shows.</p></details>'}
 // ---- consistency: the corners where your laps vary most, and which input moves ----
-function coachConsist(C){return C.corners.filter(c=>c.fx&&c.fx.sd&&c.fx.sd.ct!=null&&c.fx.sd.ct>=.05).sort((a,b)=>b.fx.sd.ct-a.fx.sd.ct).slice(0,5).map(c=>{const s=c.fx.sd,u=U(),D=v=>(v*u.d[0]).toFixed(0)+' '+u.d[1],
+function coachConsist(C){return C.corners.filter(c=>c.fx&&c.fx.sd&&c.fx.sd.ct!=null&&c.fx.sd.ct>=.05*(COACH.tol||1)).sort((a,b)=>b.fx.sd.ct-a.fx.sd.ct).slice(0,5).map(c=>{const s=c.fx.sd,u=U(),D=v=>(v*u.d[0]).toFixed(0)+' '+u.d[1],
 c4=[['ba',s.ba,6,'Your braking point moves ±'+(s.ba!=null?D(s.ba):'')+' from lap to lap: pick one marker (a board, a shadow, a kerb end) and brake there every lap.'],['tin',s.tin,6,'Your turn-in point moves ±'+(s.tin!=null?D(s.tin):'')+': pick a turn-in marker and use it every lap.'],
 ['ms',s.ms,3,'Your speed at the slowest point varies ±'+(s.ms!=null?(s.ms*u.s[0]).toFixed(1)+' '+u.s[1]:'')+': brake to the same speed each lap, then build from there.'],['ta',s.ta,10,'Where you pick up the throttle moves ±'+(s.ta!=null?D(s.ta):'')+': wait for the same point each lap before you squeeze it on.']].filter(x=>x[1]!=null).sort((a,b)=>b[1]/b[2]-a[1]/a[2])[0];
 return{n:c.n,sd:s.ct,dt:c.dt,why:c4&&c4[1]/c4[2]>=.6?c4[3]:'The inputs look steady; the time varies in small amounts across the corner.'}})}
@@ -2676,7 +2733,7 @@ const COACH_PRAC_KEY='coachPrac',PRAC_MAX=3,PRAC_LAPS=10;
 function pracLoad(){try{return JSON.parse(localStorage.getItem(COACH_PRAC_KEY)||'{}')||{}}catch(e){return {}}}
 function pracSave(P){try{localStorage.setItem(COACH_PRAC_KEY,JSON.stringify(P))}catch(e){}}
 // pure: a corner of the coaching result -> a target (grid positions and the best lap's numbers)
-function pracTarget(cc,name){const b=cc.fx.b;return{n:cc.n,name,s:cc.s,e:cc.e,mg:b.mg,ba:b.braked?b.ba:-1,ta:b.ta,ms:b.ms,ct:b.ct,mpg:cc.mpg,focus:cc.cause?cc.cause.steps.map(s=>s.k):[],head:cc.cause?cc.cause.head:'',at:Date.now()}}
+function pracTarget(cc,name){const b=cc.fx.b;return{n:cc.n,name,s:cc.s,e:cc.e,mg:b.mg,ba:b.braked?b.ba:-1,ta:b.ta,ms:b.ms,ct:b.ct,mpg:cc.mpg,focus:cc.cause?cc.cause.steps.map(s=>s.k):[],head:cc.cause?cc.cause.head:'',watch:(CAR_STYLE[COACH.style]||{}).watch||null,at:Date.now()}}
 // pure: one lap (a lap object) graded on the targets. dct: corner time against the best (s, + slower);
 // dba / dta: braking and throttle point against the best (m, + later); ms: slowest speed (km/h).
 function pracGrade(lap,T){const X=rs(lap);return T.map(t=>{const s=t.s,e=t.e;let ms=1e9;for(let g=s;g<=e;g++)ms=Math.min(ms,X.Speed[g]);ms*=3.6;
@@ -2685,6 +2742,12 @@ const r={n:t.n,dct:X.t[e]-X.t[s]-t.ct,ms,dms:ms-t.ms,dba:ba>=0&&t.ba>=0?(ba-t.ba
 r.ok={time:r.dct<=.03,speed:r.dms>=-1.5,brake:r.dba==null?null:r.dba>=-5,throttle:r.dta==null?null:r.dta<=6};return r})}
 function pracOnLap(o){try{const P=pracLoad(),k=coachLiveKey(),E=P[k];if(!E||!E.targets||!E.targets.length)return;const lap=coachFromSaved(o);E.laps=E.laps||[];E.laps.push({lap:o.lap,at:Date.now(),r:pracGrade(lap,E.targets)});while(E.laps.length>PRAC_LAPS)E.laps.shift();pracSave(P);renderPractice()}catch(e){console.error('practice',e)}}
 function pracKeyOf(X){return(X.S.car||(IB.a&&IB.a.carPath)||'')+'|'+(X.S.track||(IB.a?ghTrackOf(IB.a.yaml):''))}
+// pure: the last lap's checks, the one this kind of car is about first (watch: the throttle for a GT3's exits, the
+// slowest-point speed for a prototype, a formula or a momentum car, the brake for a front-wheel-drive car)
+function pracWatch(t,r,u,S){const D=v=>(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1],
+ sp=S(r.ms)+' at the slowest point',br=r.dba==null?'':Math.abs(r.dba)<2?'braked on the mark':'braked '+D(r.dba)+(r.dba<0?' early':' late'),
+ th=r.dta==null?'':Math.abs(r.dta)<2?'throttle on the mark':'throttle '+D(r.dta)+(r.dta<0?' sooner':' later'),
+ L=t.watch==='throttle'?[th,sp,br]:t.watch==='brake'?[br,sp,th]:[sp,br,th];return L.filter(Boolean).join(' · ')}
 function pracHtml(key){const E=pracLoad()[key];if(!E||!E.targets||!E.targets.length)return '';const u=U(),S=v=>(v*u.s[0]).toFixed(0)+' '+u.s[1],D=v=>(v>0?'+':v<0?'−':'')+(Math.abs(v)*u.d[0]).toFixed(0)+' '+u.d[1],L=(E.laps||[]).slice().reverse();
 let h='<div class="coprac"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><b style="font-size:16px">Practice</b><span class="m" style="font-size:13px">Each live lap is checked on these corners against your best. <a href="#" data-pracclr="1">Clear targets</a></span></div>';
 h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:6px">'+E.targets.map(t=>{const rs0=L.map(l=>(l.r||[]).find(x=>x.n===t.n)).filter(Boolean),last=rs0[0];
@@ -2692,7 +2755,7 @@ const chip=r=>'<span title="'+(r.dct>0?'+':'')+r.dct.toFixed(2)+' s" style="disp
 return '<div style="border:1px solid var(--ln);border-radius:8px;padding:8px 10px"><b>'+plain(t.name)+'</b><div style="font-size:13px">'+plain(t.head||'Match your best')+'</div><div class="m" style="font-size:13px">Target: '+S(t.ms)+' at the slowest point</div>'+
 (rs0.length>=4?(()=>{const n=Math.min(3,Math.floor(rs0.length/2)),avg=a=>a.reduce((p,r)=>p+r.dct,0)/a.length,now=avg(rs0.slice(0,n)),then=avg(rs0.slice(-n)),f=v=>(v>0?'+':'')+v.toFixed(2)+' s';
 return '<div style="margin-top:4px;font-size:13px">'+(then-now>0.02?'<b class="good">Better</b>':now-then>0.02?'<b class="bad">Worse</b>':'<b>Steady</b>')+': '+f(then)+' at the start, '+f(now)+' now <span class="m">('+rs0.length+' laps)</span></div>'})():'')+
-(last?'<div style="margin-top:6px;font-size:13px"><b class="'+(last.ok.time?'good':'bad')+'">'+(last.dct>0?'+':'')+last.dct.toFixed(2)+' s</b> last lap · '+S(last.ms)+(last.dba!=null?' · '+(Math.abs(last.dba)<2?'braked on the mark':'braked '+(Math.abs(last.dba)*u.d[0]).toFixed(0)+' '+u.d[1]+(last.dba<0?' early':' late')):'')+'</div><div style="margin-top:4px" aria-label="last laps, newest first">'+rs0.map(chip).join('')+'</div>':'<div class="m" style="margin-top:6px;font-size:13px">Drive a lap to see how it went.</div>')+'</div>'}).join('')+'</div>';
+(last?'<div style="margin-top:6px;font-size:13px"><b class="'+(last.ok.time?'good':'bad')+'">'+(last.dct>0?'+':'')+last.dct.toFixed(2)+' s</b> last lap · '+pracWatch(t,last,u,S)+'</div><div style="margin-top:4px" aria-label="last laps, newest first">'+rs0.map(chip).join('')+'</div>':'<div class="m" style="margin-top:6px;font-size:13px">Drive a lap to see how it went.</div>')+'</div>'}).join('')+'</div>';
 return h+'<small class="m">Squares are your last laps, newest first: <span class="good">■</span> as quick as your best through the corner · <span style="color:#d99a1e">■</span> within 0.1 s · <span class="bad">■</span> slower.</small></div>'}
 function renderPractice(){try{const t=$('tlPrac');if(t){const h=pracHtml(coachLiveKey());if(t.dataset.h!==h){t.dataset.h=h;t.innerHTML=h||''}}}catch(e){}const el=$('coPrac');if(!el||!COACH.last)return;el.innerHTML=pracHtml(pracKeyOf(COACH.last));const c=el.querySelector('[data-pracclr]');if(c)c.onclick=ev=>{ev.preventDefault();const P=pracLoad();delete P[pracKeyOf(COACH.last)];pracSave(P);renderCoach()}}
 function pracToggle(n){const X=COACH.last;if(!X)return;const cc=X.C.corners.find(c=>c.n===n);if(!cc||!cc.fx)return;const k=pracKeyOf(X),P=pracLoad(),E=P[k]||(P[k]={targets:[],laps:[]}),i=E.targets.findIndex(t=>t.n===n);

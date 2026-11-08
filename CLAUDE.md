@@ -151,6 +151,18 @@ iRacing Suite app (suite/)
   (exits first), a prototype a U (entry and minimum speed first), a momentum car keeps speed above all: measured on
   a Porsche 911 GT3 R lap at Road America and a Dallara P217 lap at Suzuka (one each, a guide). Coaching shows "How a
   GT3 is driven" and, per corner, "Exit first" before a long straight or "Only N m flat out" before a close corner.
+- By kind of car, beyond Coaching (Nov 2026): Setup's fixes for a symptom (SYMPTOMS ch, adviceChanges) go through
+  styleChanges: the usual order nudged by SETUP_SHIFT (GT cars: aids earlier; prototype and formula: aero first where
+  fast, a front wing fix added, aero later in slow corners; momentum: bars and alignment first, the wing last; FWD:
+  the rear axle first), ride height still last; styleDrive adds the kind's driving note (no TC: the right foot is the
+  traction control). Open-wheel cars without manual notes are in CAR_KB by name with aids:0 / wings:0 (Vee, FF1600,
+  Skip Barber, USF 2000, Pro 2000, FR 2.0, F3, SF Lights, Indy NXT, DW12, W13, MP4-30, FW31, Lotus 49/79); a
+  wingless car is never offered a wing (adviceRow), and a wing is found however the sheet names it (wingRow).
+  Coaching's inconsistency thresholds scale with the lap (consistTol: 90 s = 1, 0.7 to 1.5; momentum 0.85); live
+  practice shows first what the kind is about (CAR_STYLE watch: throttle, speed or brake; pracWatch).
+  PitWall and the broadcast read gaps in each class's seconds (normalize class_scale: REF_SPEED_MS 50 m/s over the
+  class's average speed, 0.6 to 1.6; battles, closing in, the director's hot / move / hold, PitWall's 'close
+  behind' via derived.gapScale) and tyre fall-off against the class's lap (lap_scale, 90 s = 1).
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.

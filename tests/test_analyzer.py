@@ -2295,3 +2295,59 @@ console.log(JSON.stringify({kinds,
         self.assertIn("entry and mid-corner", self.res["focus"][1])
         self.assertEqual(self.res["flat"], [600, None], "flat out from the reference's full throttle to its next lift")
         self.assertEqual(self.res["focus"][2], "")
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class ByKindOfCarTest(unittest.TestCase):
+    """Setup's order of fixes, what counts as inconsistent and what live practice watches follow the kind of car;
+    open-wheel cars are known by name, from Formula Vee to the W13."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_js("""
+const keys = L => L.map(c => c[0] + (c[1] ? '@' + c[1] : '') + (c[2] > 0 ? '+' : c[2] < 0 ? '-' : ''));
+const sym = id => SYMPTOMS.find(s => s.id === id).ch;
+const open = ['formulavee', 'rayff1600', 'skipbarber', 'usf2000', 'indypro2000 pm18', 'formularenault20', 'dallaraf3',
+  'superformulalights', 'dallarail15', 'dallarair18', 'superformulasf23 toyota', 'mercedesw13', 'mclarenmp430',
+  'williamsfw31', 'lotus79', 'lotus49', 'dallaradw12', 'fiaf4'].map(p => [p, carStyle(p, ''), (carKb(p, '') || {}).n || null]);
+const u = U(), S = v => (v * u.s[0]).toFixed(0) + ' ' + u.s[1];
+const r = {ms: 100, dba: -10, dta: 12};
+console.log(JSON.stringify({open,
+  gt3: keys(styleChanges(sym('o_exit'), 'gt3', 'o_exit')), proto: keys(styleChanges(sym('u_mid_fast'), 'proto', 'u_mid_fast')),
+  protoSlow: keys(styleChanges(sym('u_mid_slow'), 'proto', 'u_mid_slow')), mx5: keys(styleChanges(sym('o_mid'), 'momentum', 'o_mid')),
+  fwd: keys(styleChanges(sym('u_mid_slow'), 'fwd', 'u_mid_slow')), none: keys(styleChanges(sym('u_mid_fast'), null, 'u_mid_fast')),
+  bottom: keys(styleChanges(sym('r_bottom'), 'formula', 'r_bottom')),
+  notc: styleDrive('o_exit', 'formula_light', [{k: 'arbblades'}]), tc: styleDrive('o_exit', 'gt3', [{k: 'tcsetting'}]),
+  tol: [consistTol(90, 'gt3'), consistTol(135, 'gt3'), consistTol(40, 'gt3'), consistTol(90, 'momentum'), consistTol(0, null)],
+  watch: [pracWatch({watch: 'throttle', ms: 102}, r, u, S), pracWatch({watch: 'speed'}, r, u, S), pracWatch({watch: 'brake'}, r, u, S)]}));
+""")
+
+    def test_open_wheel_cars_are_known(self):
+        kinds = {p: (k, n) for p, k, n in self.r["open"]}
+        for p, (k, n) in kinds.items():
+            self.assertIn(k, ("formula", "formula_light"), p)
+            self.assertIsNotNone(n, p + " has no entry in the knowledge table")
+        self.assertEqual(kinds["formulavee"][0], "formula_light")
+        self.assertEqual(kinds["mercedesw13"][0], "formula")
+        self.assertEqual(kinds["dallaraf3"][0], "formula")
+
+    def test_setup_fixes_come_in_this_kind_of_cars_order(self):
+        r = self.r
+        self.assertEqual(r["gt3"][0], "tcsetting", "a GT3 sliding on the power: traction control first")
+        self.assertEqual(r["proto"][:2], ["frontwing+", "rearwingangle-"], "a prototype in fast corners: aero balance first")
+        self.assertEqual(r["none"][0], "rearwingangle-", "no kind known: the usual order")
+        self.assertNotIn("frontwing+", r["protoSlow"], "slow corners are mechanical grip")
+        self.assertEqual(r["mx5"][-1], "rearwingangle+", "a momentum car: the wing last")
+        self.assertEqual(r["fwd"][0], "arbblades@rear+", "front-wheel drive: the rear axle turns the car")
+        self.assertEqual(r["bottom"][-1], "rideheight@front+", "ride height last in every car")
+        self.assertIn("no traction control", r["notc"])
+        self.assertEqual(r["tc"], "")
+
+    def test_inconsistent_and_practice_follow_the_car(self):
+        a, b, c, d, e = self.r["tol"]
+        self.assertEqual((a, e), (1, 1))
+        self.assertTrue(b == 1.5 and c == 0.7 and d == 0.85)
+        th, sp, br = self.r["watch"]
+        self.assertTrue(th.startswith("throttle 12 m later") or th.startswith("throttle 39 ft later"), th)
+        self.assertIn("at the slowest point", sp.split(" · ")[0])
+        self.assertTrue(br.startswith("braked"))
