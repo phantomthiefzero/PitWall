@@ -2176,3 +2176,68 @@ console.log(JSON.stringify({
         self.assertEqual(r["newSess"], [])
         self.assertEqual(r["unknown"], [])
         self.assertEqual(r["sessions"], {"0": False, "1": False, "2": True})
+
+
+def build_one_lap(path, lap_s=61.2345):
+    """A lap cut out of a session, as shared for coaching (Nov 2026, a GT3 at Road America and an LMP2 at
+    Suzuka): one sample on the lap before, the lap, one sample on the next lap, and no LapLastLapTime
+    at all (-1: the file ends before iRacing gives it). The line falls between samples."""
+    rows, t0 = [], 1000.0
+    n = int(lap_s * HZ) + 1
+    off = 0.37 / HZ                                  # the line is crossed 0.37 of a sample before row 1
+    rows.append({"SessionTime": t0, "Lap": 23, "LapDistPct": 1 - off / lap_s, "Speed": 60.0,
+                 "LapLastLapTime": -1.0})
+    for i in range(1, n + 1):
+        tt = i / HZ - off                            # time since the line
+        lap, p = (24, tt / lap_s) if tt < lap_s else (25, (tt - lap_s) / lap_s)
+        rows.append({"SessionTime": t0 + i / HZ, "Lap": lap, "LapDistPct": p, "Speed": 60.0, "Throttle": 1.0, "Gear": 4,
+                     "LapCurrentLapTime": tt if lap == 24 else tt - lap_s, "LapLastLapTime": -1.0, "FuelLevel": 30.0,
+                     "TrackTempCrew": 30.0})
+        if lap == 25:
+            break
+    write_ibt(path, SESSION_YAML, CHANNELS, rows)
+    return lap_s
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class OneLapFileTest(unittest.TestCase):
+    """A one-lap file is timed by the clock, line to line, the same on the home page and in the analyzer,
+    and laps from different tracks or cars are not compared as if they were the same."""
+
+    def test_a_lap_cut_out_of_a_session_is_timed_by_the_clock(self):
+        import sys
+        sys.path.insert(0, ROOT)
+        from suite import library
+        d = tempfile.mkdtemp()
+        try:
+            p = os.path.join(d, "one.ibt")
+            want = build_one_lap(p)
+            laps = library.session_summary(p)
+            self.assertEqual([x["lap"] for x in laps], [24])
+            self.assertAlmostEqual(laps[0]["t"], want, delta=0.002)
+            self.assertTrue(laps[0]["clean"])
+            res = run_js("""
+const ib = ibt(readBytes(ARGS[0])), S = sessionStats(ib);
+console.log(JSON.stringify({rows: S.rows.map(r => ({lap: r.lap, ok: r.ok, time: r.time})), best: S.best}));
+""", p)
+            self.assertEqual([r["lap"] for r in res["rows"]], [24], "a sample of a lap at either end is not a lap")
+            self.assertAlmostEqual(res["rows"][0]["time"], want, delta=0.002)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_laps_only_compare_on_the_same_track_and_coaching_in_the_same_car(self):
+        res = run_js("""
+const ibtLap = {car: ['porsche992rgt3', 'Porsche 911 GT3 R (992)'], track: 'Road America · Full Course'};
+const g61 = n => { const o = {}; const p = n.split(/[ _]-[ _]/); o.car = [(p[2] || '').replace(/_/g, ' ')]; o.track = (p[3] || '').replace(/_/g, ' '); return o };
+const same = g61('Garage 61 - A Driver - Porsche 911 GT3 R (992) - Road America (Full Course) - 02.01.500 - x.csv');
+const car = g61('Garage 61 - A Driver - Dallara P217 LMP2 - Road America (Full Course) - 01.50.000 - x.csv');
+const trk = g61('Garage_61_-_A_Driver_-_Porsche_911_GT3_R_(992)_-_Suzuka_International_Racing_Course_(Grand_Prix)_-_02.05.000_-_x.csv');
+console.log(JSON.stringify({same: sameWhere(ibtLap, same), car: sameWhere(ibtLap, car), trk: sameWhere(ibtLap, trk),
+  unknown: sameWhere(ibtLap, {}), ferrari: sameWhere({car: ['ferrari296gt3', 'Ferrari 296 GT3'], track: 'Indianapolis Motor Speedway · Road Course'},
+  {car: ['Ferrari 296 GT3'], track: 'Indianapolis Motor Speedway (Road Course)'})}));
+""")
+        self.assertTrue(res["same"]["ok"])
+        self.assertEqual((res["car"]["car"], res["car"]["track"]), (False, True))
+        self.assertEqual((res["trk"]["car"], res["trk"]["track"]), (True, False))
+        self.assertTrue(res["unknown"]["ok"], "a lap with nothing said about it is not refused")
+        self.assertTrue(res["ferrari"]["ok"])
