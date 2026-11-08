@@ -182,13 +182,14 @@ def test_battles_from_the_fake_race_respect_every_rule():
         build_state(src, d)
         out = build_cars(src, sess, d)
         by = {c["idx"]: c for c in out["cars"]}
+        assert all(c["derived"]["gapScale"] > 0 for c in out["cars"]), "PitWall's 'close behind' reads it"
         for b in out["derived"]["battles"]:
             seen += 1
             classes = {by[i]["classId"] for i in b["cars"]}
             assert len(classes) == 1
             cps = [by[i]["classPos"] for i in b["cars"]]
             assert cps == list(range(cps[0], cps[0] + len(cps))), "battle cars are class neighbours"
-            assert all(0 <= g <= Deriver.BATTLE_LEAVE_S for g in b["gapsS"])
+            assert all(0 <= g <= Deriver.BATTLE_LEAVE_S * b["scale"] for g in b["gapsS"])
             assert not any(by[i]["onPitRoad"] for i in b["cars"])
     assert seen > 0, "the fake race should produce at least one battle"
 
@@ -740,3 +741,26 @@ def test_a_car_blinking_out_of_the_world_is_not_a_tow_but_a_real_tow_is():
     d = Deriver()
     _settle(d, lambda t: [_icar(5, None, surface="on_track" if t < 15 else "not_in_world")], 10, 40)
     assert len([e for e in _races(d) if e["what"] == "tow"]) == 1
+
+
+def test_what_close_means_scales_with_each_class_speed():
+    """A gap is a distance in time: 1.2 s between two MX-5s (slow round a 4 km lap) is as close as about 0.8 s
+    between two GTPs. Battles, the closing-in graphic and the director read gaps in each class's own seconds."""
+    d = Deriver()
+    mx5 = [_car(1, 1, 10, 1, 0.0), _car(2, 2, 10, 2, 1.2)]
+    gtp = [_car(3, 3, 20, 1, 30.0), _car(4, 4, 20, 2, 30.8)]
+    for c in mx5:
+        c["classEstLapS"] = 110.0          # 4.0 km in 110 s: 36 m/s
+    for c in gtp:
+        c["classEstLapS"] = 64.0           # 4.0 km in 64 s: 62.5 m/s
+    cars = mx5 + gtp
+    sc = d.class_scale(cars, 4000.0)
+    assert sc[10] > 1.3 and sc[20] < 0.85
+    b = d.battles(cars, _ahead(cars), True)
+    assert [x["cars"] for x in b] == [[1, 2]], "1.2 s is a battle for MX-5s, 0.8 s is not one for GTPs"
+    assert b[0]["scale"] == sc[10]
+    # unknown speed (no lap or no track length): the plain seconds
+    assert Deriver().class_scale(cars, None) == {} and Deriver().gap_scale(10) == 1.0
+    # tyre fall-off is weighed against the class's lap too
+    d._class_lap = {10: 180.0}
+    assert d.lap_scale(10) == 2.0 and d.lap_scale(99) == 1.0

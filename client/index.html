@@ -2640,7 +2640,8 @@ LK.look = document.documentElement.dataset.look || "basic";
     }
     const t = d && d.strategy && d.strategy.targets;
     if (t && t.hold) {
-      if (t.hold.gapS < 1.0) add("close:" + t.hold.idx, "warn", D(t.hold.gapS < 0.05 ? `${shortCar(t.hold.idx)} alongside ${RW().obj}` : `${shortCar(t.hold.idx)} ${t.hold.gapS.toFixed(t.hold.gapS < 0.95 ? 2 : 1)} s behind ${RW().obj}`, "Computed here from both cars' time behind the leader."));
+      const hc = carByIdx(t.hold.idx), close = 1.0 * ((hc && hc.derived && hc.derived.gapScale) || 1);   // in this class's seconds
+      if (t.hold.gapS < close) add("close:" + t.hold.idx, "warn", D(t.hold.gapS < 0.05 ? `${shortCar(t.hold.idx)} alongside ${RW().obj}` : `${shortCar(t.hold.idx)} ${t.hold.gapS.toFixed(t.hold.gapS < 0.95 ? 2 : 1)} s behind ${RW().obj}`, "Computed here from both cars' time behind the leader."));
       else if (t.hold.beforeFlag) add("catch:" + t.hold.idx, "info", D(`${shortCar(t.hold.idx)} catches ${RW().obj} ${inLaps(t.hold.catchesInLaps)}, before the flag`, "Computed here at the current closing rate."));
     }
     const wx = st && st.weather;

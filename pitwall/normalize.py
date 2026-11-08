@@ -1965,6 +1965,31 @@ class Deriver:
     # in a multiclass race: a GT4 0.5 s behind a GT3 is traffic, not a battle.
     BATTLE_ENTER_S = 1.0
     BATTLE_LEAVE_S = 1.5
+    # Those seconds are for a class going round at REF_SPEED_MS on average (a 90 s lap of a 4.5 km track: a GT3 at
+    # a road course). A gap is a distance in time, so a slower class (an MX-5, a Formula Vee) is as close at more
+    # seconds and a faster one (a GTP, an IndyCar, anything on an oval) at fewer: every class's time thresholds
+    # scale with REF_SPEED_MS over its own average speed (class_scale), from SCALE_MIN to SCALE_MAX.
+    REF_SPEED_MS = 50.0
+    SCALE_MIN, SCALE_MAX = 0.6, 1.6
+
+    def class_scale(self, cars: list, track_len) -> dict:
+        """classId -> how many seconds of gap this class's second is (1.0 when unknown), and classId -> its lap.
+        The class lap is iRacing's estimate (CarClassEstLapTime) where it has one, else its cars' best laps."""
+        laps: dict = {}
+        for c in cars:
+            v = c.get("classEstLapS") or ((c.get("bestLapS") or 0) > 0 and c.get("bestLapS")) or None
+            if v and v >= 5:
+                laps.setdefault(c.get("classId"), []).append(v)
+        lap = {k: sorted(v)[len(v) // 2] for k, v in laps.items()}
+        scale = {}
+        for k, v in lap.items():
+            if track_len and track_len > 100:
+                scale[k] = round(min(self.SCALE_MAX, max(self.SCALE_MIN, self.REF_SPEED_MS / (track_len / v))), 3)
+        self._class_scale, self._class_lap = scale, lap
+        return scale
+
+    def gap_scale(self, class_id) -> float:
+        return (getattr(self, "_class_scale", None) or {}).get(class_id, 1.0)
 
     def battles(self, cars: list, ahead_of: dict, is_race: bool) -> list:
         if not is_race:
@@ -1998,7 +2023,7 @@ class Deriver:
                 if gap < 0:
                     continue
                 pair = (a["idx"], b["idx"])
-                limit = self.BATTLE_LEAVE_S if pair in live else self.BATTLE_ENTER_S
+                limit = (self.BATTLE_LEAVE_S if pair in live else self.BATTLE_ENTER_S) * self.gap_scale(a.get("classId"))
                 if gap <= limit:
                     links.append((a, b, round(gap, 3)))
                     keep.add(pair)
@@ -2009,6 +2034,7 @@ class Deriver:
             grp = tail.pop(a["idx"], None)
             if grp is None:
                 grp = {"classId": a.get("classId"), "cars": [a["idx"]], "gapsS": [],
+                       "scale": self.gap_scale(a.get("classId")),         # what "close" is in this class (director)
                        "closingSPerLap": [], "catchLaps": [],
                        "forClassPos": a["classPos"], "forPos": a.get("pos")}
                 groups.append(grp)
@@ -2339,8 +2365,10 @@ class Deriver:
             if a is None or a.get("classId") != c.get("classId") or c.get("onPitRoad") or a.get("onPitRoad"):
                 continue
             # within a second it is a battle already; over CLOSING_MAX_S_PER_LAP it is a car in trouble, not a chase
-            if cl is None or not (self.CLOSING_MIN_S_PER_LAP <= cl <= self.CLOSING_MAX_S_PER_LAP) or gap is None \
-                    or not (self.BATTLE_ENTER_S < gap <= self.CLOSING_MAX_GAP_S):
+            # (seconds of this class: class_scale)
+            k = self.gap_scale(c.get("classId"))
+            if cl is None or not (self.CLOSING_MIN_S_PER_LAP * k <= cl <= self.CLOSING_MAX_S_PER_LAP * k) or gap is None \
+                    or not (self.BATTLE_ENTER_S * k < gap <= self.CLOSING_MAX_GAP_S * k):
                 continue
             catch = d.get("catchLaps")
             out["closing"].append({"idx": c["idx"], "aheadIdx": a["idx"], "gapS": round(gap, 2),
@@ -2562,9 +2590,15 @@ class Deriver:
     # it leaves (the session info that names the driver can lag the stop).
     PIT_CHANGE_WINDOW_S = 120.0
     STINT_MIN_LAPS = 3
-    # tyre fall-off a stop for fresh tyres is weighed on (s a lap per lap of age)
+    # tyre fall-off a stop for fresh tyres is weighed on (s a lap per lap of age), for a 90 s lap: a car on a
+    # longer lap loses more seconds for the same wear, so both scale with the class's lap (lap_scale)
     TYRE_DEG_MIN = 0.03
     TYRE_DEG_MAX = 0.5
+    REF_LAP_S = 90.0
+
+    def lap_scale(self, class_id) -> float:
+        lap = (getattr(self, "_class_lap", None) or {}).get(class_id)
+        return min(2.5, max(0.4, lap / self.REF_LAP_S)) if lap else 1.0
 
     def car_extras(self, c, t, grid_by_idx, fast_limit, is_race, team_race) -> dict:
         idx = c["idx"]
@@ -2888,7 +2922,8 @@ class Deriver:
         deg, age = md.get("degSPerLap"), md.get("stintLaps")
         # not under a caution (the laps are slow for everyone, so they say nothing about the tyres)
         # and not from a fall-off no tyre has (over TYRE_DEG_MAX s a lap is traffic or a caution in the stint)
-        if (lane is not None and deg and self.TYRE_DEG_MIN <= deg <= self.TYRE_DEG_MAX and age and age >= 5
+        ks = self.lap_scale(me.get("classId"))
+        if (lane is not None and deg and self.TYRE_DEG_MIN * ks <= deg <= self.TYRE_DEG_MAX * ks and age and age >= 5
                 and to_go >= 3 and opts and not (caution and caution.get("active"))):
             base = min(o["lossS"] for o in opts)
             gain = deg * age * to_go
@@ -3942,6 +3977,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             Deriver.best_intervals(cars)
         meet = deriver.meetings(cars, player_idx, now)
         class_best_sectors = Deriver.sector_marks(cars)
+        deriver.class_scale(cars, track_length_m(session_msg))
+        for c in cars:
+            c["derived"]["gapScale"] = deriver.gap_scale(c.get("classId"))   # what "close" is in its class (class_scale)
         battles = deriver.battles(cars, ahead_of, is_race)
         deriver.battle_history(battles, now)
         tv = deriver.race_tv(cars, now, race if is_race else None, ahead_of, is_race)

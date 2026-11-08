@@ -2319,8 +2319,10 @@ def test_race_tv_extras_from_our_own_measures():
                 live = p
             if p["done"] and done is None and live and p["idx"] == live["idx"]:
                 done = p
+        by = {c["idx"]: c for c in cm["cars"]}
         for c in dv["closing"]:
-            assert 0.1 <= c["closingSPerLap"] <= 3.0 and 1.0 <= c["gapS"] <= 8.0
+            k = d.gap_scale(by[c["idx"]].get("classId"))       # in that class's own seconds (class_scale)
+            assert 0.1 * k <= c["closingSPerLap"] <= 3.0 * k and 1.0 * k - 0.005 <= c["gapS"] <= 8.0 * k + 0.005  # gapS is rounded
         paced = paced or any(c["derived"].get("recentPaceVsLeaderS") is not None for c in cm["cars"])
         chart = dv["lapChart"]
         if done and paced:
