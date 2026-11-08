@@ -151,6 +151,14 @@ iRacing Suite app (suite/)
   token): `suite.bridge.relay_feed` puts the suite Hub's messages through a RemoteClient that never
   blocks the pump (half-rate ticks, always the ones carrying every car's arrays; oldest ticks dropped when slow). The local /ws stays loopback-only.
 
+- A new session while the app runs (Nov 2026: a second race at another track and the app stayed on the first):
+  iRacing opens a new sim for each session and its session info counter starts again, so the bridge rebuilds the
+  session on a new attach (LiveSource.epoch) or a new SessionUniqueID as well as on the counter; another event
+  (WeekendInfo SessionID / SubSessionID / track) starts the derived history afresh (Bridge._event_key,
+  Director.new_event). The overlay drops a map not of the session's track (mapFits, as PitWall's
+  mapMatchesSession). The suite's LiveSource resends the session info on a new SessionUniqueID; its Hub looks for
+  track outlines again on a new track and when a session ends (track_maps_soon, one run at a time); the home
+  page's last session looks at the folders again each time and reloads after the sim closes.
 - Track maps: the suite builds PitWall's outline for each track from your .ibt files by GPS (`Library.build_maps`, on
   its own thread at start) into PitWall's cache (`pitwall.trackmap`, north up, `FRAME`); the bridge looks again every
   10 s while it has none. PitWall's own builder needs your car on track; spectating and replays have no kinematics.

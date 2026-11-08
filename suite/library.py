@@ -503,8 +503,9 @@ class Library:
         return made
 
     def last_session(self):
-        """The newest .ibt of yours with timed laps, summarized (cached per file and size)."""
-        files = self._last if self._last is not None else self.scan()
+        """The newest .ibt of yours with timed laps, summarized (cached per file and size). The folders are
+        looked at again each time: the listing kept from the start never had the sessions driven since."""
+        files = self._last = self.scan()
         cache = self.__dict__.setdefault("_sess_cache", {})
         for d in [f for f in files if f.get("kind") == "ibt"][:6]:
             p = (self._ids or {}).get(d.get("id"))

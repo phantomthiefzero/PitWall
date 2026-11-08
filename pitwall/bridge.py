@@ -53,6 +53,7 @@ class Bridge:
         self.deriver = Deriver()
         self._src_restarts = 0
         self._session_num = None
+        self._event = None
         self.session_msg: dict | None = None
         self.map_msg: dict | None = None
         self._last_siu = None
@@ -106,7 +107,10 @@ class Bridge:
 
     # ------------------------------------------------------------------ #
     def _maybe_session(self, outbox: list[dict]):
-        siu = self.src.session_info_update
+        # The session info's update counter alone missed a new session: iRacing closes the sim after each
+        # session and the next one's counter starts again, so it could meet the old value and the app went on
+        # with the old track (map, drivers, packs). A new attach (epoch) or a new session id also rebuilds it.
+        siu = (self.src.session_info_update, getattr(self.src, "epoch", 0), self.src.get("SessionUniqueID"))
         if siu != self._last_siu:
             self.session_msg = build_session(self.src)
             self._last_siu = siu   # after the build, so a failed parse is retried next frame
@@ -213,6 +217,16 @@ class Bridge:
             # gap trends, sector bests and fuel samples across the boundary.
             restarts = getattr(self.src, "restarts", 0)
             session_num = self.src.get("SessionNum")
+            event = self._event_key()
+            if event is not None and event != self._event:
+                prev, self._event = self._event, event
+                if prev is not None:
+                    # another race, another track: nothing of the last one carries over (stints, laps seen,
+                    # finish, lap chart, replays of its moments), even where the session number is the same
+                    self._session_num = session_num
+                    self._new_deriver()
+                    self.director.new_event()
+                    self.log(f"new event {event}; derived history reset")
             if restarts != self._src_restarts:
                 self._src_restarts = restarts
                 self._session_num = session_num
@@ -269,6 +283,14 @@ class Bridge:
             if not held:                  # a followed car's view keeps its last live picture
                 outbox.extend(self._ref_messages(cars_msg, now))
         return outbox
+
+    def _event_key(self):
+        """Which event this is: the session's ids and track. None until the session info is read."""
+        m = self.session_msg
+        if not m:
+            return None
+        ev, tr = m.get("event") or {}, m.get("track") or {}
+        return (ev.get("SessionID"), ev.get("SubSessionID"), tr.get("TrackID"), tr.get("TrackConfigName"))
 
     def _new_deriver(self):
         self.deriver = Deriver()

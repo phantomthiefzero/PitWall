@@ -585,7 +585,7 @@ e.onclick=async()=>{if(e.disabled)return;e.disabled=true;e.textContent=busy;try{
 btn('Replay a telemetry file…',async()=>{const r=await window.pywebview.api.pick_replay();if(r&&r.ok){info.mode='replay';info.file=r.file;meta=null;b.dataset.k='';render()}else if(r&&r.error)alert(r.error)},'Choosing a file…');
 if(rep)btn('Back to live',async()=>{await window.pywebview.api.use_live();info.mode='live';info.connected=false;meta=null;b.dataset.k='';render()},'Switching…')}}
 function connect(){let ws;try{ws=new WebSocket('ws://'+location.host+'/ws?ticks=0')}catch(e){return setTimeout(connect,2000)}
-ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.type==='glance'){glance(m.v);return}if(m.type==='hello'){$('ver').textContent='version '+m.bridge;info.mode=m.mode}else if(m.type==='status'){info.connected=!!m.connected;info.mode=m.source||info.mode;render()}else if(m.type==='session'&&typeof m.yaml==='string'){meta=metaFrom(m.yaml);render()}};
+ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.type==='glance'){glance(m.v);return}if(m.type==='hello'){$('ver').textContent='version '+m.bridge;info.mode=m.mode}else if(m.type==='status'){if(info.connected&&!m.connected){setTimeout(loadLast,15000);setTimeout(loadRecords,15000)}info.connected=!!m.connected;info.mode=m.source||info.mode;render()}else if(m.type==='session'&&typeof m.yaml==='string'){meta=metaFrom(m.yaml);render()}};
 ws.onclose=()=>setTimeout(connect,2000)}
 // ---- the tiles, alive: a glance at iRacing's own variables once a second (suite/bridge.py glance)
 const FLAG_BITS=[[0x10,'Red','#ff5a5a'],[0x1,'Checkered','#fff'],[0x2,'White','#fff'],[0x4000,'Caution','#ffd23f'],[0x8000,'Caution','#ffd23f'],[0x8,'Yellow','#ffd23f'],[0x4,'Green','#3ddc84']];

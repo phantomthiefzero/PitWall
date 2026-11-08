@@ -458,6 +458,11 @@ class Director:
             self.changed = True
         return ok
 
+    def new_event(self):
+        """Another event in the same run of the app: its moments and what was replayed belong to the last one
+        (they are keyed by session number, which starts again)."""
+        self._snum = object()
+
     # ------------------------------------------------------------------ tick
     def tick(self, session: dict | None, cars_msg: dict | None, state: dict | None,
              recent_incidents: list, busy: bool = False):
