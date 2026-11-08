@@ -2106,6 +2106,47 @@ return h+'</details>'}
 //  trim 'gt3' = iRacing's GT3 downforce-by-track list (tro: this car's differences), or a table
 //  spd  [km/h] top-speed guide: High below the first, Medium up to the second, Low above
 const KB_GT4={'Daytona International Speedway':'Low','Circuit des 24 Heures Du Mans':'Low'};
+// How each kind of car is driven fastest. Coaching's advice is relative to a reference lap, so the car's own way
+// comes with the reference; these weigh what to work on first. entry and exit multiply the weight of advice about
+// braking, turn-in and the apex (entry) and about the throttle and exit (exit) in Coaching's 3 things per corner.
+// Measured where a lap was given (Nov 2026, Alxander Spetz): a Porsche 911 GT3 R at Road America, slowest point at
+// 90% of the way from braking to full throttle and full throttle 0.3 s after it (a V); a Dallara P217 at Suzuka,
+// slowest point at 68% and 1.3 s of rolling throttle after it, 2 g mid-corner (a U). One lap each: a guide.
+const CAR_STYLE={
+ gt3:{n:'GT3',entry:1,exit:1.25,shape:'V',lines:['Brake hard and late, then trail the brake off as you turn in: the brake is what rotates the car.','Get it turned early and the slowest point late, so the car is pointed down the exit before you go to power.','Then full throttle as soon as the wheel unwinds: the time is in the exits.']},
+ gt4:{n:'GT4',entry:1.05,exit:1.2,shape:'V',lines:['Brake firmly in a straight line and trail it off into the turn; with less downforce, over-slowing costs less than over-driving the entry.','Rotate the car on the brake, slowest point a little late.','Smooth, early throttle: exits carry down every straight.']},
+ cup:{n:'Cup car',entry:1.05,exit:1.2,shape:'V',lines:['No aero help and a lot of power: brake hard, trail the brake to turn the car, and be patient.','Slowest point late, car pointed straight before full power.','Exits first: wheelspin and a lazy throttle cost the most.']},
+ supercar:{n:'Supercar',entry:1,exit:1.25,shape:'V',lines:['Heavy and powerful: brake deep and hard, rotate it on the brake.','A late apex so you can straighten the wheel early.','Then hard on the power: the exit is the lap.']},
+ proto:{n:'Prototype',entry:1.3,exit:0.9,shape:'U',lines:['Downforce pays for speed in the middle of the corner: brake shorter and lighter, and in fast corners a lift or a brush of the brake is often enough.','Trail the brake far into the turn and keep the minimum speed high, with the slowest point earlier and a wide, round line.','Roll onto the throttle over a second or more: the exit follows from the speed you carried.']},
+ formula:{n:'Formula car',entry:1.3,exit:0.95,shape:'U',lines:['Very late, very hard braking, released smoothly as the downforce falls away with the speed.','Commit to the entry and carry the minimum speed: the car has the grip.','Progressive throttle from the apex; keep the line round rather than squaring it off.']},
+ formula_light:{n:'Junior formula',entry:1.15,exit:1.05,shape:'U',lines:['Light car, little downforce: brake late but release smoothly so the front keeps biting.','Carry speed through the middle with a round line.','Early, smooth throttle: there is little power to make up a slow exit.']},
+ momentum:{n:'Momentum car',entry:1.35,exit:0.8,shape:'momentum',lines:['Little power: every km/h you keep is kept all the way down the next straight, so do not over-slow.','Brake as little and as briefly as you can, use the whole width and keep the steering smooth: scrubbing the tyres costs speed you cannot get back.','Back to full throttle early; flat where you dare.']},
+ fwd:{n:'Front-wheel drive',entry:1.15,exit:1,shape:'V',lines:['Trail the brake into the turn: with the front tyres doing everything, the brake is how the rear rotates.','Do not ask for throttle until the car is pointed: power early in a front-driven car is understeer.','Then squeeze it on without wheelspin.']}};
+function carStyle(path,name){const t=((path||'')+' '+(name||'')).toLowerCase();
+ if(/gtp|963|arx|v-?series|hybrid v8|p217|lmp2|lmp3|ligier|js ?p3|p320/.test(t))return 'proto';
+ if(/fia ?f4|\bf4\b|formula ?4|skip barber|vee|\bff1600|formula ?1600/.test(t))return 'formula_light';
+ if(/sf23|super ?formula|ir18|indycar|ir-?01|w1[2-4]|formula|dallara f3|fr2\.0|\bf3\b/.test(t))return 'formula';
+ if(/mx-?5|mx5|gr ?86|toyota ?86|miata|spec ?racer/.test(t))return 'momentum';
+ if(/tcr|elantra|rs ?3|civic|veloster/.test(t))return 'fwd';
+ if(/gt4|cayman|570s/.test(t))return 'gt4';
+ if(/supercar|gen ?3|camaro|mustang gt\b/.test(t)&&!/gt3/.test(t))return 'supercar';
+ if(/cup|challenge|mission ?r|m2 ?cs|radical/.test(t))return 'cup';
+ if(/gt3|gte|m8|z06|nsx|huracan|huracán|720s|r8|mp4|488|296|vantage|amg/.test(t))return 'gt3';
+ return null}
+// the straight after a corner decides how much its exit is worth (the time a slow exit costs grows with the straight it
+// leads onto): 400 m flat out is 1, a long one up to 1.5, the next corner close by down to 0.7
+function exitWorth(after){return after==null?1:Math.max(.7,Math.min(1.5,after/400))}
+const CO_EXIT_K=new Set(['throttle_sooner','spin','use_exit','kerb_exit','early_apex']),CO_ENTRY_K=new Set(['brake_later','brake_earlier','brake_harder','no_brake','trail','turn_later','turn_sooner','wide_entry','miss_apex','kerb_apex','lock']);
+// pure: the weight a piece of advice gets for this car and this corner
+function coWeight(k,w,style,after){const S=CAR_STYLE[style]||null,x=exitWorth(after);
+ if(CO_EXIT_K.has(k))return w*(S?S.exit:1)*x;if(CO_ENTRY_K.has(k))return w*(S?S.entry:1)/Math.sqrt(x);return w}
+// pure: how far the reference lap stays flat out after a corner (from its full throttle to the next lift or brake),
+// in metres; the corner zones themselves run into one another, so the gap between them is not the straight
+function coFullAfter(B,ap,mpg){if(!B||!B.Throttle||ap==null)return null;const th=g=>B.Throttle[(g+N)%N],br=g=>B.Brake?B.Brake[(g+N)%N]:0;
+ let g=ap,k=0;while(k<N/2&&!(th(g)>=.95&&br(g)<.05)){g++;k++}if(k>=N/2)return null;let n=0;while(n<N&&th(g+n)>=.95&&br(g+n)<.05)n++;return n*mpg}
+function coFocus(after,u){if(after==null)return '';const L=v=>(v*u.d[0]).toFixed(0)+' '+u.d[1];
+ if(after>=500)return 'Exit first: your best lap is flat out for '+L(after)+' after it, and every km/h onto that straight carries all the way down.';
+ if(after<150)return 'Only '+L(after)+' flat out before the next corner: entry and mid-corner speed count more than the exit here.';return ''}
 const CAR_KB=[
 {m:/296.*challenge|296chal/,n:'Ferrari 296 Challenge',tc:{off:0,more:1,rec:'1-2'},abs:{more:1,rec:'1-2 dry, 3-4 wet'},rh:{front:105,rear:107},eq:[null,4]},
 {m:/296/,n:'Ferrari 296 GT3',tc:{off:1,more:1},abs:{off:1,more:1,dry:'2-7',wet:'8-12'},lim:{arbblades:[0,90],damp:[0,11]},rh:{rear:50,rearMax:92.5},df:[10,37.5,58.5],dr:[-2,17.5,17.5],eq:[-1,3],trim:'gt3',spd:[250,270]},
@@ -2277,11 +2318,12 @@ if(y.coast!=null&&y.coast-b.coast>=.25)add('coast',8.5,(y.coast-b.coast)/.25,'Le
 if(y.spin!=null&&y.spin>=.3&&b.spin===false)add('spin',8.6,1+y.spin*2,'Wheelspin on the exit on '+of(y.spin)+' (not on your best): squeeze the throttle on more gradually.');
 if(y.line&&y.line.ex!=null&&y.line.ex>=1.5)add('use_exit',9,y.line.ex/1.5,'Let the car run out '+Lm(y.line.ex)+' wider on the exit'+(b.ta>=0&&y.ta!=null&&(y.ta-b.ta)*m>=3?' and use that room to get on the throttle sooner.':': the wider arc carries more speed onto the straight.'));
 if(b.kerb&&y.kerb&&b.kerb.ex&&y.kerb.ex<.5)add('kerb_exit',9.5,1.2,'Your best uses the exit kerb; you do on '+of(y.kerb.ex)+'.');
+st.forEach(x=>{x.w=coWeight(x.k,x.w,COACH.style,cc.after)});      // this car's way, and what the straight after is worth
 const steps=st.sort((p,q)=>q.w-p.w).slice(0,3).sort((p,q)=>p.o-q.o);
 if(!steps.length&&cc.dv<=-1.5)steps.push({k:'apex_speed',o:7,w:1,t:'Carry more speed through the middle: your '+(b.braked?'braking point, ':'')+'turn-in and line already match your best, so the difference is commitment. '+(b.braked?'Brake a touch lighter':'Lift less')+' and trust the grip.'});
 const target=cc.dv<=-1.5&&b.ms&&y.ms?{ms:b.ms,now:y.ms,t:'Aim for '+S(b.ms)+' at the slowest point (now '+S(y.ms)+').'}:null;
 const hd=steps.slice(0,2).map((x,i)=>{const t=CO_HEAD[x.k]||x.t.split(/[:.]/)[0];return i?t.charAt(0).toLowerCase()+t.slice(1):t}).join(', then ');
-return steps.length||target?{steps,target,head:hd||'Carry more speed'}:null}
+return steps.length||target?{steps,target,head:hd||'Carry more speed',focus:coFocus(cc.after,u)}:null}
 function coachCompare(avg,best,laps){const R0=analyze(avg,best),u=U(),out={total:R0.total,pct:R0.pct,len:R0.len,corners:[],R:R0};
 // the reference lap with its extra channels, and each lap's facts in every corner, measured against it
 const xs=CO_XK.filter(k=>best.ext&&best.ext[k]);xs.forEach(k=>best['x:'+k]=best.ext[k]);const Bx=rs(best,xs.map(k=>'x:'+k));
@@ -2300,7 +2342,8 @@ if(c.a.ta>=0&&c.b.ta>=0&&c.dm>=5&&c.dm<=60)tips.push({k:'throttle_earlier',w:c.d
 if(coast>=8)tips.push({k:'coast',w:coast,t:'Less coasting: '+ds2(coast)+' more with neither pedal than your best. Trail the brake into the turn, or pick up the throttle sooner.'});
 if(c.dp<=-10&&c.a.ba>=0)tips.push({k:'brake_harder',w:-c.dp,t:'Brake harder at the start: your best uses '+Math.abs(c.dp).toFixed(0)+'% more peak brake pressure.'});
 if(sd!=null&&sd>=0.12)tips.push({k:'consistency',w:sd*100,t:'Inconsistent here (±'+sd.toFixed(2)+' s lap to lap): pick one fixed marker for braking and turn-in and repeat it.'});
-tips.sort((p,q)=>q.w-p.w);const o={n:c.n,ap:c.ap,s:c.s,e:c.e,pos:c.pos,mpg:c.mpg,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips,fx:c.fx};o.cause=coachCause(o,u);out.corners.push(o)});
+tips.sort((p,q)=>q.w-p.w);const after=coFullAfter(R0.B,c.ap,c.mpg);
+const o={n:c.n,ap:c.ap,s:c.s,e:c.e,pos:c.pos,mpg:c.mpg,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips,fx:c.fx,after};o.cause=coachCause(o,u);out.corners.push(o)});
 out.corners.sort((p,q)=>q.dt-p.dt);out.between=R0.total-R0.cs.reduce((s,c)=>s+c.dt,0);return out}
 // live laps kept per car and track (compact: 250 points), so an average can be built later
 const COACH_LIVE_KEY='coachLive',COACH_LIVE_MAX=40,COACH_PTS=250;
@@ -2349,6 +2392,7 @@ function coachRun(){const srcs=coachSources(),S=srcs.find(x=>x.id===COACH.src)||
 const M=COACH.memo,k0=coachKey(S);if(M&&M.key===k0){try{nameCorners(M.X.C.R.cs,coTrack(S))}catch(e){}return M.X}
 const X=coachRun0(S);COACH.memo=X?{key:coachKey(S),X}:null;return X}
 function coachRun0(S){const laps=S.laps();if(laps.length<2)return null;
+COACH.style=carStyle(S.car,S.carName);
 const G=coachConditions(laps.map(l=>l.cond)),pick=id=>id&&G[id]?G[id].idx.map(i=>laps[i]):null;COACH.groups=G;if(COACH.grp&&!G[COACH.grp])COACH.grp='';
 const mine=pick(COACH.grp)||laps,own=mine.slice().sort((p,q)=>p.lap-q.lap);let best=own[0],bestLab='your best lap ('+ft(best.lap)+')';
 const here={car:[S.car,S.carName],track:coTrack(S)},fits=g=>sameWhere(here,g).ok,g61=COACH.g61.filter(fits),left=COACH.g61.length-g61.length;let skipped=left?left+' Garage 61 lap'+(left>1?'s':'')+' in another car or at another track left out':'';
@@ -2687,11 +2731,12 @@ if(TH.length&&C.total>0.02){const pct=x=>Math.max(0,x)/C.total*100,col=i=>['var(
 h+='<div style="margin-top:8px"><small class="m">By cause</small><div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin:3px 0">'+TH.map((t,i)=>'<span title="'+t.k+'" style="width:'+pct(t.dt).toFixed(1)+'%;background:'+col(i)+'"></span>').join('')+'</div><small>'+TH.map((t,i)=>'<span style="white-space:nowrap"><span style="color:'+col(i)+'">■</span> '+t.k+' <b>'+sg(t.dt)+' s</b></span>').join(' &nbsp; ')+'</small></div>'}
 h+='</div>';
 // corner by corner
+{const st=CAR_STYLE[COACH.style];if(st)h+='<details class="cofold" id="coStyle"><summary><b>How a '+plain(st.n)+' is driven</b> <span class="m">what the advice below puts first</span></summary><ol style="margin:6px 0 0 18px;padding:0">'+st.lines.map(t=>'<li>'+plain(t)+'</li>').join('')+'</ol><p class="m" style="font-size:13px;margin:6px 0 0">Corner by corner, the advice still comes from the lap you are compared with. For this kind of car it puts '+(st.entry>st.exit?'braking, turn-in and the speed you carry':'the exit and the throttle')+' first, and in every car the exit counts more before a long straight.</p></details>'}
 const lose=C.corners.filter(c=>c.dt>0.02),T=(pracLoad()[pracKeyOf(X)]||{}).targets||[],hasLine=!!(R.A.Lat&&R.A.Lat[1]&&coLineOff(R.A,R.B));
 if(lose.length){h+='<details class="cofold" id="coCorners"'+(COACH.cornersOpen?' open':'')+'><summary><b>Corner by corner</b> <span class="m">'+lose.length+' corners where you lose time: your line, braking, kerbs and wheels against your best</span></summary>'+
 '<p class="m" style="margin:6px 0;font-size:13px"><span class="you">■ your average lap</span> &nbsp; <span class="ref">■ your best lap</span>. The speed trace has the brake and full throttle underneath.</p>'+(hasLine?CO_LINE_NOTE:'')+'<div class="cocards">'+
 lose.map(c=>{const rc=R.cs.find(q=>q.n===c.n),K=c.cause,on=T.some(t=>t.n===c.n);return '<div class="cocard"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+plain(coName(rc||c))+'</b><b class="bad">'+sg(c.dt)+' s</b></div>'+
-(K&&K.steps.length?'<div style="font-size:14px;margin-top:2px">'+K.steps.map(s=>plain(s.t)).join(' ')+'</div>':'')+(K&&K.target?'<div class="cotarget">'+plain(K.target.t)+'</div>':'')+
+(K&&K.steps.length?'<div style="font-size:14px;margin-top:2px">'+K.steps.map(s=>plain(s.t)).join(' ')+'</div>':'')+(K&&K.target?'<div class="cotarget">'+plain(K.target.t)+'</div>':'')+(K&&K.focus?'<div class="m" style="font-size:13px;margin-top:2px">'+plain(K.focus)+'</div>':'')+
 '<div class="covis">'+(hasLine&&c.fx?'<div style="flex:0 1 160px;min-width:120px">'+coachLineSvg(R,c,170)+'</div>':'')+'<div style="flex:1 1 140px;min-width:140px;max-width:280px">'+(rc?coachCornerSvg(R,rc,190,140):'')+'</div></div>'+coachFactRows(c)+
 (()=>{const nt=(SDiff[c.n]||[]).filter(x=>!(c.fx&&x.k==='trail'));return nt.length?'<div style="font-size:13px;margin-top:4px"><b>Technique:</b> '+nt.map(x=>plain(x.t)).join(' ')+'</div>':''})()+
 (c.fx?'<div style="margin-top:6px"><button type="button" data-prac="'+c.n+'" class="'+(on?'on':'')+'" style="margin:0">'+(on?'✓ Practising this':'Practise this live')+'</button></div>':'')+'</div>'}).join('')+'</div></details>'}

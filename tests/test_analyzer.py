@@ -1758,8 +1758,9 @@ console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind),
         self.assertLess(abs(g - d) / g, 0.35)                 # about the same enclosed area (~0.5 km²)
 
     def test_corner_four_brakes_and_turns_in_early(self):
-        # measured on the real laps: 9 m early on the brake and the turn-in, 3.9 m tight on the exit
-        self.assertEqual(self.r["c4"], ["brake_later", "turn_later", "use_exit"])
+        # measured on the real laps: 9 m early on the brake and the turn-in, 3.9 m tight on the exit, an early
+        # apex. A GT3 (exits first) onto ~900 m flat out: the exit comes first, the early apex (turn in later) with it
+        self.assertEqual(self.r["c4"], ["early_apex", "use_exit", "kerb_exit"])
 
     def test_track_limits_count_every_timed_lap(self):
         o = self.r["offs"]
@@ -1833,8 +1834,10 @@ class CoachCauseTest(unittest.TestCase):
 
     def test_the_cause_in_the_order_you_meet_it(self):
         r = self.r
-        self.assertEqual(r["steps"], ["brake_later", "turn_later", "spin"])   # the three biggest, in corner order
-        self.assertEqual(r["head"], "Brake later, then turn in later")
+        # the three biggest, in corner order; a long straight after the corner puts its exit (wheelspin, the exit
+        # width) ahead of the turn-in (coWeight)
+        self.assertEqual(r["steps"], ["brake_later", "spin", "use_exit"])
+        self.assertEqual(r["head"], "Brake later, then less wheelspin on exit")
         self.assertIsNone(r["c2"])                                             # the same in every lap: nothing to say
 
     def test_measured_against_the_best(self):
@@ -2241,3 +2244,54 @@ console.log(JSON.stringify({same: sameWhere(ibtLap, same), car: sameWhere(ibtLap
         self.assertEqual((res["trk"]["car"], res["trk"]["track"]), (True, False))
         self.assertTrue(res["unknown"]["ok"], "a lap with nothing said about it is not refused")
         self.assertTrue(res["ferrari"]["ok"])
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class CarStyleTest(unittest.TestCase):
+    """Coaching weighs its advice by how the kind of car is driven and by what the straight after a corner is
+    worth (Nov 2026, from a GT3 lap at Road America and an LMP2 lap at Suzuka: a V against a U)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.res = run_js("""
+const kinds = {}; CAR_KB.forEach(k => { kinds[k.n] = carStyle('', k.n) });
+const w = (k, style, after) => +coWeight(k, 1, style, after).toFixed(3);
+console.log(JSON.stringify({kinds,
+  paths: ['porsche992rgt3', 'dallarap217', 'mx5 mx52016', 'ferrari296gt3', 'audirs3lms', 'superformulasf23'].map(p => carStyle(p, '')),
+  gt3: [w('throttle_sooner', 'gt3', 400), w('brake_later', 'gt3', 400)], proto: [w('throttle_sooner', 'proto', 400), w('brake_later', 'proto', 400)],
+  longStraight: [w('throttle_sooner', null, 1200), w('throttle_sooner', null, 400), w('throttle_sooner', null, 60)],
+  entryShort: [w('trail', null, 60), w('trail', null, 1200)], other: w('gear', 'proto', 1200),
+  focus: [coFocus(1200, U()), coFocus(60, U()), coFocus(300, U())],
+  flat: (() => { const B = {Throttle: new Float64Array(N), Brake: new Float64Array(N)};
+    for (let g = 120; g < 420; g++) B.Throttle[g] = 1;           // the apex at 100, flat out from 120 to 420
+    return [coFullAfter(B, 100, 2), coFullAfter({Throttle: new Float64Array(N)}, 100, 2)] })()}));
+""")
+
+    def test_every_car_in_the_knowledge_table_has_a_kind(self):
+        missing = [n for n, k in self.res["kinds"].items() if k is None and "Cross" not in n]
+        self.assertEqual(missing, [], "a car with no driving style gets no car-specific weighting")
+        k = self.res["kinds"]
+        self.assertEqual(k["Porsche 911 GT3 R (992)"], "gt3")
+        self.assertEqual(k["Dallara P217 LMP2"], "proto")
+        self.assertEqual(k["Porsche 911 GT3 Cup (992)"], "cup", "a Cup car is not a GT3")
+        self.assertEqual(k["Ferrari 296 Challenge"], "cup")
+        self.assertEqual(k["Global Mazda MX-5 Cup"], "momentum")
+        self.assertEqual(k["Honda Civic Type R TCR"], "fwd")
+        self.assertEqual(k["BMW M4 GT4"], "gt4")
+        self.assertEqual(k["FIA F4"], "formula_light")
+        self.assertEqual(self.res["paths"], ["gt3", "proto", "momentum", "gt3", "fwd", "formula"])
+
+    def test_a_gt3_works_on_exits_and_a_prototype_on_entry(self):
+        g, p = self.res["gt3"], self.res["proto"]
+        self.assertGreater(g[0], g[1], "GT3: the throttle before the brakes")
+        self.assertGreater(p[1], p[0], "prototype: braking and entry before the throttle")
+
+    def test_the_straight_after_decides_what_an_exit_is_worth(self):
+        a, b, c = self.res["longStraight"]
+        self.assertTrue(a > b > c)
+        self.assertGreater(self.res["entryShort"][0], self.res["entryShort"][1], "the next corner close by: entry first")
+        self.assertEqual(self.res["other"], 1, "advice about neither (the gear) is left as it is")
+        self.assertTrue(self.res["focus"][0].startswith("Exit first"))
+        self.assertIn("entry and mid-corner", self.res["focus"][1])
+        self.assertEqual(self.res["flat"], [600, None], "flat out from the reference's full throttle to its next lift")
+        self.assertEqual(self.res["focus"][2], "")
