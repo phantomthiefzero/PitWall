@@ -106,7 +106,17 @@ slower, null not timed yet.
 front to back. `gapsS[k]` is between `cars[k]` and `cars[k+1]`. `closingSPerLap[k]` / `catchLaps[k]`
 are the behind car's own closing trend, and only when the pair is also adjacent overall --
 otherwise null, because that trend is measured against some other car. Neither car may be on
-pit road. Ordered by class position of the front car.
+pit road. Ordered by class position of the front car. Each battle also has `swaps` (places changed
+between its pairs while together; a pair forgotten after 60 s apart) and `sinceS` (how long its cars have
+been together).
+Race TV (Deriver.race_tv, race only): `pitStops` [{"idx","done":false,"laneS","boxS","inBox","stop","fromPos",
+"fromClassPos","rejoin"}] while a car is in the lane (`rejoin` is predict_rejoin with the typical loss, fixed at the
+lane entry; null before any stop was measured) and [{"idx","done":true,"stationaryS","pos","classPos","fromPos",
+"fromClassPos","stop","rejoin","outS"}] for 15 s after it leaves; `closing` [{"idx","aheadIdx","gapS",
+"closingSPerLap","catchLaps","beforeEnd","forClassPos"}]: a car catching the car directly ahead in its class
+(0.1-3 s a lap, 1-8 s back), those that catch before the end first, at most six; `lapChart` {idx: [[lap, pos,
+classPos], ...]} from the laps we watched. Every car: `derived.recentPaceS` (mean of its last five racing laps,
+three at least; `recentPaceLaps`) and `recentPaceVsLeaderS` (that minus its class leader's).
 Engineer additions: each car's `derived.vsYou` is {"lastLapS","bestLapS","paceS","bestSectorS":[...]},
 that car minus you (negative = they are quicker). The cars message's `derived.nearby` lists cars
 within 150 m along the track: [{"idx","meters" (+ ahead / - behind),"closingMs" (+ = the gap is

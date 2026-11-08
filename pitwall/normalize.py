@@ -491,6 +491,10 @@ class Deriver:
             return out
         was_away = st.get("away", False)
         st["away"] = pct is not None and pct < 0     # out of the world (LapDistPct -1)
+        # first seen before it was in the world (lap -1: the grid filling at a standing start, Summit Point): its
+        # first stint starts when it shows up on lap 0 or 1 (it read "this stint: unknown" all race)
+        if st.get("stintStart") is None and not st["stops"] and lap is not None and 0 <= lap <= 1:
+            st["stintStart"] = lap
         if on_pit_road and not st["onRoad"] and was_away:
             pass        # it appeared in its box (joined, rejoined or spawned for the start): not a lane entry
         elif on_pit_road and not st["onRoad"]:               # entered the lane
@@ -918,7 +922,10 @@ class Deriver:
                 "events": [x for x in self.feed_events if x["seq"] > seq]}
 
     def event(self, t, kind: str, **fields):
-        item = {"t": None if t is None else round(t, 2), "kind": kind, "lap": self._player_lap}
+        # the lap it happened on: yours while you drive; spectating (no car of your own) the leader's, which is
+        # the race's lap (it read "lap 0" on everything at Summit Point)
+        lap = self._player_lap if (self._player_lap or 0) > 0 else getattr(self, "_lead_lap", None)
+        item = {"t": None if t is None else round(t, 2), "kind": kind, "lap": lap}
         item.update(fields)
         self._feed_add("event", item)
 
@@ -1431,6 +1438,21 @@ class Deriver:
     QUALI_PUSH_S = 3.0          # further behind the pole lap than this: not a push lap (an out- or cool-down lap)
     QUALI_MIN_STRETCH = 2       # a delta needs a couple of stretches behind it
 
+    @staticmethod
+    def best_intervals(cars: list) -> None:
+        """Practice and qualifying: each car's best lap against the best of the car ahead of it in its class
+        (derived.classBestIntervalS), the interval a timing screen shows outside a race."""
+        by: dict = {}
+        for c in cars:
+            if c.get("classPos") and c["classPos"] > 0:
+                by.setdefault(c.get("classId"), []).append(c)
+        for L in by.values():
+            L.sort(key=lambda c: c["classPos"])
+            for x, y in zip(L, L[1:]):
+                bx, by_ = x.get("bestLapS"), y.get("bestLapS")
+                if bx and bx > 0 and by_ and by_ > 0:
+                    y.setdefault("derived", {})["classBestIntervalS"] = round(by_ - bx, 3)
+
     def quali_laps(self, cars: list) -> None:
         """Sets each car's derived.classPoleGapS (its best lap against its class's best, iRacing's best
         laps) and, on a push lap, derived.qualiLap: {stretch, of, deltaPoleS, deltaOwnS, poleIdx,
@@ -1453,6 +1475,7 @@ class Deriver:
             d = c.setdefault("derived", {})
             b, cb = c.get("bestLapS"), best.get(c.get("classId"))
             d["classPoleGapS"] = round(b - cb, 3) if b and b > 0 and cb else None
+            d["classBestIntervalS"] = None
             d["qualiLap"] = None
             sp, pole = self._split.get(c.get("idx")) or {}, poles.get(c.get("classId"))
             cr = sp.get("cross")
@@ -1481,7 +1504,13 @@ class Deriver:
         if not pa or not pb:
             return None
         seg = [round((pb[k + 1] - pb[k]) - (pa[k + 1] - pa[k]), 3) for k in range(self.STRETCHES)]
-        return {"a": a, "b": b, "gainS": seg, "totalS": round(pb[-1] - pa[-1], 3), "lapA": pa, "lapB": pb}
+        # two best laps far apart (one a slow lap, the only one timed by stretches) say nothing about where either is
+        # quicker (Summit Point: 1:36.0 against 1:24.9, "quicker on 0 of 24 stretches"): marked, and not shown
+        comparable = abs(pb[-1] - pa[-1]) <= self.FASTER_COMPARABLE * min(pa[-1], pb[-1])
+        return {"a": a, "b": b, "gainS": seg, "totalS": round(pb[-1] - pa[-1], 3), "lapA": pa, "lapB": pb,
+                "comparable": comparable}
+
+    FASTER_COMPARABLE = 0.025   # best laps within 2.5% of each other: a fair comparison
 
     def faster_pairs(self, cars: list) -> list:
         """Every car against the car ahead of it in its class (the battles and the battle box), when
@@ -1873,7 +1902,10 @@ class Deriver:
                 self._inc_lap = (lc, inc_now)
         if t is None:
             return
-        flags = set(race_flags(session.get("flags"), session.get("state")))     # no checkered before the leader finishes
+        # the race's flags as build_state read them (no checkered before the leader finishes; white and checkered
+        # from the race itself when a spectator's SessionFlags carry neither)
+        flags = set(session.get("raceFlags") if session.get("raceFlags") is not None
+                    else race_flags(session.get("flags"), session.get("state")))
         if ev["flags"] is not None:
             for f in self.FLAG_EVENTS:
                 if f in flags and f not in ev["flags"]:
@@ -1950,11 +1982,19 @@ class Deriver:
             for a, b in zip(cls_cars, cls_cars[1:]):
                 # Both gaps must be ones we trust, and neither car may be in the
                 # pit lane: a car in the lane is not racing the one beside it.
-                if not (a.get("gapValid") and b.get("gapValid")):
-                    continue
                 if a.get("onPitRoad") or b.get("onPitRoad"):
                     continue
-                gap = b["f2TimeS"] - a["f2TimeS"]
+                # The live gap (CarIdxEstTime, live_gaps) where there is one, the same number the tower and the
+                # battle box show: F2Time only refreshes when iRacing's timing catches up with a car, and a battle
+                # read from it held two cars 8 s apart as "within a second" (Summit Point, Nov 2026).
+                lv = (b.get("derived") or {}).get("liveClassIntervalS")
+                laps = (b.get("derived") or {}).get("classIntervalLaps")
+                if lv is not None and not laps:
+                    gap = lv
+                elif a.get("gapValid") and b.get("gapValid"):
+                    gap = b["f2TimeS"] - a["f2TimeS"]
+                else:
+                    continue
                 if gap < 0:
                     continue
                 pair = (a["idx"], b["idx"])
@@ -2226,6 +2266,207 @@ class Deriver:
     def _recent_partner(self, st, j, inc):
         return any(abs(o["t"] - inc["t"]) <= 3.0 for o in st["obs"].get(j, []))
 
+    # ---- what a TV race broadcast shows, from what we measure ------------------
+    PIT_SHOW_AFTER_S = 15.0     # a finished stop stays in the list this long (its time, where it came out)
+    PIT_LONG_S = 180.0          # longer in the lane than this is not a pit stop to show (repairs, retired, garage)
+    RECENT_PACE_LAPS = 5
+    CLOSING_MIN_S_PER_LAP = 0.1
+    CLOSING_MAX_GAP_S = 8.0
+    CLOSING_MAX_S_PER_LAP = 3.0
+    BATTLE_FORGET_S = 60.0      # a pair apart this long starts its history again
+
+    def race_tv(self, cars: list, t, race: dict | None, ahead_of: dict, is_race: bool) -> dict:
+        """pitStops (live in the lane, and just out), closing (who is catching whom in class, and whether before the
+        end), and each car's recentPaceS / recentPaceVsLeaderS (its last racing laps against its class leader's).
+        Everything from our own lap, gap and pit tracking: iRacing gives none of it."""
+        by = {c["idx"]: c for c in cars}
+        out = {"pitStops": [], "closing": []}
+        # recent race pace
+        lead_pace = {}
+        for c in cars:
+            laps = (self._lapsum.get(c["idx"]) or {}).get("racing", [])[-self.RECENT_PACE_LAPS:]
+            p = round(sum(laps) / len(laps), 3) if len(laps) >= 3 else None
+            c["derived"]["recentPaceS"], c["derived"]["recentPaceLaps"] = p, len(laps)
+            if c.get("classPos") == 1:
+                lead_pace[c.get("classId")] = p
+        for c in cars:
+            p, lp = c["derived"]["recentPaceS"], lead_pace.get(c.get("classId"))
+            c["derived"]["recentPaceVsLeaderS"] = round(p - lp, 3) if p is not None and lp is not None else None
+        if not is_race or t is None:
+            return out
+        # pit stops: the lane and box time running, where it should come out (from the typical loss, fixed at the
+        # lane entry), and a stop just finished with its time and the place it came out in
+        loss = self.typical_loss()
+        recent = getattr(self, "_pit_recent", {})
+        for c in cars:
+            st = self._pit.get(c["idx"])
+            if not st:
+                continue
+            if c.get("onPitRoad") and st.get("enterT") is not None:
+                if st.get("rejoinAt") != st["enterT"]:
+                    st["rejoinAt"] = st["enterT"]
+                    st["rejoin"] = self.predict_rejoin(cars, c["idx"], loss) if loss is not None else None
+                box = (t - st["boxT"]) if st.get("boxT") is not None else st.get("boxS")
+                if t - st["enterT"] > self.PIT_LONG_S:
+                    continue                  # in the garage or out of the race (Summit Point: 368 s and counting)
+                prev = recent.get(c["idx"]) or {}
+                if prev.get("enterT") != st["enterT"]:          # a new stop: where it came in from, kept for the stop
+                    prev = recent[c["idx"]] = {"enterT": st["enterT"], "fromPos": c.get("pos") or None,
+                                               "fromClassPos": c.get("classPos") or None}
+                prev["rejoin"] = st.get("rejoin")
+                out["pitStops"].append({"idx": c["idx"], "done": False, "laneS": round(t - st["enterT"], 1),
+                                        "boxS": None if box is None else round(box, 1), "inBox": st.get("boxT") is not None,
+                                        "stop": st["stops"] + 1, "rejoin": st.get("rejoin"),
+                                        "fromPos": prev["fromPos"], "fromClassPos": prev["fromClassPos"]})
+            elif c["idx"] in recent and not c.get("onPitRoad"):
+                r = recent[c["idx"]]
+                if "outT" not in r:
+                    r.update(outT=t, stationaryS=st.get("lastStopS"), pos=c.get("pos") or None,
+                             classPos=c.get("classPos") or None, stop=st["stops"])
+                if t - r["outT"] <= self.PIT_SHOW_AFTER_S:
+                    out["pitStops"].append({"idx": c["idx"], "done": True, "stationaryS": r["stationaryS"],
+                                            "stop": r["stop"], "pos": r["pos"], "classPos": r["classPos"],
+                                            "rejoin": r["rejoin"], "outS": round(t - r["outT"], 1),
+                                            "fromPos": r.get("fromPos"), "fromClassPos": r.get("fromClassPos")})
+                else:
+                    recent.pop(c["idx"], None)
+        self._pit_recent = recent
+        # closing in: a car catching the car ahead in its class, how fast, when it gets there, before the end or not
+        left = race_laps_left(race)
+        for c in cars:
+            d, a = c["derived"], by.get(ahead_of.get(c["idx"]))
+            cl, gap = d.get("closingSPerLap"), d.get("intervalS")
+            if a is None or a.get("classId") != c.get("classId") or c.get("onPitRoad") or a.get("onPitRoad"):
+                continue
+            # within a second it is a battle already; over CLOSING_MAX_S_PER_LAP it is a car in trouble, not a chase
+            if cl is None or not (self.CLOSING_MIN_S_PER_LAP <= cl <= self.CLOSING_MAX_S_PER_LAP) or gap is None \
+                    or not (self.BATTLE_ENTER_S < gap <= self.CLOSING_MAX_GAP_S):
+                continue
+            catch = d.get("catchLaps")
+            out["closing"].append({"idx": c["idx"], "aheadIdx": a["idx"], "gapS": round(gap, 2),
+                                   "closingSPerLap": cl, "catchLaps": catch,
+                                   "beforeEnd": None if catch is None or left is None else catch <= left,
+                                   "forClassPos": a.get("classPos") or None})
+        out["closing"].sort(key=lambda x: (x["beforeEnd"] is False, x["forClassPos"] or 99))
+        del out["closing"][6:]
+        return out
+
+    def race_end(self, session_num, state, leader_laps, total, timed, remain) -> bool | None:
+        """Has the leader taken the checkered flag? A lap race: the leader has the laps. Otherwise the first line
+        crossing after the end came (a timed race's clock out, or the session state turning checkered, which iRacing
+        does before the leader gets there). None while the end has not come (or for a session we cannot read)."""
+        ends = getattr(self, "_race_ends", {})
+        st = ends.setdefault(session_num, {})
+        self._race_ends = ends
+        done = False
+        if total and leader_laps is not None and leader_laps >= total:
+            done = True
+        else:
+            came = state in ("checkered", "cool_down") or (
+                state == "racing" and timed and remain is not None and 0 <= remain <= 0.5)
+            if came and st.get("lc") is None and leader_laps is not None:
+                st["lc"] = leader_laps
+            if st.get("lc") is not None and leader_laps is not None and leader_laps > st["lc"]:
+                st["done"] = True
+            done = bool(st.get("done")) or state == "cool_down"
+            if not done and st.get("lc") is None:
+                self._race_finished = {**getattr(self, "_race_finished", {}), session_num: None}
+                return None
+        self._race_finished = {**getattr(self, "_race_finished", {}), session_num: done}
+        return done
+
+    FINISH_SETTLE_S = 2.0       # F2Time is read for this long after a car takes the flag (the timing catching up)
+
+    def finish_gaps(self, ordered: list, state, t) -> None:
+        """After the checkered flag the gaps from where the cars are now mean nothing (the winner is on a cool-down
+        lap while the rest still race to the line: the tower read +1:17.0 for a car on the lead lap). Each car's
+        gap is taken as it takes the flag, from F2Time (iRacing's time behind the leader at the line) and the laps
+        it finished down, and held; cars still racing to the line keep their live gaps."""
+        if state not in ("checkered", "cool_down") or t is None:
+            self._fin, self._fin_lc = {}, {c["idx"]: c.get("lapCompleted") for c in ordered}
+            return
+        fin, last = getattr(self, "_fin", {}), getattr(self, "_fin_lc", {})
+        if not fin and ordered:
+            lead = ordered[0]                          # the state turns checkered as the winner crosses the line
+            fin[lead["idx"]] = {"t": t, "laps": 0, "gap": 0.0}
+            self._fin_lead_laps = lead.get("lapCompleted")
+        lead_laps = getattr(self, "_fin_lead_laps", None)
+        for c in ordered:
+            lc, i = c.get("lapCompleted"), c["idx"]
+            if i not in fin and lc is not None and last.get(i) is not None and lc > last[i]:
+                fin[i] = {"t": t, "laps": max(0, lead_laps - lc) if lead_laps is not None else 0, "gap": None}
+            f = fin.get(i)
+            # at the line F2Time is fresh even where the checks for a running race (gapValid) do not pass
+            if f is not None and f["laps"] == 0 and t - f["t"] <= self.FINISH_SETTLE_S and f["gap"] != 0.0 \
+                    and (c.get("f2TimeS") or 0) > 0:
+                f["gap"] = round(c["f2TimeS"], 3)
+            if lc is not None:
+                last[i] = lc
+        self._fin, self._fin_lc = fin, last
+        prev, cls_lead, cls_prev, seen = None, {}, {}, {}
+        for c in ordered:
+            f, d = fin.get(c["idx"]), c.setdefault("derived", {})
+            if f is None:
+                # still on its last lap: measured against a winner already past the line, the live gap grows by the
+                # winner's cool-down (P4 read 24.8 s for 13.9): iRacing's at its last crossing instead
+                lc = c.get("lapCompleted")
+                laps = max(0, lead_laps - 1 - lc) if lead_laps is not None and lc is not None and lc >= 0 else 0
+                f = {"laps": laps, "gap": round(c["f2TimeS"], 3) if not laps and (c.get("f2TimeS") or 0) > 0 else None}
+            else:
+                d["finished"] = True
+            seen[c["idx"]] = f
+            d["liveGapS"], d["gapLaps"] = (None, f["laps"]) if f["laps"] else (f["gap"], None)
+            p = prev and seen.get(prev["idx"])
+            d["liveIntervalS"], d["intervalLaps"] = (
+                (None, None) if p is None else
+                (None, f["laps"] - p["laps"]) if f["laps"] != p["laps"] else
+                (round(f["gap"] - p["gap"], 3) if f["gap"] is not None and p["gap"] is not None else None, None))
+            k = c.get("classId")
+            cl, cp = cls_lead.setdefault(k, f), cls_prev.get(k)
+            d["liveClassGapS"], d["classGapLaps"] = (None, None) if cl is f else (
+                (None, f["laps"] - cl["laps"]) if f["laps"] != cl["laps"] else
+                (round(f["gap"] - cl["gap"], 3) if f["gap"] is not None and cl["gap"] is not None else None, None))
+            d["liveClassIntervalS"], d["classIntervalLaps"] = (None, None) if cp is None else (
+                (None, f["laps"] - cp["laps"]) if f["laps"] != cp["laps"] else
+                (round(f["gap"] - cp["gap"], 3) if f["gap"] is not None and cp["gap"] is not None else None, None))
+            cls_prev[k] = f
+            prev = c
+
+    def battle_history(self, groups: list, t) -> None:
+        """Adds swaps (places changed within the battle) and sinceS (how long these cars have been in it) to each
+        battle, from the pairs in it (a pair's history survives the battle id changing as the cars swap)."""
+        hist = getattr(self, "_bhist", {})
+        if t is None:
+            return
+        for g in groups:
+            swaps, since = 0, t
+            for a, b in zip(g["cars"], g["cars"][1:]):
+                k = frozenset((a, b))
+                h = hist.get(k)
+                if h is None or t - h["seen"] > self.BATTLE_FORGET_S:
+                    h = hist[k] = {"since": t, "front": a, "swaps": 0, "seen": t}
+                if h["front"] != a:
+                    h["swaps"] += 1
+                    h["front"] = a
+                h["seen"] = t
+                swaps += h["swaps"]
+                since = min(since, h["since"])
+            g["swaps"], g["sinceS"] = swaps, round(t - since, 1)
+        for k in [k for k, h in hist.items() if t - h["seen"] > self.BATTLE_FORGET_S * 2]:
+            del hist[k]
+        self._bhist = hist
+
+    def lap_chart(self, cars: list) -> dict:
+        """Every car's place at the end of each lap it completed (from the laps we watched): {idx: [[lap, pos,
+        classPos], ...]}, for the lap chart."""
+        out = {}
+        for c in cars:
+            laps = [[e["lap"], e.get("pos"), e.get("classPos")] for e in self._laps.get(c["idx"], [])
+                    if e.get("lap") is not None and e.get("pos")]
+            if laps:
+                out[str(c["idx"])] = laps
+        return out
+
     def predicted_incidents(self) -> dict:
         return dict(self._incst()["predicted"])
 
@@ -2320,6 +2561,10 @@ class Deriver:
     # A tyre or driver change shows up while the car is in the pits or soon after
     # it leaves (the session info that names the driver can lag the stop).
     PIT_CHANGE_WINDOW_S = 120.0
+    STINT_MIN_LAPS = 3
+    # tyre fall-off a stop for fresh tyres is weighed on (s a lap per lap of age)
+    TYRE_DEG_MIN = 0.03
+    TYRE_DEG_MAX = 0.5
 
     def car_extras(self, c, t, grid_by_idx, fast_limit, is_race, team_race) -> dict:
         idx = c["idx"]
@@ -2348,8 +2593,12 @@ class Deriver:
         out["stintsSeen"] = stints
         out["stintStartLap"] = start
         out["lapsThisStint"] = (c["lap"] - start) if start is not None and c.get("lap") is not None else None
-        out["longestStintLaps"] = max(stints) if stints else None
-        out["nextStopLapEst"] = start + max(stints) if stints and start is not None else None
+        # only stints long enough to stand for a tank: a first stint cut short by damage said "in around lap 2" on
+        # lap 6, and "overdue, 4 stops to make" in a 12-minute sprint (Summit Point); and only a lap still to come
+        full = [x for x in stints if x >= self.STINT_MIN_LAPS]
+        out["longestStintLaps"] = max(full) if full else None
+        est = start + max(full) if full and start is not None else None
+        out["nextStopLapEst"] = est if est is not None and c.get("lap") is not None and est > c["lap"] else None
         # Tyres: a compound change is the only tyre fact iRacing gives for
         # another car (same-compound changes are invisible).
         # Tyres can only be changed in the pits, so a compound that differs anywhere
@@ -2470,7 +2719,7 @@ class Deriver:
         by_class: dict = {}
         for c in cars:
             for s in (c["derived"].get("stintsSeen") or []):
-                if s and s > 0:
+                if s and s >= self.STINT_MIN_LAPS:
                     by_class.setdefault(c.get("classId"), []).append(s)
         own = next((c for c in cars if c["idx"] == own_idx), None)
         fuel_range = math.floor(tank_l / fpl) if fpl and tank_l and fpl > 0 else None
@@ -2517,7 +2766,11 @@ class Deriver:
         active = "caution" in flags or "caution_waving" in flags
         st = self._caut
         inferred = False
-        if not flags:                         # no flags at all: a replay (live always carries some bits)
+        # No racing flag at all: a replay (no bits), or a spectator, whose SessionFlags carry only the start-light
+        # and service bits once the race is under way (Summit Point, Nov 2026): read the caution from the field.
+        racing_bits = {"green", "yellow", "yellow_waving", "caution", "caution_waving", "white", "checkered", "red",
+                       "green_held", "debris", "crossed", "one_lap_to_green"}
+        if not racing_bits & set(flags):
             slow = []
             for c in cars:
                 v = (c.get("derived") or {}).get("speedMs")
@@ -2627,10 +2880,16 @@ class Deriver:
             sd = md.get("stopDue") or {}
             owed = sd.get("stopsOwed")
             if owed is not None:
-                opts.append({"kind": "as_forecast", "stops": owed, "lossS": owed * green, "lap": sd.get("lap") if owed else None})
+                due, now_lap = sd.get("lap"), me.get("lap")
+                if due is not None and now_lap is not None and due < now_lap:
+                    due = None                  # a forecast lap already gone by says nothing
+                opts.append({"kind": "as_forecast", "stops": owed, "lossS": owed * green, "lap": due if owed else None})
         # fresh tyres: worth a stop when the stint's fall-off over the laps left beats the stop
         deg, age = md.get("degSPerLap"), md.get("stintLaps")
-        if lane is not None and deg and deg >= 0.03 and age and age >= 5 and to_go >= 3 and opts:
+        # not under a caution (the laps are slow for everyone, so they say nothing about the tyres)
+        # and not from a fall-off no tyre has (over TYRE_DEG_MAX s a lap is traffic or a caution in the stint)
+        if (lane is not None and deg and self.TYRE_DEG_MIN <= deg <= self.TYRE_DEG_MAX and age and age >= 5
+                and to_go >= 3 and opts and not (caution and caution.get("active"))):
             base = min(o["lossS"] for o in opts)
             gain = deg * age * to_go
             opts.append({"kind": "tyres", "stops": min(o["stops"] for o in opts) + 1,
@@ -2651,14 +2910,13 @@ class Deriver:
                              "rejoin": self.predict_rejoin(cars, ref, caution["lossNowS"])})
         for o in opts:
             o["lossS"] = round(o["lossS"], 1)
-            o.update(self._finish_estimate(cars, me, o["lossS"], to_go, green))
-        tyres = [o for o in opts if o["kind"] == "tyres"]
-        for o in tyres:                 # the tyre gain comes off its time
-            o["netS"] = round(o["lossS"] - o["tyreGainS"], 1)
-        for o in opts:
-            o.setdefault("netS", o["lossS"])
+            # the tyre gain comes off its time, and its finish is worked out with it
+            o["netS"] = round(o["lossS"] - o["tyreGainS"], 1) if o["kind"] == "tyres" else o["lossS"]
+            o.update(self._finish_estimate(cars, me, o["netS"], to_go, green))
         if opts:
-            out["best"] = min(opts, key=lambda o: (o["netS"], o.get("savePct") or 0))["kind"]
+            # the best is the best finish; time decides between equal finishes (and when none is known)
+            out["best"] = min(opts, key=lambda o: (o.get("finishClassPos") or 999, o["netS"],
+                                                   o.get("savePct") or 0))["kind"]
         out["options"] = opts
         return out
 
@@ -3327,13 +3585,14 @@ def build_state(src: TelemetrySource, deriver: Deriver, session_msg: dict | None
     seen = (getattr(deriver, "_race_laps_seen", {}) or {}).get(session.get("num"))
     to_go = total - seen if total and seen is not None and seen >= 0 else None
     is_race = "race" in str(cur.get("SessionType") or "").lower()
+    fin = (getattr(deriver, "_race_finished", {}) or {}).get(session.get("num")) if is_race else None
     derived["raceFlags"] = race_flags(session.get("flags"), session.get("state"),
-                                      session.get("timeRemainS"), timed and is_race, to_go if is_race else None)
+                                      session.get("timeRemainS"), timed and is_race, to_go if is_race else None, fin)
     # "live" as the dashboard judges the player block: spectating leaves it zero.
     player_live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5 or (player["rpm"] or 0) > 500
     derived.update(deriver.trends(session["timeS"], weather, player, player_live))
     derived["weatherOutlook"] = deriver.weather_outlook(session["timeS"], weather, session, session_msg)
-    deriver.state_events(session["timeS"], session, player, weather)
+    deriver.state_events(session["timeS"], dict(session, raceFlags=derived["raceFlags"]), player, weather)
     return {"type": "state", "schema": SCHEMA_VERSION, "t": session["timeS"],
             "session": session, "weather": weather, "player": player, "camera": camera, "derived": derived}
 
@@ -3514,6 +3773,20 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     session_num = _num(g("SessionNum"))
     is_race = _is_race(session_msg, session_num)
     by_idx = {c["idx"]: c for c in cars}
+    # Practice and qualifying: the best laps that count are iRacing's scored results (ResultsPositions FastestTime),
+    # not CarIdxBestLapTime, which is -1 for a car that ran before we joined and can hold a lap that did not count
+    # (Summit Point Lone Qualify, Nov 2026: pole 1:23.500 and P2 read as no time; the telemetry "pole", 1:25.618,
+    # was P4's, whose counted lap was 1:27.421). iRacing's positions already follow the results.
+    if not is_race:
+        try:
+            for r in results_positions(src.session_info("SessionInfo"), session_num):
+                c = by_idx.get(r.get("CarIdx"))
+                ft = r.get("FastestTime")
+                if c is not None and isinstance(ft, (int, float)) and ft > 0:
+                    c["bestLapTelemetryS"] = c.get("bestLapS")
+                    c["bestLapS"] = ft
+        except Exception:  # noqa: BLE001
+            pass
     own_idx = _num(g("PlayerCarIdx"))
     own = by_idx.get(own_idx)                  # your car, when you are driving
     cam_idx = _num(g("CamCarIdx"))
@@ -3547,6 +3820,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     live = bool(is_race) and SESSION_STATE.get(g("SessionState")) == "racing"
     running = live_order(ordered, live, deriver._dist_prev if deriver is not None else None)
     live_gaps(ordered)                     # the broadcast tower: iRacing's order, live gaps
+    if deriver is not None:
+        fin = (getattr(deriver, "_race_finished", {}) or {}).get(session_num) if is_race else None
+        deriver.finish_gaps(ordered, "checkered" if fin else None, _num(g("SessionTime")))
     run_gaps(running)                      # PitWall: the running order, live gaps
     for c in cars:
         d = c["derived"]
@@ -3650,7 +3926,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             results = []
         race = race_length(session_msg, session_num, ordered, _num(g("SessionTimeRemain")),
                            deriver, race_flags(decode_bits(g("SessionFlags"), FLAG_BITS),
-                                               SESSION_STATE.get(g("SessionState"))), results=results)
+                                               SESSION_STATE.get(g("SessionState"))), results=results,
+                           state=SESSION_STATE.get(g("SessionState")))
+        deriver._lead_lap = race.get("leaderLap")
         fi = deriver._fuel_info or {}
         deriver.stop_forecast(cars, race if is_race else None, own_idx if own is not None else None,
                               fi.get("fpl"), deriver.tank_l, fi.get("fuelL"))
@@ -3660,8 +3938,13 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         if live_edge(g)["atLive"]:
             deriver.lap_splits(cars, now)
         deriver.quali_laps(cars)
+        if not is_race:
+            Deriver.best_intervals(cars)
         meet = deriver.meetings(cars, player_idx, now)
         class_best_sectors = Deriver.sector_marks(cars)
+        battles = deriver.battles(cars, ahead_of, is_race)
+        deriver.battle_history(battles, now)
+        tv = deriver.race_tv(cars, now, race if is_race else None, ahead_of, is_race)
         out["derived"] = {
             "caution": caution,
             "strategy": deriver.strategy(cars, player_idx, race, caution, own_idx if own is not None else None)
@@ -3678,7 +3961,9 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "meetings": meet,
             "compoundPace": deriver.compound_pace(cars),
             "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
-            "battles": deriver.battles(cars, ahead_of, is_race),
+            "battles": battles,
+            **tv,
+            "lapChart": deriver.lap_chart(cars) if is_race else None,
             "classTraffic": deriver.class_traffic(cars, now),
             "classBestSectorS": class_best_sectors,
             "faster": deriver.faster_pairs(cars),
@@ -3730,9 +4015,10 @@ def gap_between(a: dict, b: dict):
     if da is None or db is None or not lap_b or lap_b <= 0:
         return None, None
     d = da - db
-    if d < -0.02 or d > 200:            # crossing the line out of step, or nonsense
+    # b not behind a on track: they swapped since the order was scored (the order is iRacing's, from the line),
+    # or nonsense. Reading it round the lap gave +1:17.0 for a car 0.6 s ahead (Summit Point): nothing instead.
+    if d <= 0 or d > 200:
         return None, None
-    d = max(d, 0.0)
     laps = int(d + 1e-6)
     ea, eb = a.get("estTimeS"), b.get("estTimeS")
     same = a.get("classId") is not None and a.get("classId") == b.get("classId")
@@ -3878,32 +4164,28 @@ def _parse_secs(v):
         return None
 
 
-def race_flags(flags, state, time_remain_s=None, timed=False, laps_to_go=None) -> list:
-    """The flags as the race sees them. iRacing raises the checkered flag the moment a timed race's clock runs
-    out, while the leader still has the last lap to drive (observed: the overlay waved it a couple of minutes
-    early). SessionState only turns "checkered" when the leader crosses the line. So until then the checkered
-    flag reads as the white one: the last lap."""
-    out = list(flags or [])
-    if "checkered" in out and state not in ("checkered", "cool_down"):
-        out.remove("checkered")
-        if "white" not in out:
-            out.append("white")
-    # A spectator's SessionFlags never carry white or checkered (Summit Point, Nov 2026: green at the start, then
-    # nothing to the end; replays carry no flags at all), so they are read from the race itself: checkered when the
-    # session state is (the leader has crossed the line), white while the racing leader is on the final lap (a lap
-    # race with one lap to go, or a timed race whose clock has run out).
-    if state in ("checkered", "cool_down"):
-        if "checkered" not in out:
-            out.append("checkered")
-        if "white" in out:
-            out.remove("white")
-    elif state == "racing" and "white" not in out and (
-            (timed and time_remain_s is not None and 0 <= time_remain_s <= 0.5) or laps_to_go == 1):
+def race_flags(flags, state, time_remain_s=None, timed=False, laps_to_go=None, finished=None) -> list:
+    """The flags as the race sees them: checkered only once the LEADER has taken it.
+
+    iRacing raises the checkered bit the moment a timed race's clock runs out, while the leader still has the last
+    lap to drive (the overlay waved it a couple of minutes early), and SessionState turned "checkered" 24 s before
+    the leader reached the line (Summit Point, Nov 2026: state at 841.9 s, the leader crossing at 865.6 s). A
+    spectator's SessionFlags carry neither white nor checkered (green at the start, then nothing; replays carry no
+    flags at all). So: `finished` (Deriver.race_end: the leader's first crossing after the end came) decides the
+    checkered; until then the end coming (the bit, the state, a timed race's clock out, one lap to go) is the white,
+    the last lap. With no `finished` known (a practice, or joined after the finish) the state is believed."""
+    out = [f for f in (flags or []) if f not in ("checkered", "white")]
+    raw_end = "checkered" in (flags or []) or "white" in (flags or [])
+    ending = raw_end or state in ("checkered", "cool_down") or laps_to_go == 1 or (
+        state == "racing" and timed and time_remain_s is not None and 0 <= time_remain_s <= 0.5)
+    if finished or (finished is None and state in ("checkered", "cool_down")):
+        out.append("checkered")
+    elif ending:
         out.append("white")
     return out
 
 
-def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver, flags, results=None) -> dict:
+def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver, flags, results=None, state=None) -> dict:
     """How much of the session is left, from the LEADER, not the player.
 
     SessionLapsRemainEx is the player's own count, and a spectator has no car:
@@ -3944,11 +4226,17 @@ def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver,
         ends = "time"
     else:
         ends = "laps" if total else None
+    finished = None
+    if state is not None:
+        # white and checkered as build_state reads them (a spectator's SessionFlags carry neither)
+        if deriver is not None:
+            finished = deriver.race_end(session_num, state, done, total, bool(limit_s), remain)
+        flags = race_flags(flags, state, remain, bool(limit_s), to_go, finished)
     return {"totalLaps": total, "leaderLapsDone": done,
             "leaderLap": leader.get("lap") if leader else None,
             "lapsToGo": to_go, "timeRemainS": remain if limit_s or not total else remain,
             "timeLimited": bool(limit_s), "lapsByTime": by_time, "endsBy": ends,
-            "white": "white" in (flags or []), "checkered": "checkered" in (flags or [])}
+            "white": "white" in (flags or []), "checkered": "checkered" in (flags or []), "finished": finished}
 
 
 SOF_K = 1600 / math.log(2)

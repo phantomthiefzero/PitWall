@@ -160,7 +160,8 @@ iRacing Suite app (suite/)
   them, by an id from the last listing, never a path from the page; over one WebSocket (/api/library/stream),
   with 96 KB pieces (/api/library/file) as the fallback. The relay never serves them.
 - Your last session (home page, `library.session_summary`): a lap's time is the first new LapLastLapTime after
-  its OWN last sample (iRacing updates it after the line), and clean laps are counted as the Lap Analyzer counts
+  its OWN last sample (iRacing updates it after the line); a lap is timed as the analyzer times it (from the line, no pit
+  lane, its clock agreeing with the time it took: "22 of 29", not of every lap), and clean laps are counted as the Lap Analyzer counts
   them (lap_band = lapBand, then within 7%): the two pages must give the same numbers for the same file.
 - Home page (`suite/web/index.html`): its /ws asks for no telemetry (`?ticks=0`); Hub.send_all sends to
   every client at once, so one slow client cannot hold the pump. Buttons are built when what they offer
@@ -288,6 +289,9 @@ Broadcast (broadcast/)
   video (theme.stinger.video, every uploaded video is listed in Look > Stingers, each with its own cut point in
   theme.stinger.cuts). Adding a built-in: one STINGERS entry and its CSS, and keep it covering 42-58%. The stinger's
   own settings are never staged in studio mode. The first graphics state an overlay sees only sets the stinger mark.
+- The overlay's frame loop asks for the next frame first and draws every graphic on its own (RENDERS, safely()): one
+  graphic throwing on some state of the race once stopped every graphic after it and the loop itself, and OBS showed
+  nothing until the source was reloaded. A new graphic goes into RENDERS. Errors go to the console once each.
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
@@ -350,15 +354,47 @@ Broadcast (broadcast/)
   start, sponsors now and then; the timed ones are staggered (every(): this machine's clock). Picture in picture
   stays the producer's (it needs their link). Outside a race the tower's Interval column reads the gap to pole. The director also follows push laps in practice
   and qualifying to the line (stories "push", up to 150 s) and the leader on the last lap ("finish").
-- The checkered flag waits for the leader (normalize.race_flags, state derived.raceFlags): iRacing raises it when a
-  timed race's clock runs out, a lap early; until SessionState turns checkered it reads as the white flag.
+- The checkered flag waits for the leader (normalize.race_flags, state derived.raceFlags): iRacing raises the bit when
+  a timed race's clock runs out, and SessionState turned checkered 24 s before the leader reached the line (Summit
+  Point). Deriver.race_end decides it: a lap race when the leader has the laps, else the leader's first crossing after
+  the end came (clock out, or the state); until then it is the white flag (race.finished, raceFlags). After it, each
+  car's gap is held as it takes the flag (finish_gaps: F2Time at the line, laps down); one still on its last lap shows
+  iRacing's at its last crossing.
   A spectator's SessionFlags carry no white or checkered at all (Summit Point), so race_flags also reads them from the
-  race: checkered from the session state, white while racing with a timed race's clock out or one lap to go.
+  race: checkered at the leader's crossing (race_end), white from the end coming (a timed race's clock out, one lap
+  to go, the state) until then.
   The overlay calls them on screen (flagcall, a tile under Alerts, on by default): green as a race goes racing or
   after a caution or red, white for the final lap, checkered with the winner; only on a change it sees.
   The leader's laps never go back in a session (race_length: ResultsPositions and the most seen are a floor), and
   while a replay holds the picture the bridge keeps the race's clock (SessionTimeRemain) and laps (results) running.
   The banner's clock changes in place; only laps and words roll in (a roll each second flashed).
+  What a spectator is not sent is filled in everywhere it is used: raceFlags feeds race control's flag events
+  (state_events), the race summary's white / checkered (race_length, state given), PitWall's header, and the
+  director (the finish story; no replays in a timed race's last laps, lapsByTime). The caution is read from the
+  field's speed whenever no racing flag comes (a spectator's flags carry only start lights after the start), not
+  only when there are no bits at all. tests: test_what_a_spectator_is_not_sent_is_filled_in_everywhere.
+- PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
+  race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
+  option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution
+  or from a fall-off over TYRE_DEG_MAX, and a forecast lap already gone by is not shown; where-faster honours comparable.
+- Looks: Pit wall's bar shows only its numbers under 640 px; :root[data-look] sets overflow-anchor:none (the bar put
+  in after load scrolled the page by its height through scroll anchoring, hiding the title).
+- Audited against Summit Point (Nov 2026), each now in place: battles are read from the live class gap (a stale
+  F2Time had two cars 8 s apart "within a second"; the battle box showed 7.917); a car ahead of the one scored ahead
+  has no live gap (gap_between: it read +1:17.0 round the lap); practice and qualifying best laps come from
+  ResultsPositions (telemetry had -1 for the pole and a lap that did not count as "pole"); a car in the lane past
+  PIT_LONG_S is not a pit stop on air; where-faster needs comparable laps (FASTER_COMPARABLE); a car first seen off
+  the grid gets its first stint when it appears; the next stop is a lap still to come from a stint of STINT_MIN_LAPS+;
+  race news carries the race's lap while spectating (the leader's); the driver card shows the gap to the car ahead in
+  a race and to pole outside one; strategy hides the next-stop column when none is known; the lap chart labels sit
+  at each car's place now. tests: test_what_the_summit_point_audit_found.
+- Race TV graphics, from our own measures (Deriver.race_tv, battle_history, lap_chart; tiles under Race and Show):
+  Pit stop (the camera car's, else the best placed in the lane: the box time running, where it should come out,
+  then its stationary time and the place it came out in), Closing in (a car catching the one ahead in class, s a
+  lap, laps to catch or "not in time"), Race pace (last five racing laps against the class leader), Strategy
+  (stops, tyre, laps this stint, next stop from stopDue), Lap chart (every car's place lap by lap; the finish board
+  35 s, the lap chart to 60 s, then the podium), the full result (+ stops and laps led) and the battle box's
+  history (swapped n times, together m:ss). tests: test_race_tv_extras_from_our_own_measures.
 - Producer buttons: camera, replay and director buttons are off while the broadcast is off (the bridge refuses
   them); with the director, grid walk or a followed battle holding the camera they are dimmed and a line says a
   click takes it back. The battle list's buttons all switch off with a second click (unfollow: director end_battle).

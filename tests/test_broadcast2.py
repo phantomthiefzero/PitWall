@@ -1368,6 +1368,10 @@ def test_quali_lap_against_the_class_pole_lap():
     assert abs(q["deltaPoleS"] - 0.3) < 0.01 and abs(q["deltaOwnS"] - (-0.7)) < 0.01
     assert abs(q["projectedS"] - 100.3) < 0.01 and q["projectedPos"] == 2, "between the pole and car 2's 101.0"
     assert [c["derived"]["classPoleGapS"] for c in cars] == [0.0, 1.0, 2.0, 0.0]
+    for c, cp in zip(cars, (1, 2, 3, 1)):
+        c["classPos"] = cp
+    d.best_intervals(cars)                 # the standings' Int column outside a race: to the car ahead's best
+    assert [c["derived"]["classBestIntervalS"] for c in cars] == [None, 1.0, 1.0, None]
     assert cars[3]["derived"]["qualiLap"] is None
     # a slow lap (an out- or cool-down lap) is not a push lap
     d._split[3]["cross"] = _prof(110.0, upto=12)
@@ -2175,7 +2179,7 @@ def test_the_grid_board_is_its_own_screen_and_the_walk_card_waits_for_it():
     page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
     walk = page.split("const gridWalkCar = () => {")[1][:300]
     assert "d.gridBoard" in walk, "no walk card or grid beside it while the board is up"
-    assert "renderGBoard();" in page and 'id="gboard"' in page
+    assert "renderGBoard," in page.split("const RENDERS = [")[1].split("];")[0] and 'id="gboard"' in page
     board = page.split("function renderGBoard() {")[1].split("\n  }\n")[0]
     assert "liveryHtml(c)" in board and "poleGapS" in board and "not_in_world" in board
     assert not re.search(r"timeS\s*[-+]", board), "gaps come from normalize, not worked out here"
@@ -2238,7 +2242,7 @@ def test_the_flags_are_called_on_screen():
     for words in ("Green flag", "White flag", "Checkered flag", "wins", "Racing resumes"):
         assert words in fc, words
     assert "FC.f !== undefined" in fc, "the first state seen only sets the scene"
-    assert 'shown("flagcall")' in fc and "renderFlagCall();" in page
+    assert 'shown("flagcall")' in fc and "renderFlagCall," in page.split("const RENDERS = [")[1].split("];")[0]
 
 
 def test_white_and_checkered_without_the_flag_bits():
@@ -2253,6 +2257,145 @@ def test_white_and_checkered_without_the_flag_bits():
     assert race_flags(["checkered"], "racing", 0.0, True).count("white") == 1, "iRacing's early checkered is still the white"
 
 
+def test_what_a_spectator_is_not_sent_is_filled_in_everywhere():
+    # Summit Point (spectating): no white or checkered bits, and after the start no racing flag at all. The race's
+    # own reading must reach race control, the race summary (the director's last lap), PitWall's header and the
+    # caution reading; a timed race's last laps count as last laps too.
+    from pitwall.normalize import race_length
+    d = Deriver()
+    d.state_events(100.0, {"flags": ["start_hidden"], "state": "racing", "raceFlags": ["start_hidden"]}, {}, {})
+    d.state_events(101.0, {"flags": ["start_hidden"], "state": "racing", "raceFlags": ["start_hidden", "white"]}, {}, {})
+    d.state_events(130.0, {"flags": ["start_hidden"], "state": "checkered", "raceFlags": ["start_hidden", "checkered"]}, {}, {})
+    assert [e["flag"] for e in d.feed_events if e["kind"] == "flag"] == ["white", "checkered"]
+    sess = {"sessions": [{"SessionNum": 2, "SessionLaps": "unlimited", "SessionTime": "720.0000 sec"}]}
+    # Summit Point: the clock ran out (white), SessionState turned checkered 24 s before the leader reached the line
+    # (still white), and the checkered came with the leader's crossing
+    dd = Deriver()
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 8, "lap": 9}], 0.0, dd, ["start_hidden"], state="racing")
+    assert r["white"] and not r["checkered"]
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 8, "lap": 9}], 125.0, dd, ["start_hidden"], state="checkered")
+    assert r["white"] and not r["checkered"] and r["finished"] is False
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 9, "lap": 10}], 124.0, dd, ["start_hidden"], state="checkered")
+    assert r["checkered"] and not r["white"] and r["finished"] is True
+    r = race_length(sess, 2, [{"idx": 1, "lapCompleted": 0, "lap": 0}], 0.0, Deriver(), ["start_hidden"], state="warmup")
+    assert not r["white"], "the clock at 0 before the start is not a last lap"
+    client = open(os.path.join(os.path.dirname(__file__), "..", "client", "index.html"), encoding="utf-8").read()
+    assert "st.derived && st.derived.raceFlags" in client.split("function renderHeader() {")[1][:1200]
+    src = open(os.path.join(os.path.dirname(__file__), "..", "pitwall", "director.py"), encoding="utf-8").read()
+    assert 'race.get("lapsByTime")' in src, "no replays in a timed race's last laps either"
+
+
+def test_a_caution_is_read_from_the_field_when_no_racing_flag_comes():
+    from pitwall.normalize import Deriver as D
+    d = D()
+    cars = [{"idx": i, "onPitRoad": False, "surface": "on_track", "bestLapS": 90.0, "derived": {"speedMs": 10.0}} for i in range(8)]
+    t = 0.0
+    for k in range(200):
+        t += 0.5
+        out = d.caution(cars, ["start_hidden"], True, 2000.0, t, state="racing")
+    assert out["active"] and out["inferred"], "a spectator's flags (start lights only): the field's speed says caution"
+    d = D()
+    for k in range(200):
+        out = d.caution(cars, ["green"], True, 2000.0, k * 0.5, state="racing")
+    assert not out["inferred"], "a real flag is believed"
+
+
+def test_race_tv_extras_from_our_own_measures():
+    # Pit stops (live, with where the car should come out, and just finished), who is closing in, recent race pace
+    # against the class leader, the lap chart and a battle's history: none of it is in iRacing's data.
+    src = FakeSource(realtime=False, spectator=True, incidents=False)
+    src.connect()
+    d, sess = Deriver(), build_session(src)
+    live, done, paced, chart = None, None, False, None
+    for k in range(60 * 760):
+        src.tick()
+        if k % 8:
+            continue
+        build_state(src, d, sess)
+        cm = build_cars(src, sess, d)
+        dv = cm["derived"]
+        for p in dv["pitStops"]:
+            if not p["done"] and p.get("rejoin") and live is None:
+                live = p
+            if p["done"] and done is None and live and p["idx"] == live["idx"]:
+                done = p
+        for c in dv["closing"]:
+            assert 0.1 <= c["closingSPerLap"] <= 3.0 and 1.0 <= c["gapS"] <= 8.0
+        paced = paced or any(c["derived"].get("recentPaceVsLeaderS") is not None for c in cm["cars"])
+        chart = dv["lapChart"]
+        if done and paced:
+            break
+    assert live and live["fromClassPos"] and live["rejoin"]["classPos"] >= 1 and live["laneS"] >= 0
+    assert done and done["stationaryS"] > 0 and done["fromClassPos"] == live["fromClassPos"] and done["classPos"]
+    assert paced
+    leaders = [c for c in cm["cars"] if c.get("classPos") == 1 and c["derived"].get("recentPaceS")]
+    assert all(c["derived"]["recentPaceVsLeaderS"] == 0 for c in leaders)
+    some = next(iter(chart.values()))
+    assert some[0][0] >= 1 and all(len(x) == 3 for x in some)
+    # a battle's swaps survive the battle's id changing
+    d2 = Deriver()
+    g = [{"cars": [1, 2], "id": "1:1"}]
+    d2.battle_history(g, 10.0)
+    g = [{"cars": [2, 1], "id": "1:2"}]
+    d2.battle_history(g, 40.0)
+    g = [{"cars": [1, 2], "id": "1:1"}]
+    d2.battle_history(g, 70.0)
+    assert g[0]["swaps"] == 2 and g[0]["sinceS"] == 60.0
+
+
+def test_race_tv_graphics_show_only_normalize_numbers():
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    for fn in ("renderPitStop", "renderClosing", "renderPace", "renderStrategy", "renderLapChart"):
+        assert "function %s() {" % fn in page and fn + "," in page.split("const RENDERS = [")[1].split("];")[0], fn
+    body = page.split("// ---------------------------------------------------------------- race TV extras")[1].split("// ---------------------------------------------------------------- flag calls")[0]
+    for field in ("pitStops", "closing", "recentPaceS", "recentPaceVsLeaderS", "stopDue", "lapChart"):
+        assert field in body, field
+    assert "b.swaps" in page and "b.sinceS" in page
+    board = page.split("function renderBoard() {")[1].split("\n  }\n")[0]
+    assert '"Stops", "Led"' in board, "the full result at the finish"
+
+
+def test_what_the_summit_point_audit_found():
+    from pitwall.normalize import gap_between, race_flags
+    # a battle is read from the live gap, not a stale F2Time (two cars 8 s apart were "within a second")
+    d = Deriver()
+    a = {"idx": 1, "classId": 1, "classPos": 4, "pos": 4, "gapValid": True, "f2TimeS": 10.0, "onPitRoad": False,
+         "derived": {"liveClassIntervalS": None}}
+    b = {"idx": 2, "classId": 1, "classPos": 5, "pos": 5, "gapValid": True, "f2TimeS": 10.9, "onPitRoad": False,
+         "derived": {"liveClassIntervalS": 7.917, "classIntervalLaps": 0}}
+    assert d.battles([a, b], {2: 1}, True) == []
+    b["derived"]["liveClassIntervalS"] = 0.6
+    assert d.battles([a, b], {2: 1}, True)[0]["gapsS"] == [0.6]
+    # a car that passed since the order was scored is not "+1:17.0" behind (read round the lap)
+    ahead = {"lap": 9, "pct": 0.50, "classId": 1, "estTimeS": 40.0, "classEstLapS": 85.0}
+    passed = {"lap": 9, "pct": 0.51, "classId": 1, "estTimeS": 41.0, "classEstLapS": 85.0}
+    assert gap_between(ahead, passed) == (None, None)
+    # the checkered comes with the leader's crossing, not with SessionState (24 s early at Summit Point)
+    assert race_flags(["start_hidden"], "checkered", 125.0, True, None, False) == ["start_hidden", "white"]
+    assert race_flags(["start_hidden"], "checkered", 125.0, True, None, True) == ["start_hidden", "checkered"]
+    # after the flag each car's gap is held as it finishes; one still on its last lap keeps iRacing's
+    d = Deriver()
+    cars = [{"idx": 0, "lapCompleted": 9, "f2TimeS": 0.0, "classId": 1, "derived": {}},
+            {"idx": 1, "lapCompleted": 9, "f2TimeS": 7.38, "classId": 1, "derived": {}},
+            {"idx": 2, "lapCompleted": 9, "f2TimeS": 13.94, "classId": 1, "derived": {}}]
+    d.finish_gaps(cars, None, 860.0)                    # racing: the laps are noted
+    cars[0]["lapCompleted"] = 10
+    d.finish_gaps(cars, "checkered", 865.6)             # the winner crosses
+    cars[1]["lapCompleted"], cars[1]["f2TimeS"] = 10, 7.381
+    d.finish_gaps(cars, "checkered", 873.0)             # P2 crosses
+    assert cars[1]["derived"]["finished"] and cars[1]["derived"]["liveGapS"] == 7.381
+    assert cars[2]["derived"]["liveGapS"] == 13.94 and not cars[2]["derived"].get("finished")
+    assert cars[2]["derived"]["liveIntervalS"] == round(13.94 - 7.381, 3)
+    # where-faster needs two laps that compare (1:36.0 against 1:24.9 said nothing)
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    assert "f.comparable !== false" in page
+    # a car in the lane for minutes is not a pit stop to put on air
+    assert Deriver.PIT_LONG_S <= 300
+    # race news is on the race's lap while spectating
+    d = Deriver()
+    d._player_lap, d._lead_lap = None, 6
+    d.event(1.0, "pass", idx=3)
+    assert d.feed_events[-1]["lap"] == 6
 def test_a_close_battle_keeps_the_air_to_its_end():
     # Summit Point, Nov 2026: battles left at SEGMENT_MAX_S while within 0.1 s, the pass for the lead a second later;
     # a spin in the battle cut away to a lone trackside shot; cars swapping places made it "another" battle.
@@ -2349,3 +2492,19 @@ def test_the_producer_can_switch_car_pictures_off():
     assert 'action: "renders"' in prod and 'data-renders="1"' in prod
     src = open(os.path.join(os.path.dirname(__file__), "..", "pitwall", "bridge.py"), encoding="utf-8").read()
     assert 'if action == "renders":' in src and '"renders")):' in src     # also with the broadcast off
+
+
+def test_one_graphic_failing_never_takes_the_overlay_off_air():
+    # Nov 2026: the overlay showed nothing in OBS. Every graphic was drawn in one chain inside the frame loop, so one
+    # that threw stopped every graphic after it and the loop itself (requestAnimationFrame was never asked again).
+    src = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    body = src.split("function frame(t) {")[1].split("\n  }")[0]
+    assert body.strip().startswith("requestAnimationFrame(frame);"), "the next frame is asked for before anything can throw"
+    assert "for (const r of RENDERS) safely(r);" in body
+    listed = src.split("const RENDERS = [")[1].split("];")[0]
+    assert listed.count("render") >= 30 and "ctxTick(); renderGrid();" not in src
+    out = _node("""
+      const RENDERS=[()=>{throw new Error('boom')},()=>{globalThis.ok=1}];const failed={};
+      """ + src.split("const failed = {};")[1].split("function frame(t)")[0] + """
+      for (const r of RENDERS) safely(r); console.log(JSON.stringify(globalThis.ok||0));""")
+    assert out == 1, "a graphic after one that throws is still drawn"

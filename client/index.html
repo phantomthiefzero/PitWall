@@ -94,6 +94,9 @@
   section { background: var(--panel); border-radius: 10px; padding: 12px 14px; min-height: 0;
     display: flex; flex-direction: column; overflow: hidden; }
   section h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  #car .spec-note{display:none;margin:6px 0}
+  #car.spectating .spec-note{display:block}
+  #car.spectating #carPanel > :not(summary):not(.spec-note){display:none}
   /* Collapsible panel. <details>/<summary> is used rather than a div + button so
      the control is keyboard-operable and announces its expanded state natively. */
   details.panel > summary { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted);
@@ -877,6 +880,8 @@
     <section id="car">
       <details class="panel" id="carPanel" open>
       <summary>Your car</summary>
+      <div class="note spec-note">Spectating: there is no car of your own here, so fuel, tyre temperatures and the rest of
+        this panel have nothing to read. The followed car is under Car data.</div>
       <div class="row">
         <div><div class="big" id="fuel">–</div><div style="color:var(--muted);font-size:12px"><span id="fuelUnit">gallons</span> of fuel</div></div>
         <div><div class="big"><span class="derived" id="lapsFuel" title="Computed here from fuel used on the last completed laps">–</span></div>
@@ -1416,12 +1421,15 @@ LK.look = document.documentElement.dataset.look || "basic";
     const st = S.state; if (!st) return;
     const sess = S.session && S.session.sessions && S.session.sessions.find(x => x.SessionNum === st.session.num);
     $("sessionType").textContent = sess ? sess.SessionType : words(st.session.state);
-    const flags = st.session.flags || [];
+    // the race's flags as normalize reads them (raceFlags: no checkered before the leader finishes; white and
+    // checkered from the race itself, since a spectator's SessionFlags carry neither)
+    const flags = (st.derived && st.derived.raceFlags) || st.session.flags || [];
     const prio = ["red", "checkered", "white", "caution", "yellow", "blue", "green"];
     // A replay carries no flags at all: normalize.py then reads a caution from the field's speed.
     const cau = S.cars && S.cars.derived && S.cars.derived.caution;
-    const inferred = !flags.length && !!(cau && cau.active && cau.inferred);
-    const f = prio.find(x => flags.includes(x) || flags.includes(x + "_waving")) || (inferred ? "caution" : "");
+    const hit = prio.find(x => flags.includes(x) || flags.includes(x + "_waving"));
+    const inferred = !hit && !!(cau && cau.active && cau.inferred);
+    const f = hit || (inferred ? "caution" : "");
     const el = $("flag"); el.dataset.flag = f; document.body.dataset.flag = f;
     if (LK.flag !== undefined && f !== LK.flag) lkFlag(f, LK.flag);
     LK.flag = f;
@@ -1452,10 +1460,10 @@ LK.look = document.documentElement.dataset.look || "basic";
     let line;
     if (byLaps) {
       const lap = Math.min(r.totalLaps, Math.max(1, (r.leaderLapsDone ?? 0) + 1));
-      line = D(r.lapsToGo === 1 ? "final lap" : "laps to go", "Computed here: the race length minus the leader's completed laps.") + ` · lap ${lap} of ${r.totalLaps}`;
+      line = D(r.lapsToGo === 1 ? "final lap" : r.lapsToGo <= 0 || r.finished ? "all laps run" : "laps to go", "Computed here: the race length minus the leader's completed laps.") + ` · lap ${lap} of ${r.totalLaps}`;
     } else if (r && r.endsBy === "laps" && r.totalLaps && r.lapsToGo != null) {
       const lap = Math.min(r.totalLaps, Math.max(1, (r.leaderLapsDone ?? 0) + 1));
-      line = `Lap ${lap} of ${r.totalLaps} · ` + D(r.lapsToGo === 1 ? "final lap" : `${r.lapsToGo} to go`, "Computed here: the race length minus the leader's completed laps.");
+      line = `Lap ${lap} of ${r.totalLaps} · ` + D(r.lapsToGo === 1 ? "final lap" : r.lapsToGo <= 0 || r.finished ? "all laps run" : `${r.lapsToGo} to go`, "Computed here: the race length minus the leader's completed laps.");
     } else if (r && r.endsBy === "time" && r.lapsByTime != null) {
       line = `Lap ${(r.leaderLapsDone ?? 0) + 1} · ` + D(`about ${r.lapsByTime} to go`, "Computed here: the time left at the leader's pace.");
     } else {
@@ -1549,7 +1557,8 @@ LK.look = document.documentElement.dataset.look || "basic";
     const me = refInfo().own;
     const focus = focusIdx();
     const cmpC = cmpCar(), cmpIdxNow = cmpC ? cmpC.idx : null;
-    const multi = isMulticlass();
+    const multi = isMulticlass(), race = !!(S.cars.derived && S.cars.derived.isRace);
+    const bestGap = v => v == null ? "–" : D("+" + v.toFixed(3), "Computed here: the difference between the two best laps (iRacing's scored results).");
     const html = cars.map(c => {
       const flags = (c.flags || []).filter(f => ["black", "repair", "furled", "disqualify"].includes(f)).map(f => `<span class="badge ${f}">${f}</span>`).join("");
       const pit = c.onPitRoad ? "pit" : (c.surface === "in_pit_stall" ? "box" : "");
@@ -1557,9 +1566,12 @@ LK.look = document.documentElement.dataset.look || "basic";
         <td class="r c-pos"${multi && c.classColor != null ? ` style="box-shadow: inset 3px 0 0 ${classCss(c.classColor)}"` : ""}${live && P(c) !== c.pos ? ` title="Running order now (computed here from where the cars are). iRacing's scored position, which changes at the timing lines: P${esc(c.pos)}"` : ""}>${P(c)}${multi && CP(c) ? `<span class="cpos">${CP(c)}</span>` : ""}</td>
         <td class="driver c-driver" title="${esc(c.name ?? "")}"><span class="num">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}${flags}</td>
         <td class="c-car"${multi && c.classColor != null ? ` style="color:${classCss(c.classColor)}"` : ""}>${esc(c.className ?? c.car)}</td>
-        <td class="r c-int">${liveOr(c, "runIntervalS", "runIntervalLaps", c.derived && c.derived.intervalS)}</td>
+        ${race ? `<td class="r c-int">${liveOr(c, "runIntervalS", "runIntervalLaps", c.derived && c.derived.intervalS)}</td>
         <td class="r c-delta">${closingCell(c)}</td>
-        <td class="r c-gap">${P(c) === 1 ? "leader" : liveOr(c, "runGapS", "runGapLaps", c.gapValid ? c.f2TimeS : null)}</td>
+        <td class="r c-gap">${P(c) === 1 ? "leader" : liveOr(c, "runGapS", "runGapLaps", c.gapValid ? c.f2TimeS : null)}</td>`
+        // practice and qualifying: by best lap (iRacing's scored results), the interval and the gap to pole
+        : `<td class="r c-int">${bestGap(c.derived && c.derived.classBestIntervalS)}</td><td class="r c-delta">–</td>
+        <td class="r c-gap">${c.derived && c.derived.classPoleGapS === 0 ? "pole" : bestGap(c.derived && c.derived.classPoleGapS)}</td>`}
         <td class="r c-last">${fmt.lap(c.lastLapS)}</td><td class="r c-best">${fmt.lap(c.bestLapS)}</td>
         <td class="r c-laps">${c.lapCompleted ?? "–"}</td><td class="r c-deg">${degCell(c)}</td>
         <td class="c-stops">${pitCell(c, pit)}</td><td class="r c-sec">${sectorCell(c)}</td></tr>`;
@@ -1602,6 +1614,8 @@ LK.look = document.documentElement.dataset.look || "basic";
   // ---------------------------------------------------------------- your car
   function renderCar() {
     const p = S.state.player, d = S.state.derived;
+    // spectating (PlayerCarIdx is a spectator slot): the player block reads a car that is not there (0 fuel, 300 rpm)
+    $("car").classList.toggle("spectating", S.cars && refInfo().own == null);
     $("fuel").textContent = p.fuelL == null ? "–" : U.fuel(p.fuelL, 1);
     $("lapsFuel").textContent = d.lapsOfFuel != null ? d.lapsOfFuel.toFixed(1) : "–";
     $("fuelSamples").textContent = d.fuelPerLapSamples ? "(" + U.fuel(d.fuelPerLap, 2) + " " + U.fuelAbbr + "/lap over " + d.fuelPerLapSamples + ")" : "(needs a completed lap)";
@@ -2036,8 +2050,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     const gained = (g, n) => g == null ? null : `${n} · <span class="${g > 0 ? "gain" : g < 0 ? "lose" : "flat"}">${g > 0 ? "+" + g : g < 0 ? "−" + (-g) : "±0"}</span>`;
     const tires = (S.session && S.session.driverTires) || [];
     const own = ownCar();
-    const tname = idx => { const t = own && c.classId === own.classId ? tires.find(x => x.index === idx) : null; return t ? esc(t.type) : null; };
-    const comp = c.compound == null ? null : `${tname(c.compound) || "compound " + esc(c.compound)}`;
+    const comp = c.compound == null ? null : tyreName(c.compound, c.idx);
     const drv = d.drivers;
     const incs = S.feed.events.filter(e => e.idx === c.idx && (e.kind === "car_incident" || e.kind === "off_track" || e.kind === "slowed")).length;
     el.innerHTML =
@@ -2113,7 +2126,8 @@ LK.look = document.documentElement.dataset.look || "basic";
   // otherwise its number.
   function tyreName(idx, carIdx) {
     const c = carByIdx(carIdx), own = ownCar(), tires = (S.session && S.session.driverTires) || [];
-    const t = own && c && c.classId === own.classId ? tires.find(x => x.index === idx) : null;
+    // spectating a one-class field, the session's tyre list is that class's
+    const t = (own ? c && c.classId === own.classId : !isMulticlass()) ? tires.find(x => x.index === idx) : null;
     return t ? esc(words(t.type)) : "compound " + esc(idx);
   }
   function eventHtml(e) {
@@ -2145,6 +2159,10 @@ LK.look = document.documentElement.dataset.look || "basic";
         t = `<span class="${better ? "gain" : "lose"}">${you ? "You" : carLabel(e.idx)} ${better ? (you ? "move up" : "moves up") : (you ? "drop" : "drops")} to ${cl}P${esc(e.toPos)}</span> <span class="note">from ${cl}P${esc(e.fromPos)}</span>`; break; }
       case "race_incident": t = `${carLabel(e.idx)} ${D(esc(e.what === "tow" ? "disappeared from the track (tow, reset to the pits or left the session)" : words(e.what || "incident")) + (e.likelyPoints ? ` (likely ${e.likelyPoints}x)` : ""), "Predicted here from telemetry (off track, a spin, slowing, contact). iRacing hides other cars' incident counts from a spectator until the finish.")}` +
         (e.contactWith && e.contactWith.length ? ` with ${e.contactWith.map(shortCar).join(", ")}` : ""); break;
+      case "car_flag": t = `${carLabel(e.idx)} ` + ({ black: "<b>black flag</b> (a penalty to serve)", furled: "<b>warning</b> (furled black flag)",
+        repair: "<b>meatball</b>: damage to repair", disqualify: "<b>disqualified</b>" }[e.flag] || esc(words(e.flag || "flag"))); break;
+      case "penalty_served": t = `${carLabel(e.idx)} served the penalty`; break;
+      case "pass": t = `${carLabel(e.idx)} passes ${(e.passedIdx || []).map(carLabel).join(", ")} for ${isMulticlass() ? "class " : ""}P${esc(e.classPos)}`; break;
       case "compound_change": t = `${carLabel(e.idx)} switched tyres: ${tyreName(e.fromCompound, e.idx)} → <b>${tyreName(e.toCompound, e.idx)}</b>`; break;
       case "driver_change": t = `${carLabel(e.idx)} driver change: ${esc(e.fromName ?? "?")} → <b>${esc(e.toName ?? "?")}</b>`; break;
       case "adjust": t = `You adjusted <b>${esc(words(e.control))}</b> ${esc(e.fromValue)} → ${esc(e.toValue)}`; break;
@@ -2321,6 +2339,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     const L = (S.cars && S.cars.derived && S.cars.derived.faster) || [];
     const f = L.find(x => (x.a === me && x.b === other) || (x.a === other && x.b === me));
     if (!f) return null;
+    if (f.comparable === false) return null;        // one lap far off the other's: no fair comparison
     return f.a === me ? { gain: f.gainS, total: f.totalS, lapMe: f.lapA, lapO: f.lapB }
       : { gain: f.gainS.map(v => -v), total: -f.totalS, lapMe: f.lapB, lapO: f.lapA };
   }
@@ -2336,7 +2355,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     const P = fasterPair(me.idx, other.idx);
     const key = [me.idx, other.idx, P ? P.total : "", (S.map && S.map.points || []).length].join("|");
     if (box.dataset.k === key) return; box.dataset.k = key;
-    if (!P) { box.innerHTML = `<div class="note">${esc(shortCar(me.idx))} against ${esc(shortCar(other.idx))}: needs a best lap from each, timed on this screen from line to line.</div>`; return; }
+    if (!P) { box.innerHTML = `<div class="note">${esc(shortCar(me.idx))} against ${esc(shortCar(other.idx))}: needs a best lap from each within a few percent of the other, timed on this screen from line to line.</div>`; return; }
     const strip_ = h => String(h).replace(/<[^>]+>/g, "");
     const K = P.gain.length, mx = Math.max(0.01, ...P.gain.map(Math.abs)), wins = P.gain.filter(v => v > 0.005).length;
     const me$ = "#FFB23F", ot$ = "#6FA8FF";
@@ -2482,7 +2501,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     h += `<div class="fp-line">${D(`${st.lapsToGo} laps to go`, "Computed here: from the leader's lap and the race length, or from the clock and the leader's pace.")}` +
          ` · ${st.basis === "fuel" ? "from your fuel plan" : `from ${w.pos} stint lengths (iRacing does not share other cars' fuel)`}</div>`;
     if (st.options && st.options.length) {
-      h += `<div class="opts">` + st.options.map(o => optionRow(o, st.best)).join("") + `</div>`;
+      h += `<div class="opts">` + st.options.map(o => optionRow(o, st.options.length > 1 ? st.best : null)).join("") + `</div>`;
     } else {
       h += `<div class="note" style="margin-top:4px">Options appear once a stop has been watched this session (for the pit loss)` +
            (st.basis === "stints" ? ` and ${w.pos} stint length is known.` : ".") + `</div>`;
@@ -2495,7 +2514,8 @@ LK.look = document.documentElement.dataset.look || "basic";
         const c = t.catch;
         const g = c.gainingSPerLap == null ? `<span class="note">no trend yet</span>`
           : `<span class="${c.onCourse ? "gain" : "lose"}">${c.gainingSPerLap > 0 ? "gaining" : "losing"} ${Math.abs(c.gainingSPerLap).toFixed(2)} s/lap: ${c.onCourse ? "on course" : "not enough"}</span>`;
-        h += `<div class="tgt">Catch <b>${shortCar(c.idx)}</b>: ${D(`${c.gapS.toFixed(c.gapS < 1 ? 2 : 1)} s ahead, needs <b class="mono">${c.needSPerLap.toFixed(2)} s/lap</b>`, "Computed here: the gap divided by the laps to go.")}` +
+        if (c.gapS < 0.05) h += `<div class="tgt">Catch <b>${shortCar(c.idx)}</b>: ${D("alongside", "Computed here from both cars' time behind the leader: under 0.05 s apart.")}</div>`;
+        else h += `<div class="tgt">Catch <b>${shortCar(c.idx)}</b>: ${D(`${c.gapS.toFixed(c.gapS < 1 ? 2 : 1)} s ahead, needs <b class="mono">${c.needSPerLap.toFixed(2)} s/lap</b>`, "Computed here: the gap divided by the laps to go.")}` +
              (c.targetLapS != null ? ` · ${D(`lap target ${fmt.lap(c.targetLapS)}`, "Computed here: the followed car's current pace minus what it needs per lap.")}` : "") + ` · ${g}</div>`;
       }
       if (t.hold) {
@@ -2705,7 +2725,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     const strip = h => String(h).replace(/<[^>]+>/g, "");
     let b = `<h1>${esc(track)}</h1><p class="m">${esc(sType)} · saved ${esc(new Date().toLocaleString())}` +
             (me ? ` · followed car ${esc("#" + (me.num ?? me.idx))} ${esc(me.name || "")}` : "") + `</p>`;
-    b += `<h2>Result</h2><p class="m">As this screen last saw it${st && (st.session.flags || []).includes("checkered") ? " (checkered flag out)" : ""}.</p>` +
+    b += `<h2>Result</h2><p class="m">As this screen last saw it${st && ((st.derived && st.derived.raceFlags) || st.session.flags || []).includes("checkered") ? " (checkered flag out)" : ""}.</p>` +
          `<table><tr><th>Pos</th>${multi ? "<th>Class</th><th>In class</th>" : ""}<th>Car</th><th>Driver</th><th>Laps</th><th>Best</th><th>Last</th><th>Stops seen</th></tr>` +
          cars.map(c => `<tr${me && c.idx === me.idx ? ' class="me"' : ""}><td>P${c.pos}</td>${multi ? `<td>${esc(c.className || "")}</td><td>P${esc(c.classPos)}</td>` : ""}` +
            `<td>#${esc(c.num ?? c.idx)}</td><td>${esc(c.name || "")}</td><td>${esc(c.lap ?? "")}</td><td>${fmt.lap(c.bestLapS)}</td><td>${fmt.lap(c.lastLapS)}</td>` +
@@ -2770,7 +2790,7 @@ LK.look = document.documentElement.dataset.look || "basic";
       best: me.bestLapS, led: multi ? d.classLapsLedSeen : d.lapsLedSeen, stops: d.stopsSeen, laps: me.lap,
       consistency: d.consistencyS, incidents: official, predicted: official == null ? pred : null,
       posByLap: laps.map(l => [l.lap, multi ? (l.classPos || l.pos) : l.pos]), paint: typeof dotMode !== "undefined" && dotMode === "paint" ? paintCss(me) : null,
-      checkered: !!(st && (st.session.flags || []).includes("checkered")) };
+      checkered: !!(st && ((st.derived && st.derived.raceFlags) || st.session.flags || []).includes("checkered")) };
   }
   function drawStory(cv, D) {
     const W = 1200, H = 675, g = cv.getContext("2d"); cv.width = W; cv.height = H;
@@ -2961,7 +2981,7 @@ LK.look = document.documentElement.dataset.look || "basic";
       const d = c.derived || {};
       const tires = (S.session && S.session.driverTires) || [];
       const own = ownCar();
-      const tname = idx => { const t = own && c.classId === own.classId ? tires.find(x => x.index === idx) : null; return t ? esc(t.type) : "compound " + esc(idx); };
+      const tname = idx => tyreName(idx, c.idx);
       h += `<div class="fp-line"><b>${w.Pos} tyres:</b> ${c.compound == null ? "–" : tname(c.compound)}` +
            (d.lapsSincePit != null ? ` · ${D(d.lapsSincePit + " laps on them", "Computed here: laps since the last stop, assuming tyres were changed there.")}` : "") +
            (d.compoundChanges ? ` · ${d.compoundChanges} compound change${d.compoundChanges > 1 ? "s" : ""}` : "") + `</div>`;

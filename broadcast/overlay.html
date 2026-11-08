@@ -379,6 +379,37 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 
 /* ---------- tyres, speed trap ---------- */
 #tyres{left:800px;bottom:190px}
+/* ---------- race TV extras: pit stop, closing in, race pace, strategy, lap chart ---------- */
+#pitstop{right:36px;bottom:470px;width:480px}
+#closing{left:50%;bottom:210px;width:820px;margin-left:-410px}
+#pace{right:36px;top:110px;width:470px}
+#strategy{right:36px;top:110px;width:600px}
+#lapchart{left:50%;top:110px;width:1400px;margin-left:-700px}
+.ps-big{display:flex;align-items:baseline;gap:14px;padding:10px 14px 4px}
+.ps-big b{font:800 46px/1 var(--display);font-variant-numeric:tabular-nums}
+.ps-big span{color:var(--muted);font:700 14px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
+.ps-line{padding:4px 14px 10px;font:600 18px/1.3 var(--display);text-transform:var(--caps)}
+.ps-line .plate{margin:0 4px;vertical-align:1px}
+.ps-line .up{color:#3fd47a}.ps-line .dn{color:#ff6b6b}
+.cl{display:flex;align-items:center;gap:16px;background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45);padding-right:18px}
+.cl-h{background:var(--head);color:var(--headText);align-self:stretch;display:flex;align-items:center;padding:0 16px;font:800 18px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.cl-who{flex:1;min-width:0;padding:12px 0;font:700 22px/1.2 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl-who .plate{margin-right:6px;vertical-align:2px}
+.cl-who small{color:var(--muted);font-weight:600}
+.cl-n{text-align:right;white-space:nowrap}
+.cl-n b{display:block;font:800 26px/1 var(--display);font-variant-numeric:tabular-nums;color:var(--accent)}
+.cl-n span{color:var(--muted);font:600 12px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
+.tb-r{display:flex;align-items:center;gap:8px;padding:5px 12px;border-top:1px solid var(--line);font:600 18px/1 var(--display);text-transform:var(--caps);white-space:nowrap}
+.tb-r .p{width:26px;text-align:center;font-weight:800}
+.tb-r .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tb-r .v{width:86px;text-align:right;font-variant-numeric:tabular-nums}
+.tb-r .v.m{color:var(--muted)}
+.tb-r .v.g{color:#3fd47a}.tb-r .v.b{color:#ff6b6b}
+.tb-h{display:flex;gap:8px;padding:5px 12px 3px;color:var(--muted);font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.06em}
+.tb-h .sp{flex:1}.tb-h .c{width:86px;text-align:right}
+.tb-r .v.w,.tb-h .c.w{width:118px}
+.lc-svg{display:block;width:100%;height:auto;background:var(--ink)}
+.lc-svg text{font-family:var(--display);font-weight:700}
 #trap{left:1016px;bottom:200px;width:360px}
 .mini{background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
 .mini-h{background:var(--head);color:var(--headText);padding:7px 12px 6px;font:800 14px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;display:flex;gap:8px;align-items:center}
@@ -851,6 +882,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
   <section class="layer" id="fastlap"><div class="inner" id="flaBox"></div></section>
   <section class="layer" id="qlap"><div class="inner" id="qlBox"></div></section>
   <section class="layer" id="tyres"><div class="inner" id="tyBox"></div></section>
+  <section class="layer" id="pitstop"><div class="inner"><div class="mini" id="psBox"></div></div></section>
+  <section class="layer" id="closing"><div class="inner" id="clBox"></div></section>
+  <section class="layer" id="pace"><div class="inner"><div class="mini" id="paBox"></div></div></section>
+  <section class="layer" id="strategy"><div class="inner"><div class="mini" id="stBox"></div></div></section>
+  <section class="layer" id="lapchart"><div class="inner"><div class="pn"><div class="pn-head"><b>How the race unfolded</b><span id="lcSub"></span></div><div id="lcBox"></div></div></div></section>
   <section class="layer" id="trap"><div class="inner" id="trBox"></div></section>
   <section class="layer" id="strip"><div class="so" id="soRow"></div></section>
   <section class="layer" id="league"><div class="inner"><div class="pn"><div class="pn-head"><img class="logo hide" id="lgLogo" alt=""><b id="lgTitle">Championship</b><span id="lgSub"></span></div><div class="pn-body"><div class="lg-cols" id="lgCols"></div></div></div></div></section>
@@ -1017,7 +1053,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return v === undefined ? dflt : v;
   }
   const T = (k, d) => G("theme." + k, d);
-  const DEFAULT_ON = { flagcall: true, tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false, qlap: false, tyres: false, trap: false, strip: false, league: false, pip: false };
+  const DEFAULT_ON = { pitstop: false, closing: false, pace: false, strategy: false, lapchart: false, flagcall: true, tower: true, banner: true, ticker: true, card: true, map: false, battle: false, board: false, replay: true, faster: false, traffic: false, fastlap: false, penalty: false, h2h: false, onboard: false, podium: false, sponsors: false, qlap: false, tyres: false, trap: false, strip: false, league: false, pip: false };
   const allowed = name => !ONLY || ONLY === name;
   let gridUp = false;
   // Automatic graphics (producer: "Pick graphics for me"): the battle's "where they're faster" when the two
@@ -1086,9 +1122,14 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const done = race && f === "checkered", since = now - CTX.flagAt, racing = race && sessState() === "racing";
     if (name === "trap") return ctxWants("trap");
     if (name === "flagcall") return true;                  // on its own timing: only as a flag changes
+    if (name === "pitstop") return racing && !!pitPick();
+    if (name === "closing") return racing && pastLapOne() && !camBattle() && !!closingPick() && (closingPick().cam || every(180000, 12000, 120000));
+    if (name === "pace") return racing && pastLapOne() && !camBattle() && every(300000, 15000, 90000);
+    if (name === "strategy") return racing && pastLapOne() && anyStops() && (caution || every(360000, 15000, 240000));
+    if (name === "lapchart") return done && since >= 35000 && since < 60000;
     if (name === "board") return done ? since < 35000 : race ? racing && pastLapOne() && !camBattle() && every(300000, 12000, 150000)
       : !qlapCar() && every(240000, 15000, 60000);
-    if (name === "podium") return done && since >= 35000;
+    if (name === "podium") return done && since >= 60000;
     if (name === "map") return racing && pastLapOne() && (caution || every(120000, 20000, 60000));
     if (name === "strip") return racing && pastLapOne() && (caution || every(240000, 30000, 0));
     if (name === "tyres") { const c = carByIdx(camIdx()); return !!c && (racing || !race) && now - (CTX.pitOut[c.idx] || -1e9) < 25000; }
@@ -1123,7 +1164,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const EDIT_ALL = Q.get("edit") === "all";
   const shown = name => allowed(name) && !sceneUp() &&
     (EDIT_ALL || (G("auto.on", false) && CONTEXTUAL[name] && CONTEXTUAL[name]() ? ctxWants(name) : (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)))) &&
-    !(gridUp && ["tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
+    !(gridUp && ["pitstop", "closing", "pace", "strategy", "lapchart", "tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
   const gridWalkCar = () => {
@@ -1172,7 +1213,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (hit) return hit;
     // a replay carries no flags: normalize.py reads the caution from the field's speed
     const cau = S.cars && S.cars.derived && S.cars.derived.caution;
-    return !f.length && cau && cau.active && cau.inferred ? "caution" : null;
+    return cau && cau.active && cau.inferred ? "caution" : null;      // no racing flag: the field's speed says
   }
   const FLAG_BG = { red: "var(--flag-red)", checkered: "repeating-linear-gradient(90deg,#fff 0 8px,#111 8px 16px)",
     white: "var(--flag-white)", caution: "var(--flag-yellow)", yellow: "var(--flag-yellow)", blue: "var(--flag-blue)", green: "var(--flag-green)" };
@@ -1266,7 +1307,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const l = (th.layout && th.layout[id]) || {};
       const el = $(id).querySelector(".inner") || $(id);
       el.style.transform = `translate(${Number(l.x) || 0}px,${Number(l.y) || 0}px) scale(${(Number(l.s) || 1) * (id === "strip" ? 1 : size)})`;
-      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0", gwalk: "0 100%", gladder: "100% 0", gboard: "50% 0", flagcall: "50% 0" }[id] || "50% 50%";
+      el.style.transformOrigin = { tower: "0 0", banner: "100% 0", replay: "100% 0", card: "0 100%", map: "100% 0", ticker: "100% 100%", traffic: "0 100%", fastlap: "100% 100%", penalty: "100% 100%", h2h: "50% 0", onboard: "0 100%", podium: "50% 0", strap: "0 100%", sponsors: "0 100%", qlap: "50% 0", tyres: "0 100%", trap: "0 100%", strip: "50% 100%", league: "50% 0", pip: "100% 0", gwalk: "0 100%", gladder: "100% 0", gboard: "50% 0", flagcall: "50% 0", pitstop: "100% 100%", closing: "50% 100%", pace: "100% 0", strategy: "100% 0", lapchart: "50% 0" }[id] || "50% 50%";
     }
     document.documentElement.style.setProperty("--rowH", (Number(th.rowHeight) || 34) + "px");
   }
@@ -1277,8 +1318,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // until it is clear, and steps off air while there is no room. Sizes are measured, so a long tower or a growing
   // race control list moves what is below or above it. A graphic placed by hand (Arrange, theme.layout) stays where
   // it was put; the others make room around it. Arrange mode shows the real positions.
-  const ROOM_ORDER = ["gboard", "flagcall", "strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "board", "grid", "league", "podium", "battle", "qlap",
-    "h2h", "faster", "pip", "map", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"];
+  const ROOM_ORDER = ["gboard", "lapchart", "flagcall", "strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "board", "grid", "league", "podium", "battle", "qlap",
+    "h2h", "faster", "pace", "strategy", "closing", "pitstop", "pip", "map", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"];
   const ROOM_UP = new Set(["strip", "card", "gwalk", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"]);
   const ROOM_GAP = 8, ROOM_SLIDE = 420, ROOM = {};   // further than ROOM_SLIDE from its place it is off air instead
   function stageK() { return Math.min(innerWidth / 1920, innerHeight / 1080) || 1; }
@@ -1316,11 +1357,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
   setInterval(makeRoom, 250);
 
   // ---------------------------------------------------------------- Arrange mode
-  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip", "gwalk", "gladder", "gboard", "flagcall"];
+  const LAYOUT_IDS = ["tower", "banner", "replay", "battle", "card", "map", "ticker", "board", "grid", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "podium", "strap", "sponsors", "qlap", "tyres", "trap", "strip", "league", "pip", "gwalk", "gladder", "gboard", "flagcall", "pitstop", "closing", "pace", "strategy", "lapchart"];
   const ED_NAMES = { tower: "Timing tower", banner: "Banner", replay: "Replay bug", battle: "Battle box", card: "Driver card", map: "Track map", ticker: "Race control",
     board: "Standings", grid: "Grid", faster: "Where they're faster", traffic: "Traffic", fastlap: "Fastest lap", penalty: "Race control alert", h2h: "Head to head",
     onboard: "Onboard", podium: "Podium", strap: "Commentator", sponsors: "Sponsors", qlap: "Qualifying lap", tyres: "Tyres", trap: "Speed trap", strip: "Running order",
-    league: "League", pip: "Picture in picture", gwalk: "Grid walk", gladder: "Grid walk: the grid", gboard: "Grid board", flagcall: "Flag calls" };
+    league: "League", pip: "Picture in picture", gwalk: "Grid walk", gladder: "Grid walk: the grid", gboard: "Grid board", flagcall: "Flag calls", pitstop: "Pit stop", closing: "Closing in", pace: "Race pace", strategy: "Strategy", lapchart: "Lap chart" };
   // Dragging changes this page only; the result goes to the producer panel (postMessage), which saves it as the
   // look's layout (theme.layout) so every OBS source follows.
   const ED = { id: null };
@@ -1976,6 +2017,119 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("rpLabel").textContent = sp === 0 ? "Paused" : cam.replaySlowMotion ? "Slow motion" + (lbl ? " · " + lbl : "") : lbl;
   }
 
+  // ---------------------------------------------------------------- race TV extras
+  // All the numbers are normalize's (cars.derived: pitStops, closing, recentPace*, stopDue, lapChart; battles' swaps).
+  const posOf = (c, cp, p) => multi() ? (c && c.className ? c.className + " " : "") + "P" + cp : "P" + p;
+  const short = c => c ? `${plate(c)}${nameHtml(c.name, "last")}` : "";
+  // the pit stop shown: the camera car's, else the best-placed car in the lane, else one just out
+  function pitPick() {
+    const list = (S.cars && S.cars.derived && S.cars.derived.pitStops) || [];
+    if (!list.length) return null;
+    const cam = list.find(p => p.idx === camIdx());
+    if (cam) return cam;
+    const rank = p => (p.done ? 1000 : 0) + ((p.done ? p.classPos : p.fromClassPos) || 99);
+    return list.slice().sort((a, b) => rank(a) - rank(b))[0];
+  }
+  function renderPitStop() {
+    const p = pitPick(), c = p && carByIdx(p.idx);
+    $("pitstop").classList.toggle("on", !!c && shown("pitstop"));
+    if (!c) return;
+    const r = p.rejoin, rb = r && r.behind ? carByIdx(r.behind.idx) : null, ra = r && r.ahead ? carByIdx(r.ahead.idx) : null;
+    const where = r ? `Should come out ${posOf(c, r.classPos, r.pos)}` + (ra ? `, behind ${short(ra)}` : "") + (rb ? (ra ? " and" : ",") + ` ahead of ${short(rb)}` : "") : "";
+    let big, lab, line;
+    if (p.done) {
+      big = p.stationaryS != null ? p.stationaryS.toFixed(1) + " s" : "–"; lab = "Stationary";
+      const lost = p.fromClassPos && p.classPos ? p.classPos - p.fromClassPos : null;
+      line = `Out ${p.classPos ? posOf(c, p.classPos, p.pos) : ""}` + (p.fromClassPos ? `, in from ${posOf(c, p.fromClassPos, p.fromPos)}` : "") +
+        (lost > 0 ? ` <span class="dn">▼${lost}</span>` : lost === 0 ? ` <span class="up">kept the place</span>` : "") + (p.stop ? ` · stop ${p.stop}` : "");
+    } else {
+      big = (p.inBox || p.boxS != null ? p.boxS : p.laneS) != null ? (p.inBox || p.boxS != null ? p.boxS : p.laneS).toFixed(1) + " s" : "–";
+      lab = p.inBox ? "In the box" : p.boxS != null ? "Stationary" : "In the pit lane";
+      line = `In from ${posOf(c, p.fromClassPos, p.fromPos)}` + (p.stop ? ` · stop ${p.stop}` : "") + (where ? `<br>${where}` : "");
+    }
+    const h = `<div class="mini-h">Pit stop ${plate(c)}<span>${nameHtml(c.name)}</span></div><div class="ps-big"><b>${big}</b><span>${lab}</span></div><div class="ps-line">${line}</div>`;
+    if ($("psBox").innerHTML !== h) $("psBox").innerHTML = h;
+  }
+  // closing in: the camera car's chase (as chaser or chased), else the first in the list (ahead of the end first)
+  function closingPick() {
+    const list = (S.cars && S.cars.derived && S.cars.derived.closing) || [];
+    const cam = camIdx(), c = list.find(x => x.idx === cam || x.aheadIdx === cam);
+    return c ? Object.assign({ cam: true }, c) : list[0] || null;
+  }
+  function renderClosing() {
+    const x = closingPick(), a = x && carByIdx(x.idx), b = x && carByIdx(x.aheadIdx);
+    $("closing").classList.toggle("on", !!a && !!b && shown("closing"));
+    if (!a || !b) return;
+    const catchTxt = x.catchLaps == null ? "" : x.beforeEnd === false ? `<div class="cl-n"><b>Not in time</b><span>at this rate</span></div>`
+      : `<div class="cl-n"><b>${Math.max(1, Math.round(x.catchLaps))}</b><span>${Math.round(x.catchLaps) <= 1 ? "lap" : "laps"} to catch</span></div>`;
+    const h = `<div class="cl"><div class="cl-h">Closing in</div><div class="cl-who">${short(a)} <small>on</small> ${short(b)} <small>for ${posOf(b, x.forClassPos, b.pos)}</small></div>` +
+      `<div class="cl-n"><b>${x.closingSPerLap.toFixed(2)}</b><span>s a lap</span></div><div class="cl-n"><b>${fmt.gap(x.gapS)}</b><span>gap</span></div>${catchTxt}</div>`;
+    if ($("clBox").innerHTML !== h) $("clBox").innerHTML = h;
+  }
+  // the class of the camera car, else the first class
+  function tableClass() { const c = carByIdx(camIdx()); return c ? c.classId : (classes()[0] || {}).id; }
+  function renderPace() {
+    const cls = tableClass(), list = allCars().filter(c => c.classPos > 0 && c.classId === cls && c.derived && c.derived.recentPaceS)
+      .sort((a, b) => a.classPos - b.classPos).slice(0, 10);
+    $("pace").classList.toggle("on", isRace() && list.length >= 3 && shown("pace"));
+    if (list.length < 3) return;
+    const best = Math.min(...list.map(c => c.derived.recentPaceS));
+    const k = classes().find(x => x.id === cls);
+    const h = `<div class="mini-h">Race pace<span>${multi() && k ? esc(k.name) + " · " : ""}last ${esc(list[0].derived.recentPaceLaps)} laps</span></div>` +
+      `<div class="tb-h"><span style="width:26px"></span><span class="sp">Driver</span><span class="c">Average</span><span class="c">To leader</span></div>` +
+      list.map(c => { const d = c.derived, v = d.recentPaceVsLeaderS;
+        return `<div class="tb-r"><span class="p">${esc(c.classPos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span>` +
+          `<span class="v${d.recentPaceS === best ? " g" : ""}">${fmt.lap(d.recentPaceS)}</span><span class="v m">${c.classPos === 1 ? "–" : v == null ? "–" : (v > 0 ? "+" : "−") + Math.abs(v).toFixed(3)}</span></div>`; }).join("");
+    if ($("paBox").innerHTML !== h) $("paBox").innerHTML = h;
+  }
+  const anyStops = () => allCars().some(c => c.derived && c.derived.stopsSeen > 0);
+  function renderStrategy() {
+    const cls = tableClass(), list = allCars().filter(c => c.classPos > 0 && c.classId === cls).sort((a, b) => a.classPos - b.classPos).slice(0, 10);
+    $("strategy").classList.toggle("on", isRace() && list.length > 0 && shown("strategy"));
+    if (!list.length) return;
+    const k = classes().find(x => x.id === cls);
+    // the next stop only where it is known (from stints watched): a sprint with no stops seen has no column of dashes
+    const anyDue = list.some(c => c.onPitRoad || (c.derived && c.derived.stopDue));
+    const h = `<div class="mini-h">Strategy<span>${multi() && k ? esc(k.name) : ""}</span></div>` +
+      `<div class="tb-h"><span style="width:26px"></span><span class="sp">Driver</span><span class="c">Stops</span><span class="c">Tyres</span><span class="c">This stint</span>${anyDue ? '<span class="c w">Next stop</span>' : ""}</div>` +
+      list.map(c => { const d = c.derived || {}, sd = d.stopDue;
+        const next = c.onPitRoad ? "In the pits" : !sd ? "–" : sd.overdue ? "Due" : sd.stopsOwed === 0 ? "To the end" : "Lap " + sd.lap;
+        return `<div class="tb-r"><span class="p">${esc(c.classPos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span>` +
+          `<span class="v">${esc(d.stopsSeen ?? "–")}</span><span class="v">${c.compound != null && c.compound >= 0 ? tyreHtml(c.compound) : "–"}</span>` +
+          `<span class="v m">${d.lapsThisStint != null && d.lapsThisStint >= 0 ? d.lapsThisStint + (d.lapsThisStint === 1 ? " lap" : " laps") : "–"}</span>` +
+          (anyDue ? `<span class="v w${sd && sd.overdue ? " b" : ""}">${esc(next)}</span>` : "") + `</div>`; }).join("");
+    if ($("stBox").innerHTML !== h) $("stBox").innerHTML = h;
+  }
+  // the lap chart: every car's place lap by lap (the class of the camera car in a multiclass race), the top ten named
+  function renderLapChart() {
+    const lc = (S.cars && S.cars.derived && S.cars.derived.lapChart) || null;
+    const cls = tableClass(), m = multi();
+    const series = lc ? Object.entries(lc).map(([i, laps]) => ({ c: carByIdx(Number(i)), laps })).filter(x => x.c && (!m || x.c.classId === cls) && x.laps.length) : [];
+    $("lapchart").classList.toggle("on", series.length >= 2 && shown("lapchart"));
+    if (series.length < 2) return;
+    const P = x => m ? x[2] : x[1];
+    const maxLap = Math.max(...series.flatMap(s => s.laps.map(x => x[0]))), n = Math.max(...series.flatMap(s => s.laps.map(P).filter(Boolean)));
+    const W = 1400, H = Math.min(760, 80 + n * 34), L = 70, R = 270, T = 30, B = 40;
+    const X = lap => L + (maxLap <= 1 ? 0 : (lap - 1) / (maxLap - 1)) * (W - L - R), Y = p => T + (p - 1) / Math.max(1, n - 1) * (H - T - B);
+    const pal = ["#ffb23f", "#3a86ff", "#ff5d8f", "#3fd47a", "#b388ff", "#ffd166", "#06d6a0", "#ef476f", "#118ab2", "#f78c6b"];
+    const curP = s => (m ? s.c.classPos : s.c.pos) || P(s.laps[s.laps.length - 1]) || 99;
+    const now = series.slice().sort((a, b) => curP(a) - curP(b));
+    const col = new Map(now.map((s, k) => [s.c.idx, k < pal.length ? pal[k] : "#59606b"]));
+    let g = "";
+    for (let p = 1; p <= n; p++) g += `<line x1="${L}" x2="${W - R}" y1="${Y(p)}" y2="${Y(p)}" stroke="rgba(255,255,255,.07)"/><text x="${L - 14}" y="${Y(p) + 6}" fill="#8a93a0" font-size="17" text-anchor="end">${p}</text>`;
+    const step = Math.max(1, Math.ceil(maxLap / 12));
+    for (let l = 1; l <= maxLap; l += step) g += `<text x="${X(l)}" y="${H - 12}" fill="#8a93a0" font-size="15" text-anchor="middle">L${l}</text>`;
+    for (const s of now.slice().reverse()) {
+      const pts = s.laps.filter(x => P(x)).map(x => `${X(x[0]).toFixed(1)},${Y(P(x)).toFixed(1)}`).join(" "), cc = col.get(s.c.idx), last = s.laps[s.laps.length - 1];
+      g += `<polyline points="${pts}" fill="none" stroke="${cc}" stroke-width="${now.indexOf(s) < 10 ? 4 : 2}" stroke-linejoin="round" opacity="${now.indexOf(s) < 10 ? 1 : .55}"/>`;
+      const cur = m ? s.c.classPos : s.c.pos, at = cur > 0 ? cur : P(last);       // labelled at its place now, one a row
+      if (now.indexOf(s) < 10 && at) g += `<text x="${W - R + 14}" y="${Y(Math.min(n, at)) + 6}" fill="${cc}" font-size="19">${esc(at)} #${esc(s.c.num)} ${esc(String(s.c.name || "").split(/\s+/).slice(-1)[0])}</text>`;
+    }
+    $("lcSub").textContent = `${maxLap} ${maxLap === 1 ? "lap" : "laps"}${m ? " · " + ((classes().find(x => x.id === cls) || {}).name || "") : ""}`;
+    const h = `<svg class="lc-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lap chart">${g}</svg>`;
+    if ($("lcBox").innerHTML !== h) $("lcBox").innerHTML = h;
+  }
+
   // ---------------------------------------------------------------- flag calls
   // Green as a race goes racing (from the grid or the pace laps) and after a full-course caution or a red; white as
   // the leader starts the final lap; checkered as the leader takes it (normalize.race_flags waits for the leader),
@@ -2039,6 +2193,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
       else if (rate < 0) foot = `<span class="l">Gap growing ${Math.abs(rate).toFixed(2)} s a lap</span>`;
       else foot = "Gap holding steady";
     }
+    // the battle's own story (normalize battle_history): places swapped, how long they have been at it
+    const hist = [b.swaps > 0 ? `swapped ${b.swaps === 1 ? "once" : b.swaps + " times"}` : "", b.sinceS >= 60 ? "together " + fmt.clock(b.sinceS) : ""].filter(Boolean);
+    if (hist.length) foot += ` · ${hist.join(" · ")}`;
     $("btFoot").innerHTML = foot;
   }
 
@@ -2061,7 +2218,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const b = currentBattle(), L = (S.cars && S.cars.derived && S.cars.derived.faster) || [];
     if (!b) return null;
     const [x, y] = b.cars.slice(-2);
-    return L.find(f => f.a === x && f.b === y) || null;
+    return L.find(f => f.a === x && f.b === y && f.comparable !== false) || null;   // one slow lap says nothing
   }
   function renderFaster() {
     const f = shown("faster") ? fasterPair() : null, el = $("faster");
@@ -2143,9 +2300,16 @@ body.bc-off>*:not(script){visibility:hidden!important}
     // the class position is on the number; in a multi-class field this is the overall one
     const stats = [[m ? "Overall" : "Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];
     if (isRace()) {
+      // the gap, as the tower has it: to the car ahead in class, the leader's own "Leader"
+      const lead = (m ? c.classPos : c.pos) === 1;
+      const gapV = lead ? "Leader" : m ? (d.classIntervalLaps >= 1 ? fmt.laps(d.classIntervalLaps) : d.liveClassIntervalS != null ? fmt.gap(d.liveClassIntervalS) : null)
+        : (d.intervalLaps >= 1 ? fmt.laps(d.intervalLaps) : d.liveIntervalS != null ? fmt.gap(d.liveIntervalS) : null);
+      if (gapV) stats.splice(1, 0, [lead ? "Running" : "To the car ahead", gapV]);
       if (d.stintLaps != null) stats.push(["Stint", d.stintLaps + (d.stintLaps === 1 ? " lap" : " laps")]);
       stats.push(["Pit stops", d.stopsSeen != null ? String(d.stopsSeen) : "–"]);
     }
+    else if (d.classPoleGapS != null && d.classPoleGapS > 0) stats.splice(1, 0, [m ? "To class pole" : "To pole", fmt.gap(d.classPoleGapS)]);
+    else if (d.classPoleGapS === 0 && c.bestLapS > 0) stats.splice(1, 0, ["Quickest", m ? "in class" : "of all"]);
     if (c.incidents != null && c.incidents >= 0 && officialPublished()) {
       const lim = S.session && S.session.options ? parseInt(S.session.options.IncidentLimit, 10) : NaN;
       stats.push(["Incidents", c.incidents + "x" + (lim > 0 ? " / " + lim : "")]);
@@ -2413,7 +2577,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("bdSub").innerHTML = esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + "<br>" + raceState().main.replace(/<[^>]+>/g, "");
     const race = isRace(), off = officialPublished();
     const fin = race && f === "checkered";
-    const cols = race ? (fin ? ["Gap", "Best", "+/−"] : off ? ["Gap", "Best", "Inc"] : ["Gap", "Best", "Pits"]) : ["Best", "Last", ""];
+    const cols = race ? (fin ? ["Gap", "Best", "+/−", "Stops", "Led"] : off ? ["Gap", "Best", "Inc"] : ["Gap", "Best", "Pits"]) : ["Best", "Last", ""];
     const fl = fastestByClass();
     const field = allCars().filter(c => c.pos > 0);
     const groups = multi() ? classes().map(k => ({ k, list: field.filter(c => c.classId === k.id).sort((a, b) => a.classPos - b.classPos) }))
@@ -2427,6 +2591,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const gained = pg == null ? "–" : pg > 0 ? "▲" + pg : pg < 0 ? "▼" + (-pg) : "=";
       const vals = race ? [g, fmt.lap(c.bestLapS), fin ? gained : off ? (c.incidents >= 0 ? c.incidents + "x" : "–") : (d.stopsSeen ?? "–")]
                         : [fmt.lap(c.bestLapS), fmt.lap(c.lastLapS), ""];
+      if (fin) vals.push(d.stopsSeen ?? "–", (byClass ? d.classLapsLedSeen : d.lapsLedSeen) || "–");    // the full result: stops, laps led
       const isFl = fl[c.classId] && fl[c.classId].idx === c.idx;
       return `<div class="bd-row"><span class="pos">${esc(byClass ? c.classPos : c.pos)}</span>${plate(c)}<span class="nm">${nameHtml(c.name)}${c.onPitRoad ? ' <span style="color:var(--muted);font-size:14px">PIT</span>' : ""}</span>` +
         vals.map((v, i) => `<span class="v${i ? " m" : ""}${(race ? i === 1 : i === 0) && isFl ? " fl" : ""}${fin && i === 2 ? (pg > 0 ? " up" : pg < 0 ? " dn" : "") : ""}">${esc(v)}</span>`).join("") + `</div>`;
@@ -2649,14 +2814,28 @@ body.bc-off>*:not(script){visibility:hidden!important}
     dirty = true;
   }
   let last = 0;
+  // Every graphic is drawn on its own: one that throws on some state of the race must never take the
+  // others off air, and the frame loop must never stop (it did: an error left OBS showing nothing until reloaded).
+  const RENDERS = [ctxTick, renderGrid, renderTower, renderBanner, renderBattle, renderCard, renderGridWalk, renderGBoard,
+    renderBoard, renderFlagCall, renderPitStop, renderClosing, renderPace, renderStrategy, renderLapChart, renderFaster,
+    renderTraffic, renderFastLap, renderPenalty, renderH2H, renderOnboard, renderScene, renderPodium, renderStrap,
+    renderSponsor, renderTyres, renderTrap, renderQlap, renderStrip, renderLeague, renderPip];
+  const failed = {};
+  function safely(fn, ...a) {
+    try { fn(...a); }
+    catch (e) {                      // said once per graphic and message, in the console (OBS: Interact, or remote debugging)
+      const k = fn.name + ": " + (e && e.message);
+      if (!failed[k]) { failed[k] = 1; console.error("[overlay] " + k, e); }
+    }
+  }
   function frame(t) {
+    requestAnimationFrame(frame);
     if (dirty && t - last > 150) {
       dirty = false; last = t;
-      ctxTick(); renderGrid(); renderTower(); renderBanner(); renderBattle(); renderCard(); renderGridWalk(); renderGBoard(); renderBoard(); renderFlagCall(); renderFaster(); renderTraffic(); renderFastLap(); renderPenalty(); renderH2H(); renderOnboard(); renderScene(); renderPodium(); renderStrap(); renderSponsor(); renderTyres(); renderTrap(); renderQlap(); renderStrip(); renderLeague(); renderPip();
+      for (const r of RENDERS) safely(r);
     }
-    drawMap(); drawFaster(t);
-    pumpTicker();
-    requestAnimationFrame(frame);
+    safely(drawMap); safely(drawFaster, t);
+    safely(pumpTicker);
   }
   applyTheme();
   requestAnimationFrame(frame);
