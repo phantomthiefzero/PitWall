@@ -136,6 +136,13 @@ iRacing Suite app (suite/)
   3 things). A long grey explanation right after a heading folds behind a small (i) button (hintTidy, plain text
   only). Colour means something is off: "balanced" and good states stay plain or soft, never solid blocks.
   Don't add "click to open" to a summary: the arrow says it.
+- One-lap files (laps cut out of a session and shared for coaching, e.g. AlxanderSpetz_..._2.01.148_...ibt): no
+  LapLastLapTime at all, one sample on the lap before and one on the next. The lap is timed by the clock from line
+  to line with the crossings placed between samples (library._clock_lap and the analyzer's lap parser, the same
+  way: 2:01.148 and 1:49.898 as named); under a second of a lap at either end of a file is not a lap. Two laps are
+  compared only on the same track and layout (sameWhere: car path or name, track by name, unknown counts as the
+  same); a different car is shown with a warning in the Lap Analyzer and never used as Coaching's reference.
+  library._driver_block skips results lists ("ResultsFastestLap: - CarIdx: 0" had blanked the car's name).
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
