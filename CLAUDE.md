@@ -143,6 +143,14 @@ iRacing Suite app (suite/)
   compared only on the same track and layout (sameWhere: car path or name, track by name, unknown counts as the
   same); a different car is shown with a warning in the Lap Analyzer and never used as Coaching's reference.
   library._driver_block skips results lists ("ResultsFastestLap: - CarIdx: 0" had blanked the car's name).
+- Driving style per kind of car (CAR_STYLE, carStyle(carPath, name): gt3, gt4, cup, supercar, proto, formula,
+  formula_light, momentum, fwd; every CAR_KB car has one but the Cross Car). Coaching's advice stays relative to the
+  reference lap; coWeight scales each piece of it in coachCause: entry advice (braking, turn-in, apex) by the
+  style's entry, exit advice (throttle, wheelspin, exit width, early apex) by its exit and by exitWorth of the straight
+  after (coFullAfter: how far the reference stays flat out after the corner, 400 m = 1, from 0.7 to 1.5). A GT3 is a V
+  (exits first), a prototype a U (entry and minimum speed first), a momentum car keeps speed above all: measured on
+  a Porsche 911 GT3 R lap at Road America and a Dallara P217 lap at Suzuka (one each, a guide). Coaching shows "How a
+  GT3 is driven" and, per corner, "Exit first" before a long straight or "Only N m flat out" before a close corner.
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
