@@ -544,7 +544,7 @@ small{margin-right:4px}
 .gw-half .lvh img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);object-fit:contain}
 .gw-half .lvh img:not(.render){inset:0;width:100%;height:100%;object-fit:cover}
 .gw-half .gb{flex:1;min-width:0;display:flex;flex-direction:column;padding:14px 16px 0}
-.gw-half .gn{display:flex;align-items:center;gap:10px;font:800 32px/1 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;min-width:0}
+.gw-half .gn{display:flex;align-items:center;gap:10px;font:800 32px/1.2 var(--display);text-transform:var(--caps);white-space:nowrap;overflow:hidden;min-width:0}
 .gw-half .gn em{font-style:normal;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .gw-half .gn small{font-weight:500;color:var(--muted)}
 .gw-half .gs{color:var(--muted);font:600 14px/1.2 var(--body);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -595,7 +595,7 @@ small{margin-right:4px}
 :root[data-look="arcade"] .gbs .who b,:root[data-look="arcade"] .gbs .p b{font-style:italic}
 :root[data-look="pitwall"] .gbs .tm{font-family:var(--seg)!important}
 /* the grid beside it: two columns, staggered like the cars, the one on camera lit, the ones walked dimmed */
-#gladder{right:36px;top:110px;width:300px}
+#gladder{right:36px;top:110px;width:400px}
 .gl{background:color-mix(in srgb,var(--ink) 94%,transparent);border-radius:var(--r);overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.45)}
 .gl-head{display:flex;align-items:baseline;gap:8px;background:var(--head);color:var(--headText);padding:10px 14px}
 .gl-head b{font:800 21px/1 var(--display);text-transform:var(--caps);letter-spacing:.02em}
@@ -1004,10 +1004,92 @@ body.bc-off>*:not(script){visibility:hidden!important}
   }
   // something new on a graphic that is already up (a new fastest lap, a new penalty, the card's next car)
   function hit(el) { replay(el, "lk-hit"); }
+  // Writes a box's HTML only when it changed, compared with what was last written (not with innerHTML, which the
+  // browser serialises its own way and which fitWords changes when it fits a name): true when it wrote.
+  function setH(el, h) {
+    if (el._h === h) return false;
+    el._h = h; el.innerHTML = h; return true;
+  }
+  // ---------------------------------------------------------------- words are never cut off
+  // A name or a line in a box too narrow for it (the looks' fonts differ in width: Arcade's is the widest) first gets
+  // smaller, down to FIT_MIN of its size; a name (.pn, from nameHtml) that would need more than NAME_SHRINK loses words
+  // from the front instead (the first of several surnames, then the initial or first name: "C. Andres Arteaga Narvaez"
+  // -> "C. Narvaez" -> "Narvaez"), so the family name stays whole and readable. "…" is the last resort. The boxes are every rule with text-overflow:ellipsis
+  // (read from the style sheet, so a new graphic's boxes are found too); a box is fitted again when its words change
+  // (MutationObserver), when it first gets a width (a graphic coming on) and when its width changes (a look, the size).
+  const FIT_MIN = 0.7, NAME_SHRINK = 0.86;
+  let FIT_SEL = null;
+  const FIT_DIRTY = new Set();
+  let fitForce = true;                                   // every box again: a new look or its fonts arriving
+  function fitSel() {
+    if (FIT_SEL != null) return FIT_SEL;
+    const sels = new Set(), walk = rules => { for (const r of rules) {
+      if (r.cssRules && !r.selectorText) walk(r.cssRules);
+      else if (r.style && r.style.textOverflow === "ellipsis") r.selectorText.split(",").forEach(x => sels.add(x.trim()));
+    } };
+    for (const sh of document.styleSheets) { try { walk(sh.cssRules); } catch (e) {} }
+    FIT_SEL = [...sels].join(",");
+    return FIT_SEL;
+  }
+  function fitNote(node) {
+    const el = node && (node.nodeType === 1 ? node : node.parentElement);
+    if (!el || !fitSel()) return;
+    const box = el.closest(FIT_SEL);
+    if (box) FIT_DIRTY.add(box);
+    if (node.nodeType === 1) for (const b of el.querySelectorAll(FIT_SEL)) FIT_DIRTY.add(b);
+  }
+  const fitObs = new MutationObserver(recs => { for (const r of recs) fitNote(r.target); });
+  function fitWords(all) {
+    for (const r of fitObs.takeRecords()) fitNote(r.target);
+    if ((all || fitForce) && fitSel()) for (const b of $("stage").querySelectorAll(FIT_SEL)) if (fitForce || b.clientWidth !== b._fitW) FIT_DIRTY.add(b);
+    fitForce = false;
+    if (!FIT_DIRTY.size) return;
+    const list = [...FIT_DIRTY]; FIT_DIRTY.clear();
+    // put back what the last fit changed, so the box is measured with its own words at its own size
+    for (const b of list) {
+      if (b._fitSrc != null && b._fitOut === b.innerHTML) b.innerHTML = b._fitSrc;
+      b._fitSrc = b._fitOut = null;
+      if (b.style.fontSize) b.style.fontSize = "";
+    }
+    for (const b of list) {
+      const w = b.clientWidth; b._fitW = w;
+      if (!w) continue;                                  // not on screen yet: fitted when it gets a width
+      let need = w / Math.max(1, b.scrollWidth);
+      if (need >= 0.995) continue;
+      const src = b.innerHTML, name = !!(b.closest(".pn") || b.querySelector(".pn"));
+      while (name && need < NAME_SHRINK && dropWord(b)) need = w / Math.max(1, b.scrollWidth);
+      if (b.innerHTML !== src) { b._fitSrc = src; b._fitOut = b.innerHTML; }
+      if (need < 0.995) b.style.fontSize = (parseFloat(getComputedStyle(b).fontSize) * Math.max(FIT_MIN, need * 0.98)).toFixed(1) + "px";
+    }
+    fitObs.takeRecords();                                // our own changes are not new words
+  }
+  // one word less from the front of a name, given as its runs of text in order ("<small>C.</small>Andres Arteaga
+  // Narvaez" is ["C.", "Andres Arteaga Narvaez"]): the first run of several words loses its first word, else the
+  // first run goes (an initial or a first name); the last word always stays. null: nothing left to drop.
+  function nameShorter(runs) {
+    const w = runs.map(r => String(r).trim().split(/\s+/).filter(Boolean));
+    const k = w.findIndex(x => x.length > 1);
+    if (k >= 0) return runs.map((r, i) => i === k ? (/^\s/.test(r) ? " " : "") + w[k].slice(1).join(" ") : r);
+    const left = w.map((x, i) => x.length ? i : -1).filter(i => i >= 0);
+    if (left.length < 2) return null;
+    return runs.map((r, i) => i === left[0] ? "" : r);
+  }
+  // the same in the page: the longest name in the box first
+  function dropWord(b) {
+    const pns = (b.closest(".pn") ? [b.closest(".pn")] : [...b.querySelectorAll(".pn")]).sort((x, y) => y.textContent.length - x.textContent.length);
+    for (const pn of pns) {
+      const tw = document.createTreeWalker(pn, NodeFilter.SHOW_TEXT), nodes = [];
+      for (let n; (n = tw.nextNode());) if (n.nodeValue.trim()) nodes.push(n);
+      const next = nameShorter(nodes.map(n => n.nodeValue));
+      if (!next) continue;
+      nodes.forEach((n, i) => { if (next[i] === n.nodeValue) return; if (next[i] === "" && n.parentElement !== pn) n.parentElement.remove(); else n.nodeValue = next[i]; });
+      return true;
+    }
+    return false;
+  }
   // a lap count or state that changed rolls in; the same words again do nothing
   function roll(el, html) {
-    if (el.innerHTML === html) return;
-    const was = el.innerHTML; el.innerHTML = html;
+    const was = el._h; if (!setH(el, html)) return;
     if (was && was !== "–") replay(el, "m-roll");
   }
   // a flag that is out ripples, green and none stay still
@@ -1197,9 +1279,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const p = String(n || "").trim().split(/\s+/);
     const first = p.length > 1 ? p[0] : "", last = p.length > 1 ? p.slice(1).join(" ") : (p[0] || "");
     style = style || T("names", "initial");
-    if (style === "full") return esc(n || "");
-    if (style === "last" || !first) return esc(last);
-    return `<small>${esc(first[0])}.</small>${esc(last)}`;
+    // in a .pn so fitWords can shorten a name that does not fit, and only the name
+    if (style === "full") return `<span class="pn">${esc(n || "")}</span>`;
+    if (style === "last" || !first) return `<span class="pn">${esc(last)}</span>`;
+    return `<span class="pn"><small>${esc(first[0])}.</small>${esc(last)}</span>`;
   }
   function sessionRow() {
     const st = S.state; if (!st || !S.session) return null;
@@ -1267,6 +1350,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const fontFaces = new Set();
   function applyTheme() {
     const th = S.gfx.theme || {};
+    fitForce = true;
     const base = PRESETS[th.preset] || PRESETS.imsa;
     document.documentElement.dataset.look = th.preset === "pitwall" || th.preset === "arcade" ? th.preset : "basic";
     document.documentElement.dataset.motion = th.motion === "off" || th.motion === "calm" ? th.motion : "on";
@@ -1576,7 +1660,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
         body.appendChild(el);
       }
       if (r.sec) {
-        el.innerHTML = `<span class="cls" style="background:${r.cls.color || "#444"};color:${inkOn(r.cls.color)}">${esc(r.cls.name)}</span><span class="rule" style="background:${r.cls.color || "#444"}"></span>`;
+        setH(el, `<span class="cls" style="background:${r.cls.color || "#444"};color:${inkOn(r.cls.color)}">${esc(r.cls.name)}</span><span class="rule" style="background:${r.cls.color || "#444"}"></span>`);
         el.style.height = (rowH - 4) + "px";
         el.style.transform = `translateY(${y}px)`;
         seen.add(el); y += rowH - 4; n = 0; continue;
@@ -1587,15 +1671,15 @@ body.bc-off>*:not(script){visibility:hidden!important}
       prevPos[r.idx] = p;
       const mv = moveAt[r.idx] && now - moveAt[r.idx].at < 6000 ? moveAt[r.idx] : null;
       el.querySelector(".pos").textContent = p;
-      el.querySelector(".pl").innerHTML = plate(r);
-      el.querySelector(".nm").innerHTML = nameHtml(r.name);
+      setH(el.querySelector(".pl"), plate(r));
+      setH(el.querySelector(".nm"), nameHtml(r.name));
       el.querySelector(".tag").classList.toggle("hide", !r.onPitRoad);
       el.querySelector(".fl").classList.toggle("hide", !(fl[r.classId] && fl[r.classId].idx === r.idx));
       const mvEl = el.querySelector(".mv"); mvEl.className = "mv" + (mv ? (mv.up ? " up" : " dn") : ""); mvEl.textContent = mv ? (mv.up ? "▲" : "▼") : "";
       const vEl = el.querySelector(".val");
-      if (mode === "sectors") { const h = sectorBars(r); if (vEl.innerHTML !== h) vEl.innerHTML = h; }
-      else if (mode === "tyres") { const h = towerValue(r, mode, byClass); if (vEl.innerHTML !== h) vEl.innerHTML = h; }
-      else vEl.textContent = towerValue(r, mode, byClass);
+      if (mode === "sectors") setH(vEl, sectorBars(r));
+      else if (mode === "tyres") setH(vEl, towerValue(r, mode, byClass));
+      else setH(vEl, esc(towerValue(r, mode, byClass)));
       el.classList.toggle("cut", cut > 0 && p === cut);
       el.classList.toggle("cam", r.idx === cam);
       el.classList.toggle("alt", n % 2 === 1);
@@ -1628,7 +1712,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const h = L.map(x => { const a = carByIdx(x.idx), b = carByIdx(x.aheadIdx);
       return `<div class="tr-r">${tag(a)}${plate(a)}<span class="nm">${nameHtml(a.name)}</span><span class="to">reaches</span>${tag(b)}` +
         `<span class="in">${Math.max(0, Math.round(x.inS))}<small>s</small></span>${x.packN > 1 ? `<span class="to">${x.packN} cars</span>` : ""}</div>`; }).join("");
-    if ($("trRows").innerHTML !== h) $("trRows").innerHTML = h;
+    setH($("trRows"), h);
   }
   // ---------------------------------------------------------------- fastest-lap alert
   // From race control's fastest_lap events (normalize.py field_events): per class in a multiclass race,
@@ -1650,7 +1734,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const tag = c => c && c.className ? `<span class="cl" style="background:${css(c.classColor) || "var(--muted)"};color:${inkOn(css(c.classColor))}">${esc(c.className)}</span>` : "";
     FLA.html = `<div class="fla"><div class="bar"></div><div class="m"><div class="h">Fastest lap${m ? tag(c) : ""}</div><div class="w">${plate(c)}<span class="nm">${nameHtml(c.name)}</span></div></div>` +
       `<div class="t"><b>${fmt.lap(e.lapS)}</b>${gain != null && gain > 0 ? `<small>${gain.toFixed(3)} s quicker</small>` : e.lapNum ? `<small>lap ${e.lapNum}</small>` : ""}</div></div>`;
-    $("flaBox").innerHTML = FLA.html; hit($("fastlap"));
+    setH($("flaBox"), FLA.html); hit($("fastlap"));
   }
 
   // ---------------------------------------------------------------- race control: one car's flags
@@ -1677,7 +1761,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const pos = c.pos > 0 ? (m ? "P" + c.classPos + " in class" : "P" + c.pos) : "";
     PEN.html = `<div class="pen"><div class="fg ${e.flag}"></div><div class="m"><div class="h">Race control${tag}</div>` +
       `<div class="w">${plate(c)}<span class="nm">${nameHtml(c.name)}</span></div><div class="s"><b>${esc(h)}</b> · ${esc([sub, pos].filter(Boolean).join(" · "))}</div></div></div>`;
-    $("penBox").innerHTML = PEN.html; hit($("penalty"));
+    setH($("penBox"), PEN.html); hit($("penalty"));
   }
 
   // ---------------------------------------------------------------- head to head
@@ -1710,7 +1794,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     const side = c => `<div>${plate(c)}<span class="nm">${nameHtml(c.name)}</span><span class="ps">${posOf(c)}</span></div>`;
     const h = `<div class="hh"><div class="hh-h">Head to head</div><div class="hh-who">${side(a)}${side(b)}</div>${rows}</div>`;
-    if ($("hhBox").innerHTML !== h) { const fresh = !$("hhBox").innerHTML; $("hhBox").innerHTML = h; if (fresh) hit($("h2h")); }
+    { const fresh = !$("hhBox")._h; if (setH($("hhBox"), h) && fresh) hit($("h2h")); }
   }
 
   // ---------------------------------------------------------------- onboard
@@ -1742,7 +1826,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (!c || !runs.length) return;
     const h = `<div class="mini"><div class="mini-h">Tyres ${plate(c)}<span>${nameHtml(c.name)}</span></div><div class="ty">` +
       runs.map(r => `<span class="run">${tyreHtml(r.compound)}${r.laps != null ? r.laps + (r.laps === 1 ? " lap" : " laps") : "since we joined"}</span>`).join('<span class="ar">›</span>') + `</div></div>`;
-    if ($("tyBox").innerHTML !== h) $("tyBox").innerHTML = h;
+    setH($("tyBox"), h);
   }
 
   // ---------------------------------------------------------------- speed trap
@@ -1756,7 +1840,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const k = c => c.className && m ? `<span class="cl" style="font:800 12px/1 var(--display);padding:3px 6px 2px;border-radius:var(--r);background:${css(c.classColor)};color:${inkOn(css(c.classColor))}">${esc(c.className)}</span>` : "";
     const h = `<div class="mini"><div class="mini-h">Speed trap ${list[0] ? k(list[0]) : ""}</div>` + list.map((c, i) =>
       `<div class="mini-r"><span style="width:22px;text-align:center">${i + 1}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span><span class="v">${Math.round(c.derived.topSpeedBestMs * (mph ? 2.23694 : 3.6))}</span><small style="color:var(--muted);font:600 12px var(--body)">${mph ? "mph" : "km/h"}</small></div>`).join("") + `</div>`;
-    if ($("trBox").innerHTML !== h) $("trBox").innerHTML = h;
+    setH($("trBox"), h);
   }
 
   // ---------------------------------------------------------------- qualifying lap
@@ -1772,7 +1856,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       `<div class="ql-x"><span>to ${q.poleIdx === c.idx ? "own best" : "pole"}${pole && q.poleIdx !== c.idx ? " · " + nameHtml(pole.name) : ""}</span><span>on for <b>P${q.projectedPos}</b>${m && c.className ? " " + esc(c.className) : ""}</span></div>` +
       `${q.deltaOwnS != null ? `<div class="ql-x" style="margin-left:auto;text-align:right"><span>own best</span><b>${q.deltaOwnS < 0 ? "−" : "+"}${Math.abs(q.deltaOwnS).toFixed(3)}</b></div>` : ""}</div>` +
       `<div class="ql-bar"><i style="width:${(100 * q.stretch / q.of).toFixed(1)}%"></i></div></div>`;
-    if ($("qlBox").innerHTML !== h) $("qlBox").innerHTML = h;
+    setH($("qlBox"), h);
   }
 
   // ---------------------------------------------------------------- running order strip
@@ -1850,7 +1934,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       `<span class="n">${nameHtml(r.name)}${r.cls ? ` <small style="color:var(--muted);font-size:14px">${esc(r.cls)}</small>` : ""}</span>${now(r)}<span class="pts">${esc(r.points ?? "")}</span></div>`).join("")}</div>`;
     const h = col(list.slice(0, half)) + (half < list.length ? col(list.slice(half)) : "");
     $("lgCols").style.gridTemplateColumns = half < list.length ? "1fr 1fr" : "1fr";
-    if ($("lgCols").innerHTML !== h) $("lgCols").innerHTML = h;
+    setH($("lgCols"), h);
   }
 
   // ---------------------------------------------------------------- picture in picture
@@ -1885,7 +1969,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (!on) return;
     const c = pipCar(p), m = multi();
     const h = `<span class="lb">${esc(p.label || "Onboard")}</span>` + (c ? `${plate(c)}<span class="nm">${nameHtml(c.name)}</span><span class="ps">${c.pos > 0 ? "P" + (m ? c.classPos : c.pos) : ""}</span>` : `<span class="nm"></span>`);
-    if ($("ppC").innerHTML !== h) $("ppC").innerHTML = h;
+    setH($("ppC"), h);
   }
 
   // ---------------------------------------------------------------- show screens
@@ -1929,11 +2013,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (until && mode !== "end") {
       const left = Math.max(0, Math.round((until - Date.now()) / 1000));
       const word = mode === "soon" ? "Starting in" : mode === "break" ? "Back in" : "";
-      $("scCd").innerHTML = left > 0 ? `<small>${word}</small><span class="tick">${fmt.clock(left)}</span>` : `<small>${mode === "soon" ? "Starting" : mode === "break" ? "Back" : ""}</small>now`;
-    } else $("scCd").innerHTML = "";
+      setH($("scCd"), left > 0 ? `<small>${word}</small><span class="tick">${fmt.clock(left)}</span>` : `<small>${mode === "soon" ? "Starting" : mode === "break" ? "Back" : ""}</small>now`);
+    } else setH($("scCd"), "");
     const sp = (G("sponsors.logos", []) || []).map(assetUrl).filter(Boolean);
     const spH = sp.map(u => `<img src="${u}" alt="">`).join("");
-    if ($("scSp").innerHTML !== spH) $("scSp").innerHTML = spH;
+    setH($("scSp"), spH);
     // the body changes with the field: rebuilt at most once a second
     const now = performance.now(); if (sceneSig === mode && now - (renderScene.at || 0) < 1000) return;
     sceneSig = mode; renderScene.at = now;
@@ -1951,7 +2035,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       body = groups.map(g => `<div class="sc-col">${clsHead(g.k)}${g.list.slice(0, 3).map(c => { const by = !!g.k;
         return `<div class="r"><span class="p">${esc(by ? c.classPos : c.pos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span><span class="v">${race && !fin ? "" : fmt.lap(c.bestLapS)}</span></div>`; }).join("")}</div>`).join("");
     }
-    if ($("scBody").innerHTML !== body) $("scBody").innerHTML = body;
+    setH($("scBody"), body);
   }
 
   // ---------------------------------------------------------------- podium
@@ -2001,7 +2085,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const every = Math.max(4, G("sponsors.every", 15)) * 1000, now = performance.now();
     if (SPB.i < 0 || now - SPB.at > every || SPB.i >= logos.length) {
       SPB.i = (SPB.i + 1) % logos.length; SPB.at = now;
-      $("sbBox").innerHTML = `<img src="${assetUrl(logos[SPB.i])}" alt="">`;
+      setH($("sbBox"), `<img src="${assetUrl(logos[SPB.i])}" alt="">`);
     }
   }
 
@@ -2014,7 +2098,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("bnEvent").textContent = t ? (t.TrackDisplayName || "") + (t.TrackConfigName ? " · " + t.TrackConfigName : "") : "";
     const rs = raceState(), f = racingFlag();
     // a clock ticks every second: it changes in place (rolling it in each second flashed); laps and words roll in
-    if (/^\d+:\d\d/.test(rs.main) || rs.main === "–") { if ($("bnMain").innerHTML !== rs.main) $("bnMain").innerHTML = rs.main; }
+    if (/^\d+:\d\d/.test(rs.main) || rs.main === "–") setH($("bnMain"), rs.main);
     else roll($("bnMain"), rs.main);
     const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Checkered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
     $("bnSub").textContent = [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · ");
@@ -2065,7 +2149,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       line = `In from ${posOf(c, p.fromClassPos, p.fromPos)}` + (p.stop ? ` · stop ${p.stop}` : "") + (where ? `<br>${where}` : "");
     }
     const h = `<div class="mini-h">Pit stop ${plate(c)}<span>${nameHtml(c.name)}</span></div><div class="ps-big"><b>${big}</b><span>${lab}</span></div><div class="ps-line">${line}</div>`;
-    if ($("psBox").innerHTML !== h) $("psBox").innerHTML = h;
+    setH($("psBox"), h);
   }
   // closing in: the camera car's chase (as chaser or chased), else the first in the list (ahead of the end first)
   function closingPick() {
@@ -2081,7 +2165,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       : `<div class="cl-n"><b>${Math.max(1, Math.round(x.catchLaps))}</b><span>${Math.round(x.catchLaps) <= 1 ? "lap" : "laps"} to catch</span></div>`;
     const h = `<div class="cl"><div class="cl-h">Closing in</div><div class="cl-who">${short(a)} <small>on</small> ${short(b)} <small>for ${posOf(b, x.forClassPos, b.pos)}</small></div>` +
       `<div class="cl-n"><b>${x.closingSPerLap.toFixed(2)}</b><span>s a lap</span></div><div class="cl-n"><b>${fmt.gap(x.gapS)}</b><span>gap</span></div>${catchTxt}</div>`;
-    if ($("clBox").innerHTML !== h) $("clBox").innerHTML = h;
+    setH($("clBox"), h);
   }
   // the class of the camera car, else the first class
   function tableClass() { const c = carByIdx(camIdx()); return c ? c.classId : (classes()[0] || {}).id; }
@@ -2097,7 +2181,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       list.map(c => { const d = c.derived, v = d.recentPaceVsLeaderS;
         return `<div class="tb-r"><span class="p">${esc(c.classPos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span>` +
           `<span class="v${d.recentPaceS === best ? " g" : ""}">${fmt.lap(d.recentPaceS)}</span><span class="v m">${c.classPos === 1 ? "–" : v == null ? "–" : (v > 0 ? "+" : "−") + Math.abs(v).toFixed(3)}</span></div>`; }).join("");
-    if ($("paBox").innerHTML !== h) $("paBox").innerHTML = h;
+    setH($("paBox"), h);
   }
   const anyStops = () => allCars().some(c => c.derived && c.derived.stopsSeen > 0);
   function renderStrategy() {
@@ -2115,7 +2199,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
           `<span class="v">${esc(d.stopsSeen ?? "–")}</span><span class="v">${c.compound != null && c.compound >= 0 ? tyreHtml(c.compound) : "–"}</span>` +
           `<span class="v m">${c.surface !== "not_in_world" && d.lapsThisStint != null && d.lapsThisStint >= 0 ? d.lapsThisStint + (d.lapsThisStint === 1 ? " lap" : " laps") : "–"}</span>` +
           (anyDue ? `<span class="v w${sd && sd.overdue ? " b" : ""}">${esc(next)}</span>` : "") + `</div>`; }).join("");
-    if ($("stBox").innerHTML !== h) $("stBox").innerHTML = h;
+    setH($("stBox"), h);
   }
   // the lap chart: every car's place lap by lap (the class of the camera car in a multiclass race), the top ten named
   function renderLapChart() {
@@ -2144,7 +2228,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     $("lcSub").textContent = `${maxLap} ${maxLap === 1 ? "lap" : "laps"}${m ? " · " + ((classes().find(x => x.id === cls) || {}).name || "") : ""}`;
     const h = `<svg class="lc-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lap chart">${g}</svg>`;
-    if ($("lcBox").innerHTML !== h) $("lcBox").innerHTML = h;
+    setH($("lcBox"), h);
   }
 
   // ---------------------------------------------------------------- flag calls
@@ -2202,7 +2286,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const bk = b.cars.slice(-2).join("|"); // a new battle: the light sweep and the announcer, at most every 15 s, and the same pair not again for a minute
     if (bk !== lastBattle.key && $("battle").classList.contains("on")) { lastBattle.key = bk; const now = performance.now(), seen = lastBattle.seen || (lastBattle.seen = {});
       if (now - (lastBattle.at || -1e9) > 15000 && now - (seen[bk] || -1e9) > 60000) { lastBattle.at = seen[bk] = now; bcSay("battle"); setTimeout(() => hit($("battle")), 300); } }
-    $("btCars").innerHTML = side(cars[0]) + `<div class="bt-gap"><b>${gapTxt != null ? gapTxt.toFixed(gapTxt < 10 ? 3 : 1) : "–"}</b><span>gap</span></div>` + side(cars[1]);
+    setH($("btCars"), side(cars[0]) + `<div class="bt-gap"><b>${gapTxt != null ? gapTxt.toFixed(gapTxt < 10 ? 3 : 1) : "–"}</b><span>gap</span></div>` + side(cars[1]));
     const rate = k >= 0 ? b.closingSPerLap[k] : null, laps = k >= 0 ? b.catchLaps[k] : null;
     let foot = "Within a second";
     if (rate != null) {
@@ -2213,7 +2297,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     // the battle's own story (normalize battle_history): places swapped, how long they have been at it
     const hist = [b.swaps > 0 ? `swapped ${b.swaps === 1 ? "once" : b.swaps + " times"}` : "", b.sinceS >= 60 ? "together " + fmt.clock(b.sinceS) : ""].filter(Boolean);
     if (hist.length) foot += ` · ${hist.join(" · ")}`;
-    $("btFoot").innerHTML = foot;
+    setH($("btFoot"), foot);
   }
 
   // ---------------------------------------------------------------- where they're faster
@@ -2249,11 +2333,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const ca = carColor(A, false), cb0 = carColor(B, true), cb = cb0 === ca ? "#3a86ff" : cb0;
     FS.ca = ca; FS.cb = cb;
     const K = f.gainS.length, row = (c, col, lap) => `<div class="fs-car"><span class="sw" style="background:${col}"></span>${plate(c)}<span class="nm">${nameHtml(c.name)}</span><span class="tm">${fmt.lap(lap)}</span></div>`;
-    $("fsCars").innerHTML = row(A, ca, f.lapA[K]) + row(B, cb, f.lapB[K]);
+    setH($("fsCars"), row(A, ca, f.lapA[K]) + row(B, cb, f.lapB[K]));
     const lead = f.totalS >= 0 ? A : B, lc = f.totalS >= 0 ? ca : cb, wa = f.gainS.filter(v => v > 0.004).length, wb = f.gainS.filter(v => v < -0.004).length;
-    $("fsBig").innerHTML = `<span style="color:${lc}">${Math.abs(f.totalS).toFixed(3)}</span><small>${nameHtml(lead.name, "last")}'s best lap is quicker by that much</small>`;
+    setH($("fsBig"), `<span style="color:${lc}">${Math.abs(f.totalS).toFixed(3)}</span><small>${nameHtml(lead.name, "last")}'s best lap is quicker by that much</small>`);
     const mx = Math.max(0.01, ...f.gainS.map(Math.abs));
-    $("fsBars").innerHTML = f.gainS.map((v, k) => `<i style="background:${v >= 0 ? ca : cb};height:${Math.max(4, Math.abs(v) / mx * 48)}%;align-self:${v >= 0 ? "flex-end" : "flex-start"};margin-${v >= 0 ? "bottom" : "top"}:36px;transform-origin:${v >= 0 ? "bottom" : "top"};transition-delay:${(k * 0.03).toFixed(2)}s"></i>`).join("");
+    setH($("fsBars"), f.gainS.map((v, k) => `<i style="background:${v >= 0 ? ca : cb};height:${Math.max(4, Math.abs(v) / mx * 48)}%;align-self:${v >= 0 ? "flex-end" : "flex-start"};margin-${v >= 0 ? "bottom" : "top"}:36px;transform-origin:${v >= 0 ? "bottom" : "top"};transition-delay:${(k * 0.03).toFixed(2)}s"></i>`).join(""));
     const big = f.gainS.map((v, k) => [Math.abs(v), k, v]).sort((p, q) => q[0] - p[0])[0];
     $("fsFoot").innerHTML = `<b>${nameHtml(A.name, "last")}</b> quicker on ${wa} of ${K} stretches, <b>${nameHtml(B.name, "last")}</b> on ${wb}. ` +
       `Biggest difference: ${big[0].toFixed(3)} s to ${nameHtml((big[2] >= 0 ? A : B).name, "last")}, ${Math.round(big[1] / K * 100)}–${Math.round((big[1] + 1) / K * 100)}% round the lap.`;
@@ -2304,13 +2388,13 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("cdNum").textContent = c.num ?? "–";
     $("cdPos").textContent = c.pos > 0 ? (m ? "P" + c.classPos + " " + (c.className || "") : "P" + c.pos) : "";
     const p = String(c.name || "").trim().split(/\s+/);
-    $("cdName").innerHTML = p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "");
+    setH($("cdName"), `<span class="pn">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
     $("cdLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
       (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
     $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
-    $("cdLv").innerHTML = liveryHtml(c);
-    $("cdPh").innerHTML = G("card.photo", true) ? photoHtml(c) : "";
-    $("cdHel").innerHTML = G("card.helmet", true) ? helmetHtml(c, 84) : "";
+    setH($("cdLv"), liveryHtml(c));
+    setH($("cdPh"), G("card.photo", true) ? photoHtml(c) : "");
+    setH($("cdHel"), G("card.helmet", true) ? helmetHtml(c, 84) : "");
     // a new car on the card: the light sweep, at most every 6 s (the camera can hop between cars)
     if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; setTimeout(() => hit($("card")), 300); } }
     const d = c.derived || {};
@@ -2331,8 +2415,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const lim = S.session && S.session.options ? parseInt(S.session.options.IncidentLimit, 10) : NaN;
       stats.push(["Incidents", c.incidents + "x" + (lim > 0 ? " / " + lim : "")]);
     }
-    $("cdStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
-    { const h = sectorStat(c); if ($("cdSecs").innerHTML !== h) $("cdSecs").innerHTML = h; }
+    setH($("cdStats"), stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join(""));
+    { const h = sectorStat(c); setH($("cdSecs"), h); }
   }
 
   const lastCard = { idx: null }, lastBattle = { key: null };
@@ -2345,17 +2429,17 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("cdNum").textContent = c.num ?? "–";
     $("cdPos").textContent = r.pos ? "Starts P" + r.pos : "";
     const p = String(c.name || "").trim().split(/\s+/);
-    $("cdName").innerHTML = p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "");
+    setH($("cdName"), `<span class="pn">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
     $("cdLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
       (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
     $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
-    $("cdLv").innerHTML = liveryHtml(c);
+    setH($("cdLv"), liveryHtml(c));
     const stats = [["Grid", r.pos ? "P" + r.pos + " of " + rows.length : "–"]];
     if (m && r.classPos) stats.push([(c.className || "Class"), "P" + r.classPos]);
     stats.push(["Qualifying", r.timeS ? fmt.lap(r.timeS) : "No time"]);
     if (c.bestLapS > 0 && !r.timeS) stats.push(["Best lap", fmt.lap(c.bestLapS)]);
-    $("cdStats").innerHTML = stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
-    { const h = sectorStat(c); if ($("cdSecs").innerHTML !== h) $("cdSecs").innerHTML = h; }
+    setH($("cdStats"), stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join(""));
+    { const h = sectorStat(c); setH($("cdSecs"), h); }
   }
 
   // ---------------------------------------------------------------- grid walk
@@ -2379,10 +2463,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("gwRowL").textContent = d.row ? "Row " + d.row : "";
     $("gwPosL").textContent = d.pole ? "Pole" : m && r.classPos ? (c.className || "Class") + " P" + r.classPos : "";
     $("gwPosL").style.color = m ? "inherit" : "";
-    $("gwLv").innerHTML = liveryHtml(c);
-    $("gwPlate").innerHTML = plate(c);
+    setH($("gwLv"), liveryHtml(c));
+    setH($("gwPlate"), plate(c));
     const p = String(c.name || "").trim().split(/\s+/);
-    $("gwName").innerHTML = p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "");
+    setH($("gwName"), `<span class="pn">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
     $("gwLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
       (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
     $("gwSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
@@ -2392,9 +2476,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (r.lap) stats.push(["Set on lap", String(r.lap)]);
     stats.push(["Grid", r.pos ? r.pos + " of " + rows.length : "–"]);
     { const ch = champText(c); if (ch) stats.push(["Championship", ch]); }
-    $("gwStats").innerHTML = stats.map(([k, v, cl]) => `<div><span>${esc(k)}</span><b class="${cl || ""}">${esc(v)}</b></div>`).join("");
-    $("gwPh").innerHTML = G("card.photo", true) ? photoHtml(c) : "";
-    $("gwHel").innerHTML = G("card.helmet", true) ? helmetHtml(c, 104) : "";
+    setH($("gwStats"), stats.map(([k, v, cl]) => `<div><span>${esc(k)}</span><b class="${cl || ""}">${esc(v)}</b></div>`).join(""));
+    setH($("gwPh"), G("card.photo", true) ? photoHtml(c) : "");
+    setH($("gwHel"), G("card.helmet", true) ? helmetHtml(c, 104) : "");
     // a row at a time (the director's gridByRow): both cars of the row, the one on camera lit
     const mates = d.row ? rows.filter(x => (x.derived || {}).row === d.row) : [];
     const byRow = (S.director || {}).gridByRow !== false && mates.length === 2;
@@ -2416,7 +2500,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
           (champText(k) ? `<div><span>Championship</span><b>${esc(champText(k))}</b></div>` : "") + `</div></div></div>`;
       };
       const h = `<div class="rw"><small>Row</small><b>${esc(d.row)}</b></div>` + mates.map(half).join("");
-      if ($("gwPair").innerHTML !== h) $("gwPair").innerHTML = h;
+      setH($("gwPair"), h);
     }
     const badge = d.pole ? "Pole position" : m && d.classPole ? (c.className || "Class") + " pole" : "";
     $("gwBadge").textContent = badge; $("gwBadge").classList.toggle("hide", !badge);
@@ -2428,7 +2512,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (cls) {
       const n = rows.filter(x => { const k = carByIdx(x.idx); return k && k.classId === kc.classId; }).length, kcc = css(kc.classColor) || "#444";
       $("gwCls").style.background = kcc; $("gwCls").style.color = inkOn(kcc);
-      $("gwCls").innerHTML = `${esc(kc.className || "Class")}<span>${n} ${n === 1 ? "starter" : "starters"}</span>`;
+      setH($("gwCls"), `${esc(kc.className || "Class")}<span>${n} ${n === 1 ? "starter" : "starters"}</span>`);
     }
     if (GW.idx !== c.idx) {
       GW.idx = c.idx;
@@ -2447,7 +2531,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       return `<div class="gl-s${i === ri ? " now" : sameRow ? " mate" : i < ri ? " done" : ""}"><i style="background:${m ? css(k.classColor) : "var(--accent)"}"></i>` +
         `<span class="p">${x.pos}</span>${plate(k)}<em>${esc(last)}</em></div>`;
     }).join("");
-    if ($("glSlots").innerHTML !== html) $("glSlots").innerHTML = html;
+    setH($("glSlots"), html);
     const rowH = 52, fits = Math.floor(640 / rowH) - 1, at = Math.max(0, Math.floor(Math.max(ri, 0) / 2) - 2);
     const maxRow = Math.max(0, Math.ceil(rows.length / 2) - fits);
     $("glSlots").style.transform = `translateY(${-Math.min(at, maxRow) * rowH}px)`;
@@ -2591,7 +2675,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const sess = sessionRow(), t = S.session && S.session.track;
     const f = racingFlag();
     $("bdTitle").textContent = f === "checkered" ? "Results" : (T("text.series", "") || (sess ? sess.SessionType : "Standings"));
-    $("bdSub").innerHTML = esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + "<br>" + raceState().main.replace(/<[^>]+>/g, "");
+    setH($("bdSub"), esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + "<br>" + raceState().main.replace(/<[^>]+>/g, ""));
     const race = isRace(), off = officialPublished();
     const fin = race && f === "checkered";
     const gridOnly = race && !allCars().some(c => c.pos > 0);            // before the start: the grid and its laps
@@ -2619,10 +2703,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const ncols = groups.length > 1 ? Math.min(groups.length, 3) : (groups[0].list.length > 20 ? 2 : 1);
     $("bdCols").style.gridTemplateColumns = `repeat(${ncols},1fr)`;
     if (groups.length > 1) {
-      $("bdCols").innerHTML = groups.map(g => `<div class="bd-sec"><div class="cls" style="background:${g.k.color};color:${inkOn(g.k.color)}">${esc(g.k.name)}</div>${colHead}${g.list.slice(0, 18).map(c => row(c, true)).join("")}</div>`).join("");
+      setH($("bdCols"), groups.map(g => `<div class="bd-sec"><div class="cls" style="background:${g.k.color};color:${inkOn(g.k.color)}">${esc(g.k.name)}</div>${colHead}${g.list.slice(0, 18).map(c => row(c, true)).join("")}</div>`).join(""));
     } else {
       const list = groups[0].list.slice(0, 40), half = ncols === 2 ? Math.ceil(list.length / 2) : list.length;
-      $("bdCols").innerHTML = [list.slice(0, half), list.slice(half)].filter(x => x.length).map(part => `<div class="bd-sec">${colHead}${part.map(c => row(c, false)).join("")}</div>`).join("");
+      setH($("bdCols"), [list.slice(0, half), list.slice(half)].filter(x => x.length).map(part => `<div class="bd-sec">${colHead}${part.map(c => row(c, false)).join("")}</div>`).join(""));
     }
     // The story of the race, under the results: fastest lap, most laps led, biggest climb (over the field)
     const hi = $("bdHi");
@@ -2667,7 +2751,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const t = S.session.track;
     $("gbTitle").textContent = T("text.gridTitle", "") || "Starting grid";
     $("gbKind").textContent = rows.length + " starters";
-    $("gbSub").innerHTML = esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + (t && t.TrackConfigName ? "<br>" + esc(t.TrackConfigName) : "");
+    setH($("gbSub"), esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + (t && t.TrackConfigName ? "<br>" + esc(t.TrackConfigName) : ""));
     const cols = Array.from({ length: per }, () => []);
     rows.forEach((x, i) => cols[(x.pos ? x.pos - 1 : i) % per].push(x));
     const slot = (x, k) => {
@@ -2687,7 +2771,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const box = $("gbCols");
     box.style.gridTemplateColumns = `repeat(${per}, 1fr)`;
     box.style.setProperty("--gbH", h + "px"); box.style.setProperty("--gbGap", gap + "px");
-    if (box.innerHTML !== html) box.innerHTML = html;
+    setH(box, html);
     // a big grid: the window follows the light (two rows above it in view)
     const need = (nRows + stag) * (h + gap) + 36, over = Math.max(0, Math.ceil((need - winH) / (h + gap)));
     const at = Math.max(0, Math.min(over, (gb.row || 1) - 3));
@@ -2704,7 +2788,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (!on) return;
     const t = S.session.track;
     $("gdTitle").textContent = T("text.gridTitle", "") || "Starting grid";
-    $("gdSub").innerHTML = esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + (t && t.TrackConfigName ? "<br>" + esc(t.TrackConfigName) : "");
+    setH($("gdSub"), esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + (t && t.TrackConfigName ? "<br>" + esc(t.TrackConfigName) : ""));
     const per = 10, pages = Math.ceil(rows.length / per), now = performance.now();
     const cam = camIdx(), ci = rows.findIndex(r => r.idx === cam);
     if (ci >= 0 && G("grid.followCamera", true)) gridPage = Math.floor(ci / per);
@@ -2839,7 +2923,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     dirty = true;
   }
-  let last = 0;
+  let last = 0, fitAll = 0;
   // Every graphic is drawn on its own: one that throws on some state of the race must never take the
   // others off air, and the frame loop must never stop (it did: an error left OBS showing nothing until reloaded).
   const RENDERS = [ctxTick, renderGrid, renderTower, renderBanner, renderBattle, renderCard, renderGridWalk, renderGBoard,
@@ -2859,11 +2943,14 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (dirty && t - last > 150) {
       dirty = false; last = t;
       for (const r of RENDERS) safely(r);
+      safely(fitWords, t - fitAll > 1000 && (fitAll = t));
     }
     safely(drawMap); safely(drawFaster, t);
     safely(pumpTicker);
   }
   applyTheme();
+  fitObs.observe($("stage"), { childList: true, subtree: true, characterData: true });
+  if (document.fonts) document.fonts.addEventListener("loadingdone", () => { fitForce = true; dirty = true; });
   requestAnimationFrame(frame);
   setInterval(() => { dirty = true; }, 1000);
   connect();
