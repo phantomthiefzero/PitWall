@@ -1120,7 +1120,8 @@ def test_stretch_timed_best_laps_match_iracings_own_on_a_real_race():
         cars = build_cars(src, sess, d)
     by = {c["idx"]: c for c in cars["cars"]}
     diffs = [abs(st["bestS"] - by[i]["bestLapS"]) for i, st in d._split.items()
-             if st["bestS"] and by.get(i) and (by[i].get("bestLapS") or 0) > 0]
+             if st["bestS"] and by.get(i) and (by[i].get("bestLapS") or 0) > 0
+             and "bestLapS" not in (by[i].get("fromResults") or [])]   # a car gone from the session: the results' lap
     assert len(diffs) >= 15
     assert statistics.median(diffs) < 0.01 and max(diffs) < 0.05, (statistics.median(diffs), max(diffs))
     assert len(cars["derived"]["faster"]) >= 15
@@ -2546,3 +2547,17 @@ def test_a_new_session_while_the_app_runs_is_seen():
         page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
         assert 'case "session": S.session = m; if (S.map && !mapFits(S.map)) S.map = null;' in page, \
             "the overlay drops the last track's outline"
+
+
+def test_the_overlay_before_the_start_and_after_the_finish():
+    """Audit, Summit Point (Nov 2026): before the start the tower, standings and crawl were empty (no positions yet),
+    the crawl ran its title alone; after the finish cars that had left read as gaps, one as "+-108.9", and the
+    onboard graphic showed "R, 0 rpm" for a car gone from the session."""
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    assert "function gridField()" in page and "const field = racingField();" in page.split("function towerRows()")[1][:400]
+    assert "racingField(), onGrid" in page.split("function renderBoard()")[1][:1500]
+    assert "racingField().length > 0" in page.split("function renderStrip()")[1][:200]
+    assert 'c0.surface !== "not_in_world"' in page.split("function renderOnboard()")[1][:300]
+    for src in (page.split("function towerValue(")[1][:2500], page.split("function renderBoard()")[1][:2500], prod):
+        assert '"not_in_world" && !d.finished ? "Out"' in src or '"not_in_world" && !d.finished) return "Out"' in src

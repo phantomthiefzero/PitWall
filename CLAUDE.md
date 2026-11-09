@@ -423,6 +423,16 @@ Broadcast (broadcast/)
   race news carries the race's lap while spectating (the leader's); the driver card shows the gap to the car ahead in
   a race and to pole outside one; strategy hides the next-stop column when none is known; the lap chart labels sit
   at each car's place now. tests: test_what_the_summit_point_audit_found.
+- Broadcast audit (Nov 2026, Summit Point quali / grid / race / finish and Talladega, every tile on its own):
+  before a race has positions the tower, the standings and the crawl show the starting grid with qualifying laps
+  (overlay gridField / racingField; the crawl hides with no cars); a car gone from the session before the flag reads
+  "Out" (tower, standings, crawl, producer field), never a stale or negative gap (finish_gaps drops negative
+  intervals); the onboard graphic hides for it; a race's best and last laps come from the results when telemetry has
+  -1 (fromResults); nothing is due and nobody is closing in after the flag; closing in shows the tower's live gap;
+  a pack (Talladega, 17 cars) is split at its biggest gaps into fights of BATTLE_MAX_CARS; a race's opening lap is
+  not a racing lap (consistency, pace); tyre runs end at the last lap seen. tests:
+  test_the_overlay_before_the_start_and_after_the_finish, test_a_pack_is_split_into_fights,
+  test_after_the_flag_nothing_is_due_and_nobody_is_closing, test_a_race_opening_lap_is_not_a_racing_lap.
 - Race TV graphics, from our own measures (Deriver.race_tv, battle_history, lap_chart; tiles under Race and Show):
   Pit stop (the camera car's, else the best placed in the lane: the box time running, where it should come out,
   then its stationary time and the place it came out in), Closing in (a car catching the one ahead in class, s a

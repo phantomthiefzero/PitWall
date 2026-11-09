@@ -764,3 +764,42 @@ def test_what_close_means_scales_with_each_class_speed():
     # tyre fall-off is weighed against the class's lap too
     d._class_lap = {10: 180.0}
     assert d.lap_scale(10) == 2.0 and d.lap_scale(99) == 1.0
+
+
+def test_a_pack_is_split_into_fights():
+    """Talladega: 17 cars within a second read as one 'battle for P1, 17 cars'. A train longer than
+    BATTLE_MAX_CARS is split at its biggest gaps; each piece is for its own first car's place."""
+    gaps = [0.1, 0.2, 0.1, 0.5, 0.1, 0.1, 0.3, 0.1, 0.1]           # ten cars nose to tail
+    cars, f2 = [], 0.0
+    for i, g in enumerate([0.0] + gaps):
+        f2 += g
+        cars.append(_car(i + 1, i + 1, 10, i + 1, round(f2, 3)))
+    b = Deriver().battles(cars, _ahead(cars), True)
+    assert all(2 <= len(x["cars"]) <= Deriver.BATTLE_MAX_CARS for x in b)
+    assert [x["cars"] for x in b] == [[1, 2, 3, 4], [5, 6, 7], [8, 9, 10]]
+    assert [x["forClassPos"] for x in b] == [1, 5, 8] and b[1]["gapsS"] == [0.1, 0.1]
+
+
+def test_after_the_flag_nothing_is_due_and_nobody_is_closing():
+    """Summit Point at the finish: the strategy graphic read 'Due' and 'closing in' ran over the results."""
+    d = Deriver()
+    cars = [_car(1, 1, 10, 1, 0.0), _car(2, 2, 10, 2, 3.7, interval=3.7, closing=1.0, catch=3.7)]
+    cars[1]["derived"]["liveClassIntervalS"] = 3.68
+    running = {"finished": False, "lapsToGo": 5, "endsBy": "laps"}
+    assert d.race_tv(cars, 100.0, running, _ahead(cars), True)["closing"][0]["gapS"] == 3.68, "the gap the tower shows"
+    done = dict(running, finished=True, lapsToGo=0)
+    assert d.race_tv(cars, 101.0, done, _ahead(cars), True)["closing"] == []
+    for c in cars:
+        c["derived"].update({"lapsThisStint": 30, "stintStartLap": 0, "longestStintLaps": 20, "stintsSeen": [20, 20]})
+    d.stop_forecast(cars, done, None, None, None, None)
+    assert all(c["derived"]["stopDue"] is None for c in cars)
+
+
+def test_a_race_opening_lap_is_not_a_racing_lap():
+    """The booth notes read 'consistency ±5.86 s' for an MX-5 lapping within a second: the standing start's lap."""
+    d = Deriver()
+    d._race_now = True
+    for lap, t in ((1, 98.0), (2, 85.0), (3, 85.4), (4, 84.9), (5, 85.2)):
+        st = {"pend": {"idx": 7, "lap": lap, "lapS": t, "pit": False}}
+        d._finish_lap(7, st)
+    assert d._lapsum[7]["racing"] == [85.0, 85.4, 84.9, 85.2]
