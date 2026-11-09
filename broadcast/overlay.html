@@ -861,7 +861,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
 .ax-badges .gone{color:#fff;background:#ff2a2a}
 :root[data-look="arcade"]:not([data-motion="off"]) .ax-badges .gone{animation:axShatter 2.2s ease-in both}
 :root[data-look="arcade"]:not([data-motion="off"]) .ax-badges em.new{animation:axStamp .5s cubic-bezier(.2,1.6,.4,1) both}
-@keyframes axShatter{0%,45%{clip-path:none;opacity:1;transform:skewX(-12deg)}55%{clip-path:polygon(0 0,40% 0,30% 50%,45% 100%,0 100%,0 0,60% 0,100% 0,100% 100%,55% 100%,70% 45%);transform:skewX(-12deg) scale(1.08);filter:brightness(1.8)}
+@keyframes axShatter{0%,45%{clip-path:none;opacity:1;transform:skewX(-12deg)}55%{clip-path:polygon(0 0,40% 0,30% 50%,45% 100%,0 100%,0 0,60% 0,100% 0,100% 100%,55% 100%,70% 45%);transform:skewX(-12deg) scale(1.08);filter:brightness(1.8);opacity:1}
   100%{clip-path:polygon(0 0,40% 0,30% 50%,45% 100%,0 100%,0 0,60% 0,100% 0,100% 100%,55% 100%,70% 45%);opacity:0;transform:skewX(-12deg) translateY(30px) rotate(6deg)}}
 @keyframes axStamp{0%{transform:skewX(-12deg) scale(2.4);opacity:0;filter:blur(4px)}100%{transform:skewX(-12deg);opacity:1;filter:none}}
 /* show screens: the field racing past on a diagonal, the countdown in chrome; the podium rising under spotlights;
@@ -1246,6 +1246,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return false;
   }
   // a lap count or state that changed rolls in; the same words again do nothing
+  // the same for plain words: written only when they changed (a box written every frame is measured again by fitWords)
+  function setT(el, t) {
+    t = t == null ? "" : String(t);
+    if (el.textContent !== t) el.textContent = t;
+  }
   function roll(el, html) {
     const was = el._h; if (!setH(el, html)) return;
     if (was && was !== "–") replay(el, "m-roll");
@@ -1560,7 +1565,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // until it is clear, and steps off air while there is no room. Sizes are measured, so a long tower or a growing
   // race control list moves what is below or above it. A graphic placed by hand (Arrange, theme.layout) stays where
   // it was put; the others make room around it. Arrange mode shows the real positions.
-  const ROOM_ORDER = ["gboard", "lapchart", "flagcall", "strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "board", "grid", "league", "podium", "battle", "qlap",
+  // The full-order panels (the lap chart, the standings board, the grid, the league) come before the tower: each is
+  // 1400 px across the middle and had no room beside it, so the standings asked for at the finish never came on air.
+  // The tower steps aside while one is up, as on TV, where the full board replaces it.
+  const ROOM_ORDER = ["gboard", "lapchart", "board", "grid", "league", "flagcall", "strip", "tower", "banner", "replay", "card", "gwalk", "gladder", "podium", "battle", "qlap",
     "h2h", "faster", "pace", "strategy", "closing", "pitstop", "pip", "map", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"];
   const ROOM_UP = new Set(["strip", "card", "gwalk", "ticker", "penalty", "fastlap", "onboard", "tyres", "trap", "traffic", "strap", "sponsors"]);
   const ROOM_GAP = 8, ROOM_SLIDE = 420, ROOM = {};   // further than ROOM_SLIDE from its place it is off air instead
@@ -1788,7 +1796,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("tower").classList.toggle("on", shown("tower") && !!S.cars);
     if (!S.cars) return;
     const sess = sessionRow();
-    $("twTitle").textContent = T("text.series", "") || (sess ? sess.SessionType : "Session");
+    setT($("twTitle"), T("text.series", "") || (sess ? sess.SessionType : "Session"));
     const rs = raceState();
     roll($("twState"), rs.main);
     const f = racingFlag();
@@ -1798,7 +1806,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const rot = G("tower.rotate", null);
     let mode = rot && rot.length ? rot[Math.floor(Date.now() / 8000) % rot.length] : G("tower.mode", "interval");
     if (mode === "interval" && !isRace()) mode = "gap";          // practice and qualifying: the gap to pole, not to the car ahead
-    $("twMd").classList.toggle("hide", !(rot && rot.length)); $("twMd").textContent = ROT[mode] || "";
+    $("twMd").classList.toggle("hide", !(rot && rot.length)); setT($("twMd"), ROT[mode] || "");
     const cut = Number(G("tower.cut", 0)) || 0;
     const { rows, byClass } = towerRows();
     const multiC = multi(), cam = camIdx(), now = performance.now();
@@ -1828,7 +1836,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       if (prevPos[r.idx] != null && prevPos[r.idx] !== p) { moveAt[r.idx] = { at: now, up: p < prevPos[r.idx] }; const up = p < prevPos[r.idx]; replay(el, up ? "mv-up" : "mv-dn", up ? "mv-dn" : "mv-up"); }
       prevPos[r.idx] = p;
       const mv = moveAt[r.idx] && now - moveAt[r.idx].at < 6000 ? moveAt[r.idx] : null;
-      el.querySelector(".pos").textContent = p;
+      setT(el.querySelector(".pos"), p);
       setH(el.querySelector(".pl"), plate(r));
       setH(el.querySelector(".nm"), nameHtml(r.name));
       el.querySelector(".tag").classList.toggle("hide", !r.onPitRoad);
@@ -1837,7 +1845,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       el.classList.toggle("flh", flh);
       el.classList.toggle("lead", p === 1);
       el.classList.toggle("fire", (hot[r.idx] || 0) >= 2);
-      const mvEl = el.querySelector(".mv"); mvEl.className = "mv" + (mv ? (mv.up ? " up" : " dn") : ""); mvEl.textContent = mv ? (mv.up ? "▲" : "▼") : "";
+      const mvEl = el.querySelector(".mv"); const mvc = "mv" + (mv ? (mv.up ? " up" : " dn") : ""); if (mvEl.className !== mvc) mvEl.className = mvc; setT(mvEl, mv ? (mv.up ? "▲" : "▼") : "");
       const vEl = el.querySelector(".val");
       if (mode === "sectors") setH(vEl, sectorBars(r));
       else if (mode === "tyres") setH(vEl, towerValue(r, mode, byClass));
@@ -1967,10 +1975,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("onboard").classList.toggle("on", !!c && shown("onboard"));
     if (!c) return;
     const g = c.gear, mph = G("onboard.units", "kph") === "mph", v = (c.derived || {}).speedMs;
-    $("obGear").textContent = g == null ? "–" : g < 0 ? "R" : g === 0 ? "N" : String(g);
-    $("obSpd").textContent = v == null ? "–" : String(Math.round(v * (mph ? 2.23694 : 3.6)));
-    $("obUnit").textContent = mph ? "mph" : "km/h";
-    $("obRpm").textContent = c.rpm == null ? "–" : String(Math.round(c.rpm / 10) * 10);
+    setT($("obGear"), g == null ? "–" : g < 0 ? "R" : g === 0 ? "N" : String(g));
+    setT($("obSpd"), v == null ? "–" : String(Math.round(v * (mph ? 2.23694 : 3.6))));
+    setT($("obUnit"), mph ? "mph" : "km/h");
+    setT($("obRpm"), c.rpm == null ? "–" : String(Math.round(c.rpm / 10) * 10));
     // CarIdxSteer is radians, positive turning left (iRacing's convention; unverified on screen)
     $("obWheel").style.transform = c.steerRad == null ? "" : `rotate(${(-c.steerRad).toFixed(3)}rad)`;
   }
@@ -2085,8 +2093,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const on = shown("league") && rows.length > 0;
     $("league").classList.toggle("on", on);
     if (!on) return;
-    $("lgTitle").textContent = L.title || "Championship";
-    $("lgSub").textContent = L.sub || "";
+    setT($("lgTitle"), L.title || "Championship");
+    setT($("lgSub"), L.sub || "");
     const logo = assetUrl(T("logo", "")); $("lgLogo").classList.toggle("hide", !logo); if (logo) $("lgLogo").src = logo;
     const cars = allCars().filter(c => c.pos > 0), m = multi();
     const now = r => { const c = cars.find(c => leagueRowFor(c, rows) === r);
@@ -2167,9 +2175,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
       clearTimeout(renderScene.t); renderScene.t = setTimeout(() => box.classList.remove("enter"), 2500);
     }
     const t = S.session && S.session.track, sess = sessionRow();
-    $("scKick").textContent = G("scene.kick", "") || SCENE_KICK[mode] || "";
-    $("scTitle").textContent = G("scene.title", "") || T("text.event", "") || T("text.series", "") || (t ? t.TrackDisplayName : "");
-    $("scSub").textContent = G("scene.sub", "") || [t ? t.TrackDisplayName : "", t && t.TrackConfigName ? t.TrackConfigName : "", sess ? sess.SessionType : ""].filter(Boolean).join(" · ");
+    setT($("scKick"), G("scene.kick", "") || SCENE_KICK[mode] || "");
+    setT($("scTitle"), G("scene.title", "") || T("text.event", "") || T("text.series", "") || (t ? t.TrackDisplayName : ""));
+    setT($("scSub"), G("scene.sub", "") || [t ? t.TrackDisplayName : "", t && t.TrackConfigName ? t.TrackConfigName : "", sess ? sess.SessionType : ""].filter(Boolean).join(" · "));
     const logo = assetUrl(T("logo", "")); $("scLogo").classList.toggle("hide", !logo); if (logo && $("scLogo").getAttribute("src") !== logo) $("scLogo").src = logo;
     const until = G("scene.untilMs", null);
     if (until && mode !== "end") {
@@ -2263,14 +2271,14 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("banner").classList.toggle("on", shown("banner") && !!S.state);
     if (!S.state) return;
     const t = S.session && S.session.track, sess = sessionRow();
-    $("bnTrack").textContent = T("text.event", "") || (t ? (t.TrackDisplayShortName || t.TrackDisplayName || "") : "");
-    $("bnEvent").textContent = t ? (t.TrackDisplayName || "") + (t.TrackConfigName ? " · " + t.TrackConfigName : "") : "";
+    setT($("bnTrack"), T("text.event", "") || (t ? (t.TrackDisplayShortName || t.TrackDisplayName || "") : ""));
+    setT($("bnEvent"), t ? (t.TrackDisplayName || "") + (t.TrackConfigName ? " · " + t.TrackConfigName : "") : "");
     const rs = raceState(), f = racingFlag();
     // a clock ticks every second: it changes in place (rolling it in each second flashed); laps and words roll in
     if (/^\d+:\d\d/.test(rs.main) || rs.main === "–") setH($("bnMain"), rs.main);
     else roll($("bnMain"), rs.main);
     const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Checkered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
-    $("bnSub").textContent = [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · ");
+    setT($("bnSub"), [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · "));
     $("bnFlag").style.background = f ? FLAG_BG[f] : "var(--muted)"; waveFlag($("bnFlag"), f);
     // the announcer calls the flags in a race
     // (each flag at most once a minute: local yellows come and go all race; green only after a full-course caution or a red)
@@ -2284,7 +2292,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const dr = S.director && S.director.replay;
     const lbl = dr && dr.label ? dr.label : G("replay.label", "");
     $("rpLabel").classList.toggle("hide", !lbl);
-    $("rpLabel").textContent = sp === 0 ? "Paused" : cam.replaySlowMotion ? "Slow motion" + (lbl ? " · " + lbl : "") : lbl;
+    setT($("rpLabel"), sp === 0 ? "Paused" : cam.replaySlowMotion ? "Slow motion" + (lbl ? " · " + lbl : "") : lbl);
   }
 
   // ---------------------------------------------------------------- race TV extras
@@ -2395,7 +2403,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const cur = m ? s.c.classPos : s.c.pos, at = cur > 0 ? cur : P(last);       // labelled at its place now, one a row
       if (now.indexOf(s) < 10 && at) g += `<text x="${W - R + 14}" y="${Y(Math.min(n, at)) + 6}" fill="${cc}" font-size="19">${esc(at)} #${esc(s.c.num)} ${esc(String(s.c.name || "").split(/\s+/).slice(-1)[0])}</text>`;
     }
-    $("lcSub").textContent = `${maxLap} ${maxLap === 1 ? "lap" : "laps"}${m ? " · " + ((classes().find(x => x.id === cls) || {}).name || "") : ""}`;
+    setT($("lcSub"), `${maxLap} ${maxLap === 1 ? "lap" : "laps"}${m ? " · " + ((classes().find(x => x.id === cls) || {}).name || "") : ""}`);
     const h = `<svg class="lc-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lap chart">${g}</svg>`;
     setH($("lcBox"), h);
   }
@@ -2433,7 +2441,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
         $("fcFlag").className = "fc-flag" + (call[0] === "checkered" ? " checkered" : "");
         $("fcFlag").style.background = FLAG_BG[call[0]];
         waveFlag($("fcFlag"), call[0] === "green" ? null : call[0]);
-        $("fcTitle").textContent = call[1]; $("fcSub").innerHTML = call[2];
+        setT($("fcTitle"), call[1]); $("fcSub").innerHTML = call[2];
       }
     }
     FC.f = f; FC.st = st;
@@ -2459,8 +2467,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const cars = b.cars.slice(-2).map(carByIdx), lead = carByIdx(b.cars[0]);
     if (cars.some(c => !c)) return;
     const m = multi();
-    $("btTitle").textContent = "Battle for " + (m && lead.className ? lead.className + " " : "") + "P" + b.forClassPos;
-    $("btLap").textContent = b.cars.length > 2 ? b.cars.length + " cars" : (lead.lap != null ? "Lap " + lead.lap : "");
+    setT($("btTitle"), "Battle for " + (m && lead.className ? lead.className + " " : "") + "P" + b.forClassPos);
+    setT($("btLap"), b.cars.length > 2 ? b.cars.length + " cars" : (lead.lap != null ? "Lap " + lead.lap : ""));
     const k = b.gapsS.length - 1;
     const gapTxt = (cars[1].derived && cars[1].derived.liveClassIntervalS != null) ? cars[1].derived.liveClassIntervalS : b.gapsS[k];
     const side = c => `<div class="bt-car"><span class="pos">${esc(m ? c.classPos : c.pos)}</span>${plate(c)}${G("card.photo", true) ? `<div class="ph">${photoHtml(c)}</div>` : ""}<span class="nm">${nameHtml(c.name)}</span><div class="lv" style="position:relative">${liveryHtml(c)}</div></div>`;
@@ -2576,13 +2584,13 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const m = multi();
     const bg = m ? (css(c.classColor) || "#444") : T("colors.head", "#000");
     $("cdNumBox").style.background = bg; $("cdNumBox").style.color = inkOn(/^#/.test(bg) ? bg : null);
-    $("cdNum").textContent = c.num ?? "–";
-    $("cdPos").textContent = c.pos > 0 ? (m ? "P" + c.classPos + " " + (c.className || "") : "P" + c.pos) : "";
+    setT($("cdNum"), c.num ?? "–");
+    setT($("cdPos"), c.pos > 0 ? (m ? "P" + c.classPos + " " + (c.className || "") : "P" + c.pos) : "");
     const p = String(c.name || "").trim().split(/\s+/);
     setH($("cdName"), `<span class="pnm">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
-    $("cdLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
-      (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
-    $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
+    setH($("cdLic"), (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
+      (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : ""));
+    setT($("cdSub"), [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · "));
     setH($("cdLv"), liveryHtml(c));
     setH($("cdPh"), G("card.photo", true) ? photoHtml(c) : "");
     setH($("cdHel"), G("card.helmet", true) ? helmetHtml(c, 84) : "");
@@ -2626,13 +2634,13 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const m = multi();
     const bg = m ? (css(c.classColor) || "#444") : T("colors.head", "#000");
     $("cdNumBox").style.background = bg; $("cdNumBox").style.color = inkOn(/^#/.test(bg) ? bg : null);
-    $("cdNum").textContent = c.num ?? "–";
-    $("cdPos").textContent = r.pos ? "Starts P" + r.pos : "";
+    setT($("cdNum"), c.num ?? "–");
+    setT($("cdPos"), r.pos ? "Starts P" + r.pos : "");
     const p = String(c.name || "").trim().split(/\s+/);
     setH($("cdName"), `<span class="pnm">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
-    $("cdLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
-      (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
-    $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
+    setH($("cdLic"), (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
+      (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : ""));
+    setT($("cdSub"), [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · "));
     setH($("cdLv"), liveryHtml(c));
     const stats = [["Grid", r.pos ? "P" + r.pos + " of " + rows.length : "–"]];
     if (m && r.classPos) stats.push([(c.className || "Class"), "P" + r.classPos]);
@@ -2659,17 +2667,17 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const m = multi(), cc = css(c.classColor) || "#444";
     const bg = m ? cc : T("colors.head", "#000");
     const pb = $("gwPos").parentElement; pb.style.background = bg; pb.style.color = inkOn(/^#/.test(bg) ? bg : null);
-    $("gwPos").textContent = r.pos || "–";
-    $("gwRowL").textContent = d.row ? "Row " + d.row : "";
-    $("gwPosL").textContent = d.pole ? "Pole" : m && r.classPos ? (c.className || "Class") + " P" + r.classPos : "";
+    setT($("gwPos"), r.pos || "–");
+    setT($("gwRowL"), d.row ? "Row " + d.row : "");
+    setT($("gwPosL"), d.pole ? "Pole" : m && r.classPos ? (c.className || "Class") + " P" + r.classPos : "");
     $("gwPosL").style.color = m ? "inherit" : "";
     setH($("gwLv"), liveryHtml(c));
     setH($("gwPlate"), plate(c));
     const p = String(c.name || "").trim().split(/\s+/);
     setH($("gwName"), `<span class="pnm">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
-    $("gwLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
-      (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
-    $("gwSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
+    setH($("gwLic"), (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
+      (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : ""));
+    setT($("gwSub"), [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · "));
     const stats = [["Qualifying", r.timeS ? fmt.lap(r.timeS) : "No time", "q"]];
     if (d.poleGapS != null) stats.push(["To pole", fmt.gap(d.poleGapS)]);
     if (m && d.classPoleGapS != null && d.classPoleGapS !== d.poleGapS) stats.push(["To class pole", fmt.gap(d.classPoleGapS)]);
@@ -2689,7 +2697,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       const half = x => {
         const k = carByIdx(x.idx) || {}, dx = x.derived || {}, q = x.timeS ? fmt.lap(x.timeS) : "No time";
         const nm = String(k.name || "").trim().split(/\s+/);
-        const nameH = nm.length > 1 ? `<small>${esc(nm[0])}</small> ${esc(nm.slice(1).join(" "))}` : esc(k.name || "");
+        const nameH = `<span class="pnm">${nm.length > 1 ? `<small>${esc(nm[0])}</small> ${esc(nm.slice(1).join(" "))}` : esc(k.name || "")}</span>`;
         const tag = dx.pole ? "Pole" : m && x.classPos ? esc(k.className || "Class") + " P" + x.classPos : "";
         const gapH = dx.poleGapS != null ? `<div><span>To pole</span><b>${fmt.gap(dx.poleGapS)}</b></div>` : "";
         const cgapH = m && dx.classPoleGapS != null && dx.classPoleGapS !== dx.poleGapS ? `<div><span>To class pole</span><b>${fmt.gap(dx.classPoleGapS)}</b></div>` : "";
@@ -2703,7 +2711,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       setH($("gwPair"), h);
     }
     const badge = d.pole ? "Pole position" : m && d.classPole ? (c.className || "Class") + " pole" : "";
-    $("gwBadge").textContent = badge; $("gwBadge").classList.toggle("hide", !badge);
+    setT($("gwBadge"), badge); $("gwBadge").classList.toggle("hide", !badge);
     // a multi-class field: the class's name and size when the walk reaches its first car
     // (a row: the class whose first car is in it, while the walk is on that row)
     const clsRow = byRow ? mates.find(x => (x.derived || {}).classPole) : d.classPole ? r : null;
@@ -2722,8 +2730,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     // the grid beside it
     const dir = S.director || {};
-    $("glTitle").textContent = T("text.gridTitle", "") || "Starting grid";
-    $("glCount").textContent = ri >= 0 ? (ri + 1) + " / " + rows.length : (dir.gridTotal ? dir.gridTotal + " cars" : "");
+    setT($("glTitle"), T("text.gridTitle", "") || "Starting grid");
+    setT($("glCount"), ri >= 0 ? (ri + 1) + " / " + rows.length : (dir.gridTotal ? dir.gridTotal + " cars" : ""));
     const html = rows.map((x, i) => {
       const k = carByIdx(x.idx); if (!k) return `<div class="gl-s"><i></i><span class="p">${x.pos}</span></div>`;
       const last = String(k.name || "").trim().split(/\s+/).slice(-1)[0] || "";
@@ -2874,7 +2882,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (!on) return;
     const sess = sessionRow(), t = S.session && S.session.track;
     const f = racingFlag();
-    $("bdTitle").textContent = f === "checkered" ? "Results" : (T("text.series", "") || (sess ? sess.SessionType : "Standings"));
+    setT($("bdTitle"), f === "checkered" ? "Results" : (T("text.series", "") || (sess ? sess.SessionType : "Standings")));
     setH($("bdSub"), esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + "<br>" + raceState().main.replace(/<[^>]+>/g, ""));
     const race = isRace(), off = officialPublished();
     const fin = race && f === "checkered";
@@ -2882,7 +2890,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const cols = gridOnly ? ["Qualifying", "", ""] : race ? (fin ? ["Gap", "Best", "+/−", "Stops", "Led"] : off ? ["Gap", "Best", "Inc"] : ["Gap", "Best", "Pits"]) : ["Best", "Last", ""];
     const fl = fastestByClass();
     const field = racingField(), onGrid = field.length > 0 && field[0].onGrid;
-    if (onGrid) $("bdTitle").textContent = T("text.gridTitle", "") || "Starting grid";
+    if (onGrid) setT($("bdTitle"), T("text.gridTitle", "") || "Starting grid");
     const groups = multi() ? classes().map(k => ({ k, list: field.filter(c => c.classId === k.id).sort((a, b) => a.classPos - b.classPos) }))
       : [{ k: null, list: field.sort((a, b) => a.pos - b.pos) }];
     const row = (c, byClass) => {
@@ -2949,8 +2957,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const winH = 880, gap = 10, stag = per > 1 ? 0.5 : 0;
     const h = Math.max(84, Math.min(150, Math.floor((winH - 36) / (nRows + stag) - gap)));
     const t = S.session.track;
-    $("gbTitle").textContent = T("text.gridTitle", "") || "Starting grid";
-    $("gbKind").textContent = rows.length + " starters";
+    setT($("gbTitle"), T("text.gridTitle", "") || "Starting grid");
+    setT($("gbKind"), rows.length + " starters");
     setH($("gbSub"), esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + (t && t.TrackConfigName ? "<br>" + esc(t.TrackConfigName) : ""));
     const cols = Array.from({ length: per }, () => []);
     rows.forEach((x, i) => cols[(x.pos ? x.pos - 1 : i) % per].push(x));
@@ -2987,7 +2995,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("grid").classList.toggle("on", on);
     if (!on) return;
     const t = S.session.track;
-    $("gdTitle").textContent = T("text.gridTitle", "") || "Starting grid";
+    setT($("gdTitle"), T("text.gridTitle", "") || "Starting grid");
     setH($("gdSub"), esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + (t && t.TrackConfigName ? "<br>" + esc(t.TrackConfigName) : ""));
     const per = 10, pages = Math.ceil(rows.length / per), now = performance.now();
     const cam = camIdx(), ci = rows.findIndex(r => r.idx === cam);
@@ -3001,8 +3009,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
         `<div class="who"><b>${plate(c)} ${nameHtml(c.name)}</b><span>${esc([m && c.className ? c.className + (r.classPos ? " P" + r.classPos : "") : "", c.team && c.team !== c.name ? c.team : c.car].filter(Boolean).join(" · "))}</span></div>` +
         `<div class="tm">${r.timeS ? fmt.lap(r.timeS) : ""}<span>${r.timeS ? "Qualifying" : ""}</span></div></div>`;
     }).join("");
-    $("gdPage").textContent = pages > 1 ? `Positions ${gridPage * per + 1}–${Math.min(rows.length, gridPage * per + per)} of ${rows.length}` : `${rows.length} starters`;
-    $("gdNote").textContent = S.session.grid.source === "qualify_results" ? "Grid from qualifying" : "";
+    setT($("gdPage"), pages > 1 ? `Positions ${gridPage * per + 1}–${Math.min(rows.length, gridPage * per + per)} of ${rows.length}` : `${rows.length} starters`);
+    setT($("gdNote"), S.session.grid.source === "qualify_results" ? "Grid from qualifying" : "");
   }
 
   // ---------------------------------------------------------------- stinger

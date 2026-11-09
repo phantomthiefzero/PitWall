@@ -1653,7 +1653,9 @@ header{padding:6px 12px}
     const cars = allCars().filter(c => c.pos > 0).sort((a, b) => a.pos - b.pos);
     const pick = G("h2h.cars", null) || [];
     const opt = sel => `<option value="">Pick a driver</option>` + cars.map(c => `<option value="${c.idx}" ${sel === c.idx ? "selected" : ""}>P${c.pos} #${esc(c.num)} ${esc(c.name)}</option>`).join("");
-    $("h2hPick").innerHTML = `<select id="h2hA" ${dis}>${opt(pick[0])}</select><select id="h2hB" ${dis}>${opt(pick[1])}</select>` +
+    // not while one of its lists is open or in use: rebuilt, an open list closed under the mouse (as pipCar)
+    const busy = document.activeElement && /^h2h[AB]$/.test(document.activeElement.id);
+    if (!busy) $("h2hPick").innerHTML = `<select id="h2hA" ${dis}>${opt(pick[0])}</select><select id="h2hB" ${dis}>${opt(pick[1])}</select>` +
       `<button data-h2hclr="1" ${dis || (pick.length ? "" : "disabled")}>Follow the battle</button>`;
     const set = () => { const a = Number($("h2hA").value), b = Number($("h2hB").value);
       if ($("h2hA").value !== "" && $("h2hB").value !== "" && a !== b) setGfx({ h2h: { cars: [a, b] } }); };

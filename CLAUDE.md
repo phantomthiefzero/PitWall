@@ -355,6 +355,14 @@ Broadcast (broadcast/)
   test_a_clean_streak_counts_racing_laps_without_an_incident. The podium sits clear of the tower (it was always off
   air beside it: makeRoom had no room), and a drawn helmet is the same markup every time (no counter in its clip id:
   setH and the podium compare it).
+- What the Arcade and words-fit work taught, checked across the pages (Nov 2026; test_what_the_arcade_work_taught_holds_everywhere):
+  a class the script makes for its own use must not be a styled class already (names were .pn, the panels' class);
+  nothing is written again when it is the same (overlay setT / setH, PitWall setText: its g-g note and "last update"
+  were replaced 60 times a second); markup must be the same for the same thing (a counter in an id rebuilt the podium
+  every second and kept restarting its animation); a big graphic must have room beside what is usually on air
+  (the standings board, the grid, the league and the lap chart come before the tower in ROOM_ORDER, so the tower steps
+  aside: the finish's standings never came on air); a keyframe that holds must say so at the hold (axDrive's blur ran
+  through it); a producer list is not rebuilt while it is open (h2hPick, like pipCar).
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
