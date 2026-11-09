@@ -2621,3 +2621,26 @@ def test_arcade_calls_the_big_moments_and_keeps_its_rules():
     # the same helmet is the same markup (setH and the podium compare it): no counter in the clip's id
     assert "++svgN" not in page
     assert 'pdSig = sig' in page
+
+
+def test_what_the_arcade_work_taught_holds_everywhere():
+    """Lessons from the Arcade and words-fit work, checked across the pages: a class the script makes for its own use
+    is not also a style for something else (names were .pn, the panels' class); nothing is written again when it is
+    the same (the overlay's words, PitWall's 60-a-second notes: setT / setText); the full-order panels come before the
+    tower so they get on air (the standings at the finish never did); a producer list is not rebuilt while open."""
+    import re
+    root = os.path.join(os.path.dirname(__file__), "..")
+    page = open(os.path.join(root, "broadcast", "overlay.html"), encoding="utf-8").read()
+    prod = open(os.path.join(root, "broadcast", "producer.html"), encoding="utf-8").read()
+    client = open(os.path.join(root, "client", "index.html"), encoding="utf-8").read()
+    style = page.split("<style>")[1].split("</style>")[0]
+    assert not re.search(r"\.pnm\b", style)                         # the names' class carries no style of its own
+    # plain words go through setT; the only direct writes left are made once
+    direct = [l for l in page.split("\n") if ".textContent = " in l]
+    assert all(any(k in l for k in ("ed-tag", "refused this overlay", "_axShown", "el.textContent !== t", "el.textContent !== v")) for l in direct), direct
+    order = re.findall(r'"(\w+)"', re.search(r"const ROOM_ORDER = \[([^\]]*)\]", page).group(1))
+    for big in ("lapchart", "board", "grid", "league"):
+        assert order.index(big) < order.index("tower"), big
+    assert "@keyframes axShatter" in page and "brightness(1.8);opacity:1}" in page
+    assert 'setText($("ggNote")' in client and 'setText($("age")' in client
+    assert "/^h2h[AB]$/.test(document.activeElement.id)" in prod

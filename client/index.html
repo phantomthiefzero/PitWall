@@ -3634,12 +3634,15 @@ LK.look = document.documentElement.dataset.look || "basic";
       ggCtx.fillRect(cx + gg[i][0] * scale - 1, cy - gg[i][1] * scale - 1, 2, 2);
     }
     const ggPeak = S.state && S.state.derived && S.state.derived.ggPeakG;   // the session's, from the bridge
-    $("ggNote").textContent = ggPeak != null
+    setText($("ggNote"), ggPeak != null
       ? `Peak ${ggPeak.toFixed(2)} g this session · ${gg.length} samples at 360 Hz`
       : (playerBlockIsLive()
          ? "Lateral against longitudinal g. The envelope fills in as the car is driven."
-         : "No accelerometer data — these channels belong to your own car, and read zero while spectating.");
+         : "No accelerometer data — these channels belong to your own car, and read zero while spectating."));
   }
+  // words written only when they changed: these two sat in the 60-a-second drawing loop and replaced their text
+  // every frame (a screen reader re-read them, and the page relaid itself out for nothing)
+  function setText(el, t) { if (el && el.textContent !== t) el.textContent = t; }
   // Car dots: by class (as on the broadcast) or by each car's own paint. The paint colour comes from
   // iRacing's picture of the car (pitwall/carcolor.py, Trading Paints included), else the first colour
   // of iRacing's paint scheme. In paint mode a multiclass field keeps its class as a ring.
@@ -3796,8 +3799,9 @@ LK.look = document.documentElement.dataset.look || "basic";
       // or a replay where iRacing sends no flags (cautions read from the field's speed).
       const age = (now - S.lastStateAt) / 1000, le = S.state && S.state.derived && S.state.derived.liveEdge, cau = S.cars && S.cars.derived && S.cars.derived.caution;
       const kind = le && le.atLive === false ? " · replay behind live: the field is held at the live moment" : (cau && cau.inferred ? " · no flags from iRacing: the caution is read from the field's speed" : "");
-      $("age").textContent = (age < 1.5 ? "live" : "last update " + age.toFixed(0) + " s ago") + (age < 1.5 ? kind : "");
-      $("age").style.color = age < 3 ? "" : "#FF5A5A";
+      setText($("age"), (age < 1.5 ? "live" : "last update " + age.toFixed(0) + " s ago") + (age < 1.5 ? kind : ""));
+      const ageCol = age < 3 ? "" : "#FF5A5A";        // compared with what was set: the style reads back as rgb()
+      if ($("age")._col !== ageCol) { $("age")._col = ageCol; $("age").style.color = ageCol; }
     }
     // Divide by the real elapsed time, not a constant 2 s: this loop is driven by
     // requestAnimationFrame, which browsers throttle to ~1 Hz or stop outright while
