@@ -415,6 +415,19 @@ Broadcast (broadcast/)
   for what is behind a car: the chaser in a battle (on the front car), the pack behind the leader at the start, a
   car on the grid from the front; never a car on its own (Summit Point: it was the most used shot, 21 of 101).
   A new shot is never the camera already on air (_fresh). tests: test_shots_come_in_an_order_and_a_close_fight_is_held.
+- The director and the action (Nov 2026, measured with `scripts/director_report.py <capture>`: every pass for position
+  in a race, live / in the picture / late / missed / replayed; run it before and after a change to the director):
+  attacks (normalize `attacks`: the live class gap over the last 6 s against the same car ahead, 0.3-1.5 s and 0.15 s
+  gained, class seconds) are a story of their own to class P6 (ATTACK_TOP) or make the battle they are in bigger and
+  hot ("urgent": may cut into a young story by ATTACK_INTERRUPT_BY; no replay while one is on; onboard the chaser under
+  ATTACK_ONBOARD_S); a lone spin waits for a replay while a fight scoring INCIDENT_FIGHT+ for a better place is on;
+  the director keeps what the camera showed by the race's clock (_cam_hist) and a pass it missed (to P10) is replayed
+  before one it showed (_seen_live); a faster class's top ten going through slower cars is a story (normalize
+  `throughTraffic`; a fight of its class going through them scores more). What the two captures said: Summit Point's
+  passes are nearly all on the opening lap (36 of 42; 6 after it, too few to tune on), and at Talladega (a pack) an
+  attack seldom comes before a pass (the gaps swing all the time: hence the 0.3 s floor). More captures of road
+  races will say more; tests: test_an_attack_is_seen_as_it_happens_and_through_traffic_is_a_story,
+  test_the_director_goes_to_an_attack_and_replays_the_passes_it_missed.
 - Auto ("Pick graphics for me") is contextual (overlay ctxWants / CONTEXTUAL): the driver card comes up for a few
   seconds when the camera finds a new car and now and then on a long shot (never over a battle box or a qualifying
   lap, which name the cars), the battle box shows the battle the camera is on, the onboard graphic follows onboard
