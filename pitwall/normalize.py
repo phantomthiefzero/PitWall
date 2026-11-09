@@ -1028,7 +1028,10 @@ class Deriver:
             s["best"] = e["lapS"]
         # a lap behind the pace car (well over this car's best) is not a racing lap either
         slow = s.get("best") is not None and e["lapS"] and e["lapS"] > s["best"] * self.PACE_SLOW_LAP
-        if e["lapS"] and not e["pit"] and not e.get("reset") and not slow:
+        # nor is a race's opening lap (from the grid or the rolling start, through the first-lap traffic): with it,
+        # the booth notes read "consistency ±5.86 s" for an MX-5 lapping within a second (Summit Point)
+        opening = getattr(self, "_race_now", False) and (e.get("lap") or 0) <= 1
+        if e["lapS"] and not e["pit"] and not e.get("reset") and not slow and not opening:
             s["racing"].append(e["lapS"])
             del s["racing"][:-max(self.PACE_LAPS, self.CONSISTENCY_LAPS)]
         if e.get("topSpeedMs") and (s["top"] is None or e["topSpeedMs"] > s["top"]):
@@ -1970,6 +1973,7 @@ class Deriver:
     # seconds and a faster one (a GTP, an IndyCar, anything on an oval) at fewer: every class's time thresholds
     # scale with REF_SPEED_MS over its own average speed (class_scale), from SCALE_MIN to SCALE_MAX.
     REF_SPEED_MS = 50.0
+    BATTLE_MAX_CARS = 4
     SCALE_MIN, SCALE_MAX = 0.6, 1.6
 
     def class_scale(self, cars: list, track_len) -> dict:
@@ -2048,6 +2052,22 @@ class Deriver:
             grp["closingSPerLap"].append(d.get("closingSPerLap") if same_pair else None)
             grp["catchLaps"].append(d.get("catchLaps") if same_pair else None)
             tail[b["idx"]] = grp
+        # A superspeedway pack (Talladega: 17 cars within a second, the box read "battle for P1, 17 cars" over the
+        # last pair) is split at its biggest gaps into fights of BATTLE_MAX_CARS at most; a lone car is no fight.
+        by = {c["idx"]: c for c in cars}
+
+        def split(g):
+            if len(g["cars"]) <= self.BATTLE_MAX_CARS:
+                return [g] if len(g["cars"]) >= 2 else []
+            gaps = g["gapsS"]
+            k = max(range(1, len(gaps) - 1), key=lambda i: gaps[i]) if len(gaps) > 2 else 0
+            def part(lo, hi):          # cars lo..hi-1, gaps lo..hi-2
+                first = by.get(g["cars"][lo]) or {}
+                return {**g, "cars": g["cars"][lo:hi], "gapsS": gaps[lo:hi - 1],
+                        "closingSPerLap": g["closingSPerLap"][lo:hi - 1], "catchLaps": g["catchLaps"][lo:hi - 1],
+                        "forClassPos": first.get("classPos", g["forClassPos"]), "forPos": first.get("pos", g["forPos"])}
+            return split(part(0, k + 1)) + split(part(k + 1, len(g["cars"])))
+        groups = [x for g in groups for x in split(g)]
         for grp in groups:
             grp["id"] = f"{grp['classId']}:{grp['cars'][0]}"
         groups.sort(key=lambda g: (g["forClassPos"], g["forPos"] or 999))
@@ -2360,8 +2380,13 @@ class Deriver:
         # closing in: a car catching the car ahead in its class, how fast, when it gets there, before the end or not
         left = race_laps_left(race)
         for c in cars:
+            if race and race.get("finished"):
+                break                  # no chase after the flag (Summit Point: "closing in" ran over the results)
             d, a = c["derived"], by.get(ahead_of.get(c["idx"]))
-            cl, gap = d.get("closingSPerLap"), d.get("intervalS")
+            # the gap the tower, the card and the battle box show (live, in class), else iRacing's at the line:
+            # the graphic read +2.080 while the tower beside it read +1.727 (Summit Point)
+            cl = d.get("closingSPerLap")
+            gap = d.get("liveClassIntervalS") if d.get("liveClassIntervalS") is not None else d.get("intervalS")
             if a is None or a.get("classId") != c.get("classId") or c.get("onPitRoad") or a.get("onPitRoad"):
                 continue
             # within a second it is a battle already; over CLOSING_MAX_S_PER_LAP it is a car in trouble, not a chase
@@ -2370,7 +2395,7 @@ class Deriver:
             if cl is None or not (self.CLOSING_MIN_S_PER_LAP * k <= cl <= self.CLOSING_MAX_S_PER_LAP * k) or gap is None \
                     or not (self.BATTLE_ENTER_S * k < gap <= self.CLOSING_MAX_GAP_S * k):
                 continue
-            catch = d.get("catchLaps")
+            catch = round(gap / cl, 1) if cl > 0 else d.get("catchLaps")      # at the gap shown
             out["closing"].append({"idx": c["idx"], "aheadIdx": a["idx"], "gapS": round(gap, 2),
                                    "closingSPerLap": cl, "catchLaps": catch,
                                    "beforeEnd": None if catch is None or left is None else catch <= left,
@@ -2457,6 +2482,11 @@ class Deriver:
             d["liveClassIntervalS"], d["classIntervalLaps"] = (None, None) if cp is None else (
                 (None, f["laps"] - cp["laps"]) if f["laps"] != cp["laps"] else
                 (round(f["gap"] - cp["gap"], 3) if f["gap"] is not None and cp["gap"] is not None else None, None))
+            # a car that left before the flag keeps a stale gap: one behind it can come out ahead of it
+            # (the producer's field read "+-108.9"). No interval rather than a negative one.
+            for k2 in ("liveIntervalS", "intervalLaps", "liveClassGapS", "classGapLaps", "liveClassIntervalS", "classIntervalLaps"):
+                if d.get(k2) is not None and d[k2] < 0:
+                    d[k2] = None
             cls_prev[k] = f
             prev = c
 
@@ -2663,6 +2693,10 @@ class Deriver:
         if hist and hist[-1][0] is None and comp is not None:
             hist[-1][0] = comp                       # the compound was not known yet at first sight
         lap_now = c.get("lap")
+        if lap_now is None or lap_now < 0 or c.get("surface") == "not_in_world":
+            lap_now = cs.get("lastLap")          # gone from the session: the run lasted to the last lap seen
+        else:
+            cs["lastLap"] = lap_now
         out["tyreRuns"] = [{"compound": h[0], "fromLap": h[1],
                             "laps": ((hist[k + 1][1] if k + 1 < len(hist) else lap_now) - h[1])
                             if h[1] is not None and (hist[k + 1][1] if k + 1 < len(hist) else lap_now) is not None else None}
@@ -2757,9 +2791,12 @@ class Deriver:
                     by_class.setdefault(c.get("classId"), []).append(s)
         own = next((c for c in cars if c["idx"] == own_idx), None)
         fuel_range = math.floor(tank_l / fpl) if fpl and tank_l and fpl > 0 else None
+        done = bool(race and race.get("finished"))
         for c in cars:
             d = c["derived"]
             d["stopDue"] = None
+            if done:
+                continue               # the flag is out: no stop is due any more (strategy read "Due" after the finish)
             this, start = d.get("lapsThisStint"), d.get("stintStartLap")
             rng, basis = None, None
             if c is own and fpl and fuel_l is not None and this is not None:
@@ -3807,11 +3844,28 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     # passed the checks above; anything else stays null.
     session_num = _num(g("SessionNum"))
     is_race = _is_race(session_msg, session_num)
+    if deriver is not None:
+        deriver._race_now = is_race             # a race's opening lap is not a racing lap (consistency, pace)
     by_idx = {c["idx"]: c for c in cars}
     # Practice and qualifying: the best laps that count are iRacing's scored results (ResultsPositions FastestTime),
     # not CarIdxBestLapTime, which is -1 for a car that ran before we joined and can hold a lap that did not count
     # (Summit Point Lone Qualify, Nov 2026: pole 1:23.500 and P2 read as no time; the telemetry "pole", 1:25.618,
     # was P4's, whose counted lap was 1:27.421). iRacing's positions already follow the results.
+    if is_race:
+        # a car that finished and left (not in world) reads -1 for its best and last laps: the results keep them
+        # (Summit Point: the winner's card and the results read "–" for his best lap)
+        try:
+            for r in results_positions(src.session_info("SessionInfo"), session_num):
+                c = by_idx.get(r.get("CarIdx"))
+                if c is None:
+                    continue
+                for k, rk in (("bestLapS", "FastestTime"), ("lastLapS", "LastTime")):
+                    v = r.get(rk)
+                    if not (c.get(k) or 0) > 0 and isinstance(v, (int, float)) and v > 0:
+                        c[k] = v
+                        c.setdefault("fromResults", []).append(k)       # not this car's telemetry
+        except Exception:  # noqa: BLE001
+            pass
     if not is_race:
         try:
             for r in results_positions(src.session_info("SessionInfo"), session_num):

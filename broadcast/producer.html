@@ -1258,7 +1258,9 @@ header{padding:6px 12px}
     (root || document).querySelectorAll("p.note:not([id]):not(.keep):not(.lookOff)").forEach(n => {
       if (n.dataset.hint || n.textContent.trim().length < 110) return;
       n.dataset.hint = "1"; n.classList.add("hint", "hide");
-      const b = document.createElement("button"); b.type = "button"; b.className = "ib"; b.textContent = "i"; b.title = "What is this?"; b.setAttribute("aria-label", "Explain");
+      const b = document.createElement("button"); b.type = "button"; b.className = "ib"; b.textContent = "i";
+      // two notes in one bar read as two identical (i): each says what it explains ("Video behind the screens", "Studio mode")
+      const topic = (n.textContent.trim().split(/[:.]/)[0] || "").slice(0, 40); b.title = topic && topic.length < 40 ? "About: " + topic : "What is this?"; b.setAttribute("aria-label", b.title);
       b.onclick = () => { n.classList.toggle("hide"); b.classList.toggle("on", !n.classList.contains("hide")); };
       const h = n.parentElement.querySelector(".mon-bar") || n.parentElement.querySelector("h2"); if (h && !(n.previousElementSibling && n.previousElementSibling.tagName === "H3")) h.appendChild(b); else n.before(b);
     });
@@ -1621,7 +1623,7 @@ header{padding:6px 12px}
       " · " + (race ? "gap to the car ahead" : "best lap");
     const row = c => {
       const d = c.derived || {};
-      const g = race ? (c.pos === 1 ? "Leader" : d.intervalLaps >= 1 ? D("+" + d.intervalLaps + (d.intervalLaps === 1 ? " lap" : " laps")) : d.liveIntervalS != null ? D(gap(d.liveIntervalS)) : "–") : lap(c.bestLapS);
+      const g = race ? (c.pos === 1 ? "Leader" : c.surface === "not_in_world" && !d.finished ? "Out" : d.intervalLaps >= 1 ? D("+" + d.intervalLaps + (d.intervalLaps === 1 ? " lap" : " laps")) : d.liveIntervalS != null ? D(gap(d.liveIntervalS)) : "–") : lap(c.bestLapS);
       const has = S.liveries.has(liveryKey(c));
       return `<div class="car${c.idx === cam ? " cam" : ""}${pin === c.idx ? " pinned" : ""}" data-idx="${c.idx}" tabindex="0" role="button" aria-label="Cut to ${esc(c.name)}">` +
         `<span class="p">${c.pos > 0 ? esc(c.pos) : ""}</span><span class="bar" style="background:${m ? css(c.classColor) : "transparent"}"></span>` +

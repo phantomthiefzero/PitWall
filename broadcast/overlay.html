@@ -1459,6 +1459,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   function towerValue(c, mode, byClass) {
     const d = c.derived || {};
     const lapsOr = (s, laps) => laps >= 1 ? fmt.laps(laps) : s != null ? fmt.gap(s) : null;
+    if (c.onGrid) return c.gridLapS ? fmt.lap(c.gridLapS) : "–";        // the starting grid: the qualifying lap
     switch (mode) {
       case "gap": {
         if (!isRace()) return d.classPoleGapS == null ? "–" : d.classPoleGapS === 0 ? fmt.lap(c.bestLapS) : fmt.gap(d.classPoleGapS);
@@ -1475,9 +1476,12 @@ body.bc-off>*:not(script){visibility:hidden!important}
         return p ? "~" + p + "x" : "0x";
       }
       default: {
-        if (byClass) return c.classPos === 1 ? "Leader" : lapsOr(d.liveClassIntervalS, d.classIntervalLaps) || "–";
+        // no gap to the car ahead: a car gone from the session is OUT; one with no car ahead to time against
+        // (the car ahead is out) shows its laps down to the leader, as the crawl does
+        if (c.surface === "not_in_world" && !d.finished) return "Out";
+        if (byClass) return c.classPos === 1 ? "Leader" : lapsOr(d.liveClassIntervalS, d.classIntervalLaps) || (d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : "–");
         if (c.pos === 1) return "Leader";
-        return lapsOr(d.liveIntervalS, d.intervalLaps) || (d.intervalS != null ? fmt.gap(d.intervalS) : "–");
+        return lapsOr(d.liveIntervalS, d.intervalLaps) || (d.intervalS != null ? fmt.gap(d.intervalS) : d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : "–");
       }
     }
   }
@@ -1497,11 +1501,22 @@ body.bc-off>*:not(script){visibility:hidden!important}
     for (const c of allCars()) if (c.bestLapS > 0 && (!out[c.classId] || c.bestLapS < out[c.classId].bestLapS)) out[c.classId] = c;
     return out;
   }
+  // Before a race has positions, the field in its starting order (the session's grid, from qualifying), each car
+  // with its grid place and qualifying lap: the tower, the standings and the crawl were empty before the start.
+  function gridField() {
+    const rows = ((S.session && S.session.grid) || {}).rows || [];
+    if (!isRace() || !rows.length) return [];
+    return rows.map(x => { const c = carByIdx(x.idx); return c ? Object.assign({}, c, { pos: x.pos, classPos: x.classPos || x.pos, gridLapS: x.timeS, onGrid: true }) : null; }).filter(Boolean);
+  }
+  function racingField() {
+    const f = allCars().filter(c => c.pos > 0);
+    return f.length ? f : gridField();
+  }
   function towerRows() {
     let layout = G("tower.layout", multi() ? "classes" : "overall");
     if (layout === "classes" && !multi()) layout = "overall";
     const cls = G("tower.class", null);
-    const field = allCars().filter(c => c.pos > 0);
+    const field = racingField();
     const cam = camIdx();
     const keepCam = (list, max) => {
       if (list.length <= max) return list;
@@ -1701,7 +1716,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // ---------------------------------------------------------------- onboard
   // The camera car's own CarIdxGear, CarIdxRPM and CarIdxSteer, and its speed (derived.speedMs).
   function renderOnboard() {
-    const c = carByIdx(camIdx());
+    // a car gone from the session has no gear, revs or speed to show (it read "R, 0 rpm" after the finish)
+    const c0 = carByIdx(camIdx()), c = c0 && c0.surface !== "not_in_world" ? c0 : null;
     $("onboard").classList.toggle("on", !!c && shown("onboard"));
     if (!c) return;
     const g = c.gear, mph = G("onboard.units", "kph") === "mph", v = (c.derived || {}).speedMs;
@@ -1764,10 +1780,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
   const SO = { built: false };
   function soHtml() {
     const cam = camIdx(), race = isRace();
-    const field = allCars().filter(c => c.pos > 0).sort((a, b) => ((a.derived || {}).livePos || a.pos) - ((b.derived || {}).livePos || b.pos));
-    const one = `<span class="so-t">${esc(T("text.series", "") || "Running order")}</span>` + field.map(c => { const d = c.derived || {};
-      const g = !race ? fmt.lap(c.bestLapS) : c.pos === 1 ? "Leader" : d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : d.liveGapS != null ? fmt.gap(d.liveGapS) : "";
-      return `<span class="so-c${c.idx === cam ? " cam" : ""}"><span class="p">${esc(d.livePos || c.pos)}</span>${plate(c)}<span>${nameHtml(c.name, "last")}</span><span class="g">${esc(g)}</span></span>`; }).join("");
+    const field = racingField().sort((a, b) => (a.onGrid ? a.pos : (a.derived || {}).livePos || a.pos) - (b.onGrid ? b.pos : (b.derived || {}).livePos || b.pos));
+    const grid = field.length > 0 && field[0].onGrid;
+    const one = `<span class="so-t">${esc(T("text.series", "") || (grid ? "Starting grid" : "Running order"))}</span>` + field.map(c => { const d = c.derived || {};
+      const g = c.onGrid ? (c.gridLapS ? fmt.lap(c.gridLapS) : "") : !race ? fmt.lap(c.bestLapS) : c.pos === 1 ? "Leader" : c.surface === "not_in_world" && !d.finished ? "Out" : d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : d.liveGapS != null ? fmt.gap(d.liveGapS) : "";
+      return `<span class="so-c${c.idx === cam ? " cam" : ""}"><span class="p">${esc(c.onGrid ? c.pos : d.livePos || c.pos)}</span>${plate(c)}<span>${nameHtml(c.name, "last")}</span><span class="g">${esc(g)}</span></span>`; }).join("");
     return { one, n: field.length };
   }
   // Two identical halves, each at least a screen wide, so the crawl never shows a gap (a small field is repeated).
@@ -1778,7 +1795,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     return k;
   }
   function renderStrip() {
-    const on = shown("strip") && !!S.cars;
+    const on = shown("strip") && !!S.cars && racingField().length > 0;     // no cars: nothing to crawl (it ran its title alone)
     $("strip").classList.toggle("on", on);
     if (!on) { SO.built = false; return; }
     if (!SO.built) {
@@ -2096,7 +2113,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
         const next = c.onPitRoad ? "In the pits" : !sd ? "–" : sd.overdue ? "Due" : sd.stopsOwed === 0 ? "To the end" : "Lap " + sd.lap;
         return `<div class="tb-r"><span class="p">${esc(c.classPos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span>` +
           `<span class="v">${esc(d.stopsSeen ?? "–")}</span><span class="v">${c.compound != null && c.compound >= 0 ? tyreHtml(c.compound) : "–"}</span>` +
-          `<span class="v m">${d.lapsThisStint != null && d.lapsThisStint >= 0 ? d.lapsThisStint + (d.lapsThisStint === 1 ? " lap" : " laps") : "–"}</span>` +
+          `<span class="v m">${c.surface !== "not_in_world" && d.lapsThisStint != null && d.lapsThisStint >= 0 ? d.lapsThisStint + (d.lapsThisStint === 1 ? " lap" : " laps") : "–"}</span>` +
           (anyDue ? `<span class="v w${sd && sd.overdue ? " b" : ""}">${esc(next)}</span>` : "") + `</div>`; }).join("");
     if ($("stBox").innerHTML !== h) $("stBox").innerHTML = h;
   }
@@ -2577,19 +2594,21 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("bdSub").innerHTML = esc(T("text.event", "") || (t ? t.TrackDisplayName : "")) + "<br>" + raceState().main.replace(/<[^>]+>/g, "");
     const race = isRace(), off = officialPublished();
     const fin = race && f === "checkered";
-    const cols = race ? (fin ? ["Gap", "Best", "+/−", "Stops", "Led"] : off ? ["Gap", "Best", "Inc"] : ["Gap", "Best", "Pits"]) : ["Best", "Last", ""];
+    const gridOnly = race && !allCars().some(c => c.pos > 0);            // before the start: the grid and its laps
+    const cols = gridOnly ? ["Qualifying", "", ""] : race ? (fin ? ["Gap", "Best", "+/−", "Stops", "Led"] : off ? ["Gap", "Best", "Inc"] : ["Gap", "Best", "Pits"]) : ["Best", "Last", ""];
     const fl = fastestByClass();
-    const field = allCars().filter(c => c.pos > 0);
+    const field = racingField(), onGrid = field.length > 0 && field[0].onGrid;
+    if (onGrid) $("bdTitle").textContent = T("text.gridTitle", "") || "Starting grid";
     const groups = multi() ? classes().map(k => ({ k, list: field.filter(c => c.classId === k.id).sort((a, b) => a.classPos - b.classPos) }))
       : [{ k: null, list: field.sort((a, b) => a.pos - b.pos) }];
     const row = (c, byClass) => {
       const d = c.derived || {};
-      const g = c.pos === 1 || (byClass && c.classPos === 1) ? "Leader" :
+      const g = c.pos === 1 || (byClass && c.classPos === 1) ? "Leader" : c.surface === "not_in_world" && !d.finished ? "Out" :
         (byClass ? (d.classGapLaps >= 1 ? fmt.laps(d.classGapLaps) : d.liveClassGapS != null ? fmt.gap(d.liveClassGapS) : "–")
                  : (d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : d.liveGapS != null ? fmt.gap(d.liveGapS) : "–"));
       const pg = byClass ? d.classPosGained : d.posGained;
       const gained = pg == null ? "–" : pg > 0 ? "▲" + pg : pg < 0 ? "▼" + (-pg) : "=";
-      const vals = race ? [g, fmt.lap(c.bestLapS), fin ? gained : off ? (c.incidents >= 0 ? c.incidents + "x" : "–") : (d.stopsSeen ?? "–")]
+      const vals = c.onGrid ? [c.gridLapS ? fmt.lap(c.gridLapS) : "–", "", ""] : race ? [g, fmt.lap(c.bestLapS), fin ? gained : off ? (c.incidents >= 0 ? c.incidents + "x" : "–") : (d.stopsSeen ?? "–")]
                         : [fmt.lap(c.bestLapS), fmt.lap(c.lastLapS), ""];
       if (fin) vals.push(d.stopsSeen ?? "–", (byClass ? d.classLapsLedSeen : d.lapsLedSeen) || "–");    // the full result: stops, laps led
       const isFl = fl[c.classId] && fl[c.classId].idx === c.idx;
