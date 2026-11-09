@@ -2644,3 +2644,90 @@ def test_what_the_arcade_work_taught_holds_everywhere():
     assert "@keyframes axShatter" in page and "brightness(1.8);opacity:1}" in page
     assert 'setText($("ggNote")' in client and 'setText($("age")' in client
     assert "/^h2h[AB]$/.test(document.activeElement.id)" in prod
+
+
+def test_an_attack_is_seen_as_it_happens_and_through_traffic_is_a_story():
+    """normalize attacks: the live class gap over the last seconds against the same car ahead (the battles' closing
+    rate is per lap); closer than ATTACK_MIN_GAP_S they are already fighting (a pack swings by that much), a new car
+    ahead starts again, a race only. through_traffic: a faster class's car about to go past slower cars, any place."""
+    from pitwall.normalize import Deriver
+    d = Deriver()
+
+    def field(gap, ahead=1, pit=False):
+        return [{"idx": ahead, "classId": 1, "classPos": 4, "pos": 4, "derived": {}},
+                {"idx": 2, "classId": 1, "classPos": 5, "pos": 5, "onPitRoad": pit,
+                 "derived": {"liveClassIntervalS": gap}}]
+    out = []
+    for k in range(70):                                   # 1.3 s back, gaining 0.06 s a second for 7 s
+        cars = field(1.3 - 0.06 * k / 10)
+        out = d.attacks(cars, 100 + k / 10, True)
+    assert out and out[0]["cars"] == [1, 2] and out[0]["forClassPos"] == 4
+    assert 0.3 < out[0]["gainedS"] < 0.4 and cars[1]["derived"]["attackGainS"] == out[0]["gainedS"]
+    assert d.attacks(field(0.88, ahead=9), 107.1, True) == []       # someone else ahead now: start again
+    assert d.attacks(field(0.85, pit=True), 107.2, True) == []      # in the lane: not going for it
+    d2 = Deriver()
+    for k in range(70):                                   # a pack: 0.25 s and gaining, they are already fighting
+        out = d2.attacks(field(0.6 - 0.05 * k / 10), 100 + k / 10, True)
+    assert out == []
+    assert d2.attacks(field(0.6), 200, False) == [] and d2._atk == {}
+
+    # through traffic: a GT3 at 100 s a lap, 2 s of track behind an MX-5 at 110 s a lap, a second MX-5 further on
+    d3 = Deriver()
+    d3._lapsum = {1: {"racing": [100.0, 100.0]}, 2: {"racing": [110.0, 110.0]}, 3: {"racing": [110.0, 110.0]},
+                  4: {"racing": [99.0, 99.0]}}
+    cars = [{"idx": 1, "classId": 1, "classPos": 4, "pct": 0.50, "surface": "on_track"},
+            {"idx": 2, "classId": 2, "classPos": 1, "pct": 0.52, "surface": "on_track"},
+            {"idx": 3, "classId": 2, "classPos": 2, "pct": 0.70, "surface": "on_track"},
+            {"idx": 4, "classId": 1, "classPos": 1, "pct": 0.90, "surface": "on_track"}]
+    tt = d3.through_traffic(cars)
+    assert [t["idx"] for t in tt] == [1] and tt[0]["throughIdx"] == [2] and tt[0]["classPos"] == 4
+    assert d3.through_traffic([c for c in cars if c["classId"] == 1]) == []      # one class: nothing to go through
+
+
+def test_the_director_goes_to_an_attack_and_replays_the_passes_it_missed():
+    """An attack for a place near the front becomes a story (or makes its battle bigger and hot) and may cut into a
+    young story; a lone spin waits for a replay while a fight for a better place is on; a pass the camera missed is
+    replayed before one it showed; through traffic is a story for a faster class's top ten."""
+    from pitwall.director import Director, ATTACK_TOP
+    t = [1000.0]
+    cuts = []
+    d = Director(lambda num, g: cuts.append(int(num)) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0],
+                 replay=lambda cmd: {"ok": True})
+    d.set_live(True)
+    d.configure(on=True)
+    sess = {"cameras": [{"num": 1, "name": "Far Chase"}, {"num": 2, "name": "Chase"}, {"num": 3, "name": "TV1"},
+                        {"num": 4, "name": "Cockpit"}]}
+    cars = [{"idx": i, "num": str(i), "pos": i + 1, "classPos": i + 1, "classId": 1, "surface": "on_track", "lap": 5,
+             "derived": {}} for i in range(12)]
+    by = {c["idx"]: c for c in cars}
+    msg = {"cars": cars, "derived": {"isRace": True, "battles": [], "race": {}, "caution": {"active": False},
+                                     "attacks": [{"cars": [2, 3], "gapS": 0.7, "gainedS": 0.35, "forClassPos": 3,
+                                                  "classId": 1, "scale": 1.0}]}}
+    st = d._stories(cars, by, msg, [], 500.0, t[0])
+    atk = next(s for s in st if s["key"] == "attack:2:3")
+    assert atk["urgent"] and atk["hot"] and atk["fp"] == 3
+    leader = next(s for s in st if s["key"].startswith("leader:"))
+    assert atk["score"] > leader["score"] + 30
+    # the same pair already a battle: that battle is the story, bigger and hot
+    msg["derived"]["battles"] = [{"id": "1:2", "cars": [2, 3], "gapsS": [0.7], "closingSPerLap": [None], "forClassPos": 3, "scale": 1.0}]
+    st = d._stories(cars, by, msg, [], 500.0, t[0])
+    bt = next(s for s in st if s["key"] == "battle:1:2")
+    assert bt.get("urgent") and bt.get("hot") and not any(s["key"].startswith("attack:") for s in st)
+    # further back than ATTACK_TOP: only inside a battle
+    msg["derived"]["battles"] = []
+    msg["derived"]["attacks"][0].update(cars=[8, 9], forClassPos=ATTACK_TOP + 3)
+    assert not any(s["key"].startswith("attack:") for s in d._stories(cars, by, msg, [], 500.0, t[0]))
+    # a pass the camera missed is replayed before one it showed live
+    d._cam_hist = [(480.0, 0), (495.0, 0)]
+    live = {"kind": "pass", "idx": 0, "passedIdx": [1], "classPos": 1, "t": 490.0, "replayT": 100.0, "sessionNum": 2}
+    missed = {"kind": "pass", "idx": 5, "passedIdx": [4], "classPos": 5, "t": 490.0, "replayT": 101.0, "sessionNum": 2}
+    d._moments = {"a": live, "b": missed}
+    assert d._seen_live(live) and not d._seen_live(missed)
+    key, e = d._replay_candidate(by, 500.0, 2)
+    assert e is missed, "the missed pass for P5 before the pass for the lead shown live"
+    # multiclass: through traffic for a faster class's top ten
+    msg["derived"]["attacks"] = []
+    msg["derived"]["throughTraffic"] = [{"idx": 4, "classId": 1, "classPos": 5, "throughIdx": [10, 11], "behindS": 2.0}]
+    st = d._stories(cars, by, msg, [], 500.0, t[0])
+    th = next(s for s in st if s["key"] == "through:4")
+    assert th["cars"] == [10, 4]

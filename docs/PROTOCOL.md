@@ -94,6 +94,8 @@ any other speed, or slow motion, means the picture is not the race as it happens
             "battles":[{"id","classId","cars":[idx,...],"gapsS":[...],"closingSPerLap":[...],
                         "catchLaps":[...],"forClassPos","forPos"}],
             "classTraffic":[{"idx","classId","aheadIdx","aheadClassId","inS","packN","packIdx":[...]}],
+            "attacks":[{"cars":[ahead,chaser],"classId","gapS","gainedS","windowS","forClassPos","forPos","scale"}],
+            "throughTraffic":[{"idx","classId","classPos","throughIdx":[...],"behindS"}],
             "classBestSectorS":{"<classId>":[s,...]}}}
 ```
 `classTraffic` (multiclass): for each class leader on track, the first slower-class car it will reach
@@ -101,6 +103,12 @@ within 60 s at the two cars' paces (`inS`), and the slower cars within 6 s behin
 `packN`). Sorted by `inS`. `classBestSectorS` is each class's best time per sector this session; each
 car's `derived.sectorMarks` colours its own sectors against it: "p" class best, "g" its own best, "y"
 slower, null not timed yet.
+`attacks` (race only): a car going for the class car ahead right now: the live class gap
+(`liveClassIntervalS`) shrank by `gainedS` over the last `windowS` (up to 6 s) against the same car ahead,
+at least 0.15 s, with the gap now 0.3-1.5 s; both in the class's seconds (`scale`, class_scale). Each chaser
+also gets `derived.attackGainS`. `throughTraffic` (race, multiclass): each faster-class car with slower-class
+cars up to 3 s of track ahead of it (`throughIdx`, nearest first; `behindS` the nearest), lapping at least 2 s
+a lap faster; ordered by class position.
 `battles` (race only): cars that are neighbours IN THEIR CLASS with trusted F2Times less than
 1.0 s apart; a pair stays in until the gap passes 1.5 s. Pairs that touch form one group,
 front to back. `gapsS[k]` is between `cars[k]` and `cars[k+1]`. `closingSPerLap[k]` / `catchLaps[k]`

@@ -1665,6 +1665,90 @@ class Deriver:
                 del st[k]
         return sorted(out, key=lambda x: x["inS"])
 
+    THROUGH_S = 3.0            # a faster class's car this close behind a slower class's car (seconds of track, at its pace)
+    THROUGH_MIN_DIFF_S = 2.0   # and at least this much faster a lap: going past, not racing it
+
+    def through_traffic(self, cars: list) -> list:
+        """Faster-class cars about to go past slower-class cars right now (multiclass): for each, the slower cars up to
+        THROUGH_S of track ahead of it at its pace (throughIdx, nearest first; behindS, the nearest). Not only
+        the class leaders (class_traffic): a fight for P4 in a class carving through a pack is a story too. Cars on
+        track and out of the pit lane only; the class's own fights are battles()."""
+        if len({c.get("classId") for c in cars if c.get("classPos")}) < 2:
+            return []
+        out = []
+        live = [c for c in cars if c.get("surface") == "on_track" and not c.get("onPitRoad") and c.get("classPos")]
+        for f in live:
+            uf, pf = self._u(f), self.pace(f["idx"])
+            if uf is None or not pf:
+                continue
+            meets = []
+            for c in live:
+                if c is f or c.get("classId") == f.get("classId"):
+                    continue
+                uc, pc = self._u(c), self.pace(c["idx"])
+                if uc is None or not pc or pc < pf + self.THROUGH_MIN_DIFF_S:
+                    continue
+                gap_u = (uc - uf) % 1.0
+                if gap_u > 0.5:
+                    continue                              # behind it: already through
+                tm = gap_u * pf                           # seconds of track between them
+                if tm <= self.THROUGH_S:
+                    meets.append((tm, c["idx"]))
+            if meets:
+                meets.sort()
+                out.append({"idx": f["idx"], "classId": f.get("classId"), "classPos": f.get("classPos"),
+                            "throughIdx": [i for _, i in meets], "behindS": round(meets[0][0], 1)})
+        return sorted(out, key=lambda x: (x["classPos"] or 99, x["behindS"]))
+
+    ATTACK_WINDOW_S = 6.0      # how far back an attack is read: a run out of a corner, a tow down a straight
+    ATTACK_GAP_S = 1.5         # (in the class's seconds) further back than this, no pass is coming
+    ATTACK_GAIN_S = 0.15       # (in the class's seconds) gained on the car ahead in the window: going for it
+    ATTACK_MIN_GAP_S = 0.3     # closer than this they are already fighting (battles: side by side, the move); in a
+                               # superspeedway pack the gaps swing by this much all the time (Talladega)
+
+    def attacks(self, cars: list, now, is_race: bool) -> list:
+        """Who is going for the car ahead in its class right now: the live class gap (liveClassIntervalS, the tower's)
+        over the last ATTACK_WINDOW_S against the same car ahead, in the class's seconds (gap_scale). The battles'
+        closing rate is per lap, so a car that gains 0.4 s out of the last corner was not seen until the next lap;
+        this sees it as it happens. Each chaser gets derived.attackGainS; the ones attacking are listed (cars ahead
+        first, then the chaser), the best placed first. A race only."""
+        hist = self.__dict__.setdefault("_atk", {})
+        if not is_race or now is None:
+            hist.clear()
+            return []
+        by_class: dict = {}
+        for c in cars:
+            if c.get("classPos") and c["classPos"] > 0:
+                by_class.setdefault(c.get("classId"), []).append(c)
+        out, seen = [], set()
+        for cid, cs in by_class.items():
+            cs.sort(key=lambda c: c["classPos"])
+            k = self.gap_scale(cid)
+            for a, b in zip(cs, cs[1:]):
+                d = b.get("derived") or {}
+                gap, laps = d.get("liveClassIntervalS"), d.get("classIntervalLaps")
+                if a.get("onPitRoad") or b.get("onPitRoad") or gap is None or laps or gap < 0:
+                    continue
+                seen.add(b["idx"])
+                h = hist.setdefault(b["idx"], [])
+                if h and h[-1][2] != a["idx"]:
+                    h.clear()                             # another car ahead now (a pass, a stop): start again
+                h.append((now, gap, a["idx"]))
+                while len(h) > 1 and now - h[1][0] >= self.ATTACK_WINDOW_S:
+                    h.pop(0)
+                if now - h[0][0] < self.ATTACK_WINDOW_S * 0.6:
+                    continue                              # not watched long enough to say
+                gained = h[0][1] - gap
+                d["attackGainS"] = round(gained, 3)
+                if self.ATTACK_MIN_GAP_S * k <= gap <= self.ATTACK_GAP_S * k and gained >= self.ATTACK_GAIN_S * k:
+                    out.append({"cars": [a["idx"], b["idx"]], "classId": cid, "gapS": round(gap, 3),
+                                "gainedS": round(gained, 3), "windowS": round(now - h[0][0], 1),
+                                "forClassPos": a["classPos"], "forPos": a.get("pos"), "scale": k})
+        for i in list(hist):
+            if i not in seen:
+                del hist[i]
+        return sorted(out, key=lambda x: (x["forClassPos"], x["forPos"] or 999))
+
     @staticmethod
     def sector_marks(cars: list) -> dict:
         """F1's sector colours, per class: for each car's latest time in each sector, "p" (purple)
@@ -4046,6 +4130,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             c["derived"]["gapScale"] = deriver.gap_scale(c.get("classId"))   # what "close" is in its class (class_scale)
         battles = deriver.battles(cars, ahead_of, is_race)
         deriver.battle_history(battles, now)
+        attacks = deriver.attacks(cars, now, is_race)
         tv = deriver.race_tv(cars, now, race if is_race else None, ahead_of, is_race)
         out["derived"] = {
             "caution": caution,
@@ -4064,6 +4149,8 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
             "compoundPace": deriver.compound_pace(cars),
             "nearby": deriver.nearby(cars, player_idx, track_length_m(session_msg), now),
             "battles": battles,
+            "attacks": attacks,
+            "throughTraffic": deriver.through_traffic(cars) if is_race else [],
             **tv,
             "lapChart": deriver.lap_chart(cars) if is_race else None,
             "classTraffic": deriver.class_traffic(cars, now),

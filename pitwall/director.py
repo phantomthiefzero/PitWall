@@ -147,6 +147,13 @@ BATTLE_HOT_MAX_S = 240.0
 BATTLE_HOT_FATIGUE = 0.08
 BATTLE_STAY = 30.0
 BATTLE_GRACE_S = 6.0
+# Going for it (normalize attacks: the live gap over the last seconds, not the closing rate per lap): the camera goes
+# there before the move, so the pass is live, not its aftermath. Measured with scripts/director_report.py.
+ATTACK_INTERRUPT_BY = 5.0    # an attack may cut into a story younger than SEGMENT_MIN_S if it beats it by this
+ATTACK_ONBOARD_S = 0.5
+ATTACK_TOP = 6               # an attack for a place further back is a story only inside a battle already listed       # (class seconds) an attack this close goes inside the chasing car
+SEEN_LIVE_S = 6.0            # a pass counts as shown live when the camera was on either car this long before it
+INCIDENT_FIGHT = 55.0        # a lone spin waits for a replay while a fight this good for a better place is on
 
 
 def group_kind(name: str | None) -> str:
@@ -173,6 +180,7 @@ class Director:
         self._replayed = set()
         self._last_replay_at = -1e9
         self._moments: dict = {}          # key -> feed event, the last few minutes of replayable moments
+        self._cam_hist: list = []         # (race time, car on camera) live, the last few minutes
         self.log = log
         self.rng = rng or random.Random()
         self.clock = clock
@@ -542,6 +550,13 @@ class Director:
         hold = self.hold_s * (0.75 + self.rng.random() * 0.5)
         leader = min((c for c in cars if c.get("pos")), key=lambda c: c["pos"], default=None)
         t_live = edge.get("tLive")
+        # what the camera showed live, by the race's clock: a pass it missed is replayed first (_replay_candidate)
+        if t_live is not None and self.current:
+            h = self._cam_hist
+            if not h or h[-1][1] != self.current.get("car") or t_live - h[-1][0] >= 1.0:
+                h.append((t_live, self.current.get("car")))
+            while h and t_live - h[0][0] > REPLAY_WINDOW_S + SEEN_LIVE_S:
+                h.pop(0)
         # 1. a fresh incident worth showing (one from minutes ago is not news:
         #    turning the director on must not replay the whole feed)
         for inc in reversed(recent_incidents):
@@ -553,13 +568,18 @@ class Director:
             if t_live is not None and inc.get("t") is not None and t_live - inc["t"] > FRESH_INCIDENT_S:
                 continue
             c = by.get(inc.get("idx"))
-            if c and self.segment and self.segment["key"].startswith("battle:") and c["idx"] in self.segment["cars"]:
+            if c and self.segment and self.segment["key"].startswith(("battle:", "attack:")) and c["idx"] in self.segment["cars"]:
                 # it happened in the battle on air: the camera is already on it, so no cut away to a lone trackside
                 # shot (Summit Point: three battles cut off at their climax this way); hold the shot through it
                 self._next_at = max(self._next_at, now + 6.0)
                 return
             if c and self._hot_on_air(cars, by, cars_msg, recent_incidents, t_live, now):
                 continue                          # a close battle on air keeps it: the spin elsewhere comes as a replay
+            if c and inc.get("what") != "contact" and any(
+                    (st.get("fp") or 99) < (c.get("classPos") or 99) and st["score"] >= INCIDENT_FIGHT
+                    for st in self._stories(cars, by, cars_msg, recent_incidents, t_live, now)):
+                continue                          # a lone car, while a fight for a better place is on: a replay later
+                                                  # (Summit Point: four spins took the camera through eleven passes)
             if c:
                 g = self._pick_group(groups, {"trackside": 5, "far": 2, "aerial": 1})
                 if g and self._do_cut(c, g, f"incident: {inc.get('what')}"):
@@ -641,9 +661,28 @@ class Director:
                 + (30 if fp == 1 else 18 if fp <= 3 else 8 if fp <= 6 else 0) + 5 * (len(cs) - 2) \
                 + self._pass_in.get(frozenset(b.get("cars") or []), 0)        # places just changed in it
             hot = gap < BATTLE_HOT_S or (gap < BATTLE_WARM_S and closing > 0.1)
-            out.append({"key": "battle:%s" % b.get("id"), "score": score, "cars": cs,
+            out.append({"key": "battle:%s" % b.get("id"), "score": score, "cars": cs, "fp": fp,
                         "why": "battle for %sP%s" % ("class " if multi else "", fp),
                         **({"hot": True, "max": BATTLE_HOT_MAX_S, "fatigue": BATTLE_HOT_FATIGUE} if hot else {})})
+        # someone going for the car ahead right now: inside a battle already listed, that battle is the story, made
+        # bigger and held; otherwise a story of its own (a car 1.2 s back with a run is not a battle yet)
+        for a in (cars_msg.get("derived") or {}).get("attacks") or []:
+            cs = [i for i in a.get("cars") or [] if i in by]
+            if len(cs) < 2 or start_cars & set(cs) or any(by[i].get("onPitRoad") for i in cs):
+                continue
+            k = a.get("scale") or 1.0
+            gap, gain, fp = (a.get("gapS") or 9.9) / k, (a.get("gainedS") or 0.0) / k, a.get("forClassPos") or 99
+            boost = 12 + 14 * min(1.0, gain / 0.4) + (6 if gap < 0.5 else 0)
+            hot = {"hot": True, "urgent": True, "attack": cs[-1], "fatigue": BATTLE_HOT_FATIGUE}
+            st = next((x for x in out if x["key"].startswith("battle:") and set(cs) <= set(x["cars"])), None)
+            if st is not None:
+                st.update(hot, score=st["score"] + boost, max=max(st.get("max", SEGMENT_MAX_S), BATTLE_HOT_MAX_S))
+                continue
+            if fp > ATTACK_TOP:
+                continue                              # further back, only as part of a battle already listed
+            out.append({"key": "attack:%s:%s" % (cs[0], cs[1]), "cars": cs, "max": 60.0, "fp": fp,
+                        "score": 40 + boost + (30 if fp == 1 else 18 if fp <= 3 else 8),
+                        "why": "going for %sP%s" % ("class " if multi else "", fp), **hot})
         # practice and qualifying: a push lap, more the better the place it is on for and the nearer the line;
         # followed to the end of the lap (it drops out of the list when the lap ends or goes off)
         is_race = bool((cars_msg.get("derived") or {}).get("isRace"))
@@ -693,6 +732,19 @@ class Director:
                         and (c.get("classPos") or 99) <= 10 and not c.get("onPitRoad") and not ahead.get("onPitRoad"):
                     out.append({"key": "closing:%s:%s" % (ahead["idx"], c["idx"]), "score": 34 + (15 if c["classPos"] <= 3 else 0),
                                 "cars": [ahead["idx"], c["idx"]], "why": "closing in for P%s" % ahead.get("classPos")})
+            # multiclass: a faster class's car about to go past slower cars (normalize throughTraffic), not only the
+            # leaders; a fight of its class going through them is that fight's story, made bigger (traffic decides it)
+            fights = {i: st for st in out if st["key"].startswith(("battle:", "attack:")) for i in st["cars"]}
+            for tr in (cars_msg.get("derived") or {}).get("throughTraffic") or []:
+                f, cp = tr.get("idx"), tr.get("classPos") or 99
+                slow = [i for i in tr.get("throughIdx") or [] if i in by]
+                if f not in by or not slow or cp > 10:
+                    continue
+                if f in fights:
+                    fights[f]["score"] += 12
+                    continue
+                out.append({"key": "through:%s" % f, "cars": [slow[0], f], "max": 25.0, "why": "through traffic",
+                            "score": 38 + (25 if cp == 1 else 15 if cp <= 3 else 6) + 4 * min(4, len(slow))})
         # a fastest lap just set: the car that did it
         for e in moments:
             if e.get("kind") == "fastest_lap" and e.get("idx") in by and t_live is not None and e.get("t") is not None \
@@ -715,21 +767,21 @@ class Director:
         return out
 
     def _hot_on_air(self, cars, by, cars_msg, moments, t_live, now) -> bool:
-        """The story on air is a close battle (BATTLE_HOT_S)."""
+        """The story on air is a close battle (BATTLE_HOT_S) or someone going for it (an attack)."""
         seg = self.segment
-        if not seg or not seg["key"].startswith("battle:"):
+        if not seg or not seg["key"].startswith(("battle:", "attack:")):
             return False
         stories = self._battle_continuity(self._stories(cars, by, cars_msg, moments, t_live, now), seg, now)
         return any(st.get("hot") and st["key"] == seg["key"] for st in stories)
 
     def _battle_continuity(self, stories, seg, now):
         """The battle on air under another id (its cars swapped places), or gone from the list for a moment."""
-        if not seg or not seg["key"].startswith("battle:"):
+        if not seg or not seg["key"].startswith(("battle:", "attack:")):
             return stories
         if any(st["key"] == seg["key"] for st in stories):
             self._battle_seen = (now, next(st for st in stories if st["key"] == seg["key"]))
             return stories
-        same = next((st for st in stories if st["key"].startswith("battle:") and len(set(st["cars"]) & set(seg["cars"])) >= 2), None)
+        same = next((st for st in stories if st["key"].startswith(("battle:", "attack:")) and len(set(st["cars"]) & set(seg["cars"])) >= 2), None)
         if same is not None:
             self._aired[same["key"]] = self._aired.pop(seg["key"], [])
             seg["key"] = same["key"]
@@ -760,7 +812,8 @@ class Director:
         if seg and best["key"] != seg["key"] and now - seg["start"] < SEGMENT_MIN_S:
             # a story still running keeps the air unless the new one is much bigger
             cur = next((st for st in stories if st["key"] == seg["key"]), None)
-            if cur is not None and best_s < cur["score"] - cur.get("fatigue", 0.4) * self._aired_s(cur["key"], now) + 25 + INTERRUPT_BY:
+            by_ = ATTACK_INTERRUPT_BY if cur is not None and best.get("urgent") and not cur.get("hot") else INTERRUPT_BY
+            if cur is not None and best_s < cur["score"] - cur.get("fatigue", 0.4) * self._aired_s(cur["key"], now) + 25 + by_:
                 best, on_air = cur, cur
         if not on_air:
             if seg:
@@ -834,10 +887,15 @@ class Director:
 
     def _move_coming(self, cars_msg, seg, now) -> bool:
         b = self._battle_of(cars_msg, seg.get("cars"))
-        if not b or now - seg.get("moveAt", -1e9) < 20.0:
+        if now - seg.get("moveAt", -1e9) < 20.0:
             return False
-        gaps, cl = b.get("gapsS") or [], [x for x in b.get("closingSPerLap") or [] if x is not None]
-        return bool(gaps) and min(gaps) < MOVE_GAP_S * (b.get("scale") or 1.0) and bool(cl) and max(cl) > 0
+        gaps, cl = (b or {}).get("gapsS") or [], [x for x in (b or {}).get("closingSPerLap") or [] if x is not None]
+        if b and bool(gaps) and min(gaps) < MOVE_GAP_S * (b.get("scale") or 1.0) and bool(cl) and max(cl) > 0:
+            return True
+        # going for it right now (normalize attacks) and already close: inside the chaser for the move
+        cs = set(seg.get("cars") or [])
+        return any(set(a.get("cars") or []) <= cs and (a.get("gapS") or 9.9) < ATTACK_ONBOARD_S * (a.get("scale") or 1.0)
+                   for a in (cars_msg.get("derived") or {}).get("attacks") or [])
 
     def _hold_close(self, cars_msg, now) -> bool:
         """The cars on air side by side: hold the shot 2 s more (HOLD_MAX_S at most per shot)."""
@@ -866,6 +924,15 @@ class Director:
         if t_live is not None and len(self._moments) > 40:
             self._moments = {k: e for k, e in self._moments.items() if e.get("t") is None or t_live - e["t"] < REPLAY_WINDOW_S * 2}
 
+    def _seen_live(self, e) -> bool:
+        """The camera was on the passer or the passed car (live) in the SEEN_LIVE_S before the pass was reported."""
+        pair = {e.get("idx")} | set((e.get("passedIdx") or [])[:1])
+        t, h = e.get("t"), self._cam_hist
+        if t is None:
+            return False
+        held = [c for ts, c in h if ts <= t - SEEN_LIVE_S][-1:]      # on air as the window opened, held into it
+        return any(c in pair for c in held) or any(t - SEEN_LIVE_S < ts <= t and c in pair for ts, c in h)
+
     def _replay_candidate(self, by, t_live, snum=None):
         best, best_s = None, REPLAY_MIN
         done = [self._moments[k] for k in self._replayed if k in self._moments]
@@ -888,7 +955,9 @@ class Director:
             elif k == "class_lead":
                 score = 80
             elif k == "pass":
-                score = 45 + (20 if (e.get("classPos") or 99) <= 3 else 0)
+                # a pass the camera missed comes first (to P10); one it showed live is only seen again near the front
+                cp = e.get("classPos") or 99
+                score = 45 + (20 if cp <= 3 else 10 if cp <= 10 else 0) + (-10 if self._seen_live(e) else 15)
             else:
                 continue
             score -= (t_live - e["t"]) / 10.0                 # the fresher the better
@@ -911,6 +980,8 @@ class Director:
         stories = self._stories(cars, by, cars_msg, moments, t_live, now)
         if self.segment and any(st.get("hot") and st["key"] == self.segment["key"] for st in stories):
             return False                              # a close battle on air is not left for a replay
+        if not caution and any(st.get("urgent") for st in stories):
+            return False                              # someone going for it right now: a pass may come any second
         if not caution:
             live = max((st["score"] - st.get("fatigue", 0.4) * self._aired_s(st["key"], now)
                         for st in stories), default=0.0)
