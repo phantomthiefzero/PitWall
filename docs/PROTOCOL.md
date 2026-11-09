@@ -278,6 +278,7 @@ session's peak combined g from the 360 Hz accelerometer samples.
 Per-car additions under `derived` (any car): `speedMs` (from lap-distance movement and the
 track length; iRacing does not give other cars' speed), `topSpeedBestMs`, `consistencyS`, `classPoleGapS`, `qualiLap` ({stretch, of, deltaPoleS, deltaOwnS, poleIdx, projectedS, projectedPos}: a push lap only), `tyreRuns` ([{compound, fromLap, laps}]),
 `gridPos`, `gridClassPos`, `posGained`, `classPosGained`, `lapsLedSeen`, `classLapsLedSeen`,
+`cleanStreak` (racing laps in a row with no incident signal, pit or reset; a caution or opening lap leaves it),
 `stintsSeen`, `stintStartLap`, `lapsThisStint`, `longestStintLaps`, `nextStopLapEst`,
 `compoundChanges`, `fastRepairsLeft`, `drivers` (team races: [{"name","timeS","laps","current",
 "sharePct" (share of the time driven since we connected),"evenPct" (100 / drivers),"next" (the driver

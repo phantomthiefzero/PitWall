@@ -328,12 +328,33 @@ Broadcast (broadcast/)
   graphic throwing on some state of the race once stopped every graphic after it and the loop itself, and OBS showed
   nothing until the source was reloaded. A new graphic goes into RENDERS. Errors go to the console once each.
 - Words are never cut off on air (fitWords, every render frame): a text box with text-overflow:ellipsis (found from
-  the style sheet, so a new graphic's boxes are covered) that is too narrow first gets smaller, to FIT_MIN 70%; a name
-  (.pn from nameHtml, and the card's and grid walk's names) that would need more than NAME_SHRINK loses words from the
+  the style sheet, so a new graphic's boxes are covered) that is too narrow first gets smaller, to FIT_MIN 70% (a box's --fit-min may allow less: the grid walk's grid .58); a name
+  (.pnm from nameHtml, never .pn, the panels' class; and the card's and grid walk's names) that would need more than NAME_SHRINK loses words from the
   front instead (nameShorter: "C. Andres Arteaga Narvaez" -> "C. Narvaez" -> "Narvaez"), "…" last. Refitted when the
   words change (MutationObserver), a box gets or changes width, the look changes or fonts load. Boxes are written
   through setH (compares with what was last written, never with innerHTML, which a fitted name changes). A new name
   goes through nameHtml; a new box comparing innerHTML would be rewritten every frame.
+- Arcade on air (Nov 2026, the user's "flashy, exciting, very animated"; overlay ARCADE FX CSS block and the AX code):
+  full-screen call-outs (axCall: one at a time from a queue of 3, chrome letters that drive in, brake, hold and whip
+  off, a band behind them) for the feed's own events only: a pass for position in a race (axEvent: "Overtake!",
+  "For the lead!"; top 10 of the class by default, gfx arcade.passTop; one per 10 s, the lead after 4 s) and a fastest
+  lap (one per class per 15 s), and in renderFlagCall the flag calls (green with five lights going out, final lap,
+  winner with confetti and checkered flags, a caution), which then replace the flag banner. #arcx lies over every
+  graphic, under the stinger, outside makeRoom; its canvas (axFx) runs only while something moves. Never with the
+  broadcast off, in Preview or Arrange, or Still; gfx arcade.callouts (producer, beside the announcer) turns them off.
+  The announcer adds "overtake" and "lead". Kerbs under every graphic run at the race's mood (data-ax: green, final,
+  caution, done; axMood), graphics pulse yellow under a caution and come on with a checkered-edge wipe (axIn). Tower:
+  gold streak for a place gained, red flicker for one lost, the leader's sweep, "On fire" for two passes in 150 s of
+  the feed (axHot), the class's fastest lap glowing. Battle: a heat meter in the class's seconds (b.scale), side by side
+  under a tenth, a spin when the two swap, "Swapped ×n" from battle_history. Driver card: "+n places" (posGained 3+)
+  and the clean-lap streak (normalize cleanStreak, 3+; "Streak over" shatters). A lap time counts up to the feed's value
+  (axRoll; the card's on a new car, the fastest-lap alert, the call-out): the last number shown is always the real one.
+  Show screens: the field's names race past behind the starting-soon / intermission / closing words, a chrome
+  countdown; the podium rises step by step under spotlights (rebuilt only when who stands on it changes: pdSig); the
+  grid walk's slot is stamped in. Stinger "Checkered tiles" (any look). tests: test_arcade_calls_the_big_moments_and_keeps_its_rules,
+  test_a_clean_streak_counts_racing_laps_without_an_incident. The podium sits clear of the tower (it was always off
+  air beside it: makeRoom had no room), and a drawn helmet is the same markup every time (no counter in its clip id:
+  setH and the podium compare it).
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.

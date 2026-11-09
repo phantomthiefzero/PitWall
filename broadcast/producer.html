@@ -1293,7 +1293,8 @@ header{padding:6px 12px}
   const CARD_SW = () => sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
     sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)");
-  const SOUND_SW = () => sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles and flags (Arcade look; in OBS tick Control audio via OBS)") +
+  const SOUND_SW = () => sw("sw-axcall", G("arcade.callouts", true), `data-gflag="arcade.callouts" data-gdef="1"`, "Arcade: big call-outs for passes, fastest laps and flags (full screen)") +
+    sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles, passes and flags (Arcade look; in OBS tick Control audio via OBS)") +
     sw("sw-voice", G("sound.man", false), `data-gflag="sound.man"`, "Announcer: a man's voice (off: a woman's)");
   // On air: one tile per graphic, grouped; the ⚙ beside a tile opens its settings in Setup
   const TILE_GROUPS = [["Always", ["tower", "banner", "card", "ticker", "replay"]], ["Race", ["battle", "faster", "h2h", "onboard", "map", "traffic", "strip", "pitstop", "closing", "pace", "strategy"]],
@@ -1906,7 +1907,7 @@ header{padding:6px 12px}
     $("aBanner").innerHTML = assetOpts("image/", th.bannerLogo);
     const st = th.stinger || {};
     $("sLogo").innerHTML = assetOpts("image/", st.logo);
-    const BUILT = [["wipe", "Wipe"], ["chevrons", "Chevrons"], ["checker", "Checkered flag"], ["panels", "Panels"], ["iris", "Iris"]];
+    const BUILT = [["wipe", "Wipe"], ["chevrons", "Chevrons"], ["checker", "Checkered flag"], ["panels", "Panels"], ["iris", "Iris"], ["tiles", "Checkered tiles"]];
     $("stBuilt").innerHTML = BUILT.map(([k, l]) => `<button data-ststyle="${k}" class="${!st.video && (st.style || "wipe") === k ? "on" : ""}">${l}</button>`).join("");
     const vids = S.assets.filter(a => a.type.startsWith("video/")), cuts = st.cuts || {};
     $("stOwn").innerHTML = vids.length ? vids.map(a => `<div><span>${esc(a.name)}</span><label class="note" style="flex:none">cut at <input type="number" data-stcut="${esc(a.name)}" min="0" max="6000" step="50" value="${cuts[a.name] ?? 500}" style="width:72px"> ms</label>` +
