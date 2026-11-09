@@ -336,7 +336,7 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 .sc-sp img{max-height:56px;max-width:220px;object-fit:contain;opacity:.9}
 
 /* ---------- podium: top three of a class ---------- */
-#podium{left:50%;top:150px;width:1100px;margin-left:-550px}
+#podium{left:50%;top:150px;width:1040px;margin-left:-500px}   /* clear of the tower (36-416 px), which is on with it at the finish */
 .pd{border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
 .pd-h{background:var(--head);color:var(--headText);display:flex;align-items:center;gap:14px;padding:12px 20px}
 .pd-h b{font:800 34px/1 var(--display);text-transform:uppercase;letter-spacing:.03em}
@@ -381,7 +381,7 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 #tyres{left:800px;bottom:190px}
 /* ---------- race TV extras: pit stop, closing in, race pace, strategy, lap chart ---------- */
 #pitstop{right:36px;bottom:470px;width:480px}
-#closing{left:50%;bottom:210px;width:820px;margin-left:-410px}
+#closing{left:50%;bottom:210px;width:900px;margin-left:-450px}
 #pace{right:36px;top:110px;width:470px}
 #strategy{right:36px;top:110px;width:600px}
 #lapchart{left:50%;top:110px;width:1400px;margin-left:-700px}
@@ -607,7 +607,7 @@ small{margin-right:4px}
 .gl-s i{width:5px;align-self:stretch;flex:none}
 .gl-s .p{width:24px;font:800 20px/1 var(--display);text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
 .gl-s .plate{min-width:34px;height:22px;font-size:15px}
-.gl-s em{font:600 14px/1 var(--display);font-style:normal;text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.gl-s em{--fit-min:.58;flex:1;font:600 14px/1 var(--display);font-style:normal;text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .gl-s.done{opacity:.45}
 .gl-s.now{background:color-mix(in srgb,var(--accent) 26%,var(--ink2));box-shadow:inset 0 0 0 2px var(--accent)}
 .gl-s.now .p{color:var(--accent)}
@@ -755,6 +755,154 @@ body.bc-off>*:not(script){visibility:hidden!important}
 :root[data-look="arcade"] .lk-hit .inner::after{content:"";position:absolute;inset:-10px;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 48%,rgba(255,243,176,.25) 54%,transparent 66%) no-repeat;background-size:250% 100%;mix-blend-mode:screen;animation:lkSweep .6s cubic-bezier(.3,0,.5,1) both}
 :root[data-look="arcade"] .layer .inner{position:relative}
 @keyframes lkSweep{from{background-position:120% 0}to{background-position:-30% 0}}
+/* ---------- ARCADE FX: the big moments full screen, the kerbs, the tower, the battle, the show (data-look="arcade").
+   #arcx is not a graphic: it lies over them all, under the stinger, and is never measured by makeRoom. Its call-outs
+   are axCall's; the edges' speed is the race's mood (data-ax: green, final, caution, done). Still (data-motion off)
+   has none of it; Calm keeps the call-outs and drops what loops. ---------- */
+#arcx{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;overflow:hidden}
+#axFx{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#axCall{position:absolute;left:0;right:0;top:330px;height:330px;display:none;--ax-c:var(--accent)}
+#axCall.run{display:block}
+#axCall .ax-band{position:absolute;left:-60px;right:-60px;top:24px;height:286px;transform:skewY(-3deg);
+  background:linear-gradient(90deg,transparent,rgba(6,8,13,.92) 12%,rgba(6,8,13,.92) 88%,transparent),repeating-linear-gradient(90deg,rgba(255,255,255,.05) 0 2px,transparent 2px 22px);
+  border-top:5px solid var(--ax-c);border-bottom:5px solid var(--ax-c);box-shadow:0 0 60px color-mix(in srgb,var(--ax-c) 40%,transparent);animation:axBand var(--ax-ms) cubic-bezier(.7,0,.2,1) both}
+#axCall .ax-t{position:absolute;left:0;right:0;top:36px;text-align:center;font:900 italic 150px/1.15 var(--num);text-transform:uppercase;letter-spacing:.01em;white-space:nowrap;
+  color:transparent;background:linear-gradient(180deg,#fff 0%,#fff 30%,var(--ax-c) 52%,color-mix(in srgb,var(--ax-c) 55%,#000) 70%,#fff 100%);-webkit-background-clip:text;background-clip:text;
+  -webkit-text-stroke:2px rgba(0,0,0,.55);filter:drop-shadow(0 8px 0 rgba(0,0,0,.55)) drop-shadow(0 0 26px color-mix(in srgb,var(--ax-c) 55%,transparent));
+  animation:axDrive var(--ax-ms) cubic-bezier(.2,.9,.2,1) both;padding:0 40px}
+#axCall .ax-s{position:absolute;left:0;right:0;top:226px;display:flex;align-items:center;justify-content:center;gap:12px;color:#fff;font:800 italic 40px/1.2 var(--num);text-transform:uppercase;
+  white-space:nowrap;text-shadow:0 3px 0 rgba(0,0,0,.7);animation:axSub var(--ax-ms) cubic-bezier(.2,.9,.2,1) both}
+#axCall .ax-s small{font:700 italic 26px var(--num);color:#c9d2e3;text-transform:uppercase}
+#axCall .ax-s b{color:var(--ax-c);font-weight:900}
+#axCall .ax-s .plate{font-size:24px;height:34px;min-width:48px;font-style:normal}
+#axCall.ax-lead,#axCall.ax-winner{--ax-c:#ffc21a}
+#axCall.ax-fl{--ax-c:var(--fl)}
+#axCall.ax-green{--ax-c:#1fe07a}
+#axCall.ax-final .ax-band{background:linear-gradient(90deg,transparent,rgba(6,8,13,.92) 12%,rgba(6,8,13,.92) 88%,transparent),var(--chkg) 0 0/38px 38px;background-blend-mode:normal}
+#axCall.ax-final{--ax-c:#ffffff}
+#axCall.ax-caution{--ax-c:#ffd400}
+#axCall.ax-caution .ax-band{background:linear-gradient(180deg,transparent 0 30px,rgba(6,8,13,.95) 30px calc(100% - 30px),transparent calc(100% - 30px)),repeating-linear-gradient(-45deg,#ffd400 0 30px,#111 30px 60px);border-color:#111;animation:axBand var(--ax-ms) cubic-bezier(.7,0,.2,1) both,axBounce .5s .1s cubic-bezier(.3,1.6,.5,1) both}
+#axCall.ax-winner .ax-t{font-size:170px;top:24px}
+#axCall.ax-winner .ax-s{font-size:50px;top:228px}
+@keyframes axBand{0%{clip-path:inset(0 0 0 100%)}10%{clip-path:inset(0)}86%{clip-path:inset(0)}100%{clip-path:inset(0 100% 0 0)}}
+@keyframes axDrive{0%{transform:translateX(1500px) skewX(-30deg);filter:blur(10px);opacity:0}
+  11%{transform:translateX(-60px) skewX(-4deg);filter:blur(0);opacity:1}16%{transform:translateX(16px) skewX(-12deg);filter:blur(0)}21%,84%{transform:translateX(0) skewX(-10deg);filter:blur(0);opacity:1}
+  100%{transform:translateX(-1800px) skewX(24deg);filter:blur(12px);opacity:0}}
+@keyframes axSub{0%,12%{transform:translateX(-420px) skewX(20deg);opacity:0}24%,82%{transform:none;opacity:1}96%,100%{transform:translateX(500px);opacity:0}}
+@keyframes axBounce{0%{transform:skewY(-3deg) scaleY(.2)}100%{transform:skewY(-3deg) scaleY(1)}}
+/* five start lights going out: the green */
+.ax-lights{position:absolute;left:50%;top:60px;margin-left:-260px;width:520px;height:110px;display:flex;justify-content:space-between;align-items:center;padding:0 22px;box-sizing:border-box;
+  background:#07090d;border:3px solid #2b3549;border-radius:14px;opacity:0;transform:skewX(-8deg)}
+.ax-lights i{width:70px;height:70px;border-radius:50%;background:#2a0b0b;box-shadow:inset 0 -6px 12px rgba(0,0,0,.6)}
+.ax-lights.run{animation:axLightsBox 2.6s ease both}
+.ax-lights.run i{animation:axLampOn .05s both,axLampGo 1.2s 1.25s both}
+.ax-lights.run i:nth-child(2){animation-delay:.18s,1.25s}.ax-lights.run i:nth-child(3){animation-delay:.36s,1.25s}
+.ax-lights.run i:nth-child(4){animation-delay:.54s,1.25s}.ax-lights.run i:nth-child(5){animation-delay:.72s,1.25s}
+@keyframes axLightsBox{0%{opacity:0;transform:translateY(-40px) skewX(-8deg)}8%,88%{opacity:1;transform:skewX(-8deg)}100%{opacity:0;transform:skewX(-8deg)}}
+@keyframes axLampOn{to{background:#ff1e1e;box-shadow:0 0 28px #ff1e1e,inset 0 -6px 12px rgba(0,0,0,.3)}}
+@keyframes axLampGo{0%{background:#2a0b0b;box-shadow:none}25%,70%{background:#1fe07a;box-shadow:0 0 34px #1fe07a}100%{background:#1fe07a;box-shadow:0 0 34px #1fe07a}}
+/* the kerbs: a red and white stripe under every graphic, running at the race's speed */
+:root[data-look="arcade"]{--ax-kerb:1.4s;--ax-k1:#e10600;--ax-k2:#ffffff}
+:root[data-look="arcade"][data-ax="final"]{--ax-kerb:.45s}
+:root[data-look="arcade"][data-ax="caution"]{--ax-kerb:3.2s;--ax-k1:#ffd400;--ax-k2:#111111}
+:root[data-look="arcade"][data-ax="done"]{--ax-k1:#f5f5f5;--ax-k2:#0b0d12}
+:root[data-look="arcade"]:not([data-motion="off"]) .layer:not(#stinger):not(#scene):not(#strip):not(#map):not(#pip):not(#sponsors):not(#gboard) > .inner::before{content:"";position:absolute;left:0;right:0;bottom:-7px;height:5px;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(90deg,var(--ax-k1) 0 18px,var(--ax-k2) 18px 36px);background-size:36px 100%;transform:skewX(-30deg)}
+:root[data-look="arcade"][data-motion="on"] .layer > .inner::before{animation:axKerb var(--ax-kerb) linear infinite}
+@keyframes axKerb{to{background-position:36px 0}}
+/* under a caution every graphic's edge pulses yellow */
+:root[data-look="arcade"][data-motion="on"][data-ax="caution"] .layer.on:not(#stinger):not(#scene):not(#strip) > .inner{animation:axCau 1.6s ease-in-out infinite}
+@keyframes axCau{0%,100%{filter:drop-shadow(0 0 0 rgba(255,212,0,0))}50%{filter:drop-shadow(0 0 14px rgba(255,212,0,.75))}}
+/* coming on air: a diagonal wipe with a checkered edge (the card and the battle keep their own) */
+:root[data-look="arcade"]:not([data-motion="off"]) .layer.on:not(#stinger):not(#scene):not(#card):not(#battle):not(#gwalk) > .inner{animation:axIn .5s cubic-bezier(.7,0,.2,1) backwards}
+:root[data-look="arcade"][data-motion="on"][data-ax="caution"] .layer.on:not(#stinger):not(#scene):not(#strip):not(#card):not(#battle):not(#gwalk) > .inner{animation:axIn .5s cubic-bezier(.7,0,.2,1) backwards,axCau 1.6s .5s ease-in-out infinite}
+@keyframes axIn{0%{clip-path:polygon(0 -80px,0 -80px,-120px calc(100% + 80px),-120px calc(100% + 80px));filter:brightness(2.4)}
+  100%{clip-path:polygon(0 -80px,calc(100% + 200px) -80px,calc(100% + 80px) calc(100% + 80px),-120px calc(100% + 80px));filter:none}}
+/* the tower: places gained streak up in gold, lost ones flicker red; the leader shines; a car on a run is on fire */
+.row .fire-t{display:none}
+:root[data-look="arcade"] .row.fire .fire-t{display:inline-block;flex:none;padding:3px 6px 2px;font:900 italic 12px/1 var(--num);letter-spacing:.04em;color:#1a0500;text-transform:uppercase;
+  background:linear-gradient(90deg,#ff3b00,#ffb800,#ffe36b,#ff3b00);background-size:300% 100%;transform:skewX(-12deg)}
+:root[data-look="arcade"][data-motion="on"] .row.fire .fire-t{animation:axFire 1s linear infinite}
+@keyframes axFire{to{background-position:-150% 0}}
+:root[data-look="arcade"][data-motion="on"] .row.lead::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(100deg,transparent 35%,rgba(255,236,150,.26) 48%,rgba(255,255,255,.1) 52%,transparent 64%) no-repeat;background-size:300% 100%;animation:axLead 3.4s linear infinite}
+@keyframes axLead{from{background-position:130% 0}to{background-position:-40% 0}}
+:root[data-look="arcade"] .row.flh{box-shadow:inset -3px 0 0 var(--fl)}
+:root[data-look="arcade"][data-motion="on"] .row.flh .nm{animation:axFlGlow 2.2s ease-in-out infinite}
+@keyframes axFlGlow{50%{text-shadow:0 0 12px var(--fl),0 0 2px var(--fl)}}
+:root[data-look="arcade"]:not([data-motion="off"]) .row.mv-up::before{content:"";position:absolute;left:0;right:0;top:100%;height:70px;pointer-events:none;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 55%,transparent),transparent);animation:axStreak .9s ease-out both}
+:root[data-look="arcade"]:not([data-motion="off"]) .row.mv-up .pos{animation:axPosUp .9s cubic-bezier(.2,1.6,.4,1)}
+:root[data-look="arcade"]:not([data-motion="off"]) .row.mv-dn{animation:axDn .8s steps(1)}
+@keyframes axStreak{from{opacity:1;transform:scaleY(1)}to{opacity:0;transform:scaleY(.2);transform-origin:top}}
+@keyframes axPosUp{0%{transform:scale(1.9);color:#fff;text-shadow:0 0 18px var(--accent)}100%{transform:none}}
+@keyframes axDn{0%,30%,60%{box-shadow:inset 0 0 0 2px #ff2a2a,0 0 16px rgba(255,42,42,.6)}15%,45%,100%{box-shadow:none}}
+/* the battle: a meter filling as the gap closes, side by side, places swapped */
+.bt-gap .ax-meter,.bt-gap .ax-swaps,.bt-gap .ax-sbs{display:none}
+:root[data-look="arcade"] .bt-gap .ax-meter{display:block;width:150px;height:10px;margin-top:10px;background:rgba(255,255,255,.12);transform:skewX(-14deg);overflow:hidden}
+:root[data-look="arcade"] .bt-gap .ax-meter i{display:block;height:100%;width:calc(var(--f,0) * 100%);background:var(--heat,#ffd400);box-shadow:0 0 12px var(--heat,#ffd400);transition:width .6s ease,background .6s}
+:root[data-look="arcade"] #battle[data-heat="warm"]{--heat:#ff8a00}
+:root[data-look="arcade"] #battle[data-heat="hot"]{--heat:#ff2a2a}
+:root[data-look="arcade"][data-motion="on"] #battle[data-heat="hot"] .ax-meter i{animation:axHeat .5s ease-in-out infinite alternate}
+@keyframes axHeat{to{filter:brightness(1.6)}}
+:root[data-look="arcade"] .bt-gap .ax-swaps{display:block;margin-top:8px;font:900 italic 15px/1 var(--num);color:#19d9ff;letter-spacing:.06em;text-transform:uppercase}
+:root[data-look="arcade"] #battle.sbs .bt-gap .ax-sbs{display:block;margin-top:8px;padding:4px 8px 3px;background:#ff2a2a;color:#fff;font:900 italic 16px/1 var(--num);text-transform:uppercase;transform:skewX(-12deg)}
+:root[data-look="arcade"][data-motion="on"] #battle.sbs .bt-gap .ax-sbs{animation:mBlink .6s steps(1) infinite}
+:root[data-look="arcade"][data-motion="on"] #battle.sbs .bt-cars{animation:axShake .32s linear infinite}
+@keyframes axShake{0%,100%{translate:0 0}25%{translate:2px -1px}50%{translate:-2px 1px}75%{translate:1px 1px}}
+:root[data-look="arcade"]:not([data-motion="off"]) .bt-cars.ax-swap .bt-car{animation:axSpin .75s cubic-bezier(.3,1.3,.5,1)}
+@keyframes axSpin{0%{transform:perspective(600px) rotateY(180deg);filter:brightness(2)}100%{transform:none;filter:none}}
+/* the driver card: places made up and a clean-lap streak, which shatters when it ends */
+#card .ax-badges{display:none}
+:root[data-look="arcade"] #card .ax-badges{display:flex;position:absolute;right:70px;top:-34px;gap:8px;z-index:3}
+.ax-badges em{font:900 italic 20px/1 var(--num);padding:5px 10px 4px;transform:skewX(-12deg);font-style:italic;text-transform:uppercase;white-space:nowrap}
+.ax-badges .up{color:#06120a;background:linear-gradient(180deg,#9dffbf,#1fe07a)}
+.ax-badges .st{color:#000;background:linear-gradient(180deg,#fff3b0,#ffc21a)}
+.ax-badges .gone{color:#fff;background:#ff2a2a}
+:root[data-look="arcade"]:not([data-motion="off"]) .ax-badges .gone{animation:axShatter 2.2s ease-in both}
+:root[data-look="arcade"]:not([data-motion="off"]) .ax-badges em.new{animation:axStamp .5s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes axShatter{0%,45%{clip-path:none;opacity:1;transform:skewX(-12deg)}55%{clip-path:polygon(0 0,40% 0,30% 50%,45% 100%,0 100%,0 0,60% 0,100% 0,100% 100%,55% 100%,70% 45%);transform:skewX(-12deg) scale(1.08);filter:brightness(1.8)}
+  100%{clip-path:polygon(0 0,40% 0,30% 50%,45% 100%,0 100%,0 0,60% 0,100% 0,100% 100%,55% 100%,70% 45%);opacity:0;transform:skewX(-12deg) translateY(30px) rotate(6deg)}}
+@keyframes axStamp{0%{transform:skewX(-12deg) scale(2.4);opacity:0;filter:blur(4px)}100%{transform:skewX(-12deg);opacity:1;filter:none}}
+/* show screens: the field racing past on a diagonal, the countdown in chrome; the podium rising under spotlights;
+   the grid walk's slot stamped in piece by piece */
+.sc-ax{display:none}
+:root[data-look="arcade"] #scene .sc-ax{display:block;position:absolute;inset:-200px;transform:rotate(-12deg);opacity:.16;pointer-events:none;overflow:hidden}
+.sc-ax div{white-space:nowrap;font:900 italic 64px/1.25 var(--num);text-transform:uppercase;color:#fff;-webkit-text-stroke:1px rgba(255,255,255,.3)}
+.sc-ax div:nth-child(odd){color:transparent}
+:root[data-look="arcade"]:not([data-motion="off"]) .sc-ax div{animation:axCrawl 28s linear infinite}
+:root[data-look="arcade"]:not([data-motion="off"]) .sc-ax div:nth-child(even){animation-direction:reverse;animation-duration:34s}
+@keyframes axCrawl{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+:root[data-look="arcade"] .sc-cd{font:900 italic 150px/1 var(--num);color:transparent;background:var(--chrome);-webkit-background-clip:text;background-clip:text;padding-right:8px;filter:drop-shadow(0 6px 0 rgba(0,0,0,.5))}
+:root[data-look="arcade"] .sc-cd small{display:block;margin:0 0 8px;color:var(--accent);-webkit-text-fill-color:var(--accent);font:900 italic 30px/1 var(--num);letter-spacing:.16em}
+:root[data-look="arcade"] .pd-b{position:relative;overflow:hidden}
+:root[data-look="arcade"][data-motion="on"] .pd-b::before,:root[data-look="arcade"][data-motion="on"] .pd-b::after{content:"";position:absolute;top:-40%;width:420px;height:180%;pointer-events:none;z-index:0;
+  background:conic-gradient(from 168deg at 50% 0,transparent 0deg,rgba(255,243,176,.22) 12deg,transparent 24deg);animation:axSpot 5s ease-in-out infinite alternate}
+:root[data-look="arcade"][data-motion="on"] .pd-b::before{left:5%}
+:root[data-look="arcade"][data-motion="on"] .pd-b::after{right:5%;animation-delay:-2.5s}
+@keyframes axSpot{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}
+:root[data-look="arcade"] .pd-s{position:relative;z-index:1}
+:root[data-look="arcade"] .pd-s .step{font:900 italic 72px/1 var(--num);color:transparent;background:var(--chrome),var(--ink2);-webkit-background-clip:text,border-box;background-clip:text,border-box}
+:root[data-look="arcade"]:not([data-motion="off"]) #podium.on .pd-s .step{transform-origin:50% 100%;animation:axRise .8s cubic-bezier(.2,1.2,.4,1) both}
+:root[data-look="arcade"]:not([data-motion="off"]) #podium.on .pd-s .nm,:root[data-look="arcade"]:not([data-motion="off"]) #podium.on .pd-s .ph{animation:axSlam .55s cubic-bezier(.2,1.5,.4,1) both}
+:root[data-look="arcade"] #podium.on .pd-s.p3 .step{animation-delay:.1s}:root[data-look="arcade"] #podium.on .pd-s.p2 .step{animation-delay:.5s}:root[data-look="arcade"] #podium.on .pd-s.p1 .step{animation-delay:.9s}
+:root[data-look="arcade"] #podium.on .pd-s.p3 :is(.nm,.ph){animation-delay:.6s}:root[data-look="arcade"] #podium.on .pd-s.p2 :is(.nm,.ph){animation-delay:1s}:root[data-look="arcade"] #podium.on .pd-s.p1 :is(.nm,.ph){animation-delay:1.5s}
+@keyframes axRise{from{transform:scaleY(0)}to{transform:none}}
+@keyframes axSlam{0%{transform:translateY(-140px) scale(1.8);opacity:0;filter:blur(6px)}70%{transform:translateY(6px) scale(.97);opacity:1;filter:none}100%{transform:none}}
+:root[data-look="arcade"]:not([data-motion="off"]) #gwalk.gw-next :is(.gw-plate,#gwPlate){animation:axPop .45s .35s cubic-bezier(.2,1.6,.4,1) both}
+:root[data-look="arcade"]:not([data-motion="off"]) #gwalk.gw-next #gwLv{animation:lkLv .7s .15s cubic-bezier(.15,.9,.25,1) both}
+:root[data-look="arcade"]:not([data-motion="off"]) #gwalk.gw-next .gw-stats > div{animation:axPop .45s cubic-bezier(.2,1.6,.4,1) both}
+:root[data-look="arcade"]:not([data-motion="off"]) #gwalk.gw-next .gw-stats > div:nth-child(1){animation-delay:.55s}
+:root[data-look="arcade"]:not([data-motion="off"]) #gwalk.gw-next .gw-stats > div:nth-child(2){animation-delay:.7s}
+:root[data-look="arcade"]:not([data-motion="off"]) #gwalk.gw-next .gw-stats > div:nth-child(3){animation-delay:.85s}
+:root[data-look="arcade"]:not([data-motion="off"]) #gwalk.gw-next .gw-stats > div:nth-child(n+4){animation-delay:1s}
+@keyframes axPop{0%{transform:scale(2.4);opacity:0;filter:blur(4px)}100%{transform:none;opacity:1;filter:none}}
+/* a stinger of checkered tiles flipping over (any look; Arcade's own) */
+#stinger.run[data-style="tiles"] .fx{display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(7,1fr)}
+#stinger.run[data-style="tiles"] .fx>i{position:static;background:var(--head);transform:perspective(500px) rotateY(90deg);animation:stTile var(--dur) cubic-bezier(.6,0,.4,1) both}
+#stinger.run[data-style="tiles"] .fx>i.k{background:color-mix(in srgb,var(--head) 55%,#ffffff)}
+#stinger.run[data-style="tiles"] .fx>i.a{background:var(--accent)}
+@keyframes stTile{0%{transform:perspective(500px) rotateY(90deg)}30%,70%{transform:none}100%{transform:perspective(500px) rotateY(-90deg)}}
 /* ---------- MOTION: every look moves in its own way (theme.motion: on | calm | off; data-preset picks the style) ----------
    Entrances are clip-path, opacity and filter only, so a graphic's measured box never changes while it comes in
    (makeRoom measures it). One-shot classes are restarted from script: lk-hit (something new on a graphic already up),
@@ -876,7 +1024,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       <div class="stats" id="cdStats"></div>
     </div>
     <div class="hel" id="cdHel"></div>
-  </div></div></section>
+  </div><div class="ax-badges" id="cdAx"></div></div></section>
 
   <section class="layer" id="traffic"><div class="inner"><div class="tr"><div class="tr-h"><span class="ic"></span>Traffic ahead</div><div id="trRows"></div></div></div></section>
   <section class="layer" id="fastlap"><div class="inner" id="flaBox"></div></section>
@@ -894,7 +1042,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   <section class="layer" id="podium"><div class="inner" id="pdBox"></div></section>
   <section class="layer" id="strap"><div class="inner" id="spBox"></div></section>
   <section class="layer" id="sponsors"><div class="inner sb" id="sbBox"></div></section>
-  <section class="layer" id="scene"><div class="sc" id="scBox"><div class="sc-own" id="scOwn"></div><div class="sc-fx"><i class="g1"></i><i class="g2"></i><b></b><u></u></div><div class="sc-in"><div class="sc-top"><img id="scLogo" class="hide" alt=""><div class="sc-k" id="scKick"></div></div>
+  <section class="layer" id="scene"><div class="sc" id="scBox"><div class="sc-own" id="scOwn"></div><div class="sc-fx"><i class="g1"></i><i class="g2"></i><b></b><u></u><div class="sc-ax" id="scAx"></div></div><div class="sc-in"><div class="sc-top"><img id="scLogo" class="hide" alt=""><div class="sc-k" id="scKick"></div></div>
     <h1 id="scTitle"></h1><div class="sc-sub" id="scSub"></div><div class="sc-cd" id="scCd"></div><div class="sc-body" id="scBody"></div></div><div class="sc-sp" id="scSp"></div></div></section>
   <section class="layer" id="penalty"><div class="inner" id="penBox"></div></section>
   <section class="layer" id="flagcall"><div class="inner"><div class="fc"><i class="fc-flag" id="fcFlag"></i><div class="fc-txt"><b id="fcTitle"></b><span id="fcSub"></span></div></div></div></section>
@@ -941,6 +1089,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     <div class="gl-win"><div class="gl-slots" id="glSlots"></div></div>
   </div></div></section>
 
+  <section id="arcx" aria-hidden="true"><canvas id="axFx" width="1920" height="1080"></canvas><div class="ax-lights" id="axLights"><i></i><i></i><i></i><i></i><i></i></div><div id="axCall"></div></section>
   <section class="layer on" id="stinger"><div class="bar b1"></div><div class="bar b2"></div><div class="fx" id="stFx"></div><div class="mark" id="stMark"></div></section>
 
   <div id="setup" class="hide">This overlay needs the relay's view token in its address: add <code>?token=…</code> (and <code>&amp;relay=ws://127.0.0.1:8765</code> when opened from a file).</div>
@@ -1012,7 +1161,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   }
   // ---------------------------------------------------------------- words are never cut off
   // A name or a line in a box too narrow for it (the looks' fonts differ in width: Arcade's is the widest) first gets
-  // smaller, down to FIT_MIN of its size; a name (.pn, from nameHtml) that would need more than NAME_SHRINK loses words
+  // smaller, down to FIT_MIN of its size; a name (.pnm, from nameHtml) that would need more than NAME_SHRINK loses words
   // from the front instead (the first of several surnames, then the initial or first name: "C. Andres Arteaga Narvaez"
   // -> "C. Narvaez" -> "Narvaez"), so the family name stays whole and readable. "…" is the last resort. The boxes are every rule with text-overflow:ellipsis
   // (read from the style sheet, so a new graphic's boxes are found too); a box is fitted again when its words change
@@ -1056,10 +1205,19 @@ body.bc-off>*:not(script){visibility:hidden!important}
       if (!w) continue;                                  // not on screen yet: fitted when it gets a width
       let need = w / Math.max(1, b.scrollWidth);
       if (need >= 0.995) continue;
-      const src = b.innerHTML, name = !!(b.closest(".pn") || b.querySelector(".pn"));
+      const src = b.innerHTML, name = !!(b.closest(".pnm") || b.querySelector(".pnm"));
       while (name && need < NAME_SHRINK && dropWord(b)) need = w / Math.max(1, b.scrollWidth);
       if (b.innerHTML !== src) { b._fitSrc = src; b._fitOut = b.innerHTML; }
-      if (need < 0.995) b.style.fontSize = (parseFloat(getComputedStyle(b).fontSize) * Math.max(FIT_MIN, need * 0.98)).toFixed(1) + "px";
+      if (need < 0.995) {
+        const cs = getComputedStyle(b), min = parseFloat(cs.getPropertyValue("--fit-min")) || FIT_MIN, base = parseFloat(cs.fontSize);  // a box may allow smaller
+        let k = Math.max(min, need * 0.98);
+        for (let i = 0; i < 3; i++) {                    // letters do not scale exactly with the size: measured again
+          b.style.fontSize = (base * k).toFixed(1) + "px";
+          if (k <= min || b.scrollWidth <= w + 0.5) break;
+          k = Math.max(min, k * w / b.scrollWidth * 0.98);
+        }
+      }
+      b._fitW = b.clientWidth;                           // a box that wraps its words is narrower now: not a new width
     }
     fitObs.takeRecords();                                // our own changes are not new words
   }
@@ -1076,7 +1234,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
   }
   // the same in the page: the longest name in the box first
   function dropWord(b) {
-    const pns = (b.closest(".pn") ? [b.closest(".pn")] : [...b.querySelectorAll(".pn")]).sort((x, y) => y.textContent.length - x.textContent.length);
+    const pns = (b.closest(".pnm") ? [b.closest(".pnm")] : [...b.querySelectorAll(".pnm")]).sort((x, y) => y.textContent.length - x.textContent.length);
     for (const pn of pns) {
       const tw = document.createTreeWalker(pn, NodeFilter.SHOW_TEXT), nodes = [];
       for (let n; (n = tw.nextNode());) if (n.nodeValue.trim()) nodes.push(n);
@@ -1279,10 +1437,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const p = String(n || "").trim().split(/\s+/);
     const first = p.length > 1 ? p[0] : "", last = p.length > 1 ? p.slice(1).join(" ") : (p[0] || "");
     style = style || T("names", "initial");
-    // in a .pn so fitWords can shorten a name that does not fit, and only the name
-    if (style === "full") return `<span class="pn">${esc(n || "")}</span>`;
-    if (style === "last" || !first) return `<span class="pn">${esc(last)}</span>`;
-    return `<span class="pn"><small>${esc(first[0])}.</small>${esc(last)}</span>`;
+    // in a .pnm (not .pn, the panels' class) so fitWords can shorten a name that does not fit, and only the name
+    if (style === "full") return `<span class="pnm">${esc(n || "")}</span>`;
+    if (style === "last" || !first) return `<span class="pnm">${esc(last)}</span>`;
+    return `<span class="pnm"><small>${esc(first[0])}.</small>${esc(last)}</span>`;
   }
   function sessionRow() {
     const st = S.state; if (!st || !S.session) return null;
@@ -1510,9 +1668,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // The driver's picture: a photo the producer added for this driver (gfx.photos by iRacing user id), else their
   // helmet on their race suit, drawn in their own iRacing colours (HelmetDesignStr, SuitDesignStr).
   const designCols = s => { const a = String(s || "").split(","); return { pat: +a[0] || 0, c: [1, 2, 3].map(i => "#" + String(a[i] || "888888").split(/[;.]/)[0].slice(0, 6)) }; };
-  let svgN = 0;
   function helmetSvg(design, size) {
-    const p = designCols(design), [c1, c2, c3] = p.c, id = "hm" + (++svgN);
+    // the clip's id comes from the design, so the same helmet is the same markup (setH and the podium compare it)
+    const p = designCols(design), [c1, c2, c3] = p.c, id = "hm" + [...String(design) + size].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7).toString(36);
     return `<svg viewBox="0 0 100 100" width="${size}" height="${size}"><defs><clipPath id="${id}"><path d="M14 62 C10 30 34 10 58 12 C82 14 94 34 92 56 L90 74 L60 80 L22 80 Z"/></clipPath></defs>` +
       `<g clip-path="url(#${id})"><rect width="100" height="100" fill="${c1}"/><path d="M0 ${40 + p.pat % 4 * 4} Q50 ${20 + p.pat % 3 * 6} 100 36 L100 48 Q50 ${32 + p.pat % 3 * 6} 0 ${52 + p.pat % 4 * 4}Z" fill="${c2}"/><circle cx="${30 + p.pat % 5 * 5}" cy="30" r="${8 + p.pat % 4 * 2}" fill="${c3}"/></g>` +
       `<path d="M14 62 C10 30 34 10 58 12 C82 14 94 34 92 56 L90 74 L60 80 L22 80 Z" fill="none" stroke="rgba(0,0,0,.55)" stroke-width="2"/><path d="M48 40 L92 42 L92 58 L52 60 Z" fill="#0b0f16"/><path d="M54 44 L90 45" stroke="rgba(255,255,255,.35)" stroke-width="2"/></svg>`;
@@ -1644,7 +1802,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const cut = Number(G("tower.cut", 0)) || 0;
     const { rows, byClass } = towerRows();
     const multiC = multi(), cam = camIdx(), now = performance.now();
-    const fl = fastestByClass();
+    const fl = fastestByClass(), hot = axHot();
     const body = $("twBody");
     const rowH = Number(T("rowHeight", 34)) || 34;
     const seen = new Set();
@@ -1655,7 +1813,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
       if (!el) {
         el = document.createElement("div"); el.dataset.k = key;
         el.className = "row" + (r.sec ? " sec" : r.sep ? " sep" : "");
-        if (!r.sec && !r.sep) el.innerHTML = '<div class="pos"></div><span class="pl"></span><div class="nm"></div><span class="tag hide">PIT</span><span class="fl hide"></span><span class="mv"></span><div class="val"></div>';
+        if (!r.sec && !r.sep) el.innerHTML = '<div class="pos"></div><span class="pl"></span><div class="nm"></div><span class="fire-t">On fire</span><span class="tag hide">PIT</span><span class="fl hide"></span><span class="mv"></span><div class="val"></div>';
         el.style.transform = `translateY(${y}px)`;
         body.appendChild(el);
       }
@@ -1674,7 +1832,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
       setH(el.querySelector(".pl"), plate(r));
       setH(el.querySelector(".nm"), nameHtml(r.name));
       el.querySelector(".tag").classList.toggle("hide", !r.onPitRoad);
-      el.querySelector(".fl").classList.toggle("hide", !(fl[r.classId] && fl[r.classId].idx === r.idx));
+      const flh = !!(fl[r.classId] && fl[r.classId].idx === r.idx);
+      el.querySelector(".fl").classList.toggle("hide", !flh);
+      el.classList.toggle("flh", flh);
+      el.classList.toggle("lead", p === 1);
+      el.classList.toggle("fire", (hot[r.idx] || 0) >= 2);
       const mvEl = el.querySelector(".mv"); mvEl.className = "mv" + (mv ? (mv.up ? " up" : " dn") : ""); mvEl.textContent = mv ? (mv.up ? "▲" : "▼") : "";
       const vEl = el.querySelector(".val");
       if (mode === "sectors") setH(vEl, sectorBars(r));
@@ -1734,7 +1896,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const tag = c => c && c.className ? `<span class="cl" style="background:${css(c.classColor) || "var(--muted)"};color:${inkOn(css(c.classColor))}">${esc(c.className)}</span>` : "";
     FLA.html = `<div class="fla"><div class="bar"></div><div class="m"><div class="h">Fastest lap${m ? tag(c) : ""}</div><div class="w">${plate(c)}<span class="nm">${nameHtml(c.name)}</span></div></div>` +
       `<div class="t"><b>${fmt.lap(e.lapS)}</b>${gain != null && gain > 0 ? `<small>${gain.toFixed(3)} s quicker</small>` : e.lapNum ? `<small>lap ${e.lapNum}</small>` : ""}</div></div>`;
-    setH($("flaBox"), FLA.html); hit($("fastlap"));
+    setH($("flaBox"), FLA.html); hit($("fastlap")); axRoll($("flaBox").querySelector(".t b"), 250);
   }
 
   // ---------------------------------------------------------------- race control: one car's flags
@@ -2036,6 +2198,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
         return `<div class="r"><span class="p">${esc(by ? c.classPos : c.pos)}</span>${plate(c)}<span class="n">${nameHtml(c.name)}</span><span class="v">${race && !fin ? "" : fmt.lap(c.bestLapS)}</span></div>`; }).join("")}</div>`).join("");
     }
     setH($("scBody"), body);
+    // Arcade: the field races past behind the words, like a game's attract mode
+    const names = document.documentElement.dataset.look === "arcade" ? allCars().filter(c => c.pos > 0 || (c.name && c.surface !== "not_in_world")).map(c => esc(c.name || "")).filter(Boolean) : [];
+    const line = k => { const L = names.slice(k % names.length).concat(names.slice(0, k % names.length)).join(" &nbsp;◆&nbsp; "); return `<div>${L} &nbsp;◆&nbsp; ${L} &nbsp;◆&nbsp; </div>`; };
+    setH($("scAx"), names.length ? [0, 3, 6, 9, 12, 15, 18, 21].map(line).join("") : "");
   }
 
   // ---------------------------------------------------------------- podium
@@ -2057,11 +2223,14 @@ body.bc-off>*:not(script){visibility:hidden!important}
       if (p === 1) return fin ? "Winner" : "Leader";
       return by ? (d.classGapLaps >= 1 ? fmt.laps(d.classGapLaps) : fmt.gap(d.liveClassGapS)) : (d.gapLaps >= 1 ? fmt.laps(d.gapLaps) : fmt.gap(d.liveGapS)); };
     const step = (c, k) => !c ? "<div></div>" : `<div class="pd-s p${k}"><div class="ph">${photoHtml(c) || helmetHtml(c, 120)}</div><div class="nm">${nameHtml(c.name)}</div>` +
-      `<div class="x">${plate(c)}<span>${esc(val(c))}</span></div><div class="step">${k}</div></div>`;
+      `<div class="x">${plate(c)}<span data-v="${c.idx}">${esc(val(c))}</span></div><div class="step">${k}</div></div>`;
     const h = `<div class="pd"><div class="pd-h"><b>${fin && race ? "Podium" : !race && /qual/i.test((sessionRow() || {}).SessionType || "") ? (fin ? "Front of the grid" : "Qualifying: top three") : "Top three"}</b>${g.k ? `<span class="cl" style="background:${g.k.color};color:${inkOn(g.k.color)}">${esc(g.k.name)}</span>` : ""}` +
       `<span>${esc(T("text.event", "") || (S.session && S.session.track ? S.session.track.TrackDisplayName : ""))}</span></div>` +
       `<div class="pd-b">${step(top[1], 2)}${step(top[0], 1)}${step(top[2], 3)}</div></div>`;
-    if (h !== pdSig) { const fresh = !pdSig; pdSig = h; $("pdBox").innerHTML = h; if (fresh) hit($("podium")); }
+    // rebuilt only when who stands on it (or its title) changes, so it comes in once; the gaps change in place
+    const sig = h.replace(/<span data-v="(\d+)">[^<]*<\/span>/g, "$1");
+    if (sig !== pdSig) { const fresh = !pdSig; pdSig = sig; $("pdBox").innerHTML = h; if (fresh) hit($("podium")); }
+    else for (const c of top) { const el = $("pdBox").querySelector(`[data-v="${c.idx}"]`); if (el) { const v = val(c); if (el.textContent !== v) el.textContent = v; } }
   }
 
   // ---------------------------------------------------------------- commentator strap, sponsor bug
@@ -2247,6 +2416,18 @@ body.bc-off>*:not(script){visibility:hidden!important}
         const w = allCars().find(c => c.pos === 1);
         call = ["checkered", "Checkered flag", w ? `${plate(w)}${nameHtml(w.name, "full")} wins` : ""];
       }
+      // the Arcade look calls them full screen instead (axCall), and a caution as well
+      if (shown("flagcall") && axOn()) {
+        if (call && call[0] === "green") axCall("green", "Green green green!", call[2], { fx: ["lights", "lines"], ms: 3200 });
+        else if (call && call[0] === "white") axCall("final", "Final lap!", "", { fx: "lines" });
+        else if (call && call[0] === "checkered") {
+          const w = allCars().find(c => c.pos === 1);
+          axCall("winner", "Winner!", w ? `${plate(w)}${nameHtml(w.name, "full")}` : "", { fx: ["confetti", "flags"], ms: 5200,
+            colors: classes().map(k => k.color).filter(Boolean).concat([T("colors.accent", "#ffd400"), "#ffffff"]) });
+        } else if (!call && (f === "caution" || f === "red") && FC.f !== f && st === "racing")
+          axCall("caution", f === "red" ? "Red flag!" : "Caution!", f === "red" ? "The session is stopped" : "Full course yellow", {});
+        call = null;
+      }
       if (call) {
         FC.until = now + (call[0] === "checkered" ? 9000 : 6000);
         $("fcFlag").className = "fc-flag" + (call[0] === "checkered" ? " checkered" : "");
@@ -2286,7 +2467,17 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const bk = b.cars.slice(-2).join("|"); // a new battle: the light sweep and the announcer, at most every 15 s, and the same pair not again for a minute
     if (bk !== lastBattle.key && $("battle").classList.contains("on")) { lastBattle.key = bk; const now = performance.now(), seen = lastBattle.seen || (lastBattle.seen = {});
       if (now - (lastBattle.at || -1e9) > 15000 && now - (seen[bk] || -1e9) > 60000) { lastBattle.at = seen[bk] = now; bcSay("battle"); setTimeout(() => hit($("battle")), 300); } }
-    setH($("btCars"), side(cars[0]) + `<div class="bt-gap"><b>${gapTxt != null ? gapTxt.toFixed(gapTxt < 10 ? 3 : 1) : "–"}</b><span>gap</span></div>` + side(cars[1]));
+    // Arcade: a meter that fills as the gap closes (in the class's own seconds, b.scale), hot under half a second's
+    // worth, side by side under a tenth's; the places swapped from normalize's battle history
+    const sc = b.scale || 1, gs = gapTxt != null ? gapTxt / sc : null;
+    $("battle").dataset.heat = gs == null ? "" : gs < 0.5 ? "hot" : gs < 1 ? "warm" : "cool";
+    $("battle").classList.toggle("sbs", gs != null && gs < 0.1);
+    const meter = gs == null ? "" : `<i class="ax-meter" style="--f:${Math.max(0.04, Math.min(1, 1 - gs / 2)).toFixed(2)}"><i></i></i>`;
+    setH($("btCars"), side(cars[0]) + `<div class="bt-gap"><b>${gapTxt != null ? gapTxt.toFixed(gapTxt < 10 ? 3 : 1) : "–"}</b><span>gap</span>${meter}` +
+      `${b.swaps > 0 ? `<em class="ax-swaps">Swapped ×${esc(b.swaps)}</em>` : ""}<em class="ax-sbs">Side by side!</em></div>` + side(cars[1]));
+    const pairKey = b.cars.slice(-2).slice().sort((x, y) => x - y).join("|"), order = b.cars.slice(-2).join("|");
+    if (AX.swap.key === pairKey && AX.swap.order !== order) replay($("btCars"), "ax-swap");
+    AX.swap = { key: pairKey, order };
     const rate = k >= 0 ? b.closingSPerLap[k] : null, laps = k >= 0 ? b.catchLaps[k] : null;
     let foot = "Within a second";
     if (rate != null) {
@@ -2388,7 +2579,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("cdNum").textContent = c.num ?? "–";
     $("cdPos").textContent = c.pos > 0 ? (m ? "P" + c.classPos + " " + (c.className || "") : "P" + c.pos) : "";
     const p = String(c.name || "").trim().split(/\s+/);
-    setH($("cdName"), `<span class="pn">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
+    setH($("cdName"), `<span class="pnm">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
     $("cdLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
       (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
     $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
@@ -2396,7 +2587,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     setH($("cdPh"), G("card.photo", true) ? photoHtml(c) : "");
     setH($("cdHel"), G("card.helmet", true) ? helmetHtml(c, 84) : "");
     // a new car on the card: the light sweep, at most every 6 s (the camera can hop between cars)
-    if (c.idx !== lastCard.idx && $("card").classList.contains("on")) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; setTimeout(() => hit($("card")), 300); } }
+    const fresh = c.idx !== lastCard.idx && $("card").classList.contains("on");
+    if (fresh) { lastCard.idx = c.idx; const now = performance.now(); if (now - (lastCard.at || -1e9) > 6000) { lastCard.at = now; setTimeout(() => hit($("card")), 300); } }
     const d = c.derived || {};
     // the class position is on the number; in a multi-class field this is the overall one
     const stats = [[m ? "Overall" : "Position", c.pos > 0 ? "P" + c.pos + (c.onPitRoad ? " · Pit" : "") : "–"], ["Last lap", fmt.lap(c.lastLapS)], ["Best lap", fmt.lap(c.bestLapS)]];
@@ -2417,6 +2609,14 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     setH($("cdStats"), stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join(""));
     { const h = sectorStat(c); setH($("cdSecs"), h); }
+    if (fresh) for (const b of $("cdStats").querySelectorAll("b")) axRoll(b, 450);     // Arcade: the lap times count up
+    // Arcade: places made up in the race, and the clean-lap streak (normalize cleanStreak); a streak that ends shatters
+    { const up = isRace() && d.posGained >= 3 ? d.posGained : 0, n = d.cleanStreak || 0, was = AX.streak[c.idx], now = performance.now();
+      AX.streak[c.idx] = n;
+      if (was >= 3 && n === 0) AX.gone = { idx: c.idx, until: now + 2300 };
+      const gone = AX.gone && AX.gone.idx === c.idx && now < AX.gone.until;
+      setH($("cdAx"), (up ? `<em class="up">+${up} ${up === 1 ? "place" : "places"}</em>` : "") +
+        (gone ? `<em class="gone">Streak over</em>` : n >= 3 ? `<em class="st">Streak ×${n}</em>` : "")); }
   }
 
   const lastCard = { idx: null }, lastBattle = { key: null };
@@ -2429,7 +2629,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     $("cdNum").textContent = c.num ?? "–";
     $("cdPos").textContent = r.pos ? "Starts P" + r.pos : "";
     const p = String(c.name || "").trim().split(/\s+/);
-    setH($("cdName"), `<span class="pn">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
+    setH($("cdName"), `<span class="pnm">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
     $("cdLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
       (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
     $("cdSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
@@ -2466,7 +2666,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     setH($("gwLv"), liveryHtml(c));
     setH($("gwPlate"), plate(c));
     const p = String(c.name || "").trim().split(/\s+/);
-    setH($("gwName"), `<span class="pn">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
+    setH($("gwName"), `<span class="pnm">${p.length > 1 ? `<small>${esc(p[0])}</small> ${esc(p.slice(1).join(" "))}` : esc(c.name || "")}</span>`);
     $("gwLic").innerHTML = (c.licString ? `<span style="background:${css(c.licColor) || "#555"};color:${inkOn(css(c.licColor))}">${esc(c.licString)}</span>` : "") +
       (c.iRating ? `<span style="background:var(--ink2)">${esc(c.iRating)} iR</span>` : "");
     $("gwSub").textContent = [c.team && c.team !== c.name ? c.team : "", c.car || ""].filter(Boolean).join(" · ");
@@ -2640,7 +2840,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     return null;
   }
-  function pushTick(e) { queueFastLap(e); queuePenalty(e); const it = tickerItem(e); if (it) queue.push(it); }
+  function pushTick(e) { queueFastLap(e); queuePenalty(e); safely(axEvent, e); const it = tickerItem(e); if (it) queue.push(it); }
   function pumpTicker() {
     const box = $("ticker");
     box.classList.toggle("on", shown("ticker"));
@@ -2818,6 +3018,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
     checker: { html: () => "<i></i>" },
     panels: { html: () => Array.from({ length: 8 }, (_, k) => `<i style="left:${k * 12.5}%;animation-delay:calc(var(--dur) * ${k * 0.01})"></i>`).join("") },
     iris: { html: () => "<i></i>" },
+    // checkered tiles flipping over corner to corner (Arcade's); each tile covers 30-70% of its own run, and the
+    // run starts at most 12% in, so the whole picture is covered from 42% to 58%
+    tiles: { html: () => Array.from({ length: 84 }, (_, k) => { const x = k % 12, y = Math.floor(k / 12);
+      return `<i class="${(x + y) % 2 ? "k" : ""}${(x * 7 + y * 3) % 23 === 0 ? " a" : ""}" style="animation-delay:calc(var(--dur) * ${((x + y) / 17 * 0.12).toFixed(3)});animation-duration:calc(var(--dur) * .88)"></i>`; }).join("") },
   };
   function maybeStinger() {
     const st = S.gfx.stinger;
@@ -2923,6 +3127,140 @@ body.bc-off>*:not(script){visibility:hidden!important}
     }
     dirty = true;
   }
+  // ---------------------------------------------------------------- Arcade: the big moments, full screen
+  // The Arcade look calls the race's real moments like an arcade racer (gfx arcade.callouts, on by default): a pass
+  // for position ("OVERTAKE!", "FOR THE LEAD!": normalize's pass events), a fastest lap (fastest_lap events), and the
+  // flags the flag calls make (the green with five lights going out, the final lap, the winner, a caution). One call at
+  // a time from a short queue; chrome letters drive in, brake, hold and whip off, speed lines, confetti and checkered
+  // flags on one canvas (axFx) that only runs while something moves. Never with the broadcast off, in Preview or in
+  // Arrange; Still (theme.motion off) has none of it. Names and times are the feed's; a lap time counts up to itself.
+  const AX = { q: [], cur: null, end: 0, last: {}, parts: [], raf: 0, mood: null, swap: {}, streak: {}, hot: {}, hotAt: 0 };
+  const axOn = () => document.documentElement.dataset.look === "arcade" && moving() && !PREVIEW && !EDIT &&
+    !document.body.classList.contains("bc-off") && G("arcade.callouts", true) !== false;
+  const AX_FIRST = new Set(["green", "final", "winner", "caution"]);   // the race's own state goes ahead of the queue
+  function axCall(kind, title, sub, opts) {
+    if (!axOn()) return;
+    const it = { kind, title, sub: sub || "", opts: opts || {}, at: performance.now() };
+    if (AX_FIRST.has(kind)) AX.q.unshift(it); else AX.q.push(it);
+    if (AX.q.length > 3) AX.q.length = 3;
+  }
+  function axTick(now) {
+    const box = $("axCall");
+    if (AX.cur && now > AX.end) { AX.cur = null; box.className = ""; box.innerHTML = ""; }
+    if (AX.cur || !AX.q.length) return;
+    const it = AX.q.shift();
+    if (now - it.at > 8000 || !axOn()) return;        // too late to call it now
+    AX.cur = it; AX.end = now + (it.opts.ms || 2700);
+    box.innerHTML = `<div class="ax-band"></div><div class="ax-t" data-t="${esc(it.title)}">${esc(it.title)}</div>` +
+      (it.sub ? `<div class="ax-s">${it.sub}</div>` : "");
+    box.className = ""; void box.offsetWidth; box.className = "ax-" + it.kind + " run";
+    box.style.setProperty("--ax-ms", (it.opts.ms || 2700) + "ms");
+    if (it.opts.c) box.style.setProperty("--ax-c", it.opts.c); else box.style.removeProperty("--ax-c");
+    for (const el of box.querySelectorAll("[data-roll]")) axRoll(el, 300);
+    if (it.opts.say) bcSay(it.opts.say, 0.15);
+    for (const f of [].concat(it.opts.fx || [])) axFx(f, it.opts);
+  }
+  // a lap time counts up to itself like a score (the value it ends on is the feed's)
+  function axRoll(el, delay) {
+    if (!el || !axOn()) return;
+    const txt = el.textContent, m = /^(?:(\d+):)?(\d+)\.(\d{3})$/.exec(txt.trim());
+    if (!m) return;
+    const v = (+m[1] || 0) * 60 + +m[2] + +m[3] / 1000, t0 = performance.now() + (delay || 0), D = 650;
+    const step = now => {
+      if (!el.isConnected || (el._axShown != null && el.textContent !== el._axShown)) return;    // written anew meanwhile
+      const k = Math.max(0, Math.min(1, (now - t0) / D)), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = k < 1 ? fmt.lap(Math.max(0.001, v * e)) : txt; el._axShown = el.textContent;
+      if (k < 1) requestAnimationFrame(step); else el._axShown = null;
+    };
+    el._axShown = null; requestAnimationFrame(step);
+  }
+  // the canvas: speed lines, confetti, checkered flags; drawn only while something is on it
+  function axFx(kind, opts) {
+    const now = performance.now(), P = AX.parts, cols = [].concat(opts.colors || []).filter(Boolean);
+    const pal = cols.length ? cols : [T("colors.accent", "#ffd400"), "#ffffff", "#19d9ff", "#ff3b6b"];
+    if (kind === "lines") for (let i = 0; i < 46; i++) P.push({ k: "l", t0: now + Math.random() * 500, life: 700 + Math.random() * 500,
+      y: 330 + Math.random() * 420, len: 260 + Math.random() * 520, w: 2 + Math.random() * 5, v: 3.2 + Math.random() * 2.6, c: Math.random() < .25 ? pal[0] : "#ffffff" });
+    if (kind === "confetti") for (let i = 0; i < 220; i++) P.push({ k: "c", t0: now + Math.random() * 1400, life: 4200 + Math.random() * 1800,
+      x: Math.random() * 1920, y: -40 - Math.random() * 300, vx: (Math.random() - .5) * .18, vy: .22 + Math.random() * .3, r: Math.random() * 6.28,
+      vr: (Math.random() - .5) * .012, w: 10 + Math.random() * 10, h: 5 + Math.random() * 6, c: pal[i % pal.length] });
+    if (kind === "flags") for (const side of [0, 1]) P.push({ k: "f", t0: now, life: opts.ms || 4500, side });
+    if (kind === "lights") { const L = $("axLights"); L.classList.remove("run"); void L.offsetWidth; L.classList.add("run"); }
+    if (!AX.raf && P.length) AX.raf = requestAnimationFrame(axDraw);
+  }
+  function axDraw(now) {
+    const cv = $("axFx"), g = cv.getContext("2d"), P = AX.parts;
+    g.clearRect(0, 0, 1920, 1080);
+    for (let i = P.length - 1; i >= 0; i--) {
+      const p = P[i], a = now - p.t0;
+      if (a > p.life) { P.splice(i, 1); continue; }
+      if (a < 0) continue;
+      const k = a / p.life;
+      if (p.k === "l") {
+        const x = 1920 + 200 - a * p.v * 1.2;
+        g.globalAlpha = Math.sin(k * Math.PI) * .75;
+        const gr = g.createLinearGradient(x, 0, x + p.len, 0); gr.addColorStop(0, p.c); gr.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = gr; g.fillRect(x, p.y, p.len, p.w);
+      } else if (p.k === "c") {
+        const x = p.x + p.vx * a + Math.sin(a / 300 + p.r) * 30, y = p.y + p.vy * a;
+        g.globalAlpha = k > .8 ? (1 - k) / .2 : 1;
+        g.save(); g.translate(x, y); g.rotate(p.r + p.vr * a); g.scale(1, Math.abs(Math.cos(a / 180 + p.r)) + .15);
+        g.fillStyle = p.c; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); g.restore();
+      } else if (p.k === "f") {
+        // a checkered flag waving in from its side, then away
+        const inK = Math.min(1, a / 450), outK = Math.max(0, (a - (p.life - 500)) / 500), dir = p.side ? -1 : 1;
+        const W = 480, H = 320, n = 12, m = 8, y0 = 140, show = (inK - outK) * (W + 60);
+        const pole = p.side ? 1920 + W - show : -W + show;      // the pole's x, the cloth goes inwards from it
+        g.globalAlpha = 1;
+        for (let cx = 0; cx < n; cx++) for (let cy = 0; cy < m; cy++) {
+          const u0 = cx / n, u1 = (cx + 1) / n, w0 = Math.sin(u0 * 6 - a / 120) * 24 * u0, w1 = Math.sin(u1 * 6 - a / 120) * 24 * u1;
+          const xa = pole + dir * u0 * W, xb = pole + dir * u1 * W, ya = y0 + cy * H / m + w0, yb = y0 + cy * H / m + w1;
+          g.fillStyle = (cx + cy) % 2 ? "#0b0d12" : "#f5f5f5";
+          g.beginPath(); g.moveTo(xa, ya); g.lineTo(xb, yb); g.lineTo(xb, yb + H / m + .6); g.lineTo(xa, ya + H / m + .6); g.closePath(); g.fill();
+        }
+        g.fillStyle = "#c9ced8"; g.fillRect(pole - 4, y0 - 20, 8, H + 160);
+      }
+    }
+    g.globalAlpha = 1;
+    AX.raf = P.length ? requestAnimationFrame(axDraw) : 0;
+    if (!P.length) g.clearRect(0, 0, 1920, 1080);
+  }
+  // the feed's events, as they come (not the ones a page sees on load or after a reconnect)
+  function axEvent(e) {
+    if (!axOn() || !e) return;
+    const tNow = S.cars && S.cars.t;
+    if (e.t != null && tNow != null && Math.abs(tNow - e.t) > 20) return;
+    const now = performance.now(), m = multi(), who = i => { const c = carByIdx(i); return c ? nameHtml(c.name, "last") : ""; };
+    if (e.kind === "pass" && isRace() && sessState() === "racing") {
+      const c = carByIdx(e.idx), lead = e.classPos === 1;
+      if (!c || e.classPos > G("arcade.passTop", 10)) return;
+      if (now - (AX.last.pass || -1e9) < (lead ? 4000 : 10000)) return;
+      AX.last.pass = now;
+      const cls = m && c.className ? c.className + " " : "";
+      axCall(lead ? "lead" : "pass", lead ? (m && c.className ? `For the ${c.className} lead!` : "For the lead!") : "Overtake!",
+        `${plate(c)}${who(e.idx)} <small>passes</small> ${who((e.passedIdx || [])[0])} <small>for</small> ${esc(cls)}P${esc(e.classPos)}`,
+        { say: lead ? "lead" : "overtake", fx: "lines", c: m ? css(c.classColor) : null });
+    } else if (e.kind === "fastest_lap" && (e.overall || m)) {
+      const c = carByIdx(e.idx), k = "fl" + (e.classId ?? "");
+      if (!c || now - (AX.last[k] || -1e9) < 15000) return;
+      AX.last[k] = now;
+      axCall("fl", "Fastest lap!", `${plate(c)}${who(e.idx)} <b data-roll>${fmt.lap(e.lapS)}</b>${m && c.className && !e.overall ? ` <small>${esc(c.className)}</small>` : ""}`,
+        { fx: "lines", c: "var(--fl)" });
+    }
+  }
+  // the race's mood on the edges: the kerbs run faster on the final lap, yellow and slow under a caution
+  function axMood() {
+    const f = racingFlag(), mood = document.documentElement.dataset.look !== "arcade" ? "" :
+      f === "caution" || f === "yellow" || f === "red" ? "caution" : f === "white" ? "final" : f === "checkered" ? "done" : "green";
+    if (mood !== AX.mood) { AX.mood = mood; if (mood) document.documentElement.dataset.ax = mood; else delete document.documentElement.dataset.ax; }
+  }
+  // cars on a run (two passes or more in the last 150 s of the feed): the tower's "on fire"
+  function axHot() {
+    const now = performance.now();
+    if (now - AX.hotAt < 1000) return AX.hot;
+    AX.hotAt = now; const tNow = S.cars && S.cars.t, n = {};
+    if (tNow != null && isRace()) for (const e of S.feed.events) if (e.kind === "pass" && e.t != null && tNow - e.t <= 150 && tNow >= e.t) n[e.idx] = (n[e.idx] || 0) + 1;
+    AX.hot = n; return n;
+  }
   let last = 0, fitAll = 0;
   // Every graphic is drawn on its own: one that throws on some state of the race must never take the
   // others off air, and the frame loop must never stop (it did: an error left OBS showing nothing until reloaded).
@@ -2943,9 +3281,10 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (dirty && t - last > 150) {
       dirty = false; last = t;
       for (const r of RENDERS) safely(r);
+      safely(axMood);
       safely(fitWords, t - fitAll > 1000 && (fitAll = t));
     }
-    safely(drawMap); safely(drawFaster, t);
+    safely(drawMap); safely(drawFaster, t); safely(axTick, t);
     safely(pumpTicker);
   }
   applyTheme();

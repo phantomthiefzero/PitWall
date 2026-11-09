@@ -1034,6 +1034,14 @@ class Deriver:
         if e["lapS"] and not e["pit"] and not e.get("reset") and not slow and not opening:
             s["racing"].append(e["lapS"])
             del s["racing"][:-max(self.PACE_LAPS, self.CONSISTENCY_LAPS)]
+        # clean laps in a row (the Arcade look's streak on the driver card): a racing lap with no incident signal
+        # (off track, a spin, contact, a tow, damage), no pit and no reset; a caution lap or the opening lap leaves it
+        dirty = self.__dict__.setdefault("_dirty", set())
+        if e["pit"] or e.get("reset") or idx in dirty:
+            s["clean"] = 0
+        elif e["lapS"] and not slow and not opening:
+            s["clean"] = s.get("clean", 0) + 1
+        dirty.discard(idx)
         if e.get("topSpeedMs") and (s["top"] is None or e["topSpeedMs"] > s["top"]):
             s["top"] = e["topSpeedMs"]
         s["led"] += e.get("pos") == 1
@@ -2260,6 +2268,7 @@ class Deriver:
 
     def _signal(self, st, c, t, kind, session_num):
         i = c["idx"]
+        self.__dict__.setdefault("_dirty", set()).add(i)      # this lap is not a clean one (cleanStreak)
         inc = st["open"].get(i)
         if inc is None:
             inc = {"idx": i, "t": t, "last": t, "signals": set(), "near": set(), "near_dip": set(),
@@ -2648,6 +2657,7 @@ class Deriver:
         out["classPosGained"] = (g["classPos"] - c["classPos"]
                                  if g and g.get("classPos") and c.get("classPos") else None)
         out["lapsLedSeen"] = s["led"]
+        out["cleanStreak"] = s.get("clean", 0)
         out["classLapsLedSeen"] = s["classLed"]
         # Stints, from stops watched entry to exit. A stint that started before
         # we connected (and not at the start of the race) has no known length.

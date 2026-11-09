@@ -803,3 +803,28 @@ def test_a_race_opening_lap_is_not_a_racing_lap():
         st = {"pend": {"idx": 7, "lap": lap, "lapS": t, "pit": False}}
         d._finish_lap(7, st)
     assert d._lapsum[7]["racing"] == [85.0, 85.4, 84.9, 85.2]
+
+
+def test_a_clean_streak_counts_racing_laps_without_an_incident():
+    """The Arcade driver card's streak (derived.cleanStreak): racing laps in a row with no incident signal, pit or
+    reset; the opening lap and a lap behind the pace car leave it as it was, an off-track moment ends it."""
+    d = Deriver()
+    d._race_now = True
+    seen = []
+
+    def lap(n, t, pit=False, dirty=False):
+        if dirty:
+            d._signal(d._incst(), {"idx": 7, "lap": n, "pct": 0.5, "classId": 1}, 100.0 * n, "off_track", 2)
+        d._finish_lap(7, {"pend": {"idx": 7, "lap": n, "lapS": t, "pit": pit}})
+        seen.append(d._lapsum[7].get("clean", 0))
+
+    lap(1, 98.0)                    # the opening lap: not counted
+    lap(2, 85.0); lap(3, 85.2); lap(4, 85.1)
+    lap(5, 140.0)                   # behind the pace car: kept as it was
+    lap(6, 85.3)
+    lap(7, 88.0, dirty=True)        # off the track: over
+    lap(8, 85.0)
+    lap(9, 99.0, pit=True)          # a stop: over
+    assert seen == [0, 1, 2, 3, 3, 4, 0, 1, 0]
+    out = d.car_extras({"idx": 7, "lap": 9, "pos": 3, "classPos": 3}, 900.0, {}, None, True, False)
+    assert out["cleanStreak"] == 0

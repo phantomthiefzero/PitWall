@@ -2566,7 +2566,7 @@ def test_the_overlay_before_the_start_and_after_the_finish():
 def test_names_and_words_are_never_cut_off_on_air():
     """A name too wide for its box (Arcade's font is the widest) gets smaller, then loses words from the front, the
     family name staying whole; "…" only as a last resort. Every text box with an ellipsis is fitted (fitWords, read from
-    the style sheet), names carry .pn so only the name is shortened, and boxes are written through setH so a fitted
+    the style sheet), names carry .pnm so only the name is shortened, and boxes are written through setH so a fitted
     name is not written back every frame."""
     import re
     page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
@@ -2582,10 +2582,42 @@ console.log(JSON.stringify(out));""")
     assert steps[3][-1] == "Narvaez" and len(steps[3]) == 4
     assert steps[4][-1] == "Marín"
     nh = _page_fn("overlay.html", "nameHtml")
-    assert nh.count('<span class="pn">') == 3
-    assert page.count('`<span class="pn">${p.length > 1 ?') == 3      # the card and the grid walk's names
+    assert nh.count('<span class="pnm">') == 3                  # not .pn: that is the panels' class (board, grid, league)
+    assert page.count('`<span class="pnm">${p.length > 1 ?') == 3      # the card and the grid walk's names
     assert not re.search(r'(\$\("\w+"\)|vEl|box)\.innerHTML [!=]==', page)
     assert "safely(fitWords" in page and 'fitObs.observe($("stage")' in page
     assert re.search(r'r\.style && r\.style\.textOverflow === "ellipsis"', page)
     assert "fitForce = true;" in page.split("function applyTheme()")[1][:200]
     assert re.search(r"^#gladder\{[^}]*width:400px", page, re.M)
+
+
+def test_arcade_calls_the_big_moments_and_keeps_its_rules():
+    """The Arcade look's full-screen call-outs and effects: from real events only (the feed's passes and fastest laps,
+    the flag calls), one at a time, never with the broadcast off, in Preview or in Arrange, none when Still; the
+    kerbs run at the race's mood; the tiles stinger covers the whole picture where the cut falls (42-58%)."""
+    import re
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    prod = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    on = re.search(r"const axOn = \(\) => (.*?);\n", page, re.S).group(1)
+    for need in ('dataset.look === "arcade"', "moving()", "!PREVIEW", "!EDIT", 'classList.contains("bc-off")', '"arcade.callouts"'):
+        assert need in on, need
+    assert "safely(axEvent, e)" in page.split("function pushTick(e)")[1][:200]        # the feed's own events
+    assert 'e.kind === "pass"' in page and 'e.kind === "fastest_lap"' in page
+    flag = page.split("function renderFlagCall()")[1].split("\n  }\n")[0]
+    assert 'shown("flagcall") && axOn()' in flag and 'axCall("winner"' in flag and 'axCall("final"' in flag
+    assert "safely(axTick, t)" in page and "safely(axMood)" in page
+    assert 'id="arcx"' in page and '"arcx"' not in re.search(r"const ROOM_ORDER = \[([^\]]*)\]", page).group(1)
+    assert 'data-gflag="arcade.callouts" data-gdef="1"' in prod
+    # loops only when Animated; the kerbs follow data-ax
+    assert ':root[data-look="arcade"][data-motion="on"] .layer > .inner::before{animation:axKerb' in page
+    assert ':root[data-look="arcade"][data-ax="caution"]{--ax-kerb:' in page
+    # the tiles stinger: every tile covers 30-70% of its run, the runs start by 12% in and last 88%
+    tiles = re.search(r"tiles: \{ html: .*?\n.*?\n.*?\n", page).group(0)
+    assert "/ 17 * 0.12" in tiles and "* .88" in tiles
+    assert "@keyframes stTile{0%{transform:perspective(500px) rotateY(90deg)}30%,70%{transform:none}" in page
+    late, dur = 0.12, 0.88
+    assert late + 0.3 * dur <= 0.42 and 0.7 * dur >= 0.58
+    assert '["tiles", "Checkered tiles"]' in prod
+    # the same helmet is the same markup (setH and the podium compare it): no counter in the clip's id
+    assert "++svgN" not in page
+    assert 'pdSig = sig' in page
