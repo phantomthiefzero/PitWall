@@ -2561,3 +2561,31 @@ def test_the_overlay_before_the_start_and_after_the_finish():
     assert 'c0.surface !== "not_in_world"' in page.split("function renderOnboard()")[1][:300]
     for src in (page.split("function towerValue(")[1][:2500], page.split("function renderBoard()")[1][:2500], prod):
         assert '"not_in_world" && !d.finished ? "Out"' in src or '"not_in_world" && !d.finished) return "Out"' in src
+
+
+def test_names_and_words_are_never_cut_off_on_air():
+    """A name too wide for its box (Arcade's font is the widest) gets smaller, then loses words from the front, the
+    family name staying whole; "…" only as a last resort. Every text box with an ellipsis is fitted (fitWords, read from
+    the style sheet), names carry .pn so only the name is shortened, and boxes are written through setH so a fitted
+    name is not written back every frame."""
+    import re
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    steps = _node(_page_fn("overlay.html", "nameShorter") + """
+const out = [];
+for (let r of [["C.", "Andres Arteaga Narvaez"], ["Matt", " Street2"], ["Taylor8"], ["Carlos Andres Arteaga Narvaez"], ["O.", "Antonio Pérez Marín"]]) {
+  const seen = []; while (r) { seen.push(r.join("").trim()); r = nameShorter(r); } out.push(seen);
+}
+console.log(JSON.stringify(out));""")
+    assert steps[0] == ["C.Andres Arteaga Narvaez", "C.Arteaga Narvaez", "C.Narvaez", "Narvaez"]
+    assert steps[1] == ["Matt Street2", "Street2"]
+    assert steps[2] == ["Taylor8"]                                   # one word: nothing to drop, it gets smaller
+    assert steps[3][-1] == "Narvaez" and len(steps[3]) == 4
+    assert steps[4][-1] == "Marín"
+    nh = _page_fn("overlay.html", "nameHtml")
+    assert nh.count('<span class="pn">') == 3
+    assert page.count('`<span class="pn">${p.length > 1 ?') == 3      # the card and the grid walk's names
+    assert not re.search(r'(\$\("\w+"\)|vEl|box)\.innerHTML [!=]==', page)
+    assert "safely(fitWords" in page and 'fitObs.observe($("stage")' in page
+    assert re.search(r'r\.style && r\.style\.textOverflow === "ellipsis"', page)
+    assert "fitForce = true;" in page.split("function applyTheme()")[1][:200]
+    assert re.search(r"^#gladder\{[^}]*width:400px", page, re.M)

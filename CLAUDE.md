@@ -327,6 +327,13 @@ Broadcast (broadcast/)
 - The overlay's frame loop asks for the next frame first and draws every graphic on its own (RENDERS, safely()): one
   graphic throwing on some state of the race once stopped every graphic after it and the loop itself, and OBS showed
   nothing until the source was reloaded. A new graphic goes into RENDERS. Errors go to the console once each.
+- Words are never cut off on air (fitWords, every render frame): a text box with text-overflow:ellipsis (found from
+  the style sheet, so a new graphic's boxes are covered) that is too narrow first gets smaller, to FIT_MIN 70%; a name
+  (.pn from nameHtml, and the card's and grid walk's names) that would need more than NAME_SHRINK loses words from the
+  front instead (nameShorter: "C. Andres Arteaga Narvaez" -> "C. Narvaez" -> "Narvaez"), "…" last. Refitted when the
+  words change (MutationObserver), a box gets or changes width, the look changes or fonts load. Boxes are written
+  through setH (compares with what was last written, never with innerHTML, which a fitted name changes). A new name
+  goes through nameHtml; a new box comparing innerHTML would be rewritten every frame.
 - Page size: the overlay is past 128 KB uncompressed. Every browser asks for gzip (~40 KB on the wire); keep it so.
 - Live gaps come from CarIdxEstTime (normalize.live_gaps); CarIdxF2Time only refreshes when
   iRacing's timing catches up with a car, which froze the tower for most of a lap.
