@@ -1128,7 +1128,7 @@ def test_stretch_timed_best_laps_match_iracings_own_on_a_real_race():
 
 
 def test_helmets_are_rendered_once_and_a_refusal_is_not_retried():
-    """iRacing's helmet picture (pk_helmet.png, not yet seen working): the design and the driver's own helmet
+    """iRacing's helmet picture (pk_helmet.png, seen working): the design and the driver's own helmet
     paint go in; a server that refuses it is asked once per design, and the overlay draws its own helmet."""
     import time as _t
     from pitwall.carrender import CarRenderer, helmet_params, find_helmet_paint
@@ -1148,7 +1148,7 @@ def test_helmets_are_rendered_once_and_a_refusal_is_not_retried():
             f.write(b"tga")
         assert find_helmet_paint(1, root).endswith("helmet_1.tga") and find_helmet_paint(2, root) is None
         r = CarRenderer(d, out.append, fetch=fetch, root=root)
-        r.gap_s, r.helmets = 0.0, True        # helmets are off until pk_helmet.png is seen working
+        r.gap_s = 0.0
         drivers = [{"CarPath": "gr86", "CarID": 5, "UserID": 1, "TeamID": 0, "CarNumber": "1", "HelmetDesignStr": "1,ffffff,ff0000,000000"}]
         r.request(drivers)
         deadline = _t.time() + 3
@@ -2440,12 +2440,12 @@ def test_a_close_battle_keeps_the_air_to_its_end():
     assert BATTLE_HOT_MAX_S > SEGMENT_MAX_S
 def test_car_pictures_are_asked_for_gently_and_everything_asked_of_iracing_is_logged():
     # Nov 2026: iRacing closing to the desktop now and then with the app running, no error, no crash report. The
-    # pictures go one at a time with a pause, none while you drive, none at all when switched off, no helmets; and
+    # pictures go one at a time with a pause, none while you drive, none at all when switched off, helmets after every car; and
     # what the app asked of the sim is in sim_log.txt, so the last lines before "sim gone" say what it was doing.
     import time as _t
     from pitwall import simlog
     from pitwall.carrender import CarRenderer, HELMETS, RENDER_GAP_S
-    assert HELMETS is False and RENDER_GAP_S >= 1.0
+    assert HELMETS is True and RENDER_GAP_S >= 1.0
     calls, out = [], []
 
     def fetch(url):
@@ -2467,10 +2467,10 @@ def test_car_pictures_are_asked_for_gently_and_everything_asked_of_iracing_is_lo
             assert not calls, "nothing when switched off"
             r.enabled = True
             r._wake.set()
-            deadline = _t.time() + 4
-            while len(out) < 3 and _t.time() < deadline:
+            deadline = _t.time() + 6
+            while len(out) < 6 and _t.time() < deadline:
                 _t.sleep(0.05)
-            assert len(out) == 3 and all(m["kind"] == "render" for m in out), "no helmets"
+            assert [m["kind"] for m in out] == ["render"] * 3 + ["helmet"] * 3, "every car first, then the helmets"
             gaps = [b[0] - a[0] for a, b in zip(calls, calls[1:])]
             assert gaps and min(gaps) >= 0.25, "one at a time, with a pause"
             # a camera command reaching the sim is logged, and the sim going away
@@ -2483,7 +2483,7 @@ def test_car_pictures_are_asked_for_gently_and_everything_asked_of_iracing_is_lo
             from pitwall.commands import CommandGate
             res = CommandGate(camera=True).execute(Src(), {"cmd": "camera", "action": "car", "car": "7", "group": 3})
             log = open(simlog.path(), encoding="utf-8").read()
-            assert log.count("car picture: gr86") == 3 and "helmet" not in log
+            assert log.count("car picture: gr86") == 3 and log.count("helmet picture") == 3
             if res["ok"]:                      # pyirsdk is importable here
                 assert "cam_switch_num ('7', 3, 0)" in log
         finally:
