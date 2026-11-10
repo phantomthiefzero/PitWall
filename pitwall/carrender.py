@@ -28,15 +28,15 @@ import urllib.parse
 import urllib.request
 
 RENDER_URL = "http://127.0.0.1:32034/pk_car.png"
-# The helmet, from the same server. NOT YET SEEN WORKING against the sim (VARIABLES_TO_VERIFY.md, "Helmets"):
-# the parameters follow pk_car.png's (hlmtPat/hlmtCol like carPat/carCol). If the server refuses it, the
-# broadcast draws the helmet itself in the driver's iRacing helmet colours.
+# The helmet, from the same server: seen working (Nov 2026, the user's broadcast showed iRacing's helmets until
+# HELMETS was turned off). The parameters follow pk_car.png's (hlmtPat/hlmtCol like carPat/carCol). If the server
+# refuses it, the broadcast draws the helmet itself in the driver's iRacing helmet colours.
 HELMET_URL = "http://127.0.0.1:32034/pk_helmet.png"
 # Ask the picture server gently (Nov 2026: iRacing closing to the desktop now and then with the app running; the
 # pictures were asked for back to back, every car and helmet at once, as you joined): one at a time, RENDER_GAP_S
-# apart, none while you are driving (the bridge pauses it), and no helmets until pk_helmet.png has been seen working.
+# apart, none while you are driving (the bridge pauses it), and helmets only once every car picture is done.
 RENDER_GAP_S = 2.0
-HELMETS = False
+HELMETS = True
 RENDER_VIEW = 1
 RENDER_SIZE = 2          # 0 small, 1 medium, 2 large
 
@@ -243,7 +243,8 @@ class CarRenderer:
                 with self._lock:
                     if not self._queue:
                         break
-                    key = next(iter(self._queue))
+                    # cars first: a helmet waits until no car picture is waiting
+                    key = next((k for k in self._queue if not k.endswith("|helmet")), None) or next(iter(self._queue))
                     d, paint, sig = self._queue.pop(key)
                 self._render_one(key, d, paint, sig)
                 time.sleep(self.gap_s)

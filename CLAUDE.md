@@ -374,7 +374,7 @@ Broadcast (broadcast/)
 - Asking iRacing for things (Nov 2026: the sim closing to the desktop now and then with the app running, no error,
   no crash report): car pictures one at a time RENDER_GAP_S apart, never while you drive (renderer.paused from
   IsOnTrack), none when the producer switches them off (Liveries: "Ask iRacing for car pictures", livery action
-  renders, kept in obs.json), no helmet pictures until pk_helmet.png is seen working (carrender.HELMETS). Everything
+  renders, kept in obs.json), helmet pictures (carrender.HELMETS, on: seen working) only once no car picture waits. Everything
   that reaches into the sim beyond reading telemetry is written to sim_log.txt beside the pictures (pitwall.simlog:
   pictures, camera / replay / pit commands, "sim found" / "sim gone"); never let logging raise.
 - Director (pitwall/director.py) and livery photos (pitwall/liveries.py, pitwall/obs.py) only
@@ -520,7 +520,7 @@ Broadcast (broadcast/)
 - Looks on air: the producer's look presets Pit wall and Arcade restyle the graphics (overlay CSS under `:root[data-look]`),
   not just the colours. The driver card shows the driver's picture (gfx.photos by iRacing user id, uploaded in the
   producer's Liveries tab; without one, nothing: no drawn stand-in, the user's call) and the helmet
-  (carrender's pk_helmet.png when iRacing gives one -- unverified, VARIABLES_TO_VERIFY "Helmets" -- else drawn). Arcade's
+  (carrender's pk_helmet.png when iRacing gives one -- seen working, VARIABLES_TO_VERIFY "Helmets" -- else drawn). Arcade's
   announcer (the suite's voice-<f|m>-*.mp3 from the relay, no sound effects: a battle coming on and the race's flags;
   gfx sound.on, off by default; gfx sound.man picks the man's voice) never speaks with the master switch off.
 - `tests/test_broadcast.py` and `tests/test_broadcast2.py` must pass with the others.
