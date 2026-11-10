@@ -2231,8 +2231,21 @@ def test_race_laps_never_go_back_and_the_clock_does_not_flash():
     r = race_length(sess, 3, lead, 290.0, d, [], results=[])
     assert r["leaderLapsDone"] == 0, "a new session starts again"
     page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    # the banner's clock, and then the tower's (Nov 2026: "the time is flashing every second on the standings
+    # tower"): roll() itself leaves a ticking clock in place, so every clock on air is covered
     banner = page.split("function renderBanner() {")[1].split("\n  }\n")[0]
-    assert 'roll($("bnMain"), rs.main)' in banner and "\\d+:\\d\\d" in banner, "a ticking clock is not rolled"
+    tower = page.split("function renderTower() {")[1].split("\n  }\n")[0]
+    assert 'roll($("bnMain"), rs.main)' in banner and 'roll($("twState"), rs.main)' in tower
+    src = "\n".join(start + page.split(start)[1].split("\n  }\n")[0] + "\n  }"
+                    for start in ("function setH(el, h) {", "function roll(el, html) {"))
+    clock = [l for l in page.splitlines() if l.strip().startswith("const CLOCK_RE")][0]
+    rolled = _node("let n = 0; const replay = () => n++;\n" + clock + "\n" + src + """
+      const el = {}; const seen = [];
+      for (const v of ["–", "12:05", "12:04", "12:03", "1:00:00", "59:59", "Lap 3 / 20", "Lap 4 / 20", "–", "Lap 4 / 20"]) {
+        const was = n; roll(el, v); seen.push(n - was);
+      }
+      console.log(JSON.stringify(seen));""")
+    assert rolled == [0, 0, 0, 0, 0, 0, 1, 1, 0, 0], "a clock ticking changes in place; laps and words roll in"
     br = open(os.path.join(os.path.dirname(__file__), "..", "pitwall", "bridge.py"), encoding="utf-8").read()
     assert 'race["timeRemainS"] = rem' in br, "the clock keeps going while a replay holds the picture"
 
@@ -2803,3 +2816,33 @@ def test_after_the_flag_the_racing_graphics_go_and_the_camera_turns_cinematic():
     assert 'isRace() && racingFlag() === "checkered"' in page and 'G("finish.solo", true)' in page
     # the final lap's kerbs run faster, not as a strobe
     assert ':root[data-look="arcade"][data-ax="final"]{--ax-kerb:.9s}' in page
+
+
+def test_what_the_november_audit_found():
+    # Nov 2026: every page loaded in every look, desktop and phone, against the Summit Point capture and a real .ibt,
+    # looking for script errors, low contrast, cut-off words and a page wider than the phone.
+    root = os.path.join(os.path.dirname(__file__), "..")
+    rd = lambda *p: open(os.path.join(root, *p), encoding="utf-8").read()
+    # Arcade's start lights (lkFx('go')) gave no colour: a line without one threw in the effects' draw loop
+    for page in (rd("suite", "web", "index.html"), rd("suite", "web", "analyzer", "index.html"), rd("client", "index.html")):
+        fx = page.split("function lkFx(kind, col) {")[1][:400]
+        assert "if (!col) col = " in fx
+    ov = rd("broadcast", "overlay.html")
+    # the podium's line on its header reads in the header's text colour, not --muted (1.07:1 on Night neon)
+    assert ".pd-h span{margin-left:auto;color:var(--headText)" in ov
+    # gained / lost on the panel's ink: a darker pair on a light look (Daylight's green was 1.8:1)
+    assert 'const lightInk = inkOn(colors.ink) === "#000"' in ov and 'root.setProperty("--gain", lightInk ?' in ov
+    for rule in (".ps-line .up{color:var(--gain)}", ".tb-r .v.g{color:var(--gain)}", ".bd-row .v.up{color:var(--gain)}"):
+        assert rule in ov, rule
+    # booth notes on a phone: the page was 126 px wider than the screen
+    assert "main{grid-template-columns:minmax(0,1fr)}main>div{min-width:0}" in rd("broadcast", "notes.html")
+    # PitWall's standings where narrow: the first name gives way to its initial instead of the surname being cut
+    cl = rd("client", "index.html")
+    assert "${nameCell(c)}" in cl and 'td.driver .nm-f { display: none; }' in cl
+    out = _node("const esc = s => String(s);\nconst nameCell = "
+                + cl.split("  const nameCell = ")[1].split("\n  const shortCar")[0]
+                + "\nconsole.log(JSON.stringify([nameCell({name: 'Zachary Taylor8'}), nameCell({name: 'Cher'}), nameCell({idx: 4})]))")
+    assert out == ['<span class="nm-f">Zachary</span><span class="nm-i">Z.</span> Taylor8', "Cher", "car 4"]
+    # the analyzer: white on a green or amber pill reads (was 4.1:1 and 3.7:1), and amber text has a light-theme colour
+    an = rd("suite", "web", "analyzer", "index.html")
+    assert "pill(LIVE.mode==='replay'?'replaying a file':'live','#167d42')" in an and "--amb:#8f5f00" in an and "--amb:#d99a1e" in an

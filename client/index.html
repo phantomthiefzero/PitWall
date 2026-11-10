@@ -221,6 +221,13 @@
   #standings[data-w="xs"] .c-best, #standings[data-w="xs"] .c-laps,
   #standings[data-w="xs"] .c-gap,  #standings[data-w="xs"] .c-deg { display: none; }
   /* The driver name is the one elastic column, so it gives ground first. */
+  td.driver .nm-i { display: none; }
+  #standings:is([data-w="md"], [data-w="sm"], [data-w="xs"]) td.driver .nm-f { display: none; }
+  #standings:is([data-w="md"], [data-w="sm"], [data-w="xs"]) td.driver .nm-i { display: inline; }
+  @media (pointer: coarse) {   /* a finger needs more than a 15 px button */
+    .alarm button, #feedTabs button, #chartTabs button, #mapLabelToggle, #fasterSide { position: relative; }
+    :is(.alarm button, #feedTabs button, #chartTabs button, #mapLabelToggle, #fasterSide)::after { content: ""; position: absolute; inset: -8px 0; }
+  }
   #standings[data-w="md"] td.driver { max-width: 120px; }
   #standings[data-w="sm"] td.driver { max-width: 100px; }
   #standings[data-w="xs"] td.driver { max-width: 95px; }
@@ -1035,6 +1042,7 @@ function lkShake(px) { if (LK_CALM()) return; const b = document.body; b.style.s
 const FX = { cv: null, g: null, parts: [], sweeps: [], flash: 0, flashCol: '#fff', raf: 0, last: 0 };
 function lkFx(kind, col) {
   if (LK_CALM()) return;
+  if (!col) col = kind === 'go' ? '#38f07a' : '#ffffff';     // the start lights give none: a line without a colour threw in the draw loop
   if (!FX.cv) { FX.cv = document.createElement('canvas'); FX.cv.className = 'lk-fx'; FX.cv.setAttribute('aria-hidden', 'true'); document.body.appendChild(FX.cv); FX.g = FX.cv.getContext('2d') }
   if (!FX.cv.isConnected) document.body.appendChild(FX.cv);
   const W = innerWidth, H = innerHeight, cy = H / 2, R = Math.random, P = FX.parts;
@@ -1564,7 +1572,7 @@ LK.look = document.documentElement.dataset.look || "basic";
       const pit = c.onPitRoad ? "pit" : (c.surface === "in_pit_stall" ? "box" : "");
       return `<tr data-idx="${c.idx}" class="${c.idx === me ? "player" : ""} ${c.idx === focus ? "focus" : ""} ${c.idx === cmpIdxNow ? "cmp" : ""} ${pit ? "pit" : ""}">
         <td class="r c-pos"${multi && c.classColor != null ? ` style="box-shadow: inset 3px 0 0 ${classCss(c.classColor)}"` : ""}${live && P(c) !== c.pos ? ` title="Running order now (computed here from where the cars are). iRacing's scored position, which changes at the timing lines: P${esc(c.pos)}"` : ""}>${P(c)}${multi && CP(c) ? `<span class="cpos">${CP(c)}</span>` : ""}</td>
-        <td class="driver c-driver" title="${esc(c.name ?? "")}"><span class="num">${esc(c.num)}</span>${esc(c.name ?? "car " + c.idx)}${flags}</td>
+        <td class="driver c-driver" title="${esc(c.name ?? "")}"><span class="num">${esc(c.num)}</span>${nameCell(c)}${flags}</td>
         <td class="c-car"${multi && c.classColor != null ? ` style="color:${classCss(c.classColor)}"` : ""}>${esc(c.className ?? c.car)}</td>
         ${race ? `<td class="r c-int">${liveOr(c, "runIntervalS", "runIntervalLaps", c.derived && c.derived.intervalS)}</td>
         <td class="r c-delta">${closingCell(c)}</td>
@@ -1893,6 +1901,10 @@ LK.look = document.documentElement.dataset.look || "basic";
     if (!c) return "car " + esc(i);
     return `<span class="mono" style="color:var(--muted)">#${esc(c.num ?? c.idx)}</span> ${esc(c.name ?? "car " + c.idx)}`;
   };
+  // a driver's name in the standings: the first name gives way to its initial where the table is narrow (a phone
+  // showed "Zachary Tayl…"); CSS picks which (#standings[data-w])
+  const nameCell = c => { const n = String(c.name ?? "car " + c.idx), k = n.indexOf(" ");
+    return c.name && k > 1 ? `<span class="nm-f">${esc(n.slice(0, k))}</span><span class="nm-i">${esc(n[0])}.</span>${esc(n.slice(k))}` : esc(n); };
   const shortCar = i => { const c = carByIdx(i); return c ? "#" + esc(c.num ?? c.idx) : "car " + esc(i); };
   // ---------------------------------------------------------------- following
   // Spectating is the normal case for this booth. Everything "relative" follows
