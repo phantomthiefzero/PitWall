@@ -2731,3 +2731,39 @@ def test_the_director_goes_to_an_attack_and_replays_the_passes_it_missed():
     st = d._stories(cars, by, msg, [], 500.0, t[0])
     th = next(s for s in st if s["key"] == "through:4")
     assert th["cars"] == [10, 4]
+
+
+def test_the_camera_check_needs_the_broadcast_on_and_takes_the_camera(tmp_path):
+    """The bridge's simcheck command: refused with the broadcast off or without camera control; with it on it takes
+    the camera from the director (one owner at a time) and starts; the relay lets only the producer send it and keeps
+    the last result for a producer page that reloads (never for a share-link guest)."""
+    from pitwall.bridge import Bridge, BROADCAST_OFF
+    from pitwall.sources import FakeSource
+    from pitwall import simlog
+    import relay.server as rs
+    simlog.set_path(str(tmp_path / "sim_log.txt"))
+    try:
+        src = FakeSource(realtime=False, spectator=True)
+        src.connect()
+        b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False,
+                   livery_dir=str(tmp_path))
+        for _ in range(120):
+            src.tick()
+            b._simvars = {k: src.get(k) for k in b._simcheck_vars}
+            b._build(0.0 if not hasattr(b, "_tb") else b._tb)
+        assert b._simcheck_cmd({"action": "start"})["error"] == BROADCAST_OFF
+        b.director.set_live(True)
+        b.director.configure(on=True)
+        b.simcheck.start = lambda sess, cars: {"ok": True, "sess": bool(sess.get("cameras")), "cars": len(cars.get("cars") or [])}
+        res = b._simcheck_cmd({"action": "start"})
+        assert res["ok"] and res["sess"] and res["cars"] > 2
+        assert b.director.on is False                       # the director let go of the camera
+        nocam = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=False, log=lambda *a: None, render_cars=False,
+                       livery_dir=str(tmp_path))
+        nocam.director.set_live(True)
+        assert "--allow-camera" in nocam._simcheck_cmd({"action": "start"})["error"]
+        assert rs.CMD_ROLE["simcheck"] == "producer" and "simcheck" in rs.SNAPSHOT_TYPES
+        page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+        assert 'data-tab="check"' in page and 'cmd: "simcheck", action: "start"' in page and 'case "simcheck"' in page
+    finally:
+        simlog.set_path(None)

@@ -47,6 +47,8 @@ class Engine:
         self.updater = None          # set by main(); suite.updater.Updater
         from suite.recording import SessionRecorder
         self.recorder = SessionRecorder()   # the home page's Record button
+        from suite.director_check import DirectorCheck
+        self.dircheck = DirectorCheck()     # the home page's "How did the director do?"
         from suite.second_camera import SecondCamera
         # the co-host's side of the broadcast's picture-in-picture (suite/second_camera.py)
         self.second = SecondCamera(self.pitwall.local_producer)
@@ -285,6 +287,29 @@ class Api:
 
     def record_info(self):
         return self._engine.recorder.info()
+
+    # ---- How did the director do? (suite/director_check.py, pitwall/director_report.py)
+    def dircheck_list(self):
+        return self._engine.dircheck.listing()
+
+    def dircheck_start(self, which):
+        return self._engine.dircheck.start(which)
+
+    def dircheck_pick(self):
+        """A capture from anywhere, through the app's own file dialog (the page never names a path)."""
+        import webview
+        kind = webview.FileDialog.OPEN if hasattr(webview, "FileDialog") else webview.OPEN_DIALOG
+        picked = self._window.create_file_dialog(kind, file_types=("Recordings (*.jsonl.gz)", "All files (*.*)"))
+        if not picked:
+            return {"ok": False}
+        path = picked[0] if isinstance(picked, (list, tuple)) else picked
+        return self._engine.dircheck._begin(path)
+
+    def dircheck_info(self):
+        return self._engine.dircheck.info()
+
+    def dircheck_stop(self):
+        return self._engine.dircheck.stop()
 
     def record_show(self):
         """Open the recordings folder with the last capture selected."""

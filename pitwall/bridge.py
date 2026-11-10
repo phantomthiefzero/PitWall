@@ -66,6 +66,12 @@ class Bridge:
         self._extra: list[dict] = []              # messages made off the event loop
         self._loop = None
         self.director = Director(self._cut, log=log, replay=self._replay)
+        # the camera and replay check (pitwall/simcheck.py): reads the telemetry copied here each frame, never the
+        # source from its own thread
+        from .simcheck import SimCheck, VARS as SIMCHECK_VARS
+        self._simcheck_vars = SIMCHECK_VARS
+        self._simvars: dict = {}
+        self.simcheck = SimCheck(self.gate, self.src, lambda: self._simvars, self._emit, log=log)
         self.livery_store = LiveryStore(livery_dir)
         self.capture = LiveryCapture(self.livery_store, self._cut, self._emit, log=log)
         # iRacing's own picture of every car with its paint (Trading Paints included)
@@ -182,6 +188,10 @@ class Bridge:
                 await asyncio.sleep(0.5)
                 continue
             self.stats["frames"] += 1
+            try:
+                self._simvars = {k: self.src.get(k) for k in self._simcheck_vars}
+            except Exception:  # noqa: BLE001
+                self._simvars = {}
             try:
                 outbox = self._build(time.perf_counter())
             except Exception:  # noqa: BLE001
@@ -338,6 +348,21 @@ class Bridge:
         threading.Thread(target=self.gate.execute, args=(self.src, dict(cmd)), daemon=True).start()
         return {"ok": True}
 
+    def _simcheck_cmd(self, msg: dict) -> dict:
+        """The producer's camera and replay check: it moves the camera, so the broadcast must be on, and it takes the
+        camera from the director, the grid walk or a followed battle for as long as it runs."""
+        if msg.get("action") == "stop":
+            self.simcheck.stop()
+            return {"ok": True}
+        if msg.get("action") != "start":
+            return {"ok": False, "error": "unknown check action"}
+        if not self.gate.camera:
+            return {"ok": False, "error": "camera control is off on this bridge (start it with --allow-camera)"}
+        if not self.director.live:
+            return {"ok": False, "error": BROADCAST_OFF}
+        self.director.manual("the camera check")
+        return self.simcheck.start(self.session_msg or {}, self._last_cars or {})
+
     def _car_color(self, key: str, color: str):
         """Each car's paint colour, from iRacing's picture of it (Trading Paints included): one small
         message with all of them, kept by the relay for pages that join later."""
@@ -347,7 +372,9 @@ class Bridge:
     def _emit(self, msg: dict):
         """Thread-safe: queue a message for the next frame."""
         if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._extra.append, msg)
+            # looked up when it runs: `self._extra.append` bound here was the list of that moment, and the frame loop
+            # swaps in a new list after each send, so a message queued in between went into the old one, never sent
+            self._loop.call_soon_threadsafe(lambda: self._extra.append(msg))
         else:
             self._extra.append(msg)
 
@@ -619,6 +646,13 @@ class Bridge:
             # stream's next frame meant never while iRacing was closed or between sessions (the producer loop
             # only builds frames while the sim ticks): the master switch then looked stuck on "off".
             if msg.get("cmd") == "director" and self.director.changed:
+                self.director.changed = False
+                await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
+        elif msg.get("type") == "cmd" and msg.get("cmd") == "simcheck":
+            res = self._simcheck_cmd(msg)
+            self.log(f"cmd simcheck/{msg.get('action')} -> {'ok' if res['ok'] else res['error']}")
+            await ws.send(json.dumps(dict(res, type="cmd_result", echo=msg)))
+            if self.director.changed:
                 self.director.changed = False
                 await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
         elif msg.get("type") == "cmd" and msg.get("cmd") in ("camera", "replay") and not self.director.live:

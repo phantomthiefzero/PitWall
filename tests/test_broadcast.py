@@ -828,3 +828,69 @@ def test_a_clean_streak_counts_racing_laps_without_an_incident():
     assert seen == [0, 1, 2, 3, 3, 4, 0, 1, 0]
     out = d.car_extras({"idx": 7, "lap": 9, "pos": 3, "classPos": 3}, 900.0, {}, None, True, False)
     assert out["cleanStreak"] == 0
+
+
+def test_the_camera_check_sends_each_command_once_and_reads_what_happened(tmp_path):
+    """pitwall/simcheck.py against the fake field's stand-in camera: every step passes, says it was the stand-in,
+    ends live with the camera back where it was, and is written down; a refused command is "not sent" (not
+    "failed"), a stand-in that ignores a command is "failed" with what was read; no check with too few cars."""
+    import threading
+    from pitwall import simlog
+    from pitwall.simcheck import SimCheck, VARS
+    simlog.set_path(str(tmp_path / "sim_log.txt"))
+    try:
+        src = FakeSource(realtime=False, spectator=True)
+        src.connect()
+        lock = threading.Lock()
+
+        def read():
+            with lock:
+                src.tick()
+                return {k: src.get(k) for k in VARS}
+        for _ in range(200):
+            src.tick()
+        d = Deriver()
+        sess = build_session(src)
+        cars = build_cars(src, sess, d)
+        msgs = []
+        done = threading.Event()
+
+        def emit(m):
+            msgs.append(m)
+            if not m.get("running"):
+                done.set()
+        home = (src.get("CamCarIdx"), src.get("CamGroupNumber"))
+        chk = SimCheck(CommandGate(False, camera=True), src, read, emit, log=lambda *a: None, sleep=lambda s: None)
+        assert chk.start(sess, cars)["ok"]
+        assert done.wait(20)
+        res = msgs[-1]
+        assert res["simulated"] and not res["running"]
+        assert [s["state"] for s in res["steps"]] == ["passed"] * len(res["steps"]), res["steps"]
+        names = " | ".join(s["name"] for s in res["steps"])
+        for want in ("Cut to", "same camera", "Change the camera", "the leader", "Pause", "Slow motion", "Play",
+                     "Replay a moment", "Back to live", "Camera back"):
+            assert want in names
+        assert (src.get("CamCarIdx"), src.get("CamGroupNumber")) == home
+        assert os.path.isfile(tmp_path / "sim_check.json")
+        assert "camera check: done" in open(tmp_path / "sim_log.txt", encoding="utf-8").read()
+
+        # the camera gate closed: every step "not sent", none "failed"
+        done.clear(); msgs.clear()
+        chk2 = SimCheck(CommandGate(False, camera=False), src, read, emit, log=lambda *a: None, sleep=lambda s: None)
+        assert chk2.start(sess, cars)["ok"] and done.wait(20)
+        assert {s["state"] for s in msgs[-1]["steps"]} == {"not sent"}
+
+        # a stand-in that pauses but ignores slow motion: that step fails, with what was read
+        real = src.simulate_broadcast
+        src.simulate_broadcast = lambda m, a: None if (m == "replay_set_play_speed" and a[1]) else real(m, a)
+        done.clear(); msgs.clear()
+        chk3 = SimCheck(CommandGate(False, camera=True), src, read, emit, log=lambda *a: None, sleep=lambda s: None,
+                        clock=iter(range(0, 10 ** 6)).__next__)
+        assert chk3.start(sess, cars)["ok"] and done.wait(20)
+        slow = next(s for s in msgs[-1]["steps"] if s["name"] == "Slow motion")
+        assert slow["state"] == "failed" and slow["read"]["ReplayPlaySlowMotion"] is False
+        src.simulate_broadcast = real
+
+        assert "two cars" in SimCheck(CommandGate(False, camera=True), src, read, emit).start(sess, {"cars": []})["error"]
+    finally:
+        simlog.set_path(None)
