@@ -803,7 +803,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
 @keyframes axLampGo{0%{background:#2a0b0b;box-shadow:none}25%,70%{background:#1fe07a;box-shadow:0 0 34px #1fe07a}100%{background:#1fe07a;box-shadow:0 0 34px #1fe07a}}
 /* the kerbs: a red and white stripe under every graphic, running at the race's speed */
 :root[data-look="arcade"]{--ax-kerb:1.4s;--ax-k1:#e10600;--ax-k2:#ffffff}
-:root[data-look="arcade"][data-ax="final"]{--ax-kerb:.45s}
+:root[data-look="arcade"][data-ax="final"]{--ax-kerb:.9s}   /* faster than racing's 1.4 s; .45 s strobed on air */
 :root[data-look="arcade"][data-ax="caution"]{--ax-kerb:3.2s;--ax-k1:#ffd400;--ax-k2:#111111}
 :root[data-look="arcade"][data-ax="done"]{--ax-k1:#f5f5f5;--ax-k2:#0b0d12}
 :root[data-look="arcade"]:not([data-motion="off"]) .layer:not(#stinger):not(#scene):not(#strip):not(#map):not(#pip):not(#sponsors):not(#gboard) > .inner::before{content:"";position:absolute;left:0;right:0;bottom:-7px;height:5px;z-index:2;pointer-events:none;
@@ -1406,9 +1406,16 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // A show screen covers the whole picture: nothing else is on air while one is up, on any source (a tower given
   // its own OBS source would otherwise sit on top of the starting-soon screen).
   const sceneUp = () => !!G("scene.mode", null);
+  // After the checkered flag the race is over: what was about the racing (battles, who is closing, pace, strategy,
+  // pit stops, the card, race control's alerts) leaves the air, and the result, the lap chart and the podium have it
+  // (the user's call, Nov 2026). gfx finish.solo false keeps them.
+  const FINISH_OFF = ["battle", "h2h", "closing", "pace", "strategy", "faster", "traffic", "onboard", "pitstop", "tyres",
+    "trap", "card", "penalty", "fastlap", "ticker", "map", "qlap", "strip"];
+  const finishUp = () => isRace() && racingFlag() === "checkered";
   const EDIT_ALL = Q.get("edit") === "all";
   const shown = name => allowed(name) && !sceneUp() &&
     (EDIT_ALL || (G("auto.on", false) && CONTEXTUAL[name] && CONTEXTUAL[name]() ? ctxWants(name) : (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)))) &&
+    !(finishUp() && FINISH_OFF.includes(name) && G("finish.solo", true)) &&
     !(gridUp && ["pitstop", "closing", "pace", "strategy", "lapchart", "tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.

@@ -110,6 +110,8 @@ STORY_SEQ = {
     "traffic": ["far", "aerial", "chase", "far"],
     "fastlap": ["far", "trackside", "chase"],
     "finish": ["trackside", "far", "aerial", "trackside"],
+    # after the checkered flag, while the result and the podium are on air: big, wide and slow (the user's call)
+    "after": ["aerial", "far", "gyro", "aerial", "trackside"],
     "charge": ["far", "trackside", "onboard", "far"],
     # the first lap: the front of the field from above and from the side, the pack behind the leader, the pack ahead
     "start": ["aerial", "trackside", "rear", "aerial", "far", "trackside"],
@@ -132,6 +134,7 @@ FRESH_INCIDENT_S = 20.0     # an incident older than this is not news
 FRESH_MOMENT_S = 12.0       # a pass or a lead change older than this is not worth cutting to
 SEGMENT_MIN_S = 14.0        # a story gets at least this long (two or three shots) unless something bigger happens
 SEGMENT_MAX_S = 40.0        # and at most this, then another story gets the air
+AFTER_HOLD_S = 12.0         # after the flag each shot is held this long at least (cinematic: no quick cuts)
 FATIGUE_S = 150.0           # a story just shown scores lower for this long
 INTERRUPT_BY = 35.0         # a new story must beat the one on air by this much to cut in before SEGMENT_MIN_S
 BATTLE_LOST_S = 8.0         # a followed battle missing this long is over
@@ -557,6 +560,10 @@ class Director:
                 h.append((t_live, self.current.get("car")))
             while h and t_live - h[0][0] > REPLAY_WINDOW_S + SEEN_LIVE_S:
                 h.pop(0)
+        # 0. after the checkered flag the race is over: wide, slow shots of the winners while the result and the
+        #    podium are on air; no incidents, replays or battles (the user's call, Nov 2026)
+        if self._after_finish(groups, cars, cars_msg, now):
+            return
         # 1. a fresh incident worth showing (one from minutes ago is not news:
         #    turning the director on must not replay the whole feed)
         for inc in reversed(recent_incidents):
@@ -602,6 +609,32 @@ class Director:
             return
         # 4. a story
         self._story_step(groups, cars, by, cars_msg, recent_incidents, t_live, weights, hold, now)
+
+    def _after_finish(self, groups, cars, cars_msg, now) -> bool:
+        """The race is over (the leader has taken the flag, normalize race.finished): the overall winner, then each
+        class's winner, then the rest of each class's podium, in turn, on the "after" shots (aerial first), each held
+        AFTER_HOLD_S or more. False while the race is still on."""
+        d = cars_msg.get("derived") or {}
+        if not d.get("isRace") or not (d.get("race") or {}).get("finished"):
+            self._after = None
+            return False
+        if getattr(self, "_after", None) is None:
+            self._end_segment(now)
+            self._after = {"key": "after", "seq": "after", "shot": 0, "n": 0}
+            self.note = "after the flag: the winners"
+        a = self._after
+        podium = sorted((c for c in cars if c.get("classPos") and c["classPos"] <= 3),
+                        key=lambda c: (c["classPos"], c.get("pos") or 99))
+        if not podium:
+            return True                          # every car has gone in: the camera stays where it is
+        car = podium[a["n"] % len(podium)]
+        g = self._sequence_shot(groups, a, {"aerial": 3, "far": 2, "trackside": 1})
+        why = ("the winner" if car.get("pos") == 1 else "class winner" if car.get("classPos") == 1
+               else "P%s in class" % car.get("classPos"))
+        if g and self._do_cut(car, g, "after the flag: " + why):
+            a["n"] += 1
+            self._next_at = now + max(AFTER_HOLD_S, self.hold_s * 1.5)
+        return True
 
     # ------------------------------------------------------------------ stories
     def _end_segment(self, now):
