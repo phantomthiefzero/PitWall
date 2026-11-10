@@ -4131,6 +4131,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         battles = deriver.battles(cars, ahead_of, is_race)
         deriver.battle_history(battles, now)
         attacks = deriver.attacks(cars, now, is_race)
+        battle_pressure(battles, attacks)
         tv = deriver.race_tv(cars, now, race if is_race else None, ahead_of, is_race)
         out["derived"] = {
             "caution": caution,
@@ -4351,6 +4352,31 @@ def _parse_secs(v):
         return x if 0 < x < 7 * 86400 else None
     except (TypeError, ValueError):
         return None
+
+
+PRESSURE_GAP_S = 1.0        # a gap of this much (class seconds) or more is no pressure from the gap alone
+PRESSURE_RATE_S = 0.3       # closing this much a lap or more is full pressure from the closing rate
+PRESSURE_ATTACK = 0.85      # going for it right now (attacks) is at least this
+
+
+def battle_pressure(battles: list, attacks: list) -> None:
+    """How hard the car behind is leaning on the car ahead, 0..1 per pair of a battle (`pressure`, beside gapsS): 60%
+    from how small the gap is (in the class's seconds), 40% from how fast it is closing per lap; a chaser going for it
+    right now (normalize attacks) is at least PRESSURE_ATTACK. A measure for a bar on the battle box, NOT a chance:
+    nothing here knows whether the pass will come."""
+    going = {tuple(a.get("cars") or [])[-2:] for a in attacks or []}
+    for b in battles or []:
+        k, out = b.get("scale") or 1.0, []
+        for i, gap in enumerate(b.get("gapsS") or []):
+            if gap is None:
+                out.append(None)
+                continue
+            rate = (b.get("closingSPerLap") or [None] * (i + 1))[i]
+            p = 0.6 * max(0.0, min(1.0, 1.0 - (gap / k) / PRESSURE_GAP_S)) + 0.4 * max(0.0, min(1.0, (rate or 0.0) / PRESSURE_RATE_S))
+            if tuple(b["cars"][i:i + 2]) in going:
+                p = max(p, PRESSURE_ATTACK)
+            out.append(round(p, 2))
+        b["pressure"] = out
 
 
 def race_flags(flags, state, time_remain_s=None, timed=False, laps_to_go=None, finished=None) -> list:

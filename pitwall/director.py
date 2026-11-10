@@ -134,6 +134,9 @@ FRESH_INCIDENT_S = 20.0     # an incident older than this is not news
 FRESH_MOMENT_S = 12.0       # a pass or a lead change older than this is not worth cutting to
 SEGMENT_MIN_S = 14.0        # a story gets at least this long (two or three shots) unless something bigger happens
 SEGMENT_MAX_S = 40.0        # and at most this, then another story gets the air
+REEL_MAX = 5                # the highlight reel after the flag: at most this many moments, in the order they happened
+REEL_AFTER_S = 25.0         # and it starts this long after the leader takes the flag (the finish itself is live)
+REEL_CLIP_S = 9.0           # each moment plays this long
 AFTER_HOLD_S = 12.0         # after the flag each shot is held this long at least (cinematic: no quick cuts)
 FATIGUE_S = 150.0           # a story just shown scores lower for this long
 INTERRUPT_BY = 35.0         # a new story must beat the one on air by this much to cut in before SEGMENT_MIN_S
@@ -180,6 +183,9 @@ class Director:
         self.stinger_cut_s = 0.42         # where the look's stinger covers the picture (the producer keeps it in step)
         self.stinger = None               # {"seq", "dir"}: the overlay runs a stinger when seq changes
         self.rp = None                    # the replay on air: {"phase", "at", "moment", "car", "label", "key"}
+        self.reel_on = True               # the race's best moments again after the flag (needs replays_on)
+        self._race_moments = {}           # every replayable moment of the session on air (the reel picks from these)
+        self._reel = None                 # {"list": [(key, e)...], "i", "n", "at"} once the race is over
         self._replayed = set()
         self._last_replay_at = -1e9
         self._moments: dict = {}          # key -> feed event, the last few minutes of replayable moments
@@ -267,7 +273,7 @@ class Director:
         self.changed = True
 
     def configure(self, on=None, style=None, hold_s=None, auto_grid=None, grid_rows=None,
-                  replays=None, stinger=None, stinger_cut_ms=None, grid_board=None):
+                  replays=None, stinger=None, stinger_cut_ms=None, grid_board=None, reel=None):
         if on and not self.live:
             on = None                                 # the director runs only with the broadcast on
         if on is not None:
@@ -285,6 +291,8 @@ class Director:
             self.grid_board = grid_board
         if replays is not None:
             self.replays_on = bool(replays)
+        if reel is not None:
+            self.reel_on = bool(reel)
         if stinger is not None:
             self.stinger_on = bool(stinger)
         if stinger_cut_ms is not None:
@@ -418,7 +426,8 @@ class Director:
                 "gridBoard": ({"row": self.grid_board_row, "rows": self._board_rows}
                               if self.owner == "grid" and self._board == "on" else None),
                 "gridBoardMode": self.grid_board,
-                "replays": self.replays_on, "stinger": self.stinger,
+                "replays": self.replays_on, "stinger": self.stinger, "reelOn": self.reel_on,
+                "reel": ({"i": self._reel["i"], "n": self._reel["n"]} if self._reel and self.rp and self.rp.get("reel") else None),
                 "replay": {"label": self.rp["label"], "car": self.rp["car"], "phase": self.rp["phase"]} if self.rp else None,
                 "battle": list(self.battle["cars"]) if self.battle else None,
                 "note": self.note, "current": self.current, "styles": sorted(STYLES)}
@@ -483,6 +492,8 @@ class Director:
         snum = ((state or {}).get("session") or {}).get("num")
         if snum != getattr(self, "_snum", None):
             self._snum, self._moments, self._replayed = snum, {}, set()
+            self._race_moments, self._reel = {}, None
+        self._last_session = session
         self._watch_session(session, cars_msg, state, race_state)
         self._sample_pace(session, cars_msg, race_state, self.clock())
         self._keep_moments(recent_incidents, state)
@@ -622,7 +633,12 @@ class Director:
             self._end_segment(now)
             self._after = {"key": "after", "seq": "after", "shot": 0, "n": 0}
             self.note = "after the flag: the winners"
+            if self._reel is None:
+                picks = self._reel_picks() if (self.reel_on and self.replays_on and self.replay_fn) else []
+                self._reel = {"list": picks, "i": 0, "n": len(picks), "at": now + REEL_AFTER_S}
         a = self._after
+        if self._reel and self._reel["list"] and now >= self._reel["at"] and self._reel_next(groups, cars_msg, now, first=True):
+            return True
         podium = sorted((c for c in cars if c.get("classPos") and c["classPos"] <= 3),
                         key=lambda c: (c["classPos"], c.get("pos") or 99))
         if not podium:
@@ -635,6 +651,61 @@ class Director:
             a["n"] += 1
             self._next_at = now + max(AFTER_HOLD_S, self.hold_s * 1.5)
         return True
+
+    def _reel_picks(self) -> list:
+        """The race again in a few moments: lead changes, contact, spins and passes near the front, the best REEL_MAX
+        of the whole race (one moment once: a pass and the lead change it made are one), in the order they happened."""
+        scored = []
+        for key, e in self._race_moments.items():
+            k, what = e.get("kind"), e.get("what")
+            if k == "class_lead":
+                sc = 80
+            elif k == "race_incident" and what in ("contact", "spin") and e.get("confidence") != "low":
+                sc = 70 if what == "contact" else 55
+            elif k == "pass" and (e.get("classPos") or 99) <= 10:
+                sc = 65 if e["classPos"] <= 3 else 40
+            else:
+                continue
+            scored.append((sc, key, e))
+        scored.sort(key=lambda x: -x[0])
+        cars_of = lambda e: {e.get("idx")} | set(e.get("passedIdx") or []) | ({e.get("prevIdx")} if e.get("prevIdx") is not None else set())
+        out = []
+        for sc, key, e in scored:
+            if any(abs(e["replayT"] - x["replayT"]) < REPLAY_SAME_S and cars_of(e) & cars_of(x) for _, x in out):
+                continue
+            if any(abs(e["replayT"] - x["replayT"]) < REEL_CLIP_S for _, x in out):
+                continue                              # two moments in the same few seconds are one clip
+            out.append((key, e))
+            if len(out) >= REEL_MAX:
+                break
+        return sorted(out, key=lambda ke: ke[1]["replayT"])
+
+    def _reel_next(self, groups, cars_msg, now, first=False) -> bool:
+        """Put the reel's next moment on air (the stinger only into the first)."""
+        r = self._reel
+        nums = {c["idx"]: c for c in cars_msg.get("cars") or [] if c.get("num") is not None}
+        while r["list"]:
+            key, e = r["list"].pop(0)
+            r["i"] += 1
+            c = nums.get(e.get("idx"))
+            kind = e.get("kind")
+            g = self._pick_group(groups, {"trackside": 3, "aerial": 2} if kind == "race_incident" else
+                                 {"far": 3, "trackside": 1} if kind == "pass" else {"trackside": 2, "aerial": 1})
+            if not c or not g:
+                continue
+            what = {"race_incident": {"contact": "contact", "spin": "spin"}.get(e.get("what"), "incident"),
+                    "pass": "the pass for P%s" % e.get("classPos") if e.get("classPos") else "the pass",
+                    "class_lead": "the lead change"}.get(kind, "replay")
+            stinger = first and self.stinger_on
+            self.rp = {"phase": "in", "at": now + (self.stinger_cut_s if stinger else 0.0), "moment": e, "reel": True,
+                       "car": e["idx"], "num": c.get("num"), "group": g, "dur": REEL_CLIP_S, "key": key,
+                       "label": "Highlights %d/%d · %s · %s" % (r["i"], r["n"], str(c.get("name") or "").split(" ")[-1] or "#%s" % c.get("num"), what)}
+            if stinger:
+                self._fire_stinger("toReplay")
+            self.note = "highlights %d/%d" % (r["i"], r["n"])
+            self.changed = True
+            return True
+        return False
 
     # ------------------------------------------------------------------ stories
     def _end_segment(self, now):
@@ -953,6 +1024,8 @@ class Director:
                 continue                              # what a replay can show (and a pass is what a charge is made of)
             key = "%s:%s:%s:%s" % (e.get("sessionNum"), e.get("kind"), e.get("idx"), e.get("replayT") if e.get("replayT") is not None else e.get("t"))
             self._moments.setdefault(key, e)
+            if e.get("replayT") is not None and e.get("sessionNum") == getattr(self, "_snum", None) and len(self._race_moments) < 600:
+                self._race_moments.setdefault(key, e)
         t_live = (((state or {}).get("derived") or {}).get("liveEdge") or {}).get("tLive")
         if t_live is not None and len(self._moments) > 40:
             self._moments = {k: e for k, e in self._moments.items() if e.get("t") is None or t_live - e["t"] < REPLAY_WINDOW_S * 2}
@@ -1074,6 +1147,10 @@ class Director:
             urgent = any(x.get("t") is not None and t_live is not None and 0 <= t_live - x["t"] < 6 and
                          (x.get("kind") == "class_lead" or (x.get("kind") == "race_incident" and x.get("what") in ("contact", "spin")))
                          for x in recent or [])
+            if rp.get("reel"):
+                urgent = False                        # the race is over: nothing live outranks its highlights
+                if now >= rp["at"] and self._reel and self._reel["list"] and self._reel_next(self._groups(self._last_session or {}), cars_msg, now):
+                    return                            # straight into the next moment, no trip back to live between
             if now >= rp["at"] or urgent:
                 rp["phase"], rp["at"] = "out", now + (self.stinger_cut_s if self.stinger_on else 0.0)
                 if self.stinger_on:
