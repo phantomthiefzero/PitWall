@@ -464,7 +464,8 @@ Broadcast (broadcast/)
   after a caution or red, white for the final lap, checkered with the winner; only on a change it sees.
   The leader's laps never go back in a session (race_length: ResultsPositions and the most seen are a floor), and
   while a replay holds the picture the bridge keeps the race's clock (SessionTimeRemain) and laps (results) running.
-  The banner's clock changes in place; only laps and words roll in (a roll each second flashed).
+  Every clock on air changes in place (roll() leaves one that ticks, CLOCK_RE: the banner's and then the tower's
+  flashed each second); only laps and words roll in.
   What a spectator is not sent is filled in everywhere it is used: raceFlags feeds race control's flag events
   (state_events), the race summary's white / checkered (race_length, state given), PitWall's header, and the
   director (the finish story; no replays in a timed race's last laps, lapsByTime). The caution is read from the

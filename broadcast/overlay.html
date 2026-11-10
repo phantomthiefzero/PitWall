@@ -1251,9 +1251,12 @@ body.bc-off>*:not(script){visibility:hidden!important}
     t = t == null ? "" : String(t);
     if (el.textContent !== t) el.textContent = t;
   }
+  // a clock ticks every second: it changes in place (rolling it in each second flashed, the banner's and then the
+  // tower's); laps and words roll in
+  const CLOCK_RE = /^\d+:\d\d/;
   function roll(el, html) {
     const was = el._h; if (!setH(el, html)) return;
-    if (was && was !== "–") replay(el, "m-roll");
+    if (was && was !== "–" && html !== "–" && !(CLOCK_RE.test(String(html)) && CLOCK_RE.test(String(was)))) replay(el, "m-roll");
   }
   // a flag that is out ripples, green and none stay still
   function waveFlag(el, f) { el.classList.toggle("m-wave", !!f && f !== "green"); }
@@ -2274,9 +2277,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     setT($("bnTrack"), T("text.event", "") || (t ? (t.TrackDisplayShortName || t.TrackDisplayName || "") : ""));
     setT($("bnEvent"), t ? (t.TrackDisplayName || "") + (t.TrackConfigName ? " · " + t.TrackConfigName : "") : "");
     const rs = raceState(), f = racingFlag();
-    // a clock ticks every second: it changes in place (rolling it in each second flashed); laps and words roll in
-    if (/^\d+:\d\d/.test(rs.main) || rs.main === "–") setH($("bnMain"), rs.main);
-    else roll($("bnMain"), rs.main);
+    roll($("bnMain"), rs.main);
     const flagWord = f ? (f === "caution" ? "Full course yellow" : f === "checkered" ? "Checkered flag" : f[0].toUpperCase() + f.slice(1) + " flag") : "";
     setT($("bnSub"), [rs.sub, flagWord || (sess ? sess.SessionType : "")].filter(Boolean).join(" · "));
     $("bnFlag").style.background = f ? FLAG_BG[f] : "var(--muted)"; waveFlag($("bnFlag"), f);
