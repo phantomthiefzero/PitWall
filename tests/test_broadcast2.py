@@ -2780,3 +2780,39 @@ def test_the_camera_check_needs_the_broadcast_on_and_takes_the_camera(tmp_path):
         assert 'data-tab="check"' in page and 'cmd: "simcheck", action: "start"' in page and 'case "simcheck"' in page
     finally:
         simlog.set_path(None)
+
+
+def test_after_the_flag_the_racing_graphics_go_and_the_camera_turns_cinematic():
+    # Nov 2026, the user: "after the race ends all the other tabs showing battles and such should go away and the
+    # camera should change to something large and cinematic while the podium panels are up"
+    from pitwall.director import AFTER_HOLD_S, STORY_SEQ
+    battles = [{"id": "1:0", "cars": [0, 1], "gapsS": [0.2], "closingSPerLap": [0.1], "forClassPos": 1}]
+    d, sess, msg, t, log, kinds = _craft_rig(n=6, battles=battles)
+    contact = {"kind": "race_incident", "what": "contact", "idx": 4, "t": 520.0, "replayT": 520.0, "sessionNum": 2,
+               "id": 5, "confidence": "high"}
+    for k in range(200):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [])
+    msg["derived"]["race"] = {"finished": True}
+    msg["cars"][1]["classPos"], msg["cars"][1]["classId"] = 1, 2           # a second class: its winner has a turn
+    n0 = len(log["cuts"])
+    for k in range(int(AFTER_HOLD_S * 5 * 10)):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(520.0 + k * 0.1), [contact])
+    after = log["cuts"][n0:]
+    assert after and all(c in (0, 1, 2) for c, _, _ in after), "the podium only: no battle, no contact"
+    assert after[0][0] == 0 and 1 in [c for c, _, _ in after], "the winner first, then the other class's winner"
+    assert {kinds[g] for _, g, _ in after} <= set(STORY_SEQ["after"])
+    assert kinds.get(after[0][1]) == "aerial", "wide first"
+    assert all(b - a >= AFTER_HOLD_S - 0.11 for (_, _, a), (_, _, b) in zip(after, after[1:])), "held, no quick cuts"
+    assert not log["replay"] and d.note.startswith("after the flag")
+    # the overlay: the racing graphics step off once the checkered flag is out in a race
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    off = page.split("const FINISH_OFF = [")[1].split("]")[0]
+    for name in ("battle", "h2h", "closing", "pace", "strategy", "onboard", "card", "ticker", "penalty", "traffic"):
+        assert '"%s"' % name in off, name
+    for name in ("tower", "board", "lapchart", "podium", "banner", "flagcall"):
+        assert '"%s"' % name not in off, name
+    assert 'isRace() && racingFlag() === "checkered"' in page and 'G("finish.solo", true)' in page
+    # the final lap's kerbs run faster, not as a strobe
+    assert ':root[data-look="arcade"][data-ax="final"]{--ax-kerb:.9s}' in page

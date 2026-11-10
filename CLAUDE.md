@@ -460,6 +460,11 @@ Broadcast (broadcast/)
   A spectator's SessionFlags carry no white or checkered at all (Summit Point), so race_flags also reads them from the
   race: checkered at the leader's crossing (race_end), white from the end coming (a timed race's clock out, one lap
   to go, the state) until then.
+  After the checkered flag in a race (the user's call, Nov 2026) the racing graphics leave the air (overlay FINISH_OFF:
+  battle, h2h, closing, pace, strategy, card, race control's alerts and the like; gfx finish.solo false keeps them) and
+  the director shows each class's podium in turn on big, slow shots (_after_finish, STORY_SEQ "after": aerial first,
+  AFTER_HOLD_S or more each; no incidents, replays or battles). Arcade's final-lap kerbs run at .9 s (.45 s strobed).
+  tests: test_after_the_flag_the_racing_graphics_go_and_the_camera_turns_cinematic.
   The overlay calls them on screen (flagcall, a tile under Alerts, on by default): green as a race goes racing or
   after a caution or red, white for the final lap, checkered with the winner; only on a change it sees.
   The leader's laps never go back in a session (race_length: ResultsPositions and the most seen are a floor), and
