@@ -429,6 +429,7 @@ function lkShake(px) { if (LK_CALM()) return; const b = document.body; b.style.s
 const FX = { cv: null, g: null, parts: [], sweeps: [], flash: 0, flashCol: '#fff', raf: 0, last: 0 };
 function lkFx(kind, col) {
   if (LK_CALM()) return;
+  if (!col) col = kind === 'go' ? '#38f07a' : '#ffffff';     // the start lights give none: a line without a colour threw in the draw loop
   if (!FX.cv) { FX.cv = document.createElement('canvas'); FX.cv.className = 'lk-fx'; FX.cv.setAttribute('aria-hidden', 'true'); document.body.appendChild(FX.cv); FX.g = FX.cv.getContext('2d') }
   if (!FX.cv.isConnected) document.body.appendChild(FX.cv);
   const W = innerWidth, H = innerHeight, cy = H / 2, R = Math.random, P = FX.parts;

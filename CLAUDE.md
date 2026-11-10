@@ -475,6 +475,13 @@ Broadcast (broadcast/)
   race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
   option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution
   or from a fall-off over TYRE_DEG_MAX, and a forecast lap already gone by is not shown; where-faster honours comparable.
+- Whole-app audit (Nov 2026: every page in every look, desktop and phone, against the Summit Point capture and a real
+  .ibt, for script errors, contrast, cut-off words and overflow): lkFx gives a line a colour when none is passed (the
+  start lights threw in the draw loop); the overlay's gained / lost colours follow the panel's ink (--gain / --lose set in
+  applyTheme: dark pair on a light look) and the podium's header line uses --headText; booth notes fit a phone; PitWall's
+  standings show an initial for the first name where narrow (nameCell); small buttons get a bigger touch area on
+  coarse pointers (::after, no layout change); the analyzer's white-on-colour pills are #167d42 / #9a6500 and amber
+  text is --amb (darker in the light theme). test: test_what_the_november_audit_found.
 - Looks: Pit wall's bar shows only its numbers under 640 px; :root[data-look] sets overflow-anchor:none (the bar put
   in after load scrolled the page by its height through scroll anchoring, hiding the title).
 - Audited against Summit Point (Nov 2026), each now in place: battles are read from the live class gap (a stale

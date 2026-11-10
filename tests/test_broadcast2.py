@@ -2780,3 +2780,33 @@ def test_the_camera_check_needs_the_broadcast_on_and_takes_the_camera(tmp_path):
         assert 'data-tab="check"' in page and 'cmd: "simcheck", action: "start"' in page and 'case "simcheck"' in page
     finally:
         simlog.set_path(None)
+
+
+def test_what_the_november_audit_found():
+    # Nov 2026: every page loaded in every look, desktop and phone, against the Summit Point capture and a real .ibt,
+    # looking for script errors, low contrast, cut-off words and a page wider than the phone.
+    root = os.path.join(os.path.dirname(__file__), "..")
+    rd = lambda *p: open(os.path.join(root, *p), encoding="utf-8").read()
+    # Arcade's start lights (lkFx('go')) gave no colour: a line without one threw in the effects' draw loop
+    for page in (rd("suite", "web", "index.html"), rd("suite", "web", "analyzer", "index.html"), rd("client", "index.html")):
+        fx = page.split("function lkFx(kind, col) {")[1][:400]
+        assert "if (!col) col = " in fx
+    ov = rd("broadcast", "overlay.html")
+    # the podium's line on its header reads in the header's text colour, not --muted (1.07:1 on Night neon)
+    assert ".pd-h span{margin-left:auto;color:var(--headText)" in ov
+    # gained / lost on the panel's ink: a darker pair on a light look (Daylight's green was 1.8:1)
+    assert 'const lightInk = inkOn(colors.ink) === "#000"' in ov and 'root.setProperty("--gain", lightInk ?' in ov
+    for rule in (".ps-line .up{color:var(--gain)}", ".tb-r .v.g{color:var(--gain)}", ".bd-row .v.up{color:var(--gain)}"):
+        assert rule in ov, rule
+    # booth notes on a phone: the page was 126 px wider than the screen
+    assert "main{grid-template-columns:minmax(0,1fr)}main>div{min-width:0}" in rd("broadcast", "notes.html")
+    # PitWall's standings where narrow: the first name gives way to its initial instead of the surname being cut
+    cl = rd("client", "index.html")
+    assert "${nameCell(c)}" in cl and 'td.driver .nm-f { display: none; }' in cl
+    out = _node("const esc = s => String(s);\nconst nameCell = "
+                + cl.split("  const nameCell = ")[1].split("\n  const shortCar")[0]
+                + "\nconsole.log(JSON.stringify([nameCell({name: 'Zachary Taylor8'}), nameCell({name: 'Cher'}), nameCell({idx: 4})]))")
+    assert out == ['<span class="nm-f">Zachary</span><span class="nm-i">Z.</span> Taylor8', "Cher", "car 4"]
+    # the analyzer: white on a green or amber pill reads (was 4.1:1 and 3.7:1), and amber text has a light-theme colour
+    an = rd("suite", "web", "analyzer", "index.html")
+    assert "pill(LIVE.mode==='replay'?'replaying a file':'live','#167d42')" in an and "--amb:#8f5f00" in an and "--amb:#d99a1e" in an
