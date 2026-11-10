@@ -428,6 +428,19 @@ Broadcast (broadcast/)
   attack seldom comes before a pass (the gaps swing all the time: hence the 0.3 s floor). More captures of road
   races will say more; tests: test_an_attack_is_seen_as_it_happens_and_through_traffic_is_a_story,
   test_the_director_goes_to_an_attack_and_replays_the_passes_it_missed.
+- Checking it on the sim (Nov 2026). The camera and replay check (producer Setup > Check; pitwall/simcheck.py, bridge
+  `simcheck` command, producer token, the broadcast on; it takes the camera from the director): each command the
+  broadcast uses, sent once through the CommandGate, and the telemetry's answer (CamCarIdx / CamGroupNumber,
+  ReplayPlaySpeed / SlowMotion, ReplaySessionTime against SessionTime): worked / did not work (what was read) / not
+  sent (the error); back to live and the camera back where it was at the end; sim_log.txt and sim_check.json. It reads
+  the bridge's copy of the telemetry from its last frame (_simvars), never the source from its own thread.
+  How did the director do? (home page; suite/director_check.py over pitwall/director_report.py, which
+  scripts/director_report.py also uses): a recording from the Record button's folder by its id in the listing (or the
+  app's own file dialog), played through the director on its own thread; after the opening lap and the top 3, live /
+  in the picture / replayed, and every pass with the drivers' names. Bridge._emit looks its list up when the callback
+  runs (a bound `self._extra.append` went to the list of that moment, swapped out by the frame loop).
+  tests: test_the_camera_check_sends_each_command_once_and_reads_what_happened,
+  test_the_camera_check_needs_the_broadcast_on_and_takes_the_camera, test_the_home_page_checks_how_the_director_did.
 - Auto ("Pick graphics for me") is contextual (overlay ctxWants / CONTEXTUAL): the driver card comes up for a few
   seconds when the camera finds a new car and now and then on a long shot (never over a battle box or a qualifying
   lap, which name the cars), the battle box shows the battle the camera is on, the onboard graphic follows onboard

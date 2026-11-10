@@ -367,6 +367,7 @@ class AppWindowApiTest(unittest.TestCase):
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
                                   "update_open_key_page", "save_report", "save_image",
                                   "record_start", "record_stop", "record_info", "record_show",
+                                  "dircheck_list", "dircheck_start", "dircheck_pick", "dircheck_info", "dircheck_stop",
                                   "second_start", "second_stop", "second_info", "open_in_browser", "camera_status"})
         for n in public:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
@@ -1662,3 +1663,31 @@ class RecordsTest(unittest.TestCase):
         self.assertNotIn(83.90, [x.get("t") for x in m])
         best = next(x for x in m if x["t"] == 83.62)
         self.assertAlmostEqual(best["by"], 0.48, places=3)
+
+
+def test_the_home_page_checks_how_the_director_did(tmp_path):
+    """suite/director_check.py: the recordings in the folder, newest first, named by what they are; a check by an id
+    from that listing (never a path from the page) runs on its own thread and ends with the report
+    (pitwall.director_report: passes after the opening lap, top 3, every pass with the drivers' names)."""
+    import time as _t
+    from pitwall.recorder import record
+    from pitwall.sources import FakeSource
+    from suite.director_check import DirectorCheck
+    p = str(tmp_path / "fake-race.jsonl.gz")
+    record(FakeSource(realtime=False, spectator=True), p, hz=10, max_ticks=1500, clock="sim", log=lambda *a: None)
+    dc = DirectorCheck(folder=str(tmp_path), log=lambda *a: None)
+    lst = dc.listing()
+    assert lst["ok"] and len(lst["files"]) == 1 and lst["files"][0]["id"] == 0
+    assert not dc.start(5)["ok"] and not dc.start(str(p))["ok"]      # an id from the listing, nothing else
+    assert dc.start(0)["ok"]
+    t0 = _t.time()
+    while dc.info()["state"] == "running" and _t.time() - t0 < 240:
+        _t.sleep(0.2)
+    st = dc.info()
+    assert st["state"] == "done", st
+    r = st["report"]
+    for k in ("all", "afterStart", "top3", "top10", "cuts", "replays", "rows"):
+        assert k in r
+    assert all(set(("t", "verdict", "name", "passedName", "near", "replayed")) <= set(x) for x in r["rows"])
+    page = open(os.path.join(os.path.dirname(__file__), "..", "suite", "web", "index.html"), encoding="utf-8").read()
+    assert 'id="dck"' in page and "dircheck_start(+$('dckSel').value)" in page

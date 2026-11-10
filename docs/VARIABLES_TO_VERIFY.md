@@ -69,6 +69,12 @@ Recordings needed (each ~10–20 min, `--hz 10` is plenty for classification):
 
 ## Broadcast (camera, replay, battles, incidents) — added Oct 2026, NOT yet run against the sim
 
+**The camera and replay check** (producer, Setup > Check; pitwall/simcheck.py, Nov 2026) sends the camera and replay
+commands below to iRacing once each while spectating and reads what iRacing did: `cam_switch_num` (two cars, a group
+change, the leader by -2), `replay_set_play_speed` (pause, slow motion, play), `replay_search_session_time` (30 s back)
+and `replay_search to_end`. Its result goes to sim_check.json beside sim_log.txt: run it once on the sim PC and copy
+what it found into this table.
+
 | Item | Claim | Evidence so far | Check on the sim PC |
 |---|---|---|---|
 | `CamCarIdx` | follows every camera cut while spectating | 62 distinct changes in `spectate-race-vir` (the analyzer labelled it `pit-only`, an artefact of when cuts happened) | cut cameras in the producer panel; the tower highlight and driver card follow |

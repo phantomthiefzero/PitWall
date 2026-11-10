@@ -41,7 +41,7 @@ from websockets.datastructures import Headers
 from websockets.http11 import Response
 
 SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director", "livery_status", "carcolors",
-                  "camera_packs", "refgaps")
+                  "camera_packs", "refgaps", "simcheck")
 
 # Messages a viewer may have queued before it is judged too slow and dropped.
 # (See the figure below for how many seconds of stream that is.) Each viewer drains its own queue, so a
@@ -62,7 +62,7 @@ CLOSE_TOO_SLOW = 4002
 MAX_REFS = 12
 
 CMD_ROLE = {"pit": "engineer", "camera": "producer", "replay": "producer",
-            "director": "producer", "livery": "producer"}
+            "director": "producer", "livery": "producer", "simcheck": "producer"}
 
 # What a viewer may send in one message. Only the producer uploads files (logos,
 # stingers, fonts); anyone else sends a few hundred bytes at most, and a 40 MB
@@ -478,6 +478,8 @@ class Relay:
                 q.put_nowait(raw)
         if not guest:
             q.put_nowait(self._gfx_message())
+            if self.snapshot.get("simcheck"):          # the last camera check, for a producer page that reloads
+                q.put_nowait(self.snapshot["simcheck"])
             q.put_nowait(self._notes_message())
         q.put_nowait(self._assets_message())
 

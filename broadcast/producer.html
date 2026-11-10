@@ -53,6 +53,8 @@ h2{margin:0 0 9px;font:800 19px/1 var(--num);letter-spacing:.02em;display:flex;a
 h2 small{margin-left:auto;font:600 13px/1 var(--txt);color:var(--mut)}
 h3{margin:12px 0 6px;font:700 13px/1 var(--txt);color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
 .note{color:var(--mut);font-size:13px;margin:6px 0 0}
+.cktab{border-collapse:collapse;width:100%;margin-top:8px;font-size:13px}.cktab td{padding:4px 8px 4px 0;border-top:1px solid var(--line);vertical-align:top}
+.cktab .ck-passed b{color:var(--good)}.cktab .ck-failed b,.cktab .ck-not-sent b{color:var(--bad)}.cktab .ck-running b{color:var(--acc)}
 .warn{background:rgba(255,204,0,.1);border:1px solid rgba(255,204,0,.35);border-radius:8px;padding:7px 9px;font-size:14px;margin-bottom:8px}
 .tabs{display:flex;gap:4px;margin-bottom:10px}
 .tabs button{flex:1}
@@ -398,7 +400,7 @@ header{padding:6px 12px}
   </div>
 </main>
 <div id="setup" class="hide" role="dialog" aria-label="Setup">
-  <div class="su-bar"><b>Setup</b><div class="tabs"><button data-tab="show" class="on">Graphics</button><button data-tab="look">Look</button><button data-tab="studio">Studio</button><button data-tab="liveries">Liveries</button><button data-tab="obs">OBS</button></div><button data-suclose="1" class="su-x" title="Close (Esc)">Close</button></div>
+  <div class="su-bar"><b>Setup</b><div class="tabs"><button data-tab="show" class="on">Graphics</button><button data-tab="look">Look</button><button data-tab="studio">Studio</button><button data-tab="liveries">Liveries</button><button data-tab="obs">OBS</button><button data-tab="check">Check</button></div><button data-suclose="1" class="su-x" title="Close (Esc)">Close</button></div>
   <div class="su-body">
     <div data-pane="show">
       <section id="setTower">
@@ -607,6 +609,19 @@ header{padding:6px 12px}
       </section>
     </div>
 
+    <div data-pane="check" class="hide">
+    <section id="setCheck">
+      <h2>Camera and replay check</h2>
+      <p class="note">Sends each camera and replay command the broadcast uses to iRacing once, and checks what iRacing did:
+        two cuts, a camera change, iRacing's own choice of the leader, pause, slow motion, play, a replay of a moment
+        30 s ago, back to live, and the camera back where it was. About a minute. Run it while spectating a session
+        with cars on track; it takes the camera from the director while it runs. Every step is written to sim_log.txt
+        and the result to sim_check.json beside the car pictures.</p>
+      <div class="opts"><button type="button" id="ckGo">Run the check</button><button type="button" id="ckStop" class="hide">Stop</button></div>
+      <div id="ckOut"></div>
+    </section>
+    </div>
+
     <div data-pane="obs" class="hide">
     <section class="urls">
       <h2>Overlay for OBS</h2>
@@ -773,6 +788,23 @@ header{padding:6px 12px}
     if (send({ type: "cmd", ...obj })) { pending.push(label); return true; }
     return false;
   }
+  // ---- the camera and replay check (pitwall/simcheck.py): each command once, and what iRacing did
+  const CK_WORD = { waiting: "", running: "…", passed: "Worked", failed: "Did not work", "not sent": "Not sent", stopped: "Stopped" };
+  function renderCheck() {
+    const m = S.simcheck, out = $("ckOut");
+    $("ckGo").classList.toggle("hide", !!(m && m.running));
+    $("ckStop").classList.toggle("hide", !(m && m.running));
+    if (!m || !m.steps) { out.innerHTML = ""; return; }
+    const read = r => !r ? "" : Object.entries(r).filter(([, v]) => v != null).map(([k, v]) => k + " " + (typeof v === "number" ? +v.toFixed(2) : v)).join(" · ");
+    const n = m.steps.filter(x => x.state === "passed").length;
+    out.innerHTML = `<p class="note">${m.running ? "Running…" : `${n} of ${m.steps.length} worked` + (m.simulated ? " (the fake field's stand-in camera, not iRacing)" : "") +
+      (m.finished ? ` · ${esc(m.finished)}` : "")}</p><table class="cktab">` + m.steps.map(x => `<tr class="ck-${esc(String(x.state).replace(" ", "-"))}"><td>${esc(x.name)}</td>` +
+      `<td><b>${esc(CK_WORD[x.state] || x.state)}</b>${x.seconds != null && x.state === "passed" ? ` in ${x.seconds} s` : ""}</td>` +
+      `<td class="note">${esc(x.error || (x.state === "failed" ? "read: " + read(x.read) : ""))}</td></tr>`).join("") + "</table>" +
+      (m.file && !m.running ? `<p class="note">Saved: ${esc(m.file)}</p>` : "");
+  }
+  $("ckGo").onclick = () => cmd({ cmd: "simcheck", action: "start" }, "Camera check started");
+  $("ckStop").onclick = () => { if (send({ type: "cmd", cmd: "simcheck", action: "stop" })) pending.push("Stopping the check"); };
   function currentGroup() {
     const g = S.state && S.state.camera ? S.state.camera.group : null;
     if (g) return g;
@@ -2105,6 +2137,7 @@ header{padding:6px 12px}
         dirty.cam = dirty.ctl = dirty.field = true; renderCameraButtons(true); renderDirector(); break;
       }
       case "camera_packs": S.packs = m; renderCameraButtons(true); break;
+      case "simcheck": S.simcheck = m; renderCheck(); break;
       case "livery_status": S.lv = m; dirty.lv = true; dirty.ctl = true; break;
       case "livery": {
         const car = m.car || String(m.key || "").split(":")[0];

@@ -68,7 +68,13 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 .miles{margin:16px 0 0;padding:0;list-style:none;display:grid;gap:6px}.miles li{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:8px 12px;font-size:14px;display:flex;gap:10px;align-items:baseline}
 .miles .mi{flex:none;font-size:12px;font-weight:700;padding:1px 8px;border-radius:9px;background:rgba(230,180,34,.16);color:var(--acc)}.miles .mi.first{background:rgba(75,139,240,.15);color:var(--blue)}.miles .mi.barrier{background:rgba(47,179,106,.16);color:var(--good)}
 .miles .md{margin-left:auto;color:var(--mut);font-size:12px;white-space:nowrap}.recs .more{margin-top:10px}
-@keyframes rpulse{50%{opacity:.25}}.rec .rmut{color:var(--mut)}.rec .rgo{margin-left:auto;display:flex;gap:8px}
+@keyframes rpulse{50%{opacity:.25}}
+.dck{align-items:flex-start}.dck .rdot{background:#4b8bf0;margin-top:5px}.dck select{max-width:280px;font:inherit}
+.dck .dsum{flex:1 1 100%;margin:2px 0 0}.dck .dsum b{font-variant-numeric:tabular-nums}
+.dck table{flex:1 1 100%;border-collapse:collapse;font-size:13px;margin-top:4px}.dck td{padding:3px 8px 3px 0;border-top:1px solid var(--ln);vertical-align:top}
+.dck td.t{color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}.dck .v{font-weight:700;white-space:nowrap}
+.dck .v.live{color:#2fb36a}.dck .v.near{color:#4b8bf0}.dck .v.late{color:#c9821a}.dck .v.missed{color:#d6333a}
+.dck details{flex:1 1 100%}.dck summary{cursor:pointer;color:var(--mut);font-size:13px}.rec .rmut{color:var(--mut)}.rec .rgo{margin-left:auto;display:flex;gap:8px}
 /* ---- LOOKS (generated from one source for the home page and the Lap Analyzer; same text in both): Pit wall and Arcade, set by suite:look on :root[data-look]. Basic is the page as it is. ---- */
 @font-face{font-family:"DSEG7 digits";font-weight:400 900;font-display:swap;unicode-range:U+0020,U+002B-002E,U+0030-003A;src:url("/pitwall/assets/dseg7-classic-bold.woff2") format("woff2")}
 @font-face{font-family:"Russo One";font-display:swap;src:url("/pitwall/assets/russo-one-latin-400-normal.woff2") format("woff2")}
@@ -334,6 +340,7 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <div class="ctx hidden" id="ctx"></div>
 <div class="last hidden" id="last"></div>
 <div class="rec hidden" id="rec"></div>
+<div class="rec dck hidden" id="dck"></div>
 <div class="share upd hidden" id="upd"></div>
 <div class="apps">
 <a class="app" style="--c:#4b8bf0" href="/analyzer/?view=live" id="liveTile"><div class="ahead"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><h2>Live telemetry</h2><span class="tag ok">Ready</span></div><p>What the car is doing right now: speed, gear, pedals, steering, this lap against your best, temperatures and settings.</p><div class="gl" id="glLive"></div><span class="open">Open →</span></a>
@@ -776,6 +783,37 @@ async function recPoll(){clearTimeout(recTimer);if(!hasApi()){recTimer=setTimeou
 try{rec=await window.pywebview.api.record_info()||rec}catch(e){}recCard();
 recTimer=setTimeout(recPoll,['waiting','recording','saving'].includes(rec.state)?1000:5000)}
 window.addEventListener('pywebviewready',recPoll);setTimeout(recPoll,1500);
+// ---- How did the director do? (suite/director_check.py): a recorded race played through the camera director
+let dck={state:'idle'},dckFiles=null,dckTimer=null;
+const dckWhat={live:'Live',near:'In the picture',late:'Late',missed:'Missed'};
+function dckLine(c,label){if(!c||!c.passes)return label+': no passes';return label+': <b>'+c.live+' of '+c.passes+'</b> live, <b>'+c.near+'</b> in the picture'+(c.notLive?', '+c.replayed+' of the '+c.notLive+' not live replayed':'')}
+function dckCard(){const el=$('dck');if(!hasApi()){el.classList.add('hidden');return}el.classList.remove('hidden');const st=dck.state,key=st+'|'+(dckFiles?dckFiles.length:-1)+'|'+(dck.file||'');
+// built when what it offers changes; the race clock while checking is updated in place
+if(el.dataset.k!==key){el.dataset.k=key;let h='<div class="rdot"></div><div id="dckTxt"></div><div class="rgo">';
+if(st==='running')h+='<button type="button" id="dckStop">Stop</button>';
+else{if(dckFiles&&dckFiles.length)h+='<select id="dckSel" aria-label="Recording">'+dckFiles.map(f=>'<option value="'+f.id+'">'+esc(f.name)+' · '+esc(f.when)+' · '+f.mb+' MB</option>').join('')+'</select><button type="button" id="dckGo">Check</button>';
+h+='<button type="button" id="dckPick" title="A recording from another folder (.jsonl.gz)">Choose a file…</button>'}
+h+='</div>';
+if(st==='done'&&dck.report){const r=dck.report,rows=(r.rows||[]).filter(x=>!x.start);
+h+='<p class="dsum">'+dckLine(r.afterStart,'After the opening lap')+'. '+dckLine(r.top3,'Top 3')+'. Opening lap: '+((r.all.passes||0)-(r.afterStart.passes||0))+' passes. '+r.cuts+' cuts, '+r.replays+(r.replays===1?' replay':' replays')+'.</p>';
+if(rows.length)h+='<details'+(rows.length<=12?' open':'')+'><summary>Every pass after the opening lap ('+rows.length+')</summary><table>'+rows.map(x=>{const v=x.verdict==='live'?'live':x.near?'near':x.verdict;
+return '<tr><td class="t">'+clk(Math.round(x.t))+'</td><td>P'+esc(x.classPos)+' · '+esc(x.name)+' passes '+esc(x.passedName)+'</td><td class="v '+v+'">'+dckWhat[v]+(x.replayed?' · replayed':'')+'</td></tr>'}).join('')+'</table></details>'}
+el.innerHTML=h;
+const go=$('dckGo'),pk=$('dckPick'),sp=$('dckStop');
+if(go)go.onclick=async()=>{go.disabled=true;go.textContent='Starting…';try{dck=await window.pywebview.api.dircheck_start(+$('dckSel').value)}catch(e){dck={state:'error',error:String(e)}}if(dck.ok===false)dck={state:'error',error:dck.error};dckCard();dckPoll()};
+if(pk)pk.onclick=async()=>{pk.disabled=true;try{const r=await window.pywebview.api.dircheck_pick();if(r&&r.ok)dck=r}catch(e){}pk.disabled=false;dckCard();dckPoll()};
+if(sp)sp.onclick=async()=>{sp.disabled=true;sp.textContent='Stopping…';try{await window.pywebview.api.dircheck_stop()}catch(e){}}}
+const t=$('dckTxt');let x;
+if(st==='running')x='<b>Checking '+esc(dck.file)+'…</b> <span class="rmut">at '+clk(Math.round(dck.atS||0))+' of the session · '+clk(dck.seconds||0)+' so far</span>';
+else if(st==='done')x='<b>How the director did</b> <span class="rmut">'+esc(dck.file)+' · live: the camera was on one of the two cars as it happened</span>';
+else if(st==='error')x='<span style="color:#d6333a">'+esc(dck.error||'The check stopped.')+'</span>';
+else x='<b>How did the director do?</b> <span class="rmut">'+(dckFiles&&dckFiles.length?'plays a recorded race through the camera director and shows which passes it had on air':'record a race (above) to check how the camera director would have shown it')+'</span>';
+if(t.innerHTML!==x)t.innerHTML=x}
+async function dckPoll(){clearTimeout(dckTimer);if(!hasApi()){dckTimer=setTimeout(dckPoll,1500);return}
+try{if(dck.state!=='running'||!dckFiles){const l=await window.pywebview.api.dircheck_list();if(l&&l.files)dckFiles=l.files}}catch(e){}
+try{const i=await window.pywebview.api.dircheck_info();if(i&&i.state)dck=i}catch(e){}dckCard();
+dckTimer=setTimeout(dckPoll,dck.state==='running'?1000:15000)}
+window.addEventListener('pywebviewready',dckPoll);setTimeout(dckPoll,1700);
 window.addEventListener('pywebviewready',render);
 render();poll();setInterval(poll,3000);connect();
 </script></body></html>
