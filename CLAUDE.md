@@ -505,6 +505,30 @@ Broadcast (broadcast/)
   setup changes here", Runs by setup) and spoken alarms. tests: test_the_highlight_reel_plays_the_race_again_after_the_flag,
   test_pressure_in_a_battle_and_the_broadcast_extras, test_pitwall_team_radio_and_the_glance_view,
   test_coaching_has_a_goal_light_and_a_session_report (test_analyzer).
+- Visual audit of the broadcast, Arcade above all (Nov 2026: every graphic through the Summit Point capture, qualifying
+  to the podium, in every look, looked at and measured; the harness plays the capture at real speed from a chosen
+  moment and checks overlaps, words cut off, off-screen boxes and name styles). What it found, each now in place:
+  a dead-reckoned outline must be plausible (TrackMap.plausible: closes within MAX_CLOSURE of its length, MIN_LAP_M or
+  more, the session's TrackLength within MAX_LENGTH_OFF; checked when built and when loaded: spectating had cached a
+  424 m figure of eight for Summit Point and every car sat on one spot of it); makeRoom counts what is drawn outside
+  a box (Arcade's kerb below, the card's badges above); "On fire" only for a car racing, from passes after the opening
+  lap; the call-outs' letters have no text-stroke (it drew the glyphs' inner contours) and on the opening lap only a
+  pass for the lead is called; head to head waits for the opening lap to end; race control's queue drops news from
+  another session or over a minute old; a rule on "X span" must not catch a name (nameHtml's span.pnm: the grid
+  board's names were 15 px, now ".who>span"); the smaller graphics (.mini, .tr, .hh, .cl, .ob, .pen, .fla, the podium)
+  wear Arcade as the tower does; the grid walk's grid is as tall as the grid; the names of one table are one size
+  (fitWords, .tb-r / .mini-r) and Strategy widens with its next-stop column; the lap chart's race puts a car with no
+  place for the lap below the others. PitWall: a second family name gives way where the table is narrow (nameCell
+  .nm-m), Arcade's title trail no longer runs into the session's name. test: test_the_visual_audit_of_the_broadcast_and_arcade.
+- While a race is racing the picture is the cars' (the user's call, Nov 2026: the graphics covered most of the screen
+  too often; measured mid-race in Arcade with Auto on, the middle of the picture went from 26% covered, 81% at worst,
+  to 2% and 19%): overlay raceTight (a race, racing, not finished, not Arrange; gfx race.compact, producer Setup >
+  Graphics) makes the middle graphics smaller (RACE_SCALE on top of theme.size and each one's own size, RACE_ORIGIN
+  towards their edge; the tower, the clock, the boards and the podium keep theirs), Arcade's pass and lap call-outs
+  a strip low on the screen (AX_SMALL, .ax-mini; the flags keep the full screen), the battle box gives way to head to
+  head for the pair, and Auto keeps the standings board for a caution. Full size before the green and after the flag.
+  A new race graphic in the middle of the picture gets a RACE_SCALE entry. Measure with the coverage harness before
+  making anything bigger. test: test_while_racing_the_graphics_leave_the_picture_to_the_cars.
 - Looks: Pit wall's bar shows only its numbers under 640 px; :root[data-look] sets overflow-anchor:none (the bar put
   in after load scrolled the page by its height through scroll anchoring, hiding the title).
 - Audited against Summit Point (Nov 2026), each now in place: battles are read from the live class gap (a stale

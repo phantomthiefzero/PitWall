@@ -52,12 +52,29 @@ class TrackMap:
                 "lapLengthM": self.lap_length_m, "closureErrorM": self.closure_error_m,
                 "source": self.source, "meta": self.meta}
 
+    def plausible(self, track_len_m: float | None = None) -> bool:
+        """Is a dead-reckoned outline worth showing? While spectating the kinematics are not the camera car's, and a
+        "lap" of them drew a 424 m figure of eight for Summit Point (closure error 272 m) and cached it for good.
+        Rejected: a lap that does not close (MAX_CLOSURE of its length), one too short to be a circuit, or one
+        that is not the track's length (session info) within MAX_LENGTH_OFF. A GPS outline is taken as it is."""
+        if self.source != "velocity_integration":
+            return True
+        n = self.lap_length_m or 0.0
+        if n < MIN_LAP_M or (self.closure_error_m or 0.0) > MAX_CLOSURE * n:
+            return False
+        return not (track_len_m and abs(n - track_len_m) > MAX_LENGTH_OFF * track_len_m)
+
     @staticmethod
     def from_message(m: dict) -> "TrackMap":
         return TrackMap(track_id=m["trackId"], config=m["config"], bins=m["bins"], points=m["points"],
                         start_finish_index=m.get("startFinishIndex", 0), lap_length_m=m.get("lapLengthM"),
                         closure_error_m=m.get("closureErrorM"), source=m.get("source", "?"),
                         meta=m.get("meta", {}))
+
+
+MIN_LAP_M = 400.0           # no circuit is shorter (the shortest ovals are about 400 m)
+MAX_CLOSURE = 0.15          # a dead-reckoned lap may miss its own start by this share of its length
+MAX_LENGTH_OFF = 0.2        # ... and differ from the track's length (session info) by this share
 
 
 class LapCollector:
@@ -329,7 +346,7 @@ def save(tm: TrackMap) -> str:
     return path
 
 
-def load(track_id, config) -> TrackMap | None:
+def load(track_id, config, track_len_m: float | None = None) -> TrackMap | None:
     path = os.path.join(cache_dir(), _key(track_id, config))
     if not os.path.exists(path):
         return None
@@ -340,6 +357,8 @@ def load(track_id, config) -> TrackMap | None:
         return None
     if (tm.meta or {}).get("frame") != FRAME:
         return None
+    if not tm.plausible(track_len_m):
+        return None                       # an outline cached before the check (see TrackMap.plausible)
     return tm
 
 

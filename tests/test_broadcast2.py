@@ -2839,11 +2839,12 @@ def test_what_the_november_audit_found():
     assert "main{grid-template-columns:minmax(0,1fr)}main>div{min-width:0}" in rd("broadcast", "notes.html")
     # PitWall's standings where narrow: the first name gives way to its initial instead of the surname being cut
     cl = rd("client", "index.html")
-    assert "${nameCell(c)}" in cl and 'td.driver .nm-f { display: none; }' in cl
+    assert "${nameCell(c)}" in cl and 'td.driver :is(.nm-f, .nm-m) { display: none; }' in cl
     out = _node("const esc = s => String(s);\nconst nameCell = "
                 + cl.split("  const nameCell = ")[1].split("\n  const shortCar")[0]
-                + "\nconsole.log(JSON.stringify([nameCell({name: 'Zachary Taylor8'}), nameCell({name: 'Cher'}), nameCell({idx: 4})]))")
-    assert out == ['<span class="nm-f">Zachary</span><span class="nm-i">Z.</span> Taylor8', "Cher", "car 4"]
+                + "\nconsole.log(JSON.stringify([nameCell({name: 'Zachary Taylor8'}), nameCell({name: 'Cher'}), nameCell({idx: 4}), nameCell({name: 'Osvaldo Antonio Pérez Marín'})]))")
+    assert out == ['<span class="nm-f">Zachary</span><span class="nm-i">Z.</span> Taylor8', "Cher", "car 4",
+                   '<span class="nm-f">Osvaldo</span><span class="nm-i">O.</span> <span class="nm-m">Antonio Pérez </span>Marín']
     # the analyzer: white on a green or amber pill reads (was 4.1:1 and 3.7:1), and amber text has a light-theme colour
     an = rd("suite", "web", "analyzer", "index.html")
     assert "pill(LIVE.mode==='replay'?'replaying a file':'live','#167d42')" in an and "--amb:#8f5f00" in an and "--amb:#d99a1e" in an
@@ -2937,3 +2938,80 @@ def test_pitwall_team_radio_and_the_glance_view():
     for src in ("toPlayerS", "sd.lapsOfFuel", '$("remain").textContent', "me.lastLapS"):
         assert src in pages, src
     assert not re.search(r"lapsOfFuel\s*[-+*/]|toPlayerS\s*[-+*/]|[-+*/]\s*me\.lastLapS", pages)
+
+
+def test_the_visual_audit_of_the_broadcast_and_arcade():
+    # Nov 2026: every graphic through the Summit Point capture (qualifying, grid, start, race, a battle, the final lap,
+    # the finish) in every look, looked at and measured.
+    from pitwall.trackmap import TrackMap, MIN_LAP_M
+    root = os.path.join(os.path.dirname(__file__), "..")
+    ov = open(os.path.join(root, "broadcast", "overlay.html"), encoding="utf-8").read()
+    # a dead-reckoned "lap" that is not the track is not kept: spectating drew a 424 m figure of eight for Summit Point
+    # (closure error 272 m), cached it for good, and every car sat on one spot of it
+    bad = TrackMap(track_id=9, config="default", bins=4, points=[[0, 0]] * 4, lap_length_m=424.0, closure_error_m=272.4)
+    good = TrackMap(track_id=9, config="default", bins=4, points=[[0, 0]] * 4, lap_length_m=3190.0, closure_error_m=41.0)
+    assert not bad.plausible() and not bad.plausible(3218.0) and good.plausible() and good.plausible(3218.0)
+    assert not good.plausible(5000.0), "not this track's length"
+    assert not TrackMap(track_id=1, config="x", bins=4, points=[[0, 0]] * 4, lap_length_m=MIN_LAP_M - 1, closure_error_m=0.0).plausible()
+    assert TrackMap(track_id=1, config="x", bins=4, points=[[0, 0]] * 4, lap_length_m=10.0, closure_error_m=9.0, source="gps").plausible()
+    br = open(os.path.join(root, "pitwall", "bridge.py"), encoding="utf-8").read()
+    assert "if not tm.plausible(self._track_len_m):" in br and "trackmap.load(key[0], key[1] or \"default\", self._track_len_m)" in br
+    # Arcade: the kerb under a graphic and the card's badges above it are part of what must not touch
+    room = ov.split("  function makeRoom() {")[1].split("\n  setInterval(makeRoom")[0]
+    assert "if (arcade && !ROOM_NO_KERB.has(id)) r.b += 9;" in room and '.ax-badges' in room
+    # "On fire" is for a car racing, after the opening lap
+    assert 'r.surface !== "not_in_world" && !r.onPitRoad' in ov and "e.t >= AX.lapOneT" in ov
+    # the call-outs: no stroke on the big letters (it drew every overlapping contour inside them), nothing but a
+    # pass for the lead on the opening lap; head to head waits for laps to compare
+    call = ov.split("#axCall .ax-t{")[1].split("}")[0]
+    assert "text-stroke" not in call
+    assert "if (!lead && !pastLapOne()) return;" in ov and "if (!racing || !pastLapOne() || !b ||" in ov
+    # race control's news does not wait a session: qualifying's checkered flag came up beside the race's green
+    assert "tNow - queue[0].t > 60" in ov
+    # the grid board's names: "span" alone also caught the name's own span and made it 15 px
+    assert ".gbs .who>span{" in ov and ".gbs .who span{" not in ov
+    # the smaller graphics wear Arcade too, the podium's title as the board's, the grid's window no taller than the grid
+    for rule in (':is(.mini-h,.tr-h,.hh-h,.ql-h,.cl-h,.so-t){font-style:italic', ':root[data-look="arcade"] .pd-h b{font:900 italic'):
+        assert rule in ov, rule
+    assert "win.style.height = wh" in ov and "#strategy.wide{width:730px}" in ov
+    # the names of one table are one size
+    assert 'b.matches(".tb-r .n,.mini-r .n")' in ov
+    # the lap chart's race: a car with no place for the lap sits below the ones that have
+    assert "(a.p == null) - (b.p == null) || a.y - b.y" in ov
+
+
+def test_while_racing_the_graphics_leave_the_picture_to_the_cars():
+    # The user's call (Nov 2026): the graphics covered most of the screen too often while the race was on. Measured on
+    # the Summit Point capture in Arcade with Auto on, mid-race: the middle of the picture was 26% covered on average
+    # and up to 81% (a call-out band over a battle box over head to head); now 2% and 19%.
+    import re
+    root = os.path.join(os.path.dirname(__file__), "..")
+    ov = open(os.path.join(root, "broadcast", "overlay.html"), encoding="utf-8").read()
+    pr = open(os.path.join(root, "broadcast", "producer.html"), encoding="utf-8").read()
+    # only while a race is racing: full size before the green, after the flag, outside a race and in Arrange
+    tight = ov.split("const raceTight = ")[1].split("\n")[0]
+    for need in ('Q.get("edit")', 'G("race.compact", true)', "isRace()", 'sessState() === "racing"', "!finishUp()"):
+        assert need in tight, need
+    # the graphics in the middle are smaller; the tower, the clock and the full boards keep their size
+    scale = ov.split("const RACE_SCALE = {")[1].split("}")[0]
+    sizes = {k: float(v) for k, v in re.findall(r"(\w+): ([\d.]+)", scale)}
+    for name in ("battle", "h2h", "card", "map", "closing", "faster"):
+        assert 0.6 <= sizes[name] <= 0.85, name
+    for name in ("tower", "banner", "board", "podium", "lapchart", "grid", "gboard", "strip"):
+        assert name not in sizes, name
+    lay = ov.split("function applyLayout() {")[1].split("\n  }")[0]
+    assert "TIGHT ? RACE_SCALE[id] || 1 : 1" in lay and "RACE_ORIGIN[id]" in lay
+    assert "tightCheck();" in ov.split("function makeRoom() {")[1][:60], "sizes follow the race's state"
+    # Arcade's call-outs for a pass and a lap are a strip low on the screen; the flags keep the whole of it
+    small = ov.split("const AX_SMALL = new Set([")[1].split("]")[0]
+    assert '"pass"' in small and '"lead"' in small and '"fl"' in small
+    for flag in ("green", "final", "winner", "caution"):
+        assert flag not in small
+    assert 'TIGHT && AX_SMALL.has(it.kind) ? " ax-mini"' in ov and "#axCall.ax-mini{" in ov
+    # one graphic for one pair: the battle box gives way to head to head, which takes its place at the top
+    assert '!(TIGHT && $("h2h").classList.contains("on"))' in ov and ":root[data-tight] #h2h{top:36px}" in ov
+    # Auto keeps the standings board for a caution while the race is on
+    board = ov.split('if (name === "board") return')[1].split(";")[0]
+    assert '(caution || !G("race.compact", true))' in board and "done ? since < 35000" in board
+    # the producer can turn it off
+    assert 'data-gflag="race.compact" data-gdef="1"' in pr

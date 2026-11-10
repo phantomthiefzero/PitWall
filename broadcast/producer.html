@@ -1329,7 +1329,8 @@ header{padding:6px 12px}
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
     sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)") +
     sw("sw-lcrace", G("lapchart.race", true), `data-gflag="lapchart.race" data-gdef="1"`, "Lap chart: play the race lap by lap as moving bars first") +
-    sw("sw-finsolo", G("finish.solo", true), `data-gflag="finish.solo" data-gdef="1"`, "After the flag: take the racing graphics off (battles, card, alerts)");
+    sw("sw-finsolo", G("finish.solo", true), `data-gflag="finish.solo" data-gdef="1"`, "After the flag: take the racing graphics off (battles, card, alerts)") +
+    sw("sw-compact", G("race.compact", true), `data-gflag="race.compact" data-gdef="1"`, "While racing: smaller graphics, so the cars keep the picture");
   const SOUND_SW = () => sw("sw-axcall", G("arcade.callouts", true), `data-gflag="arcade.callouts" data-gdef="1"`, "Arcade: big call-outs for passes, fastest laps and flags (full screen)") +
     sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles, passes and flags (Arcade look; in OBS tick Control audio via OBS)") +
     sw("sw-voice", G("sound.man", false), `data-gflag="sound.man"`, "Announcer: a man's voice (off: a woman's)");
