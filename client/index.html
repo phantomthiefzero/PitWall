@@ -85,6 +85,17 @@
   :root[data-role="crew"] #crewPanel { display: block; order: -1; }
   :root[data-role="crew"] #feedPanel { height: auto; }
   :root[data-role="crew"] .feed { max-height: 50vh; }
+  /* Glance (a phone on the rig): one number filling the screen, swipe or tap the sides for the next */
+  #glancePanel { display: none; }
+  :root[data-role="glance"] main > *:not(#glancePanel), :root[data-role="glance"] footer { display: none !important; }
+  :root[data-role="glance"] main { display: block; padding: 0; }
+  :root[data-role="glance"] #glancePanel { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 150px); min-height: calc(100dvh - 150px);
+    text-align: center; user-select: none; touch-action: pan-y; padding: 10px; }
+  .gl-k { font-size: clamp(18px, 5vw, 34px); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+  .gl-v { font: 700 clamp(72px, 30vw, 300px)/1 var(--mono, monospace); margin: .08em 0; white-space: nowrap; }
+  .gl-v.warn { color: var(--warn, #ffb23f); } .gl-v.hot { color: var(--danger, #ff5d5d); }
+  .gl-s { font-size: clamp(16px, 4.5vw, 30px); color: var(--muted); min-height: 1.3em; }
+  .gl-dots { display: flex; gap: 10px; margin-top: 18px; } .gl-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line, #2a2f36); } .gl-dots i.on { background: var(--text, #fff); }
   .crew-pos { font: 700 44px/1 var(--mono, monospace); }
   .crew-pos small { font-size: 15px; font-weight: 400; color: var(--muted); margin-left: 6px; }
   .crew-row { display: grid; grid-template-columns: 70px 1fr auto; gap: 8px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line, #2a2f36); font-size: 17px; }
@@ -746,12 +757,12 @@
       <div class="menu-body">
         <div class="mrow"><span>Layout</span><select id="roleSel" title="Show the panels for one job. On this screen only: nobody else's view changes.">
           <option value="all">Everything</option><option value="engineer">Engineer</option><option value="spotter">Spotter</option>
-          <option value="strategist">Strategist</option><option value="crew">Crew (phone)</option></select></div>
+          <option value="strategist">Strategist</option><option value="crew">Crew (phone)</option><option value="glance">Glance (one big number)</option></select></div>
         <div class="mrow"><span>Units</span><button type="button" id="unitToggle" class="unittoggle" title="Switch between imperial and metric">imperial</button></div>
         <div class="mrow"><span>Look</span><button type="button" id="skinToggle" class="unittoggle" title="Switch between the pit-wall booth look and the classic look. On this screen only.">booth</button></div>
         <div class="mrow"><span>Car dots</span><button type="button" id="dotToggle" class="unittoggle" title="Colour the cars on the map and the radar by their class, or by their own paint (Trading Paints included, from iRacing's picture of each car). On this screen only.">class colour</button></div>
         <div class="mrow"><span>Alarm sound</span><button type="button" id="soundToggle" class="unittoggle" title="Play a tone when a new alarm appears. On this screen only.">sound off</button></div>
-        <div class="mrow"><span>Radio calls</span><button type="button" id="radioToggle" class="unittoggle" title="Read the alarms and flag changes aloud, like an engineer on the radio: box calls, a car closing, cautions, the white flag. On this screen only.">off</button></div>
+        <div class="mrow"><span>Radio calls</span><button type="button" id="radioToggle" class="unittoggle" title="The alarms and flag changes aloud, like an engineer on the radio: box calls, fuel, a car closing, cautions. Click to choose: the team's recorded voice (hers or his), the browser's own voice, or off. On this screen only.">off</button></div>
         <div class="mlegend"><span>plain = reported by iRacing</span><span class="derived">dotted = computed here</span><span style="color:var(--muted)">grey = snapshot, not a live reading</span></div>
       </div></details>
     <div class="clock"><span id="remain">–</span><small id="lapline">–</small></div>
@@ -760,6 +771,7 @@
 </header>
 
 <main>
+  <section id="glancePanel" aria-label="Glance view" title="Swipe, or tap the left or right side, for the next number"></section>
   <section id="crewPanel" aria-label="Crew view">
     <details class="panel" open><summary>Crew view</summary><div id="crewBox"><div class="note">Waiting for the field.</div></div></details>
   </section>
@@ -1443,7 +1455,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     LK.flag = f;
     if (f !== renderHeader.lastFlag) {
       if (renderHeader.lastFlag !== undefined && typeof say === "function")
-        say({ green: "Green flag, green flag", white: "White flag, last lap", checkered: "Checkered flag", red: "Red flag, red flag" }[f] || "");
+        sayLine("call:" + f) || say({ green: "Green flag, green flag", white: "White flag, last lap", checkered: "Checkered flag", red: "Red flag, red flag" }[f] || "");
       renderHeader.lastFlag = f;
     }
     el.title = inferred ? "Computed here: the replay carries no flags, so the caution is read from how slowly the field is going." : "";
@@ -2319,15 +2331,56 @@ LK.look = document.documentElement.dataset.look || "basic";
       `<div class="note">last lap <span class="mono">${fmt.lap(me.lastLapS)}</span> · best <span class="mono">${fmt.lap(me.bestLapS)}</span></div>` +
       row("ahead", ahead) + row("behind", behind) + (call ? `<div class="crew-call">${call}</div>` : "");
   }
+  // Glance: for a phone mounted on the rig. One value at a time, as big as the screen allows; every value is one the
+  // dashboard already shows (the crew view's place and gaps, the fuel panel's laps of fuel, the header's clock).
+  const GLANCE = { i: 0, x: null };
+  try { GLANCE.i = Number(localStorage.getItem("pitwall.glance")) || 0; } catch (e) {}
+  function glancePages() {
+    const me = meCar(), pages = [];
+    if (!me) return pages;
+    const CP = c => (c.derived && c.derived.liveClassPos) || c.classPos;
+    const cars = Object.values(S.cars.cars || {}).filter(c => c.classId === me.classId && c.classPos > 0);
+    const ahead = cars.find(c => CP(c) === CP(me) - 1), behind = cars.find(c => CP(c) === CP(me) + 1);
+    const gap = c => { const tp = c && c.derived && c.derived.toPlayerS; return tp == null ? "–" : Math.abs(tp).toFixed(1); };
+    const who = c => c ? "#" + (c.num ?? c.idx) + " " + String(c.name || "").split(" ").slice(-1)[0] : "nobody";
+    const trend = (side, c) => { const t = gapTrend(side, c.derived || {}).replace(/<[^>]+>/g, ""); return t ? " · " + t : ""; };
+    pages.push({ k: "Position", v: "P" + (CP(me) ?? "–"), s: "in class · #" + (me.num ?? me.idx) });
+    pages.push({ k: "Gap ahead", v: gap(ahead), s: ahead ? who(ahead) + trend("ahead", ahead) : "leading the class", u: "s" });
+    pages.push({ k: "Gap behind", v: gap(behind), s: behind ? who(behind) + trend("behind", behind) : "nobody behind", u: "s" });
+    const st = S.state, sd = st && st.derived, pl = sd && sd.plan;
+    if (isOwnRef() && sd && sd.lapsOfFuel != null)
+      pages.push({ k: "Fuel", v: sd.lapsOfFuel.toFixed(1), u: "laps", lv: pl && pl.boxNow ? "hot" : sd.lapsOfFuel < 3 && pl && pl.stops > 0 ? "warn" : "",
+        s: !pl || pl.stops == null ? "" : pl.stops === 0 ? "good to the end" : pl.boxNow ? "BOX THIS LAP" : `box lap ${pl.windowOpenLap}–${pl.windowCloseLap ?? "?"}` });
+    pages.push({ k: "To go", v: $("remain").textContent || "–", s: $("lapline").textContent || "" });
+    pages.push({ k: "Last lap", v: fmt.lap(me.lastLapS), s: "best " + fmt.lap(me.bestLapS) });
+    return pages;
+  }
+  function renderGlance() {
+    const el = $("glancePanel");
+    if (!el || document.documentElement.dataset.role !== "glance") return;
+    const pages = S.cars ? glancePages() : [];
+    if (!pages.length) { setText(el, "Pick a car to follow (Following, at the top)."); return; }
+    const p = pages[((GLANCE.i % pages.length) + pages.length) % pages.length], n = pages.indexOf(p);
+    const html = `<div class="gl-k">${esc(p.k)}</div><div class="gl-v ${p.lv || ""}" style="${String(p.v).length > 5 ? "font-size:clamp(56px,20vw,220px)" : ""}">${esc(p.v)}${p.u ? `<small style="font-size:.28em;color:var(--muted)"> ${esc(p.u)}</small>` : ""}</div>` +
+      `<div class="gl-s">${esc(p.s || "")}</div><div class="gl-dots">${pages.map((_, k) => `<i class="${k === n ? "on" : ""}"></i>`).join("")}</div>`;
+    if (el._h !== html) { el._h = html; el.innerHTML = html; }
+  }
+  (function () {
+    const el = $("glancePanel"), step = d => { GLANCE.i += d; try { localStorage.setItem("pitwall.glance", String(GLANCE.i)); } catch (e) {} renderGlance(); };
+    el.addEventListener("pointerdown", e => { GLANCE.x = e.clientX; });
+    el.addEventListener("pointerup", e => { if (GLANCE.x == null) return; const dx = e.clientX - GLANCE.x; GLANCE.x = null;
+      if (Math.abs(dx) > 40) step(dx < 0 ? 1 : -1); else step(e.clientX < innerWidth / 2 ? -1 : 1); });
+    addEventListener("keydown", e => { if (document.documentElement.dataset.role !== "glance") return; if (e.key === "ArrowRight") step(1); else if (e.key === "ArrowLeft") step(-1); });
+  })();
   // Layout presets: which panels show, per viewer. A phone opening the share link starts on Crew.
   (function () {
-    const sel = $("roleSel"), ok = ["all", "engineer", "spotter", "strategist", "crew"];
+    const sel = $("roleSel"), ok = ["all", "engineer", "spotter", "strategist", "crew", "glance"];
     let r = null;
     try { r = localStorage.getItem("pitwall.role"); } catch (e) {}
     if (!ok.includes(r)) r = matchMedia("(max-width: 720px)").matches ? "crew" : "all";
     const set = v => { document.documentElement.dataset.role = v; sel.value = v; };
     set(r);
-    sel.addEventListener("change", () => { set(sel.value); try { renderCrew(); } catch (e) {} try { localStorage.setItem("pitwall.role", sel.value); } catch (e) {} });
+    sel.addEventListener("change", () => { set(sel.value); try { renderCrew(); renderGlance(); } catch (e) {} try { localStorage.setItem("pitwall.role", sel.value); } catch (e) {} });
   })();
   function renderBattle() {
     const el = $("bb");
@@ -2597,7 +2650,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     team: '<path d="M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0 -3 -3.85"/>',
   };
   const icon = k => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k] || ""}</svg>`;
-  const ALARM_ICON = k => k === "box_now" || k === "fuel_low" ? "fuel" : k === "window" ? "window" : k === "inc" ? "inc"
+  const ALARM_ICON = k => k === "box_now" || k === "fuel_low" || k === "fuel_ok" ? "fuel" : k === "window" ? "window" : k === "inc" ? "inc"
     : k.startsWith("caution") ? "caution" : k.startsWith("close:") || k.startsWith("catch:") ? "car" : k === "rain" ? "rain"
     : k.startsWith("flag:") ? "flag" : "";
 
@@ -2637,6 +2690,11 @@ LK.look = document.documentElement.dataset.look || "basic";
       if (pl && pl.stops > 0 && pl.boxNow) add("box_now", "hot", D(pl.windowCloseLap == null ? "Box now: not enough fuel to finish this lap" : "Box this lap: last chance on fuel", "Computed here: the fuel plan."));
       else if (pl && pl.stops > 0 && pl.windowOpenLap != null && st.player.lap != null && st.player.lap >= pl.windowOpenLap)
         add("window", "info", D(`Pit window open · laps ${pl.windowOpenLap}–${pl.windowCloseLap ?? "?"}`, "Computed here: the fuel plan."));
+      // the good news too, once: the plan needed a stop and now needs none (after the stop, or a long caution)
+      if (pl && pl.stops > 0) ALARM.neededStop = true;
+      else if (pl && pl.stops === 0 && ALARM.neededStop) { ALARM.neededStop = false; ALARM.fuelOkUntil = Date.now() + 40000; }
+      if (pl && pl.stops === 0 && ALARM.fuelOkUntil && Date.now() < ALARM.fuelOkUntil)
+        add("fuel_ok", "info", D("Fuel is good to the end", "Computed here: the fuel plan needs no more stops."));
       if (pl && pl.stops > 0 && !pl.boxNow && sd.lapsOfFuel != null && sd.lapsOfFuel < 3)
         add("fuel_low", "warn", D(`Fuel for ${sd.lapsOfFuel.toFixed(1)} laps`, "Computed here: fuel aboard divided by the measured burn."));
       const inc = st.player.incidents && st.player.incidents.my;
@@ -2679,7 +2737,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     }
     ALARM.active = new Map(now.map(a => [a.key, a]));
     if (fresh) beep(fresh.level);
-    if (RADIO.on) now.filter(a => !wasActive.has(a.key)).sort((a, b) => (b.level === "hot") - (a.level === "hot")).forEach(a => say(a.html));
+    if (RADIO.on) now.filter(a => !wasActive.has(a.key)).sort((a, b) => (b.level === "hot") - (a.level === "hot")).forEach(a => sayLine(a.key) || say(a.html));
     const show = now.filter(a => !ALARM.dismissed.has(a.key));
     const bar = $("alarmBar");
     bar.classList.toggle("hidden", !show.length);
@@ -2692,8 +2750,25 @@ LK.look = document.documentElement.dataset.look || "basic";
   });
   // ---- radio calls: the alarms and flag changes read aloud (the browser's own speech), one at a time.
   // Off by default and per screen, like the alarm sound. What is said is what the alarm bar says.
-  const RADIO = { on: false, said: new Map() };
-  try { RADIO.on = localStorage.getItem("pitwall.radio") === "on"; } catch (e) {}
+  // A team voice (recorded lines, the suite's own: client/assets/voice-<f|m>-<line>.mp3, LICENSES.md) says the calls
+  // that are the same every time ("Box, box. Box this lap."); a call with a number in it is still read by the browser.
+  const RADIO = { on: false, voice: null, said: new Map(), q: [], busy: false };
+  const RADIO_LINE = k => k === "box_now" ? "box" : k === "window" ? "window" : k === "fuel_low" ? "fuellow" : k === "fuel_ok" ? "fuelok"
+    : k === "caution_box" ? "cautionbox" : k === "caution" ? "caution" : k === "inc" ? "inc" : k === "rain" ? "rain" : k === "flag:black" ? "blackflag"
+    : k.startsWith("close:") ? "close" : k.startsWith("catch:") ? "catching" : k === "radio" ? "radio"
+    : k.startsWith("call:") ? ({ green: "green", white: "final", checkered: "checkered", red: "red" }[k.slice(5)] || null) : null;
+  try { const v = localStorage.getItem("pitwall.radio"); RADIO.on = v === "on" || v === "f" || v === "m"; RADIO.voice = v === "f" || v === "m" ? v : null; } catch (e) {}
+  // one recorded line at a time, in order; false when there is no such line (the browser reads it instead)
+  function sayLine(key) {
+    const line = RADIO.voice && RADIO_LINE(key); if (!line || typeof lkLoad !== "function") return false;
+    const now = Date.now(); if (now - (RADIO.said.get("line:" + line) || 0) < 20000) return true;
+    RADIO.said.set("line:" + line, now); RADIO.q.push(RADIO.voice + "-" + line); if (RADIO.q.length > 3) RADIO.q.shift();
+    const next = () => { const n = RADIO.q.shift(); if (!n) { RADIO.busy = false; return; } RADIO.busy = true;
+      lkLoad(n).then(buf => { const ac = buf && lkAudio(); if (!ac) return next();
+        const src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination); src.onended = next; src.start(); }).catch(next); };
+    if (!RADIO.busy) next();
+    return true;
+  }
   function spoken(html) {
     return String(html).replace(/<[^>]+>/g, "").replace(/\s*·\s*/g, ", ").replace(/(\d)\s*[–-]\s*(\d)/g, "$1 to $2").replace(/#(\d+)/g, "car $1").replace(/\bP(\d+)\b/g, "P $1")
       .replace(/(\d+(?:\.\d+)?) ?s\b/g, "$1 seconds").replace(/(\d+)x\b/g, "$1").replace(/\s+/g, " ").trim();
@@ -2710,13 +2785,16 @@ LK.look = document.documentElement.dataset.look || "basic";
       speechSynthesis.speak(u);       // queued: calls never talk over each other
     } catch (e) { /* no speech */ }
   }
-  function radioLabel() { $("radioToggle").textContent = RADIO.on ? "on" : "off"; }
+  function radioLabel() { $("radioToggle").textContent = !RADIO.on ? "off" : RADIO.voice === "f" ? "team voice (her)" : RADIO.voice === "m" ? "team voice (him)" : "browser voice"; }
   radioLabel();
   $("radioToggle").addEventListener("click", () => {
-    RADIO.on = !RADIO.on; radioLabel();
-    try { localStorage.setItem("pitwall.radio", RADIO.on ? "on" : "off"); } catch (e) {}
-    if (RADIO.on) { RADIO.said.clear(); say("Radio check. You'll hear the calls from here."); }   // the click lets the browser speak
-    else if (window.speechSynthesis) speechSynthesis.cancel();
+    // off -> the team's recorded voice (hers, his) -> the browser's own voice -> off
+    const nextMode = !RADIO.on ? "f" : RADIO.voice === "f" ? "m" : RADIO.voice === "m" ? "on" : "off";
+    RADIO.on = nextMode !== "off"; RADIO.voice = nextMode === "f" || nextMode === "m" ? nextMode : null; radioLabel();
+    try { localStorage.setItem("pitwall.radio", nextMode); } catch (e) {}
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    RADIO.q.length = 0;
+    if (RADIO.on) { RADIO.said.clear(); if (!sayLine("radio")) say("Radio check. You'll hear the calls from here."); }   // the click lets the browser speak
   });
   function soundLabel() { $("soundToggle").innerHTML = icon(ALARM.sound ? "soundOn" : "soundOff") + (ALARM.sound ? " sound on" : " sound off"); }
   soundLabel();
@@ -3798,7 +3876,7 @@ LK.look = document.documentElement.dataset.look || "basic";
     }
     if (dirty.cars && now - drawnAt.cars >= 100) {
       drawnAt.cars = now; dirty.cars = false;
-      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderCrew(); renderFaster(); renderStrategy(); renderRaceStrategy(); renderTeam(); renderTraffic(); renderFollow(); renderTires();
+      renderStandings(); renderFocus(); renderCompare(); renderBattle(); renderCrew(); renderGlance(); renderFaster(); renderStrategy(); renderRaceStrategy(); renderTeam(); renderTraffic(); renderFollow(); renderTires();
     }
     if (now - ALARM.at >= 500 && (S.state || S.cars)) { ALARM.at = now; renderAlarms(); }
     if (chartDirty && now - chartAt > (chartTab === "inputs" ? 100 : 1000)) {

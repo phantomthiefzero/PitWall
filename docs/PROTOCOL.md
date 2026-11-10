@@ -111,7 +111,9 @@ cars up to 3 s of track ahead of it (`throughIdx`, nearest first; `behindS` the 
 a lap faster; ordered by class position.
 `battles` (race only): cars that are neighbours IN THEIR CLASS with trusted F2Times less than
 1.0 s apart; a pair stays in until the gap passes 1.5 s. Pairs that touch form one group,
-front to back. `gapsS[k]` is between `cars[k]` and `cars[k+1]`. `closingSPerLap[k]` / `catchLaps[k]`
+front to back. `gapsS[k]` is between `cars[k]` and `cars[k+1]`. `pressure[k]` (0..1, `battle_pressure`) is how hard
+`cars[k+1]` leans on `cars[k]`: the gap in the class's seconds and the closing rate, at least 0.85 while it is
+attacking; a measure for a bar, not a chance of a pass. `closingSPerLap[k]` / `catchLaps[k]`
 are the behind car's own closing trend, and only when the pair is also adjacent overall --
 otherwise null, because that trend is measured against some other car. Neither car may be on
 pit road. Ordered by class position of the front car. Each battle also has `swaps` (places changed

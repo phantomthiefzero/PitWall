@@ -120,6 +120,10 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 .bt-gap span{font:600 12px/1 var(--body);color:color-mix(in srgb,var(--headText) 68%,var(--head));text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
 .bt-foot{background:var(--ink2);color:var(--muted);font:600 15px/1 var(--body);padding:7px 14px}
 .bt-foot .g{color:var(--gain)} .bt-foot .l{color:var(--lose)}
+.bt-pr{display:flex;align-items:center;gap:8px;margin-top:5px;position:relative;height:16px;background:color-mix(in srgb,var(--text) 12%,transparent);border-radius:var(--r);overflow:hidden}
+.bt-pr i{position:absolute;inset:0 auto 0 0;background:var(--muted);transition:width .6s ease}
+.bt-pr[data-lv="mid"] i{background:var(--flag-yellow)}.bt-pr[data-lv="hi"] i{background:var(--lose)}
+.bt-pr em{position:relative;font:800 11px/16px var(--display);letter-spacing:.08em;text-transform:uppercase;font-style:normal;padding:0 8px;color:var(--text);text-shadow:0 1px 2px var(--ink)}
 
 /* ---------- where they're faster ---------- */
 #faster{right:36px;top:164px;width:860px}
@@ -410,6 +414,12 @@ body.edit .layer.on:not(#stinger):not(#scene):not(:has(.inner)):not(#strip){outl
 .tb-r .v.w,.tb-h .c.w{width:118px}
 .lc-svg{display:block;width:100%;height:auto;background:var(--ink)}
 .lc-svg text{font-family:var(--display);font-weight:700}
+.lcr{position:relative;background:var(--ink);padding:14px 20px;overflow:hidden}
+.lcr-lap{position:absolute;right:24px;bottom:10px;font:800 44px/1 var(--display);color:var(--text);opacity:.85;text-transform:var(--caps)}
+.lcr-row{position:absolute;left:20px;right:20px;top:14px;height:40px;display:flex;align-items:center;gap:12px;background:var(--ink2);will-change:transform;transition:transform .55s cubic-bezier(.3,.8,.3,1),opacity .3s}.lcr-row.none{opacity:.35}
+.lcr-row .p{width:44px;text-align:center;font:800 24px/1 var(--display);color:var(--text)}
+.lcr-row i{width:8px;align-self:stretch}
+.lcr-row .nm{flex:0 1 auto;min-width:0;font:700 22px/1 var(--display);color:var(--text);text-transform:var(--caps);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #trap{left:1016px;bottom:200px;width:360px}
 .mini{background:var(--ink);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45)}
 .mini-h{background:var(--head);color:var(--headText);padding:7px 12px 6px;font:800 14px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;display:flex;gap:8px;align-items:center}
@@ -2102,6 +2112,13 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const r = leagueRowFor(c); if (!r) return "";
     return [r.pos ? ordinal(r.pos) : "", r.points !== "" && r.points != null ? r.points + " pts" : ""].filter(Boolean).join(" · ");
   }
+  // the season so far, from the league's own sheet when it has the columns (wins, podiums, last result): as written
+  function seasonText(c) {
+    const r = leagueRowFor(c); if (!r) return "";
+    const n = v => parseInt(v, 10);
+    return [n(r.wins) > 0 ? r.wins + (n(r.wins) === 1 ? " win" : " wins") : "", n(r.podiums) > 0 ? r.podiums + (n(r.podiums) === 1 ? " podium" : " podiums") : "",
+      r.last ? "last race " + (/^\d+$/.test(r.last) ? "P" + r.last : r.last) : ""].filter(Boolean).join(" · ");
+  }
   function renderLeague() {
     const L = G("league", {}) || {}, rows = L.rows || [];
     const on = shown("league") && rows.length > 0;
@@ -2391,13 +2408,53 @@ body.bc-off>*:not(script){visibility:hidden!important}
     setH($("stBox"), h);
   }
   // the lap chart: every car's place lap by lap (the class of the camera car in a multiclass race), the top ten named
+  // "The race in half a minute" (gfx lapchart.race, on by default): when the lap chart comes on air it first plays
+  // the race lap by lap as bars changing places (each car's place at each lap, from normalize lap_chart: nothing
+  // worked out here but where a bar sits between two laps), then gives way to the chart. A car with no place for a
+  // lap (not seen that lap, or out) stays where it last was, dimmed and without a number. Not in Still.
+  const LCR = { at: 0, key: "", rows: null };
+  function lapChartRace(series, P, m) {
+    if (!G("lapchart.race", true) || document.documentElement.dataset.motion === "off" || EDIT_ALL) return false;
+    const maxLap = Math.max(...series.flatMap(s => s.laps.map(x => x[0])));
+    if (maxLap < 3) return false;
+    const now = performance.now(), dur = Math.max(12, Math.min(30, maxLap * 1.3)) * 1000;
+    if (!LCR.at) { LCR.at = now; LCR.key = ""; }
+    const t = (now - LCR.at) / dur;
+    if (t >= 1.12) return false;                          // held on the final order a moment, then the chart
+    const pal = ["#ffb23f", "#3a86ff", "#ff5d8f", "#3fd47a", "#b388ff", "#ffd166", "#06d6a0", "#ef476f", "#118ab2", "#f78c6b"];
+    const at = (s, lap) => { let v = null; for (const x of s.laps) { if (x[0] > lap) break; if (P(x)) v = P(x); } return v; };
+    const end = series.slice().sort((a, b) => (at(a, maxLap) || 99) - (at(b, maxLap) || 99)).slice(0, 14);
+    const key = end.map(s => s.c.idx).join(",") + "|" + maxLap;
+    const rowH = 46;
+    if (LCR.key !== key) {
+      LCR.key = key;
+      setH($("lcBox"), `<div class="lcr" style="height:${end.length * rowH + 70}px"><div class="lcr-lap" id="lcrLap"></div>` + end.map((s, k) =>
+        `<div class="lcr-row" data-i="${s.c.idx}"><span class="p"></span><i style="background:${k < pal.length ? pal[k] : "#59606b"}"></i>${plate(s.c)}<span class="nm">${nameHtml(s.c.name)}</span></div>`).join("") + `</div>`);
+      LCR.rows = [...$("lcBox").querySelectorAll(".lcr-row")];
+    }
+    const f = 1 + (maxLap - 1) * Math.min(1, Math.max(0, t)), lo = Math.floor(f), fr = f - lo;
+    const ranked = end.map(s => { const a = at(s, lo), b = at(s, Math.min(maxLap, lo + 1)); return { s, y: a == null ? 99 : b == null ? a : a + (b - a) * fr, p: (s.laps.find(x => x[0] === Math.round(f)) || [])[m ? 2 : 1] || null }; })
+      .sort((a, b) => a.y - b.y);
+    ranked.forEach((r, k) => {
+      const el = LCR.rows.find(e => e.dataset.i === String(r.s.c.idx)); if (!el) return;
+      const y = k * rowH; if (el._y !== y) { el._y = y; el.style.transform = `translateY(${y}px)`; }   // CSS eases the swap
+      setT(el.querySelector(".p"), r.p != null ? String(r.p) : "–");
+      el.classList.toggle("none", r.p == null);
+    });
+    setT($("lcrLap"), "Lap " + Math.min(maxLap, Math.round(f)) + " / " + maxLap);
+    setT($("lcSub"), "The race, lap by lap");
+    return true;
+  }
   function renderLapChart() {
     const lc = (S.cars && S.cars.derived && S.cars.derived.lapChart) || null;
     const cls = tableClass(), m = multi();
     const series = lc ? Object.entries(lc).map(([i, laps]) => ({ c: carByIdx(Number(i)), laps })).filter(x => x.c && (!m || x.c.classId === cls) && x.laps.length) : [];
-    $("lapchart").classList.toggle("on", series.length >= 2 && shown("lapchart"));
+    const lcOn = series.length >= 2 && shown("lapchart");
+    $("lapchart").classList.toggle("on", lcOn);
+    if (!lcOn) LCR.at = 0;
     if (series.length < 2) return;
     const P = x => m ? x[2] : x[1];
+    if (lcOn && lapChartRace(series, P, m)) return;      // the race again as moving bars first, then the chart
     const maxLap = Math.max(...series.flatMap(s => s.laps.map(x => x[0]))), n = Math.max(...series.flatMap(s => s.laps.map(P).filter(Boolean)));
     const W = 1400, H = Math.min(760, 80 + n * 34), L = 70, R = 270, T = 30, B = 40;
     const X = lap => L + (maxLap <= 1 ? 0 : (lap - 1) / (maxLap - 1)) * (W - L - R), Y = p => T + (p - 1) / Math.max(1, n - 1) * (H - T - B);
@@ -2508,6 +2565,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
     // the battle's own story (normalize battle_history): places swapped, how long they have been at it
     const hist = [b.swaps > 0 ? `swapped ${b.swaps === 1 ? "once" : b.swaps + " times"}` : "", b.sinceS >= 60 ? "together " + fmt.clock(b.sinceS) : ""].filter(Boolean);
     if (hist.length) foot += ` · ${hist.join(" · ")}`;
+    // pressure on the car ahead (normalize battle_pressure, 0..1: the gap and how fast it closes; not a chance)
+    const pr = k >= 0 && b.pressure ? b.pressure[k] : null;
+    if (pr != null) foot += `<span class="bt-pr" data-lv="${pr >= 0.7 ? "hi" : pr >= 0.35 ? "mid" : "lo"}"><i style="width:${Math.round(pr * 100)}%"></i><em>${pr >= 0.7 ? "Move coming" : pr >= 0.35 ? "Under pressure" : "Holding"}</em></span>`;
     setH($("btFoot"), foot);
   }
 
@@ -2696,6 +2756,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (r.lap) stats.push(["Set on lap", String(r.lap)]);
     stats.push(["Grid", r.pos ? r.pos + " of " + rows.length : "–"]);
     { const ch = champText(c); if (ch) stats.push(["Championship", ch]); }
+    { const se = seasonText(c); if (se) stats.push(["This season", se]); }
     setH($("gwStats"), stats.map(([k, v, cl]) => `<div><span>${esc(k)}</span><b class="${cl || ""}">${esc(v)}</b></div>`).join(""));
     setH($("gwPh"), G("card.photo", true) ? photoHtml(c) : "");
     setH($("gwHel"), G("card.helmet", true) ? helmetHtml(c, 104) : "");
@@ -2717,7 +2778,7 @@ body.bc-off>*:not(script){visibility:hidden!important}
           `<div class="lvh">${k.idx != null ? liveryHtml(k) : ""}</div><div class="gb"><div class="gn">${k.idx != null ? plate(k) : ""}<em>${nameH}</em></div>` +
           `<div class="gs">${esc([k.team && k.team !== k.name ? k.team : "", k.car || ""].filter(Boolean).join(" · "))}</div>` +
           `<div class="gq"><div><span>Qualifying</span><b class="q">${q}</b></div>${gapH}${cgapH}` +
-          (champText(k) ? `<div><span>Championship</span><b>${esc(champText(k))}</b></div>` : "") + `</div></div></div>`;
+          (champText(k) ? `<div><span>Championship</span><b>${esc(champText(k))}</b></div>` : "") + (seasonText(k) ? `<div><span>This season</span><b>${esc(seasonText(k))}</b></div>` : "") + `</div></div></div>`;
       };
       const h = `<div class="rw"><small>Row</small><b>${esc(d.row)}</b></div>` + mates.map(half).join("");
       setH($("gwPair"), h);
@@ -2798,6 +2859,20 @@ body.bc-off>*:not(script){visibility:hidden!important}
     const bt = shown("battle") ? currentBattle() : null, btSet = new Set(bt ? bt.cars : []);
     const cars = allCars().filter(c => c.pct != null && c.pct >= 0 && c.surface !== "not_in_world" && c.pos > 0)
       .sort((a, b) => (a.idx === cam) - (b.idx === cam) || b.pos - a.pos);
+    // the battle on air, on the track itself: the stretch between each pair, green while the car behind is closing,
+    // red while the gap grows, white while it holds (normalize closingSPerLap; the gap is the picture's own)
+    const where = c => { const mo = S.motion[c.idx]; return c.pct + (mo ? Math.min(0.6, (now - mo.at) / 1000) * mo.rate : 0); };
+    if (bt) for (let k = 0; k + 1 < bt.cars.length; k++) {
+      const a = carByIdx(bt.cars[k]), b = carByIdx(bt.cars[k + 1]);
+      if (!a || !b || a.pct == null || b.pct == null || a.onPitRoad || b.onPitRoad) continue;
+      const from = where(b), span = (((where(a) - from) % 1) + 1) % 1;
+      if (span <= 0 || span > 0.2) continue;                     // not a stretch of track between them (a lap apart, or in the pits)
+      const rate = (bt.closingSPerLap || [])[k];
+      ctx.beginPath();
+      for (let j = 0; j <= 24; j++) { const [x, y] = P(from + span * j / 24); j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.strokeStyle = rate > 0 ? (cs.getPropertyValue("--gain").trim() || "#2fd27a") : rate < 0 ? (cs.getPropertyValue("--lose").trim() || "#ff4d4d") : "#fff";
+      ctx.globalAlpha = .9; ctx.lineWidth = 15; ctx.stroke(); ctx.globalAlpha = 1;
+    }
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     const disp = cs.getPropertyValue("--display");
     for (const c of cars) {

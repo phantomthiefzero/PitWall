@@ -1103,7 +1103,9 @@ header{padding:6px 12px}
       rows = lines.map(cells);
     }
     const KEYS = { pos: /^(pos|position|rank|place|#)$/i, name: /^(name|driver|driver name|drivers?|racer|member)$/i, points: /^(points?|pts|total|total points)$/i,
-      num: /^(no\.?|num|number|car( number| #)?|#\s*car)$/i, cls: /^(class|car class|division)$/i, uid: /^(cust ?id|customer ?id|user ?id|iracing ?id|member ?id|id)$/i };
+      num: /^(no\.?|num|number|car( number| #)?|#\s*car)$/i, cls: /^(class|car class|division)$/i, uid: /^(cust ?id|customer ?id|user ?id|iracing ?id|member ?id|id)$/i,
+      // the season so far, for the grid walk's intro (the league's own columns, shown as written)
+      wins: /^(wins?|victories|1st)$/i, podiums: /^(podiums?|top ?3s?)$/i, last: /^(last|last race|last result|last round|previous)$/i };
     let objs;
     if (rows.length && !Array.isArray(rows[0])) {
       objs = rows.map(o => { const r = {}; for (const [k, v] of Object.entries(o)) for (const [f, re] of Object.entries(KEYS)) if (re.test(k.trim()) && r[f] == null) r[f] = v; return r; });
@@ -1118,7 +1120,8 @@ header{padding:6px 12px}
       }
     }
     const clean = v => v == null ? "" : String(v).trim();
-    let out = objs.map(o => ({ pos: clean(o.pos).replace(/\D+$/, "") || null, name: clean(o.name), points: clean(o.points), num: clean(o.num) || null, cls: clean(o.cls) || null, uid: clean(o.uid) || null }))
+    let out = objs.map(o => ({ pos: clean(o.pos).replace(/\D+$/, "") || null, name: clean(o.name), points: clean(o.points), num: clean(o.num) || null, cls: clean(o.cls) || null, uid: clean(o.uid) || null,
+      ...(clean(o.wins) ? { wins: clean(o.wins) } : {}), ...(clean(o.podiums) ? { podiums: clean(o.podiums) } : {}), ...(clean(o.last) ? { last: clean(o.last) } : {}) }))
       .filter(r => r.name);
     const n = v => parseFloat(String(v).replace(",", "."));
     if (out.every(r => r.pos)) out.sort((a, b) => n(a.pos) - n(b.pos));
@@ -1324,7 +1327,9 @@ header{padding:6px 12px}
   // Not a layer: lets the overlay bring up "where they're faster" in a close battle and the results at the finish.
   const CARD_SW = () => sw("sw-photo", G("card.photo", true), `data-gflag="card.photo" data-gdef="1"`, "Driver pictures (driver card, battle)") +
     sw("sw-helmet", G("card.helmet", true), `data-gflag="card.helmet" data-gdef="1"`, "Helmets (driver card)") +
-    sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)");
+    sw("sw-secs", G("card.sectors", true), `data-gflag="card.sectors" data-gdef="1"`, "Sector times in their colours (driver card)") +
+    sw("sw-lcrace", G("lapchart.race", true), `data-gflag="lapchart.race" data-gdef="1"`, "Lap chart: play the race lap by lap as moving bars first") +
+    sw("sw-finsolo", G("finish.solo", true), `data-gflag="finish.solo" data-gdef="1"`, "After the flag: take the racing graphics off (battles, card, alerts)");
   const SOUND_SW = () => sw("sw-axcall", G("arcade.callouts", true), `data-gflag="arcade.callouts" data-gdef="1"`, "Arcade: big call-outs for passes, fastest laps and flags (full screen)") +
     sw("sw-sound", G("sound.on", false), `data-gflag="sound.on"`, "Announcer: battles, passes and flags (Arcade look; in OBS tick Control audio via OBS)") +
     sw("sw-voice", G("sound.man", false), `data-gflag="sound.man"`, "Announcer: a man's voice (off: a woman's)");
@@ -1389,7 +1394,7 @@ header{padding:6px 12px}
     $("gridMode").innerHTML = [["auto", "Automatic"], ["on", "Show now"], ["off", "Off"]].map(([k, l]) => `<button data-grid="${k}" class="${gm === k ? "on" : ""}" ${dis}>${l}</button>`).join("");
     $("gwSnapNote").textContent = S.lv && S.lv.config && S.lv.config.source ? "" : "(connect OBS in Liveries first)";
     const dr = S.director || {};
-    $("dirOpts").innerHTML = sw("sw-dirrep", dr.replays !== false, 'data-dirrep="1"', "Replays when it's quiet");
+    $("dirOpts").innerHTML = sw("sw-dirrep", dr.replays !== false, 'data-dirrep="1"', "Replays when it's quiet") + sw("sw-dirreel", dr.reelOn !== false, 'data-dirreel="1"', "Highlight reel after the flag");
     // the director fires the stinger for its own replays: tell it where the look's stinger covers the picture
     if (canCamera() && dr.live) {
       const vid = G("theme.stinger.video", null), cuts = G("theme.stinger.cuts", {}) || {};
@@ -1550,6 +1555,7 @@ header{padding:6px 12px}
     else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
     else if (ds.renders) cmd({ cmd: "livery", action: "renders", on: !(S.lv && S.lv.config && S.lv.config.renders !== false) }, "Car pictures from iRacing");
     else if (ds.gwboard) cmd({ cmd: "director", action: "set", gridBoard: ds.gwboard }, "Grid board first: " + ({ auto: "automatic", always: "always", never: "never" }[ds.gwboard] || ds.gwboard));
+    else if (ds.dirreel) cmd({ cmd: "director", action: "set", reel: !(S.director && S.director.reelOn !== false) }, "Highlight reel");
     else if (ds.dirrep) cmd({ cmd: "director", action: "set", replays: !(S.director && S.director.replays !== false) }, "Director replays");
     else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");
     else if (ds.btfollow) {           // a second click stops following (the camera goes back to whoever had it)

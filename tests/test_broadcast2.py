@@ -2788,6 +2788,7 @@ def test_after_the_flag_the_racing_graphics_go_and_the_camera_turns_cinematic():
     from pitwall.director import AFTER_HOLD_S, STORY_SEQ
     battles = [{"id": "1:0", "cars": [0, 1], "gapsS": [0.2], "closingSPerLap": [0.1], "forClassPos": 1}]
     d, sess, msg, t, log, kinds = _craft_rig(n=6, battles=battles)
+    d.configure(reel=False)                                  # the highlight reel has its own test
     contact = {"kind": "race_incident", "what": "contact", "idx": 4, "t": 520.0, "replayT": 520.0, "sessionNum": 2,
                "id": 5, "confidence": "high"}
     for k in range(200):
@@ -2846,3 +2847,93 @@ def test_what_the_november_audit_found():
     # the analyzer: white on a green or amber pill reads (was 4.1:1 and 3.7:1), and amber text has a light-theme colour
     an = rd("suite", "web", "analyzer", "index.html")
     assert "pill(LIVE.mode==='replay'?'replaying a file':'live','#167d42')" in an and "--amb:#8f5f00" in an and "--amb:#d99a1e" in an
+
+
+def test_the_highlight_reel_plays_the_race_again_after_the_flag():
+    # Nov 2026: at the finish the race's best moments again, in the order they happened, back to back, then the
+    # winners on the big slow shots.
+    from pitwall.director import REEL_MAX
+    d, sess, msg, t, log, kinds = _craft_rig(n=6)
+    moms = [{"kind": "class_lead", "idx": 1, "prevIdx": 0, "t": 200.0, "replayT": 200.0, "sessionNum": 2, "classId": 1},
+            {"kind": "pass", "idx": 2, "passedIdx": [3], "classPos": 3, "t": 300.0, "replayT": 300.0, "sessionNum": 2},
+            {"kind": "race_incident", "what": "contact", "idx": 4, "t": 400.0, "replayT": 400.0, "sessionNum": 2, "id": 9, "confidence": "high"},
+            {"kind": "pass", "idx": 5, "passedIdx": [4], "classPos": 12, "t": 410.0, "replayT": 410.0, "sessionNum": 2},
+            {"kind": "pass", "idx": 3, "passedIdx": [2], "classPos": 2, "t": 90.0, "replayT": 90.0, "sessionNum": 1}]
+    d.configure(replays=False)                               # no replay of its own during the race in this test
+    for k in range(50):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), moms)
+    d.configure(replays=True)
+    msg["derived"]["race"] = {"finished": True}
+    labels, reels = [], []
+    for k in range(900):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(520.0 + k * 0.1), [])
+        st = d.status()
+        if st["replay"] and (not labels or labels[-1] != st["replay"]["label"]):
+            labels.append(st["replay"]["label"]); reels.append(st["reel"])
+    jumps = [c["timeS"] for c, _ in log["replay"] if c.get("action") == "jump"]
+    assert jumps == [200.0, 300.0, 400.0], "the lead change, the pass for P3 and the contact, in order; not P12, not qualifying"
+    assert len([c for c, _ in log["replay"] if c.get("action") == "search"]) == 1, "back to live once, at the end"
+    assert labels[0].startswith("Highlights 1/3") and labels[-1].startswith("Highlights 3/3") and reels[0] == {"i": 1, "n": 3}
+    assert len(jumps) <= REEL_MAX and log["cuts"] and log["cuts"][-1][0] in (0, 1, 2), "then the podium"
+    # switched off: none
+    d2, sess, msg, t, log, kinds = _craft_rig(n=6)
+    d2.configure(reel=False, replays=False)
+    for k in range(50):
+        t[0] += 0.1
+        d2.tick(sess, msg, _state(500.0 + k * 0.1), moms)
+    d2.configure(replays=True)
+    msg["derived"]["race"] = {"finished": True}
+    n = len(log["replay"])
+    for k in range(600):
+        t[0] += 0.1
+        d2.tick(sess, msg, _state(520.0 + k * 0.1), [])
+    assert len(log["replay"]) == n and d2.status()["reelOn"] is False
+
+
+def test_pressure_in_a_battle_and_the_broadcast_extras():
+    from pitwall.normalize import battle_pressure, PRESSURE_ATTACK
+    bs = [{"cars": [1, 2, 3], "gapsS": [0.2, 0.9], "closingSPerLap": [0.3, -0.1], "scale": 1.0},
+          {"cars": [7, 8], "gapsS": [1.2], "closingSPerLap": [None], "scale": 1.0},
+          {"cars": [4, 5], "gapsS": [0.9], "closingSPerLap": [0.0], "scale": 1.0}]
+    battle_pressure(bs, [{"cars": [4, 5]}])
+    assert bs[0]["pressure"] == [0.88, 0.06] and bs[1]["pressure"] == [0.0] and bs[2]["pressure"] == [PRESSURE_ATTACK]
+    root = os.path.join(os.path.dirname(__file__), "..", "broadcast")
+    ov = open(os.path.join(root, "overlay.html"), encoding="utf-8").read()
+    pr = open(os.path.join(root, "producer.html"), encoding="utf-8").read()
+    assert "b.pressure[k]" in ov and "Move coming" in ov and "chance" not in ov.split("const pr = k >= 0 && b.pressure")[1][:400].lower()
+    # the battle on the map: the stretch between the pair, coloured by the closing rate
+    assert "(bt.closingSPerLap || [])[k]" in ov and "span > 0.2" in ov
+    # the lap chart plays the race as bars first; only places from the feed are shown
+    race = ov.split("function lapChartRace(series, P, m) {")[1].split("\n  function renderLapChart")[0]
+    assert 'G("lapchart.race", true)' in race and "s.laps.find(x => x[0] === Math.round(f))" in race
+    assert 'data-gflag="lapchart.race"' in pr and 'data-gflag="finish.solo"' in pr and 'data-dirreel="1"' in pr
+    # the league's own season columns reach the grid walk
+    src = pr.split("  function parseLeague(text) {")[1].split("\n  }\n")[0]
+    rows = _node("function parseLeague(text) {" + src + "\n}\nconsole.log(JSON.stringify(parseLeague('Pos,Driver,Points,Wins,Podiums,Last race\\n1,Ann Lee,90,2,3,1\\n2,Bo Roy,70,0,1,DNF')))")
+    assert rows[0]["wins"] == "2" and rows[0]["last"] == "1" and rows[1]["last"] == "DNF" and "wins" not in rows[1] or rows[1].get("wins") == "0"
+    assert "function seasonText(c)" in ov and '["This season", se]' in ov
+
+
+def test_pitwall_team_radio_and_the_glance_view():
+    # Nov 2026: the calls in a recorded team voice (the same words every time), the good news too ("fuel is good to
+    # the end"), and one big number at a time for a phone on the rig.
+    root = os.path.join(os.path.dirname(__file__), "..", "client")
+    cl = open(os.path.join(root, "index.html"), encoding="utf-8").read()
+    fn = "const RADIO_LINE = " + cl.split("  const RADIO_LINE = ")[1].split(";\n  try {")[0] + ";"
+    keys = ["box_now", "window", "fuel_low", "fuel_ok", "caution_box", "caution", "inc", "rain", "flag:black", "close:7", "catch:7",
+            "radio", "call:green", "call:white", "call:checkered", "call:red", "flag:furled", "call:yellow", "nothing"]
+    lines = _node(fn + "\nconsole.log(JSON.stringify(%s.map(RADIO_LINE)))" % json.dumps(keys))
+    assert lines[-3:] == [None, None, None] and all(lines[:-3]), lines
+    for line in set(lines[:-3]):
+        for v in "fm":
+            assert os.path.getsize(os.path.join(root, "assets", "voice-%s-%s.mp3" % (v, line))) > 4000, (v, line)
+    assert 'add("fuel_ok", "info"' in cl and "sayLine(a.key) || say(a.html)" in cl
+    assert "team radio" in open(os.path.join(root, "assets", "LICENSES.md"), encoding="utf-8").read()
+    # glance: a layout of its own, every value one the dashboard already has (no arithmetic on race values here)
+    assert '<option value="glance">' in cl and '"crew", "glance"]' in cl and ':root[data-role="glance"] #glancePanel' in cl
+    pages = cl.split("  function glancePages() {")[1].split("\n  function renderGlance")[0]
+    for src in ("toPlayerS", "sd.lapsOfFuel", '$("remain").textContent', "me.lastLapS"):
+        assert src in pages, src
+    assert not re.search(r"lapsOfFuel\s*[-+*/]|toPlayerS\s*[-+*/]|[-+*/]\s*me\.lastLapS", pages)

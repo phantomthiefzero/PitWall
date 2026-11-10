@@ -2351,3 +2351,17 @@ console.log(JSON.stringify({open,
         self.assertTrue(th.startswith("throttle 12 m later") or th.startswith("throttle 39 ft later"), th)
         self.assertIn("at the slowest point", sp.split(" · ")[0])
         self.assertTrue(br.startswith("braked"))
+
+
+def test_coaching_has_a_goal_light_and_a_session_report():
+    # Nov 2026: the first practice target is the session's goal, one light for the lap just driven; and Coaching can
+    # be saved as a page of its own. Neither works anything out: the light is the target's own check, the report is
+    # the Coaching view's own markup.
+    import os
+    page = open(os.path.join(os.path.dirname(__file__), "..", "suite", "web", "analyzer", "index.html"), encoding="utf-8").read()
+    prac = page.split("function pracHtml(key){")[1].split("\nfunction renderPractice")[0]
+    assert "const t0=E.targets[0]" in prac and "r0[0].ok.time" in prac and "Goal hit" in prac and "Goal missed" in prac
+    rep = page.split("function coachReportHtml(){")[1].split("\nfunction renderPractice")[0]
+    assert "el.cloneNode(true)" in rep and "querySelectorAll('button,select,input" in rep and 'data-theme="light"' in rep
+    assert "api.save_report(html,name)" in rep and "rb.id='coReport'" in page
+    assert ".cogoal.miss .cogoal-l{" in page

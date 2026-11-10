@@ -487,6 +487,24 @@ Broadcast (broadcast/)
   standings show an initial for the first name where narrow (nameCell); small buttons get a bigger touch area on
   coarse pointers (::after, no layout change); the analyzer's white-on-colour pills are #167d42 / #9a6500 and amber
   text is --amb (darker in the light theme). test: test_what_the_november_audit_found.
+- Added Nov 2026 (the user's pick of ten). Broadcast: the highlight reel (director _reel_picks / _reel_next: after the
+  flag, REEL_AFTER_S on, the race's best REEL_MAX moments in order, back to back, one stinger in, then the podium
+  shots; status reel {i, n}; producer "Highlight reel after the flag", needs replays on); pressure in a battle
+  (normalize battle_pressure -> battles[].pressure, the battle box's bar: "Holding / Under pressure / Move coming",
+  a measure, never called a chance); the battle on the track map (the stretch between each pair, coloured by
+  closingSPerLap); the league sheet's own Wins / Podiums / Last race columns on the grid walk (seasonText); the lap
+  chart first plays the race as bars changing places (lapChartRace, gfx lapchart.race; only places from lap_chart,
+  a car with none for a lap dimmed and without a number). PitWall: Radio calls cycles off / team voice (hers, his) /
+  browser voice (pitwall.radio = f | m | on | off): RADIO_LINE maps an alarm to a recorded line
+  (client/assets/voice-<f|m>-<line>.mp3, made as the announcer's), one at a time, a call with a number in it still
+  read by the browser; "Fuel is good to the end" (fuel_ok) once when the plan stops needing a stop; Glance layout
+  (data-role glance, #glancePanel: one value filling the screen, swipe / tap / arrows; every value one the page already
+  has). Lap Analyzer: Practice's first target is the session's goal with one light for the lap just driven (.cogoal);
+  "Save a session report" (coachReportHtml: Coaching's own markup as a page, no controls, light theme, through
+  Api.save_report in the app). Already there, so not built again: setup changes with before / after laps ("Your
+  setup changes here", Runs by setup) and spoken alarms. tests: test_the_highlight_reel_plays_the_race_again_after_the_flag,
+  test_pressure_in_a_battle_and_the_broadcast_extras, test_pitwall_team_radio_and_the_glance_view,
+  test_coaching_has_a_goal_light_and_a_session_report (test_analyzer).
 - Looks: Pit wall's bar shows only its numbers under 640 px; :root[data-look] sets overflow-anchor:none (the bar put
   in after load scrolled the page by its height through scroll anchoring, hiding the title).
 - Audited against Summit Point (Nov 2026), each now in place: battles are read from the live class gap (a stale
