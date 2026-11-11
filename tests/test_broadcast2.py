@@ -3153,6 +3153,15 @@ def test_the_producer_places_the_cameras_and_the_track_keeps_them():
     for need in ('id="camList"', "data-camkind", "data-camat", "data-camhere", "It is here", 'action: "camera"',
                  'ae.matches("select,input")'):
         assert need in pr, need
+    # placing them on the track map (Suzuka's pack has 18 corner cameras: "It is here" 18 times was a chore): a click
+    # on the outline is that part of the lap (points[i] is i / n), each unplaced camera in turn; only this session's
+    # track's outline, a click well off the track is no place, and without a map the list says to use "It is here"
+    for need in ('id="camMap"', 'case "map": S.camMapRaw = m', "function camNearest(ev)", "return bd > 60 * 60 ? null : best / pts.length",
+                 "camPick = camPickNext(name)", 'data-campick="next"', "Place them on the map", "camMapFits(S.camMapRaw)",
+                 "No track map for this track yet"):
+        assert need in pr, need
+    near = pr.split("function camNearest(ev)")[1].split("\n  }")[0]
+    assert "getBoundingClientRect" in near and "CAM_W / r.width" in near, "the click is read in the canvas's own size"
 
 
 def test_the_grid_walk_is_one_steady_walk_and_the_lights_are_watched_from_the_front():

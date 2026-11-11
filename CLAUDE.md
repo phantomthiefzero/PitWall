@@ -324,6 +324,10 @@ Broadcast (broadcast/)
   stands: the start / finish line by its name (0), the rest from the producer (Setup > Auto-director > Your cameras:
   a kind for any group, "% of the lap" or "It is here" = where the car on camera is now; bridge director action
   camera, kept per track in obs.json cameras, allowed with the broadcast off). Unplaced, a spot is left alone.
+  Placing on the track map (producer camMap, drawCamMap / camNearest; the relay's "map" outline, points[i] = i / n of
+  the lap, only this session's track): "Place them on the map" takes each unplaced spot in turn, a click on the
+  track sets its place; the car on camera is drawn to check against the picture. No outline (a track never driven):
+  "It is here". The spots are listed first.
   iRacing gives no camera positions and the turn numbers cannot be read off the lap. A new shot kind goes into KINDS
   and the producer's CAM_KIND. tests: test_the_director_knows_what_a_camera_packs_cameras_are,
   test_the_producer_places_the_cameras_and_the_track_keeps_them.
