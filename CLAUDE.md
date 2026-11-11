@@ -278,7 +278,7 @@ Broadcast (broadcast/)
   opens it at a section). Long notes fold behind (i) (hintTidy). Keep it so: a new setting goes into Setup, not the
   columns, and a new graphic is a tile (TILE_GROUPS, SHORT, GEAR).
 - Grid walk (director GRID_SHOTS, overlay gwalk + gladder): the pole and each class's first car from in front (rear
-  chase) and held GRID_POLE_HOLD times longer, the rest take turns between rear chase and chase. On air it is a TV
+  chase) and held GRID_POLE_HOLD times longer, the rest from in front too (one angle: see "The walk on screen"). On air it is a TV
   grid slot (gwalk, bottom left: place, row, livery, name, quali lap, gaps to pole and class pole, the lap it was set
   on, a pole badge, the class's name and size at its first car) and the grid beside it (gladder, top right: two
   staggered columns, the car lit, the ones walked dimmed). Gaps and rows come from normalize (_grid_derived, each grid
@@ -296,12 +296,37 @@ Broadcast (broadcast/)
   Always / Never (director gridBoard). By hand, Next/Previous leave the board.
   A standing start has no pace laps (Summit Point: get in car, 10 s warm-up, green): the walk runs during get_in_car
   once 60% of the grid is on it, board first, a row in 5 s; a car not on the grid yet keeps its slot and row card
-  ("Not on the grid yet"), the camera wide on its row mate. Rows count by StartingGrid (normalize.grid_per_row,
+  ("Not on the grid yet"), the camera on its row mate. Rows count by StartingGrid (normalize.grid_per_row,
   grid.perRow). tests: test_a_standing_start_walks_the_grid_while_the_cars_get_in.
   By hand (Director.grid_next / grid_prev / grid_pause / grid_jump; bridge actions of the same names, only while a
   walk has the camera): the producer's Previous / Hold / Next under the camera owner, ← → and the space bar, and a
   click on a driver on the grid moves the walk to them instead of ending it. "Walk by hand" (grid_walk manual) starts
   on pole held; a held or by-hand walk is never shortened, and the pace laps starting do not replace it.
+  The walk on screen, fixed against Summit Point (Nov 2026, the user's "all sorts of weird things"; the capture's
+  start played through the director, cut by cut): ONE angle down the grid, from in front (GRID_SHOTS: Rear Chase;
+  it took turns front / back every 2.6 s); a row is one cut, the card's light moves to the second car, which gets
+  its own cut (same angle) only with GRID_RECUT_S a car, by hand, or for livery photos (each_car); a car not on the
+  grid yet never moves the camera (its row mate has the picture, or the shot stays: it went to the helicopter and
+  back); when the walk is done the camera goes to the pole from the start / finish camera, else wide (_grid_finish,
+  "the start: the grid"), stays through the warm-up and START_HOLD_S of the launch (it sat on the back row at the
+  lights); a standing walk still going at the warm-up wraps up in GRID_WARMUP_S; starting the director during a walk
+  no longer ends it (configure: resume race); the overlay's paged grid stays off while the director walks by itself
+  (status gridAuto: it came back as "Positions 11-12 of 12" before the green). Replay the start before changing it:
+  the scratch harness plays the capture with the camera following the director's cuts.
+  test: test_the_grid_walk_is_one_steady_walk_and_the_lights_are_watched_from_the_front.
+- Camera packs (director camera_role, Director.set_cameras / cameras; Nov 2026, Summit Point: the pack's Turn 1 / 3 /
+  5 / 9 / 10 and SF Line were taken for TV cameras, 21 of 95 cuts to a corner's camera with the car anywhere on the
+  lap). A group is read by its name, then by what its cameras were built from (iRacing names them: "CamPit Lane 4"
+  is a fixed camera, "CamBlimp01" flies), then by how many it has: several follow a car round the lap (trackside),
+  one alone stands at one place ("spot"). A spot is never in the trackside pool: it replaces a trackside shot only
+  while the car is SPOT_AHEAD_S before it or just past (_spot_for in _do_cut; a car that may be standing still, an
+  incident: only one right by it), and the shot ends as the car goes by (tick). So the director must know where it
+  stands: the start / finish line by its name (0), the rest from the producer (Setup > Auto-director > Your cameras:
+  a kind for any group, "% of the lap" or "It is here" = where the car on camera is now; bridge director action
+  camera, kept per track in obs.json cameras, allowed with the broadcast off). Unplaced, a spot is left alone.
+  iRacing gives no camera positions and the turn numbers cannot be read off the lap. A new shot kind goes into KINDS
+  and the producer's CAM_KIND. tests: test_the_director_knows_what_a_camera_packs_cameras_are,
+  test_the_producer_places_the_cameras_and_the_track_keeps_them.
 - Championship (gfx league.rows, the league's own points): from a link (the relay fetches it for the producer token:
   relay.fetch_text, public addresses only, redirects checked, 2 MB, off the loop; a Google Sheet's share link becomes
   its CSV export; "keep it up to date" reloads every 10 min), a file or paste (CSV, TSV, JSON, or a web page: its best

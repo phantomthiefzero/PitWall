@@ -41,7 +41,10 @@ class LiveryStore:
         self.dir = os.path.join(self.base, "liveries")
         self.cfg_path = os.path.join(self.base, "obs.json")
         self.cfg = {"url": "ws://127.0.0.1:4455", "password": "", "source": "", "group": "Chase",
-                    "auto": True, "renders": True}
+                    "auto": True, "renders": True,
+                    # what the producer said each camera group is, per track: {"<track id>:<layout>": {group name:
+                    # {"kind", "at"}}} (pitwall/director.py set_cameras)
+                    "cameras": {}}
         try:
             with open(self.cfg_path, encoding="utf-8") as f:
                 self.cfg.update({k: v for k, v in json.load(f).items() if k in self.cfg})

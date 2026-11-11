@@ -106,7 +106,7 @@ def test_group_kinds_cover_iracings_groups_and_custom_ones():
     assert group_kind("Rear Chase") == "rear" and group_kind("Chopper") == "aerial" and group_kind("Far Chase") == "far"
     assert group_kind("Cockpit") == "onboard" and group_kind("TV3") == "trackside"
     assert group_kind("Scenic") == "never"
-    assert group_kind("Turn 1 Hill Cam") == "trackside", "a camera pack's group is a trackside shot"
+    assert group_kind("Turn 1 Hill Cam") == "spot", "a camera pack's corner camera stands at one place: not a TV camera"
 
 
 def test_director_varies_the_shots_and_never_uses_scenic():
@@ -169,7 +169,7 @@ def test_grid_walk_visits_the_grid_in_order_with_a_chase_camera_then_stops():
     order = [by[r["idx"]] for r in sess["grid"]["rows"]][:5]
     seen = []
     d.configure(on=False)
-    d.start_grid_walk(order, hold_s=2, on_car=lambda c: seen.append(c["idx"]))
+    d.start_grid_walk(order, hold_s=2, on_car=lambda c: seen.append(c["idx"]), each_car=True)
     chase = next(g["num"] for g in sess["cameras"] if g["name"] == "Far Chase")
     for step in range(20):
         clock[0] = step * 1.0
@@ -177,11 +177,9 @@ def test_grid_walk_visits_the_grid_in_order_with_a_chase_camera_then_stops():
     assert seen == [c["idx"] for c in order]
     rear = next((g["num"] for g in sess["cameras"] if g["name"] == "Rear Chase"), chase)
     used = [g for _, g, _ in cuts]
-    # the pole from in front, then the shots take turns (the fake field is one class... or several: each class's
-    # first car is a pole too, and gets the front shot)
-    assert used[0] == rear and set(used) <= {chase, rear}
-    if rear != chase and len({c.get("classId") for c in order}) == 1:
-        assert used[:5] == [rear, chase, rear, chase, rear]
+    # one angle all the way down the grid, from in front of each car (it took turns between the front and the back
+    # every car: Summit Point, Nov 2026); then one shot of the front of the grid for the lights
+    assert used[:5] == [rear] * 5 and len(cuts) == 6 and cuts[5][0] == str(order[0]["num"])
     assert d.owner == "you", "the walk was started by hand: the camera goes back to the producer"
 
 
@@ -286,11 +284,13 @@ def test_the_pace_laps_start_a_grid_walk_in_order_that_ends_at_the_green():
         owners.append((src.t, d.owner))
     num = {c["idx"]: str(c["num"]) for c in build_cars(src, sess, deriver)["cars"]}
     grid_nums = [num[r["idx"]] for r in sess["grid"]["rows"]]
-    walk = [(n, g) for n, g, at in cuts if 20 <= at < 200][:len(grid_nums)]
-    assert [n for n, _ in walk] == grid_nums, "every car, down the grid, in order"
+    walking = [at for at, o in owners if o == "grid"]
+    walk = [(n, g) for n, g, at in cuts if min(walking) - 0.2 <= at <= max(walking)]
+    where = [grid_nums.index(n) for n, _ in walk]
+    assert where == sorted(where) and set(range(0, len(grid_nums), 2)) <= set(where), \
+        "down the grid in order, a shot for every row (its second car a cut of its own only with time for it)"
     rear = next((g["num"] for g in sess["cameras"] if g["name"] == "Rear Chase"), chase)
-    far = next(g["num"] for g in sess["cameras"] if g["name"] == "Far Chase")
-    assert {g for _, g in walk} <= {far, rear} and walk[0][1] == rear, "the pole from in front, then turns"
+    assert {g for _, g in walk} == {rear}, "every car from in front: one angle down the grid"
     walking = [at for at, o in owners if o == "grid"]
     assert walking and min(walking) < 21 and max(walking) < 20 + 4 * 25 + 12, "about 4 s a car (poles a little longer), from the pace laps"
     assert any(o == "race" for at, o in owners if max(walking) < at < 200), \
@@ -1708,7 +1708,7 @@ def _walk_rig(lead_start, rate, n=24, hold=4.0):
         cars.append({"idx": i, "num": str(100 + i), "classId": cls, "pct": 0.0, "lap": 0, "pos": i + 1})
     sess = {"grid": {"rows": rows}, "cameras": [{"num": 1, "name": "Chase"}, {"num": 2, "name": "Rear Chase"}]}
     t = [0.0]
-    cuts = []
+    cuts, vis = [], []
     d = Director(lambda num, g: cuts.append((int(num) - 100, g, t[0])) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
     d.set_live(True)
     d.grid_hold_s = hold
@@ -1720,20 +1720,29 @@ def _walk_rig(lead_start, rate, n=24, hold=4.0):
         cars[0]["lap"], cars[0]["pct"] = int(lead), lead - int(lead)
         state = {"session": {"state": "parade_laps" if t[0] > 0.5 else "warmup", "num": 2}}
         d.tick(sess, msg, state, [])
+        if d.owner == "grid" and d.current:
+            key = (d.current["car"], bool(d.status()["gridBoard"]))      # the car the walk is on (its card), board or row
+            if not vis or vis[-1][0] != key:
+                vis.append((key, t[0]))
         if d.owner != "grid" and t[0] > 5:
             break
-    return [c for c, _, _ in cuts], [at for _, _, at in cuts], d, third
+    d.test_cuts = cuts
+    return [k[0] for k, _ in vis], [at for _, at in vis], d, third
 
 
 def test_the_grid_walk_goes_by_rows_and_fits_the_pace_laps():
     # plenty of time (the field rolls over the line first, then a whole lap): every car, in order, at its hold
     seen, at, d, third = _walk_rig(lead_start=0.97, rate=1 / 300)
     assert seen == list(range(24)) and not d.grid_short
+    # 4 s a car: each gets a cut of its own, all from in front (Rear Chase), then one of the pole for the lights
+    assert [c for c, _, _ in d.test_cuts] == list(range(24)) + [0] and {g for _, g, _ in d.test_cuts[:24]} == {2}
     # a lap of ~100 s from mid-lap: less than 24 x 4 s, so the holds shorten and every car is still seen in time
     seen, at, d, third = _walk_rig(lead_start=0.2, rate=1 / 100)
     eta = 0.8 * 100
     assert seen == list(range(24)) and not d.grid_short
     assert at[-1] < eta, "done before the leader reaches the line"
+    # with little time a row is ONE shot: the camera on the row's first car, the card's light moving to the second
+    assert [c for c, _, _ in d.test_cuts[:12]] == list(range(0, 24, 2)), "one cut a row, not one a car"
     # far too little: the grid board first (every car on one screen, the camera wide on the pole), then the front
     # rows and each class's pole row, nothing cut off by the green
     seen, at, d, third = _walk_rig(lead_start=0.6, rate=1 / 100)
@@ -2109,8 +2118,11 @@ def test_a_standing_start_walks_the_grid_while_the_cars_get_in():
     assert cuts[0][0] == 0 and cuts[0][1] == 3, "the board: wide (the drone), on the pole car"
     assert boards == [0, 1, 2, 3], "the board's light goes down the rows"
     assert shown == [0, 1, 2, 3, 4, 5], "then every car a row at a time, the late one too"
-    late = [c for c in cuts if c[2] >= cuts[-1][2] - 0.01]
-    assert late[-1][0] == 4 and late[-1][1] == 3, "car 5 not out: the camera wide on its row mate"
+    # a row is one shot, from in front of its first car (it took turns front / back every 2.5 s); car 5 is not out:
+    # its row mate has the picture and the camera does not move for it (it went up to the helicopter and back)
+    assert [(c, g) for c, g, _ in cuts[1:4]] == [(0, 2), (2, 2), (4, 2)], "one cut a row, Rear Chase on its first car"
+    # then the front of the grid for the lights, wide (this pack has no start / finish camera)
+    assert len(cuts) == 5 and cuts[4][:2] == (0, 3) and d.current["reason"] == "the start: the grid"
     walk_t = [at for _, _, at in cuts]
     assert walk_t[-1] - walk_t[1] <= 6 * 2.5 + 0.5, "quick holds: a row in 5 s"
     # a rolling start keeps the pace-lap walk: nothing during "get in car"
@@ -3015,3 +3027,197 @@ def test_while_racing_the_graphics_leave_the_picture_to_the_cars():
     assert '(caution || !G("race.compact", true))' in board and "done ? since < 35000" in board
     # the producer can turn it off
     assert 'data-gflag="race.compact" data-gdef="1"' in pr
+
+
+def _pack_rig():
+    """A director over a camera pack like the one at Summit Point: iRacing's own groups, a corner's own camera, the
+    start / finish line's, and one car."""
+    cams = [{"num": 1, "name": "TV1", "cameras": [{"num": 1, "name": "CamTV1_01"}, {"num": 2, "name": "CamTV1_03"}]},
+            {"num": 2, "name": "TV2", "cameras": [{"num": 1, "name": "CamTV2_00"}, {"num": 2, "name": "CamTV2_01"}]},
+            {"num": 3, "name": "Turn 5", "cameras": [{"num": 1, "name": "CamPit Lane 3"}]},
+            {"num": 4, "name": "SF Line", "cameras": [{"num": 1, "name": "CamPit Lane 6"}]},
+            {"num": 5, "name": "Far Chase", "cameras": [{"num": 1, "name": "CamFar Chase"}]},
+            {"num": 6, "name": "Rear Chase", "cameras": [{"num": 1, "name": "CamRear Chase"}]},
+            {"num": 7, "name": "Drone Cam", "cameras": [{"num": 1, "name": "CamBlimp00"}]},
+            {"num": 8, "name": "Scenic Drone Cam", "cameras": [{"num": 1, "name": "CamBlimp01"}]}]
+    sess = {"cameras": cams, "grid": {"rows": []}}
+    t, cuts = [0.0], []
+    d = Director(lambda num, g: cuts.append((int(num), g)) or {"ok": True}, rng=random.Random(1), clock=lambda: t[0])
+    d.set_live(True)
+    d.configure(on=True)
+    return d, sess, t, cuts
+
+
+def test_the_director_knows_what_a_camera_packs_cameras_are():
+    # Summit Point, Nov 2026: the pack's Turn 1 / 3 / 5 / 9 / 10 and SF Line, each ONE camera at one place, were taken
+    # for TV cameras (which follow a car round the lap): 21 of 95 cuts went to a corner's camera with the car
+    # anywhere on the track ("Turn 5" with the car at 93%, 16%, 55%, 69%, 27% and 73% of the lap).
+    from pitwall.director import camera_role, SPOT_AHEAD_S, KINDS
+    one = [{"name": "CamPit Lane 4"}]
+    assert camera_role("Turn 5", one) == ("spot", None) and camera_role("T5 Exit") == ("spot", None)
+    assert camera_role("Back Straight")[0] == "spot" and camera_role("Bridge")[0] == "spot"
+    for line in ("SF Line", "Start/Finish", "Finish Line", "S/F"):
+        assert camera_role(line) == ("spot", 0.0), line          # the line's camera says where it is by its name
+    assert camera_role("TV1", [{"name": "CamTV1_01"}] * 7)[0] == "trackside" and camera_role("TV Static")[0] == "trackside"
+    assert camera_role("Pit Lane")[0] == "pit" and camera_role("Pit Exit")[0] == "pit"
+    assert camera_role("Drone Cam")[0] == "aerial" and camera_role("Scenic Drone Cam")[0] == "never"
+    for name in ("Helmet Cam", "Dash", "Bumper", "Hood", "Rear Wing", "Driver Face", "T-Cam"):
+        assert camera_role(name)[0] == "onboard", name           # on the car: never a trackside shot
+    assert camera_role("Wheel Cam")[0] == "detail" and camera_role("Brakes")[0] == "detail"
+    assert camera_role("Front Chase")[0] == "rear" and camera_role("Wide Chase")[0] == "far" and camera_role("Chase 2")[0] == "chase"
+    # a name that says nothing: what its cameras were built from, then how many there are
+    assert camera_role("Custom 1", [{"name": "CamNose2"}])[0] == "onboard"
+    assert camera_role("Custom 2", [{"name": "CamBlimp7"}])[0] == "aerial"
+    assert camera_role("Custom 3", [{"name": "a"}, {"name": "b"}])[0] == "trackside", "several: iRacing picks the near one"
+    assert camera_role("Custom 4", [{"name": "CamPit Lane 9"}])[0] == "spot", "one camera alone stands at one place"
+    assert all(camera_role(n)[0] in KINDS for n in ("Chase", "Cockpit", "Gyro", "Blimp", "LF Susp", "Scenic", "Turn 1"))
+
+    d, sess, t, cuts = _pack_rig()
+    car = {"idx": 0, "num": 7, "pct": 0.47, "bestLapS": 90.0, "surface": "on_track"}
+    groups = d._groups(sess)
+    assert [g["name"] for g in groups["trackside"]] == ["TV1", "TV2"], "a corner's camera is not one of the TV cameras"
+    assert "spot" not in groups and [s["name"] for s in d._spots] == ["SF Line"], "Turn 5: nobody has said where it is"
+    rows = {c["name"]: c for c in d.cameras(sess)}
+    assert rows["Turn 5"]["kind"] == "spot" and rows["Turn 5"]["at"] is None and rows["SF Line"]["at"] == 0.0
+    assert rows["Scenic Drone Cam"]["kind"] == "never" and d.status()["cameras"] is not None
+    tv = {**groups["trackside"][0], "kind": "trackside"}
+    assert d._do_cut(car, tv, "the leader") and cuts[-1] == (7, 1), "not placed yet: left alone"
+    # the producer says where it stands (half way round): used as the car comes to it, never elsewhere
+    d.set_cameras({"Turn 5": {"at": 0.5}})
+    d._groups(sess)
+    assert d._do_cut(car, tv, "the leader") and cuts[-1] == (7, 3), "2.7 s before the corner: its own camera"
+    assert d.current["groupName"] == "Turn 5"
+    for pct in (0.2, 0.7, 0.58):                                 # elsewhere on the lap, and well past it
+        d._last_group = None
+        assert d._do_cut(dict(car, pct=pct), tv, "the leader") and cuts[-1] == (7, 1), pct
+    far = {**groups["far"][0], "kind": "far"}
+    d._last_group = None
+    assert d._do_cut(car, far, "the leader") and cuts[-1] == (7, 5), "only in place of a trackside shot"
+    # a car standing still (an incident): only a camera right by it, not one six seconds of driving away
+    d._last_group = None
+    assert d._do_cut(dict(car, pct=0.5 - (SPOT_AHEAD_S - 1) / 90.0), tv, "incident: spin") and cuts[-1] == (7, 1)
+    assert d._do_cut(dict(car, pct=0.49), tv, "incident: spin") and cuts[-1] == (7, 3)
+    # on a corner's camera the shot ends as the car goes by, however long the hold
+    msg = {"cars": [dict(car, pct=0.49)], "derived": {"isRace": True}}
+    state = {"session": {"state": "racing", "num": 2}}
+    d._next_at = 1e9
+    d.tick(sess, msg, state, [])
+    assert d._next_at == 1e9
+    t[0] = 5.0
+    msg["cars"][0]["pct"] = 0.56
+    d.tick(sess, msg, state, [])
+    assert d._next_at < 1e9 and d._spot is None, "past it: the next shot"
+    # the start / finish camera has the grid at the lights
+    assert d._start_group(d._groups(sess))["name"] == "SF Line"
+    # the producer's word on what a group is beats its name; a spot moved to another kind is a normal camera again
+    d.set_cameras({"tv2": {"kind": "never"}, "Turn 5": {"kind": "trackside"}, "junk": {"kind": "nonsense"}, "x": 5})
+    g2 = d._groups(sess)
+    assert [g["name"] for g in g2["trackside"]] == ["TV1", "Turn 5"] and "junk" not in d.cam_setup
+
+
+def test_the_producer_places_the_cameras_and_the_track_keeps_them():
+    from pitwall.bridge import Bridge
+    src = FakeSource(realtime=False, spectator=True)
+    src.connect()
+    base = tempfile.mkdtemp()
+    b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False, livery_dir=base)
+    for k in range(600):
+        src.tick()
+        b._build(k / 60.0)
+    name = b.session_msg["cameras"][0]["name"]
+    cmd = lambda **kw: b._broadcast_cmd({"type": "cmd", "cmd": "director", "action": "camera", **kw})
+    # a setting: it moves nothing, so it works with the broadcast off
+    assert not b.director.live
+    res = cmd(name=name, kind="spot", at=0.25)
+    assert res["ok"], res
+    row = next(c for c in res["data"]["cameras"] if c["name"] == name)
+    assert row["kind"] == "spot" and row["at"] == 0.25
+    # "It is here": where the car on camera is now
+    cam = b._last_state["camera"]["carIdx"]
+    pct = b._cars_by_idx()[cam]["pct"]
+    res = cmd(name=name, here=True)
+    assert res["ok"] and abs(next(c for c in res["data"]["cameras"] if c["name"] == name)["at"] - pct % 1.0) < 1e-3
+    assert not cmd(name="No Such Camera", kind="spot")["ok"] and not cmd(name=name, kind="sideways")["ok"]
+    assert not cmd(name=name, at="north")["ok"]
+    # kept for this track, and read again by a new bridge
+    key = b._cam_key()
+    kept = json.load(open(os.path.join(base, "obs.json"), encoding="utf-8"))["cameras"]
+    assert kept[key][name.lower()]["kind"] == "spot"
+    b2 = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, log=lambda *a: None, render_cars=False, livery_dir=base)
+    b2._build(0.0)
+    assert b2.director.cam_setup[name.lower()]["kind"] == "spot"
+    # back to what its name says
+    assert cmd(name=name, kind="", at=None)["ok"] and name.lower() not in b.director.cam_setup
+    # the producer's list and its controls
+    pr = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    for need in ('id="camList"', "data-camkind", "data-camat", "data-camhere", "It is here", 'action: "camera"',
+                 'ae.matches("select,input")'):
+        assert need in pr, need
+
+
+def test_the_grid_walk_is_one_steady_walk_and_the_lights_are_watched_from_the_front():
+    # Summit Point, Nov 2026 (the user's "all sorts of weird things"): the camera took turns between the front and the
+    # back of each car every 2.6 s, went up to the helicopter and back for a car not on the grid yet, sat on the back
+    # row through the lights, and the old paged grid came back ("Positions 11-12 of 12") for the last seconds.
+    from pitwall.director import START_HOLD_S, GRID_WARMUP_S
+    d, sess, t, cuts = _pack_rig()
+    n = 8
+    sess["grid"] = {"rows": [{"pos": i + 1, "classPos": i + 1, "idx": i, "derived": {"row": i // 2 + 1}} for i in range(n)]}
+    sess["options"] = {"StandingStart": "1"}
+    cars = [{"idx": i, "num": 100 + i, "classId": 1, "pct": 0.99, "lap": 0, "pos": i + 1, "surface": "on_track"} for i in range(n)]
+    cars[3]["surface"] = cars[6]["surface"] = cars[7]["surface"] = "not_in_world"     # one of row 2, all of row 4
+    msg = {"cars": cars, "derived": {"isRace": True}}
+    d.configure(grid_board="never")
+    state = {"session": {"state": "get_in_car", "num": 2}}
+    seen = []
+    for k in range(400):
+        t[0] = k * 0.1
+        d.tick(sess, msg, state, [])
+        if k == 3:
+            # the director started a moment after the walk began: the walk carries on (it used to end, for good)
+            d.configure(on=True)
+            assert d.owner == "grid" and d.resume == "race"
+        if d.owner == "grid" and d.current and (not seen or seen[-1] != d.current["car"]):
+            seen.append(d.current["car"])
+        if d.owner != "grid" and k > 5:
+            break
+    assert seen == list(range(n)), "every car has its card, the ones not out too"
+    walk = cuts[:-1]
+    assert {g for _, g in walk} == {6}, "one angle down the grid: from in front (Rear Chase)"
+    assert [c for c, _ in walk] == [100, 102, 104], "one cut a row; row 4 is not out: the camera stays where it is"
+    assert cuts[-1] == (100, 4) and d.current["reason"] == "the start: the grid", "then the pole from the line's camera"
+    assert d.owner == "race" and d.status()["gridAuto"] is True
+    # it stays there through the warm-up and the launch
+    done = len(cuts)
+    state = {"session": {"state": "warmup", "num": 2}}
+    for k in range(60):
+        t[0] += 0.1
+        d.tick(sess, msg, state, [])
+    assert len(cuts) == done, "no other shot before the lights"
+    state = {"session": {"state": "racing", "num": 2}}
+    t0 = t[0]
+    while len(cuts) == done and t[0] - t0 < 30:
+        t[0] += 0.1
+        d.tick(sess, msg, state, [])
+    assert t[0] - t0 >= START_HOLD_S - 0.2, "the launch from where the lights were watched"
+    # a walk still going when the warm-up starts (ten seconds to the lights) wraps up and goes to the front
+    d, sess2, t, cuts = _pack_rig()
+    sess2.update(grid=sess["grid"], options=sess["options"])
+    for c in cars:
+        c["surface"] = "on_track"
+    d.configure(grid_board="never")
+    for k in range(400):
+        t[0] = k * 0.1
+        if k == 30:
+            state = {"session": {"state": "warmup", "num": 2}}
+            t_warm = t[0]
+        elif k < 30:
+            state = {"session": {"state": "get_in_car", "num": 2}}
+        d.tick(sess2, msg, state, [])
+        if d.owner != "grid" and k > 5:
+            break
+    assert cuts[-1] == (100, 4) and t[0] - t_warm <= GRID_WARMUP_S + 2.5, "at the front in time for the lights"
+    # the overlay's paged grid stays off while the director walks the grid by itself
+    ov = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    wanted = ov.split("function gridWanted() {")[1].split("\n  }")[0]
+    assert "S.director.gridAuto) return false" in wanted and wanted.index("gridAuto") < wanted.index("parade_laps")

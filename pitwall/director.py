@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 import time
 
 # camera group names (lower case) by kind; anything not listed is "trackside",
@@ -70,10 +71,15 @@ STYLES = {
 BATTLE_SHOTS = [("far", "back"), ("trackside", "back"), ("rear", "front"), ("far", "back"),
                 ("aerial", "front"), ("chase", "back"), ("onboard", "back")]
 
-# The grid walk, car by car: the pole and each class's pole from in front (rear chase: the car coming at the
-# camera, livery and driver), held longer; the rest take turns between that and the chase, so the walk does not
-# look the same 30 times over.
-GRID_SHOTS = ["rear chase", "far chase"]
+# The grid walk: every car from in front (rear chase: the car coming at the camera, livery and driver), the pole
+# and each class's pole held longer. One angle all the way down the grid (Summit Point, Nov 2026: it took turns
+# between the front and the back of each car every 2.6 s, and went up to the helicopter and back for a car not on
+# the grid yet). A row at a time the camera makes ONE cut for the row and stays; the row card's light moves to the
+# second car, which gets a cut of its own (same angle) only when there is time for it (GRID_RECUT_S). A car not on
+# the grid yet never moves the camera: its row mate has the picture, or the shot stays where it is. When the walk is
+# done the camera goes to the front of the grid for the lights (the start / finish camera when the pack has one,
+# else from above) and holds through the launch (START_HOLD_S).
+GRID_SHOTS = ["rear chase", "far chase", "chase"]      # the walk's shot: the first of these the pack has
 GRID_POLE_HOLD = 1.6         # a pole sitter's hold, times the walk's
 # The walk fits the pace laps: while they run, the time until the leader reaches the line (its pace over the last
 # few seconds, the distance to the next crossing; one that is just ahead is the line the field rolls over on its
@@ -96,6 +102,21 @@ GRID_BOARD_MIN_S = 8.0
 GRID_BOARD_MAX_S = 18.0
 GRID_BOARD_IN_S = 1.5
 GRID_PLAN_WAIT_S = 3.0       # on the pace laps, how long the walk waits for the pace before deciding
+# A standing start's warm-up is the last ten seconds before the lights: a walk still going gets GRID_WARMUP_S more
+# (rows at GRID_WARMUP_ROW_S), then the front of the grid, so the lights are never watched from the back row
+# (Summit Point: a walk begun late was on row 6 at the green).
+GRID_WARMUP_S = 4.0
+GRID_WARMUP_ROW_S = 2.0
+GRID_RECUT_S = 4.0           # a row's second car gets its own cut (same angle) only when each car has this long
+START_HOLD_S = 6.0           # the shot of the grid at the lights is held this long into the race (the launch)
+# A camera at one place (a "spot": a pack's Turn 5, the start / finish line): used in place of a trackside shot while
+# the car is this many seconds before it, or has only just gone by; left as soon as the car is past.
+SPOT_AHEAD_S = 6.0
+SPOT_JUST_PAST_S = 1.0
+SPOT_NEAR_S = 2.0
+SPOT_LEAVE_S = 1.5
+SPOT_MIN_S = 2.5
+SPOT_LINE = 0.03             # a spot this close to the line (fraction of a lap, either side) is the start / finish camera
 GRID_WIDE = ("aerial", "trackside", "far", "chase")    # the board's shot (and a car not on the grid yet): wide, over the grid
 
 # Shots in a story come in an order, not by chance: wide to set the scene, then closer, then inside the car (each
@@ -162,16 +183,73 @@ SEEN_LIVE_S = 6.0            # a pass counts as shown live when the camera was o
 INCIDENT_FIGHT = 55.0        # a lone spin waits for a replay while a fight this good for a better place is on
 
 
-def group_kind(name: str | None) -> str:
+# Camera packs (Summit Point, Nov 2026: Turn 1 / Turn 3 / Turn 5 / Turn 9 / Turn 10 / SF Line, each ONE camera at one
+# place, were taken for TV cameras, which follow a car round the whole lap: 21 of 95 cuts went to a corner's camera
+# with the car anywhere on the track). A group is read by its name, then by what its cameras are made of (iRacing
+# names a camera after the kind it was built from: "CamPit Lane 4" is a fixed camera whatever its group is called),
+# then by how many cameras it has: several follow the car round the lap (trackside), one alone stands at one place
+# ("spot"). A spot is used only as the car comes past it, so the director must know where it stands: the start /
+# finish line by its name, the rest from the producer (Setup > Auto-director > Your cameras); until then it is
+# left alone. The producer can also say what any group is (Director.set_cameras).
+KINDS = ("far", "chase", "rear", "onboard", "detail", "gyro", "trackside", "spot", "aerial", "pit", "never")
+_W = lambda *ws: re.compile(r"(?<![a-z])(?:" + "|".join(ws) + r")(?![a-z])")
+_RE_LINE = _W(r"s/?f", r"start ?(?:/|-|and|&)? ?finish", r"finish(?: ?line)?", r"start ?line", r"flag ?stand", r"starter")
+_RE_PLACE = _W(r"turns?", r"t ?\d+[a-z]?", r"corners?", r"chicane", r"hairpin", r"esses", r"bend", r"straight", r"bridge",
+               r"carousel", r"kink", r"curve", r"grandstands?", r"tower", r"apex", r"exit", r"entry", r"braking")
+_RE_AIR = re.compile(r"drone|heli|blimp|chopper|aerial|sky|overhead|bird")
+_RE_DETAIL = re.compile(r"susp|wheel|tire|tyre|gearbox|brake|pedal|exhaust|engine|foot")
+_RE_ONBOARD = re.compile(r"cockpit|dash|helmet|visor|driver|on-?board|in-?car|hood|bonnet|bumper|nose|roof|roll ?bar|mirror|"
+                         r"wing|door|pillar|shoulder|t-?cam|halo|pov|cabin|windshield|windscreen|seat|face")
+_BASE_KIND = {"nose": "onboard", "cockpit": "onboard", "roll bar": "onboard", "gyro": "gyro", "gearbox": "detail",
+              "lf susp": "detail", "rf susp": "detail", "lr susp": "detail", "rr susp": "detail",
+              "chase": "chase", "far chase": "far", "rear chase": "rear", "blimp": "aerial", "chopper": "aerial",
+              "scenic": "never", "pit lane": "spot"}
+
+
+def _cam_base(name) -> str:
+    """What a camera was built from: "CamPit Lane 4" -> "pit lane", "CamTV2_03" -> "tv", "CamBlimp01" -> "blimp"."""
+    n = re.sub(r"^cam", "", str(name or "").strip().lower())
+    return re.sub(r"[\s_\d]+$", "", n).strip()
+
+
+def camera_role(name: str | None, cams=None) -> tuple:
+    """(kind, where) of a camera group: where is the fraction of the lap a "spot" stands at, when its name says."""
     n = (name or "").strip().lower()
     if n in GROUP_KIND:
-        return GROUP_KIND[n]
-    # camera packs name their own: "Scenic Drone Cam" is scenery, "Drone Cam" flies above
+        return GROUP_KIND[n], None
     if "scenic" in n:
-        return "never"
-    if any(w in n for w in ("drone", "heli", "blimp", "chopper", "aerial", "sky")):
-        return "aerial"
-    return "trackside"
+        return "never", None                    # "Scenic Drone Cam" is scenery
+    if re.match(r"tv(?![a-z])|broadcast|trackside", n):
+        return "trackside", None
+    if _RE_AIR.search(n):
+        return "aerial", None                   # "Drone Cam" flies above
+    if "pit" in n.split() or n.startswith("pit"):
+        return "pit", None
+    if _RE_LINE.search(n):
+        return "spot", 0.0
+    if _RE_PLACE.search(n):
+        return "spot", None
+    if "chase" in n or "follow" in n:
+        return ("far" if "far" in n or "wide" in n else "rear" if re.search(r"rear|reverse|front|back", n) else "chase"), None
+    if "gyro" in n:
+        return "gyro", None
+    if _RE_DETAIL.search(n):
+        return "detail", None
+    if _RE_ONBOARD.search(n):
+        return "onboard", None
+    names = [c.get("name") if isinstance(c, dict) else c for c in (cams or [])]
+    bases = {_cam_base(x) for x in names if x}
+    kinds = {("trackside" if b.startswith("tv") else _BASE_KIND.get(b)) for b in bases}
+    if len(kinds) == 1 and None not in kinds:
+        k = kinds.pop()
+        return ("spot" if k == "trackside" and len(names) == 1 else k), None
+    if len(names) > 1:
+        return "trackside", None                # several cameras: iRacing picks the one the car is near
+    return ("spot" if names else "trackside"), None
+
+
+def group_kind(name: str | None, cams=None) -> str:
+    return camera_role(name, cams)[0]
 
 
 class Director:
@@ -238,7 +316,78 @@ class Director:
         self._lead_shown: dict = {}       # classId -> when its leader was last on air
         self._last_state = None
         self.current = None               # {"car", "num", "group", "groupName", "reason"}
+        # what the producer said a camera group is, by its name in lower case: {"kind": one of KINDS or None,
+        # "at": fraction of the lap a spot stands at, or None} (Setup > Auto-director > Your cameras)
+        self.cam_setup: dict = {}
+        self._spots: list = []            # the spots with a known place, from the last look at the session
+        self._spot = None                 # the spot on air: {"num", "at", "car", "t"}
+        self._cars_now: dict = {}
         self.changed = True
+
+    # ------------------------------------------------------------------ cameras
+    def set_cameras(self, setup: dict | None):
+        """The producer's word on the camera groups (all of it at once, as kept by the bridge for this track)."""
+        out = {}
+        for name, v in (setup or {}).items():
+            if not isinstance(v, dict):
+                continue
+            kind = v.get("kind") if v.get("kind") in KINDS else None
+            try:
+                at = None if v.get("at") is None else float(v["at"]) % 1.0
+            except (TypeError, ValueError):
+                at = None
+            if kind or at is not None:
+                out[str(name).strip().lower()] = {"kind": kind, "at": at}
+        self.cam_setup = out
+        self.changed = True
+
+    def _role(self, g: dict) -> tuple:
+        """(kind, where, the kind read from its name) of a group: the producer's word first."""
+        auto, at = camera_role(g.get("name"), g.get("cameras"))
+        mine = self.cam_setup.get(str(g.get("name") or "").strip().lower()) or {}
+        kind = mine.get("kind") or auto
+        if mine.get("at") is not None:
+            at = mine["at"]
+        return kind, (at if kind == "spot" else None), auto
+
+    def cameras(self, session=None) -> list:
+        """Every camera group and what the director takes it for, for the producer's list."""
+        out = []
+        for g in (session or getattr(self, "_last_session", None) or {}).get("cameras") or []:
+            kind, at, auto = self._role(g)
+            if g.get("scenic"):
+                kind = auto = "never"
+            out.append({"num": g.get("num"), "name": g.get("name"), "kind": kind, "auto": auto, "at": at,
+                        "n": len(g.get("cameras") or [])})
+        return out
+
+    def _lap_s(self, car) -> float:
+        t = car.get("bestLapS") or car.get("lastLapS") or 0
+        return float(t) if 20.0 < float(t or 0) < 900.0 else 90.0
+
+    def _spot_for(self, car, near=False) -> dict | None:
+        """The spot the car is coming to (within SPOT_AHEAD_S) or has only just passed. near: a car that may be
+        standing still (an incident), so only a spot right by it, either side."""
+        pct = (car or {}).get("pct")
+        if pct is None or pct < 0 or not self._spots:
+            return None
+        lap, best, best_s = self._lap_s(car), None, 1e9
+        for sp in self._spots:
+            if sp["num"] == self._last_group:
+                continue
+            ahead = ((sp["at"] - pct) % 1.0) * lap
+            past = ((pct - sp["at"]) % 1.0) * lap
+            d = ahead if ahead <= (SPOT_NEAR_S if near else SPOT_AHEAD_S) else past if past <= (SPOT_NEAR_S if near else SPOT_JUST_PAST_S) else None
+            if d is not None and d < best_s:
+                best, best_s = sp, d
+        return best
+
+    def _start_group(self, groups) -> dict | None:
+        """The shot of the grid at the lights: the start / finish camera when the pack has one, else wide."""
+        for sp in self._spots:
+            if min(sp["at"], 1.0 - sp["at"]) <= SPOT_LINE:
+                return sp
+        return self._wide_group(groups)
 
     # ------------------------------------------------------------------ owner
     @property
@@ -276,7 +425,12 @@ class Director:
                   replays=None, stinger=None, stinger_cut_ms=None, grid_board=None, reel=None):
         if on and not self.live:
             on = None                                 # the director runs only with the broadcast on
-        if on is not None:
+        if on and self.owner in ("grid", "battle"):
+            # started while the grid walk (or a followed battle) has the camera: that carries on, and the director
+            # has it afterwards. Starting the director a moment after the broadcast used to end the walk it had
+            # just begun, for good (a session is walked once).
+            self.resume = "race"
+        elif on is not None:
             self.resume = None
             self._set_owner("race" if on else None, "director on" if on else "director off")
         if style in STYLES:
@@ -308,10 +462,12 @@ class Director:
         return True
 
     def start_grid_walk(self, cars: list[dict], hold_s: float | None = None, on_car=None, manual: bool = False,
-                        standing: bool = False):
+                        standing: bool = False, each_car: bool = False):
         if not self.live:
             return False
+        self.grid_each = bool(each_car)               # a cut for every car (livery photos need the camera on each)
         self._standing = bool(standing)
+        self._warm_at = None
         self._board = "no" if manual else None
         self._board_t0 = None
         self.grid_board_row = None
@@ -365,8 +521,7 @@ class Director:
         if self.owner != "grid":
             return False
         if not self.grid:                              # past the last car: the walk is done
-            self.current = None
-            self._end_temporary("grid walk done")
+            self._grid_finish(self._groups(getattr(self, "_last_session", None)), {"cars": list(self._cars_now.values())})
             return True
         return self.grid_goto(self._grid_at() + 1)
 
@@ -423,9 +578,13 @@ class Director:
                 "gridPaused": self.grid_paused if self.owner == "grid" else None,
                 "gridManual": self.grid_manual if self.owner == "grid" else None,
                 "gridAt": self._grid_at() if self.owner == "grid" else None,
+                # the walk is the director's at this start (the overlay's paged grid stays off: the board and the
+                # row cards do its job, and it came back for the last seconds before the green)
+                "gridAuto": bool(self.live and self.auto_grid),
                 "gridBoard": ({"row": self.grid_board_row, "rows": self._board_rows}
                               if self.owner == "grid" and self._board == "on" else None),
                 "gridBoardMode": self.grid_board,
+                "cameras": self.cameras(),
                 "replays": self.replays_on, "stinger": self.stinger, "reelOn": self.reel_on,
                 "reel": ({"i": self._reel["i"], "n": self._reel["n"]} if self._reel and self.rp and self.rp.get("reel") else None),
                 "replay": {"label": self.rp["label"], "car": self.rp["car"], "phase": self.rp["phase"]} if self.rp else None,
@@ -435,13 +594,20 @@ class Director:
     # ------------------------------------------------------------------ shots
     def _groups(self, session) -> dict[str, list[dict]]:
         out: dict[str, list[dict]] = {}
+        spots = []
         for g in (session or {}).get("cameras") or []:
             if g.get("scenic"):
                 continue
-            k = group_kind(g.get("name"))
+            k, at, _ = self._role(g)
             if k == "never":
                 continue
+            if k == "spot":
+                # one camera at one place: only as a car comes past it (_spot_for), and only once we know where
+                if at is not None:
+                    spots.append({**g, "kind": "spot", "at": at})
+                continue
             out.setdefault(k, []).append(g)
+        self._spots = spots
         # no Far Chase (a camera pack without one): the Chase does its job
         if not out.get("far") and out.get("chase"):
             out["far"] = list(out["chase"])
@@ -467,9 +633,14 @@ class Director:
         return {**options[-1][2], "kind": options[-1][1]}
 
     def _do_cut(self, car: dict, group: dict, reason: str):
+        # a trackside shot of a car coming to a corner's own camera: that camera instead
+        if group.get("kind") == "trackside":
+            group = self._spot_for(car, near=reason.startswith("incident")) or group
         res = self.cut(str(car["num"]), int(group["num"]))
         ok = res.get("ok", False) if isinstance(res, dict) else bool(res)
         if ok:
+            self._spot = ({"num": group["num"], "at": group["at"], "car": car.get("idx"), "t": self.clock()}
+                          if group.get("kind") == "spot" and group.get("at") is not None else None)
             self._last_group = group["num"]
             self._last_kind = group.get("kind")
             self._shots += 1
@@ -510,6 +681,13 @@ class Director:
             return                                   # the grid board is on air (or the walk waits for the pace)
         if self.mode == "grid" and self.grid_paused and not self._grid_force:
             return                                   # held by the producer: stays on this car
+        self._cars_now = {c.get("idx"): c for c in cars_msg.get("cars") or []}
+        sp = self._spot
+        if sp and self.mode != "grid" and now - sp["t"] >= SPOT_MIN_S:
+            c = self._cars_now.get(sp["car"])
+            past = ((c["pct"] - sp["at"]) % 1.0) * self._lap_s(c) if c and c.get("pct") is not None and c["pct"] >= 0 else None
+            if past is not None and SPOT_LEAVE_S <= past and ((sp["at"] - c["pct"]) % 1.0) * self._lap_s(c) > SPOT_AHEAD_S:
+                self._spot, self._next_at = None, min(self._next_at, now)     # the car has gone by: the next shot
         if now < self._next_at and not self._grid_force:
             return
         self._grid_force = False
@@ -531,8 +709,11 @@ class Director:
         was, self._last_state = self._last_state, race_state
         is_race = bool((cars_msg.get("derived") or {}).get("isRace"))
         snum = ((state or {}).get("session") or {}).get("num")
-        if self.mode == "grid" and self.on and race_state == "racing" and was in ("parade_laps", "warmup", "get_in_car"):
-            self._end_temporary("the green flag: grid walk over")
+        if race_state == "racing" and was in ("parade_laps", "warmup", "get_in_car"):
+            if self.mode == "grid" and self.on:
+                self._end_temporary("the green flag: grid walk over")
+            if (self.current or {}).get("reason") == "the start: the grid":
+                self._next_at = self.clock() + START_HOLD_S       # the launch, from where the lights were watched
             return
         if (self.auto_grid and is_race and race_state == "parade_laps" and was != "parade_laps"
                 and snum not in self._grid_walked and self.owner not in ("battle", "grid")):   # a walk already running (by hand) carries on
@@ -609,6 +790,15 @@ class Director:
             return
         # 2. the start: wide
         if race_state in ("parade_laps", "warmup"):
+            # the last seconds before the lights (a standing start's warm-up, the pace car about to peel off): the
+            # front of the grid from the line's own camera or from above, and it stays there
+            pole = by.get(((((self._last_session or {}).get("grid") or {}).get("rows") or [{}])[0]).get("idx")) or leader
+            if pole and (race_state == "warmup" or (self.pace_eta is not None and self.pace_eta < 20.0)):
+                g = self._start_group(groups)
+                if g and (g["num"] == self._last_group or self._do_cut(pole, g, "the start: the grid")):
+                    self._next_at = now + 2.0
+                    self._end_segment(now)
+                    return
             if leader:
                 g = self._pick_group(groups, {"aerial": 4, "trackside": 2, "far": 1})
                 if g and self._do_cut(leader, g, "the start"):
@@ -1273,51 +1463,68 @@ class Director:
 
     def _grid_step(self, groups, now, session=None, cars_msg=None):
         if not self.grid:
-            self.current = None
-            self._end_temporary("grid walk done")
+            self._grid_finish(groups, cars_msg)
             return
+        warm = None
+        if getattr(self, "_standing", False) and self._last_state == "warmup" and not (self.grid_manual or self.grid_paused):
+            self._warm_at = warm = self._warm_at if getattr(self, "_warm_at", None) is not None else now
+            if now - warm >= GRID_WARMUP_S:
+                self.grid_short = True
+                self._grid_finish(groups, cars_msg)
+                return
         car = self.grid.pop(0)
         live = {c.get("idx"): c for c in (cars_msg or {}).get("cars") or []}
+        there = lambda c: not live or (c.get("idx") in live and live[c["idx"]].get("surface") != "not_in_world")
         rows_of = self._grid_rows(session)
-        row_start = not self.grid_by_row or getattr(self, "_grid_row", None) != rows_of.get(car.get("idx"))
-        self._grid_row = rows_of.get(car.get("idx"))
+        row = rows_of.get(car.get("idx"))
+        row_start = not self.grid_by_row or getattr(self, "_grid_row", None) != row
+        self._grid_row = row
         if row_start:
             self._grid_hold = self._grid_plan(session, car)
-        k = self.grid_total - len(self.grid) - 1                 # this car's place in the walk, from 0
         pole = car.get("idx") in getattr(self, "_grid_poles", set())
         hold = getattr(self, "_grid_hold", self.grid_hold_s)
-        # not on the grid yet (still in the garage at a standing start): its row card still shows it (the picture
-        # is iRacing's render, not the camera's), with the camera wide over the grid on a car that is there
-        if live and (car.get("idx") not in live or live[car.get("idx")].get("surface") == "not_in_world"):
-            row = rows_of.get(car.get("idx"))
-            there = [c for c in self._grid_order if c.get("idx") in live and live[c["idx"]].get("surface") != "not_in_world"]
-            mate = next((c for c in there if row is not None and rows_of.get(c.get("idx")) == row), None)
-            on = mate or (there[0] if there else None)
-            g = self._wide_group(groups)
-            if on is not None and g is not None and self._do_cut(on, g, "starting grid: not out yet"):
-                pass
-            self.current = {"car": car.get("idx"), "num": car.get("num"), "group": (g or {}).get("num"),
-                            "groupName": (g or {}).get("name"), "reason": "starting grid: not out yet",
-                            "camCar": on.get("idx") if on else None}
-            self.current["gridPos"] = self._grid_at() + 1
-            self.changed = True
-            self._next_at = now + hold
-            return
+        if warm is not None:
+            hold = min(hold, GRID_WARMUP_ROW_S / 2)
+        # the walk's one angle: from in front of the car
         by_name = {(g.get("name") or "").lower(): g for gs in groups.values() for g in gs}
-        want = GRID_SHOTS[0] if pole else GRID_SHOTS[k % len(GRID_SHOTS)]
-        pick = by_name.get(want) or by_name.get("far chase") or by_name.get("chase")
+        pick = next((by_name[n] for n in GRID_SHOTS if n in by_name), None)
         if pick is None:
-            chase = groups.get("chase") or groups.get("trackside") or []
-            if not chase:
-                return
-            pick = chase[0]
-        g = {**pick, "kind": group_kind(pick.get("name"))}
-        if self._do_cut(car, g, "starting grid" + (": pole" if pole else "")):
-            self.current["gridPos"] = self._grid_at() + 1
-            if self.on_grid_car:
-                self.on_grid_car(car)
+            pick = next(iter(groups.get("chase") or groups.get("trackside") or []), None)
+        if pick is None:
+            return
+        g = {**pick, "kind": group_kind(pick.get("name"), pick.get("cameras"))}
+        # who has the picture: this car; one not on the grid yet (still in the garage at a standing start) leaves
+        # it to its row mate, else the camera stays where it is. Its row card still shows it (iRacing's render).
+        mates = [c for c in self._grid_order if row is not None and rows_of.get(c.get("idx")) == row] if self.grid_by_row else []
+        on = car if there(car) else next((c for c in mates if there(c)), None)
+        cam_car = (self.current or {}).get("camCar") if self.owner == "grid" else None
+        # within a row the camera stays on its shot unless there is time for a second one
+        want_cut = on is not None and on.get("idx") != cam_car and (
+            row_start or on is not car or hold >= GRID_RECUT_S or getattr(self, "grid_each", False)
+            or self.grid_manual or self.grid_paused or cam_car not in [c.get("idx") for c in mates])
+        why = "starting grid" + (": pole" if pole else "") + ("" if there(car) else ": not out yet")
+        if want_cut and self._do_cut(on, g, why):
+            cam_car = on.get("idx")
+        if cam_car == car.get("idx") and self.on_grid_car:
+            self.on_grid_car(car)                     # the camera is on this car (a livery photo may be taken)
+        cur = self.current or {}
+        self.current = {"car": car.get("idx"), "num": car.get("num"), "group": cur.get("group"),
+                        "groupName": cur.get("groupName"), "reason": why, "camCar": cam_car}
+        self.current["gridPos"] = self._grid_at() + 1
         self.changed = True
         self._next_at = now + hold * (GRID_POLE_HOLD if pole and hold >= self.grid_hold_s else 1.0)
+
+    def _grid_finish(self, groups, cars_msg):
+        """The walk is done: the front of the grid for the lights, then back to whoever had the camera."""
+        live = {c.get("idx"): c for c in (cars_msg or {}).get("cars") or []}
+        front = next((c for c in self._grid_order if c.get("idx") in live
+                      and live[c["idx"]].get("surface") != "not_in_world"), None)
+        g = self._start_group(groups) if groups is not None else None
+        self.current = None
+        if front is not None and g is not None:
+            self._do_cut(live[front["idx"]], g, "the start: the grid")
+        self._end_temporary("grid walk done")
+        self._next_at = self.clock() + self.hold_s
 
     def _wide_group(self, groups):
         for kind in GRID_WIDE:
@@ -1362,6 +1569,7 @@ class Director:
         if el >= self._board_len:
             self._board, self.grid_board_row = "done", None
             self._grid_force, self._grid_row = True, None   # the row cards at once
+            self.note = "walking the grid"
             self.changed = True
             return False
         per = (self._board_len - GRID_BOARD_IN_S) / self._board_rows

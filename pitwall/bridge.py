@@ -128,6 +128,8 @@ class Bridge:
             tr = self.session_msg["track"]
             key = (tr.get("TrackID"), tr.get("TrackConfigName"))
             self._track_len_m = track_length_m(self.session_msg)
+            self.director._last_session = self.session_msg
+            self._load_cameras()
             if key != self._map_key:
                 self._map_key = key
                 cached = trackmap.load(key[0], key[1] or "default", self._track_len_m)
@@ -301,6 +303,53 @@ class Bridge:
                 outbox.extend(self._ref_messages(cars_msg, now))
         return outbox
 
+    # ---- the producer's word on the camera groups (camera packs), kept per track in obs.json
+    def _cam_key(self):
+        tr = (self.session_msg or {}).get("track") or {}
+        return "%s:%s" % (tr.get("TrackID"), tr.get("TrackConfigName") or "") if tr.get("TrackID") is not None else None
+
+    def _load_cameras(self):
+        store = self.livery_store.cfg.get("cameras")
+        self.director.set_cameras((store if isinstance(store, dict) else {}).get(self._cam_key()) or {})
+
+    def _camera_set(self, msg: dict) -> str | None:
+        """One group: what it is ("kind", "" for what its name says) and, for a camera at one place, where ("at" as a
+        fraction of the lap, or here=True: where the car on camera is now). Returns an error, or None."""
+        from .director import KINDS
+        key, name = self._cam_key(), str(msg.get("name") or "").strip().lower()
+        if key is None or not name:
+            return "no session yet" if key is None else "which camera?"
+        if name not in {str(g.get("name") or "").strip().lower() for g in (self.session_msg or {}).get("cameras") or []}:
+            return "this track has no camera group of that name"
+        cur = dict(self.director.cam_setup.get(name) or {"kind": None, "at": None})
+        if "kind" in msg:
+            if msg["kind"] not in KINDS and msg["kind"] not in ("", None):
+                return "unknown kind of camera"
+            cur["kind"] = msg["kind"] or None
+        if msg.get("here"):
+            cam = ((self._last_state or {}).get("camera") or {}).get("carIdx")
+            car = self._cars_by_idx().get(cam)
+            if not car or car.get("pct") is None or car["pct"] < 0 or car.get("surface") == "not_in_world":
+                return "the car on camera is not on the track"
+            cur["at"] = round(float(car["pct"]) % 1.0, 4)
+        elif "at" in msg:
+            try:
+                cur["at"] = None if msg["at"] in ("", None) else round(float(msg["at"]) % 1.0, 4)
+            except (TypeError, ValueError):
+                return "where must be a part of the lap"
+        setup = dict(self.director.cam_setup)
+        setup[name] = cur
+        self.director.set_cameras(setup)
+        store = self.livery_store.cfg.get("cameras")
+        store = dict(store) if isinstance(store, dict) else {}
+        store[key] = self.director.cam_setup
+        self.livery_store.cfg["cameras"] = store
+        try:
+            self.livery_store.save_cfg()
+        except OSError as e:
+            self.log("camera setup not kept: %s" % e)
+        return None
+
     def _event_key(self):
         """Which event this is: the session's ids and track. None until the session info is read."""
         m = self.session_msg
@@ -466,6 +515,10 @@ class Bridge:
                 self.capture.stop()                     # a livery photo sweep moves the camera too
             res.update(ok=True, data=self.director.status())
             return res
+        if kind == "director" and action == "camera":   # what a camera group is: a setting, it moves nothing
+            err = self._camera_set(msg)
+            res.update(ok=err is None, error=err, data=self.director.status())
+            return res
         if not self.director.live and not (kind == "director" and action in ("stop", "set") and not msg.get("on")) \
                 and not (kind == "livery" and action in ("setup", "stop", "renders")):
             res["error"] = BROADCAST_OFF
@@ -493,7 +546,7 @@ class Bridge:
                     if snap:
                         threading.Timer(LiveryCapture.SETTLE_S, self.capture.snap, args=(dict(car),)).start()
                 if not self.director.start_grid_walk(order, hold_s=msg.get("holdS"), on_car=on_car,
-                                                     manual=bool(msg.get("manual"))):
+                                                     manual=bool(msg.get("manual")), each_car=snap):
                     res["error"] = BROADCAST_OFF
                     return res
             elif action in ("grid_next", "grid_prev", "grid_pause", "grid_jump"):
