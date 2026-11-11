@@ -31,6 +31,7 @@ from .carrender import CarRenderer, render_key
 from .director import Director
 from .liveries import LiveryCapture, LiveryStore, livery_key
 from .normalize import (Deriver, RefView, build_cars, build_session, build_state, hold_cars, relative_to,
+                        track_length_m,
                         results_positions)
 from .sources import TelemetrySource
 
@@ -59,6 +60,7 @@ class Bridge:
         self._last_siu = None
         self._collector = trackmap.LapCollector()
         self._map_key = None
+        self._track_len_m = None          # the track's length from the session info: a dead-reckoned outline must fit it
         self.delta = DeltaEncoder()
         self.stats = {"sent": 0, "frames": 0, "reconnects": 0, "frame_errors": 0}
         # Broadcast helpers. Both only ever move the camera through self.gate,
@@ -125,9 +127,10 @@ class Bridge:
             self._maybe_packs(outbox, force=False)
             tr = self.session_msg["track"]
             key = (tr.get("TrackID"), tr.get("TrackConfigName"))
+            self._track_len_m = track_length_m(self.session_msg)
             if key != self._map_key:
                 self._map_key = key
-                cached = trackmap.load(key[0], key[1] or "default")
+                cached = trackmap.load(key[0], key[1] or "default", self._track_len_m)
                 self.map_msg = cached.to_message() if cached else None
                 if self.map_msg:
                     outbox.append(self.map_msg)
@@ -161,7 +164,7 @@ class Bridge:
         t = now_m()
         if t - getattr(self, "_map_looked", 0.0) >= 10.0:
             self._map_looked = t
-            cached = trackmap.load(self._map_key[0], self._map_key[1] or "default")
+            cached = trackmap.load(self._map_key[0], self._map_key[1] or "default", self._track_len_m)
             if cached:
                 self.map_msg = cached.to_message()
                 outbox.append(self.map_msg)
@@ -174,6 +177,10 @@ class Bridge:
                                    car=(state.get("camera") or {}).get("carIdx"))
         if lap:
             tm = trackmap.build_from_lap(lap, self._map_key[0], self._map_key[1] or "default")
+            if not tm.plausible(self._track_len_m):
+                # spectating: these are not the camera car's kinematics, and the "lap" is not the track
+                self.log(f"track map not kept: {tm.lap_length_m} m lap, closure error {tm.closure_error_m} m")
+                return
             trackmap.save(tm)
             self.map_msg = tm.to_message()
             outbox.append(self.map_msg)

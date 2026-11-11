@@ -233,7 +233,7 @@
   #standings[data-w="xs"] .c-gap,  #standings[data-w="xs"] .c-deg { display: none; }
   /* The driver name is the one elastic column, so it gives ground first. */
   td.driver .nm-i { display: none; }
-  #standings:is([data-w="md"], [data-w="sm"], [data-w="xs"]) td.driver .nm-f { display: none; }
+  #standings:is([data-w="md"], [data-w="sm"], [data-w="xs"]) td.driver :is(.nm-f, .nm-m) { display: none; }
   #standings:is([data-w="md"], [data-w="sm"], [data-w="xs"]) td.driver .nm-i { display: inline; }
   @media (pointer: coarse) {   /* a finger needs more than a 15 px button */
     .alarm button, #feedTabs button, #chartTabs button, #mapLabelToggle, #fasterSide { position: relative; }
@@ -641,6 +641,7 @@
 :root[data-look="arcade"] details.panel>summary{font:900 italic 17px var(--ui)!important;text-transform:uppercase;letter-spacing:.01em}
 :root[data-look="arcade"] header{background:linear-gradient(180deg,#0b0f18,#06080d)!important;border-bottom:2px solid #2b3446!important;position:relative}
 :root[data-look="arcade"] header .track{font:900 italic 24px var(--ui)!important;text-transform:uppercase;text-shadow:var(--trail)}
+:root[data-look="arcade"] header .track small{text-shadow:none;margin-left:18px;font:600 13px var(--ui)}   /* the trail ran into "Race" */
 :root[data-look="arcade"] header .flag{font:900 italic 20px var(--ui)!important;text-transform:uppercase;border-radius:0!important;transform:skewX(-14deg)}
 :root[data-look="arcade"] #remain{font-family:var(--ui)!important;font-style:italic!important;font-weight:900!important;color:transparent!important;background:var(--chrome);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1px #1a0d00}
 :root[data-look="arcade"] th{font:800 italic 13px var(--ui)!important;color:var(--yellow)!important;text-transform:uppercase}
@@ -1916,7 +1917,11 @@ LK.look = document.documentElement.dataset.look || "basic";
   // a driver's name in the standings: the first name gives way to its initial where the table is narrow (a phone
   // showed "Zachary Tayl…"); CSS picks which (#standings[data-w])
   const nameCell = c => { const n = String(c.name ?? "car " + c.idx), k = n.indexOf(" ");
-    return c.name && k > 1 ? `<span class="nm-f">${esc(n.slice(0, k))}</span><span class="nm-i">${esc(n[0])}.</span>${esc(n.slice(k))}` : esc(n); };
+    if (!c.name || k <= 1) return esc(n);
+    // more than one family name: where narrow only the last stays ("O. Antonio Pér…" was still cut; "O. Marín")
+    const rest = n.slice(k + 1), j = rest.lastIndexOf(" ");
+    return `<span class="nm-f">${esc(n.slice(0, k))}</span><span class="nm-i">${esc(n[0])}.</span> ` +
+      (j > 0 ? `<span class="nm-m">${esc(rest.slice(0, j + 1))}</span>${esc(rest.slice(j + 1))}` : esc(rest)); };
   const shortCar = i => { const c = carByIdx(i); return c ? "#" + esc(c.num ?? c.idx) : "car " + esc(i); };
   // ---------------------------------------------------------------- following
   // Spectating is the normal case for this booth. Everything "relative" follows
