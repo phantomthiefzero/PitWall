@@ -375,7 +375,8 @@ def test_fuel_to_finish_needs_both_a_burn_rate_and_a_race_length():
 
     # a timed session projects laps from the clock, and says that it did
     out3 = d2.fuel(st["player"]["lapCompleted"], st["player"]["fuelL"],
-                   laps_remain_ex=32767, time_remain_s=600.0, lap_time_s=120.0)
+                   laps_remain_ex=32767, time_remain_s=590.0, lap_time_s=120.0)
+    # on the line with 590 s left at 120 s a lap: over the line at 120 ... 480 with time left, and the flag at 600
     assert out3["lapsRemaining"] == 5 and out3["lapsRemainingIsEstimate"] is True
     # computed from the full-precision burn rate and rounded once, so compare with
     # tolerance rather than against the already-rounded fuelPerLap
@@ -2807,3 +2808,42 @@ def test_yawnorth_convention_against_gps_on_a_real_lap():
     span = g.meta["spanM"]
     err = sum(math.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(g.points, v.points)) / len(g.points) * span
     assert err < 10.0, err
+
+
+def test_a_timed_races_laps_left_depend_on_where_the_car_is_on_the_lap():
+    # Indianapolis, the driver's own race file (45 minutes, laps of ~85 s; Nov 2026 accuracy audit): he crossed the
+    # line with 2.4 s on the clock, so lap 32 was still to run, and took the flag at the end of it. The count was the
+    # clock over the lap time, as if the car were on the line now: a lap short for 97% of every lap of the last
+    # stint. Half way round lap 30 (129 s left) it said 2 laps and 1.5 laps of fuel; 2.5 laps were still to drive.
+    from pitwall.normalize import timed_laps_left, Deriver, TIMED_PACE_MARGIN
+    T = 85.0
+    assert timed_laps_left(171.9, 0.0, T) == 3            # the start of lap 30: laps 30, 31 and 32
+    assert timed_laps_left(169.0, 0.03, T) == 3           # a moment later (it said 2 from here to the line)
+    assert timed_laps_left(129.0, 0.5, T) == 3            # half way round
+    assert timed_laps_left(87.4, 0.0, T) == 2             # the start of lap 31
+    assert timed_laps_left(8.4, 0.915, T) == 2            # 7 s from the line with 8.4 s left: one more after this
+    assert timed_laps_left(2.4, 0.008, T) == 1            # lap 32: the last
+    assert timed_laps_left(0.0, 0.5, T) == 1              # the clock is out: this lap is the last
+    assert timed_laps_left(100.0, None, T) == 2 and timed_laps_left(None, 0.5, T) is None and timed_laps_left(100.0, 0.5, None) is None
+    # the flag falls at the LEADER's first crossing after the clock; a car that reaches the line before that has
+    # another lap. 60 s left, the leader 44 s from the line and you 42.5 s (just ahead of the leader on the road):
+    assert timed_laps_left(60.0, 0.5, T) == 2
+    assert timed_laps_left(60.0, 0.5, T, {"pct": 0.45, "lapS": 80.0}) == 2          # leader over at 44 and 124: you at 42.5, 127.5
+    assert timed_laps_left(60.0, 0.5, T, {"pct": 0.2, "lapS": 80.0}) == 2           # leader's flag at 64: you were over at 42.5
+    assert timed_laps_left(30.0, 0.5, T, {"pct": 0.55, "lapS": 80.0}) == 1          # leader's flag at 36: you reach the line at 42.5
+    # the white flag is out: the leader is on the last lap, whatever the clock says
+    assert timed_laps_left(30.0, 0.98, T, {"pct": 0.95, "lapS": 80.0, "white": True}) == 2   # you over the line 2 s before the flag
+    assert timed_laps_left(30.0, 0.9, T, {"pct": 0.95, "lapS": 80.0, "white": True}) == 1    # leader 4 s from the flag, you 8.5 s
+    assert timed_laps_left(30.0, 0.9, T, {"pct": 0.9, "lapS": T, "me": True, "white": True}) == 1
+    # for fuel a lap too few is the end of the race: a finish this close to the clock counts the extra lap
+    assert Deriver.laps_remaining(32767, 85.4, T, 0.0) == (2, True) and timed_laps_left(85.4, 0.0, T) == 2
+    assert Deriver.laps_remaining(32767, 84.5, T, 0.0) == (2, True) and timed_laps_left(84.5, 0.0, T) == 1
+    assert Deriver.laps_remaining(32767, 80.0, T, 0.0) == (1, True) and 0 < TIMED_PACE_MARGIN < 0.05
+    assert Deriver.laps_remaining(12, 80.0, T, 0.5) == (12, False), "a lap race states it outright"
+    assert Deriver.laps_remaining(32767, 133.8, T, 0.58, None, True) == (1, True), "after the clock iRacing counts something else"
+    # the fuel needed follows: half way round lap 30 with 2.48 L a lap
+    d = Deriver()
+    d._fuel_per_lap_samples = [2.48] * 5
+    d._last_lap_completed, d._fuel_at_lap_start = 29, 10.07
+    out = d.fuel(29, 8.8, laps_remain_ex=32767, time_remain_s=129.0, lap_time_s=T, lap_pct=0.5)
+    assert out["lapsRemaining"] == 3 and abs(out["fuelToFinishL"] - 2.48 * 2.5) < 0.01 and out["fuelMarginL"] > 0

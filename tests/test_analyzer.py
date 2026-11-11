@@ -2365,3 +2365,141 @@ def test_coaching_has_a_goal_light_and_a_session_report():
     assert "el.cloneNode(true)" in rep and "querySelectorAll('button,select,input" in rep and 'data-theme="light"' in rep
     assert "api.save_report(html,name)" in rep and "rb.id='coReport'" in page
     assert ".cogoal.miss .cogoal-l{" in page
+
+
+def test_live_fuel_counts_a_timed_races_laps_as_pitwall_does():
+    # The accuracy audit (Nov 2026, the driver's own Indianapolis race): "Laps to go" was the clock over the last lap's
+    # time, a lap short for most of every lap of the last stint, so "needed to the finish" was a lap of fuel short.
+    # The page's sum must be PitWall's (normalize.timed_laps_left): the same cases, the same answers.
+    from pitwall.normalize import timed_laps_left
+    cases = [(171.9, 0.0, 85.0, None), (169.0, 0.03, 85.0, None), (129.0, 0.5, 85.0, None), (87.4, 0.0, 85.0, None),
+             (8.4, 0.915, 85.0, None), (2.4, 0.008, 85.0, None), (0.0, 0.5, 85.0, None), (100.0, None, 85.0, None),
+             (60.0, 0.5, 85.0, {"pct": 0.45, "lapS": 80.0}), (60.0, 0.5, 85.0, {"pct": 0.2, "lapS": 80.0}),
+             (30.0, 0.5, 85.0, {"pct": 0.55, "lapS": 80.0}), (30.0, 0.98, 85.0, {"pct": 0.95, "lapS": 80.0, "white": True}),
+             (30.0, 0.9, 85.0, {"pct": 0.95, "lapS": 80.0, "white": True}),
+             (30.0, 0.9, 85.0, {"pct": 0.9, "lapS": 85.0, "me": True, "white": True}), (1500.0, 0.37, 92.3, {"pct": 0.8, "lapS": 90.1})]
+    out = run_js("""
+const cases = %s;
+const laps = [84.9, 85.1, 84.6, 98.0].map((t, k) => ({ time: t, valid: k < 3, fuel: 2.48 }));
+const v = { SessionLapsRemainEx: 32767, SessionTimeRemain: 129.0, LapDistPct: 0.5, FuelLevel: 8.8, SessionState: 4, SessionFlags: 0 };
+const F = teleFuel(v, laps, null);
+const lapRace = teleFuel(Object.assign({}, v, { SessionLapsRemainEx: 12 }), laps, null);
+const over = teleFuel(Object.assign({}, v, { SessionState: 5, SessionTimeRemain: 133.8 }), laps, null);
+console.log(JSON.stringify({ got: cases.map(c => timedLapsLeft(c[0], c[1], c[2], c[3])), F, lapRace: lapRace.lr, counted: lapRace.counted, over: over.lr }));
+""" % json.dumps(cases))
+    assert out["got"] == [timed_laps_left(*c) for c in cases]
+    f = out["F"]
+    # half way round lap 30: three laps to run (this one counted), from the usual lap (the in-lap's 98 s left out)
+    assert f["lr"] == 3 and abs(f["lapT"] - 84.9) < 1e-6 and abs(f["per"] - 2.48) < 1e-6
+    assert abs(f["need"] - 2.48 * 2.5) < 1e-6 and f["short"] < 0, "the rest of this lap and two more: enough aboard"
+    assert out["lapRace"] == 12 and out["counted"] is True, "a lap race states it outright"
+    assert out["over"] == 1, "the clock is out: this lap is the last"
+
+
+def test_coaching_measures_each_lap_and_says_nothing_where_no_time_is_lost():
+    # The accuracy audit (Nov 2026, Indianapolis, 21 laps against the best lap). Checked against the file's own clock:
+    # the time lost in each of the 14 corners, to 0.005 s. Not concrete: what you DO in a corner was read off the
+    # average lap's trace (corner 8: "2.3 km/h quicker at the apex" where the laps' middle was level; corner 13: the
+    # throttle "8.5 m late" where it was 3.9 m), and advice was offered in corners where no time is lost ("get 1.5 m
+    # closer to the apex" in a corner taken 0.02 s quicker than the best lap).
+    page = open(PAGE, encoding="utf-8").read()
+    cmp_ = page.split("function coachCompare(avg,best,laps){")[1].split("\nfunction ")[0]
+    assert "c.trace={d:c.d,dv:c.dv,dm:c.dm,dp:c.dp}" in cmp_ and "if(qs.length<3)return" in cmp_
+    assert "set('d',qs.filter(q=>q.a.ba>=0&&q.b.ba>=0).map(q=>q.d))" in cmp_, "a braking point only from laps that braked"
+    assert cmp_.index("c.trace=") < cmp_.index("tips.push"), "the tips are written from each lap's own measure"
+    assert "o.level=!(c.dt>CO_LEVEL_S);if(o.level)o.tips=[];o.cause=o.level?null:coachCause(o,u)" in cmp_
+    out = run_js("""
+console.log(JSON.stringify({ odd: coMed([3, 1, 2]), even: coMed([4, 1, 3, 2]), holes: coMed([null, 5, NaN, 7]), none: coMed([]), level: CO_LEVEL_S }));
+""")
+    assert out == {"odd": 2, "even": 2.5, "holes": 6, "none": None, "level": 0.02}
+    if not os.path.exists(REAL_IBT):
+        return
+    r = run_js("""
+IB.a = ibt(readBytes(ARGS[0]));
+COACH.src = 'ibt'; COACH.to = 'best';
+const X = coachRun(), C = X.C;
+console.log(JSON.stringify({ cs: C.R.cs.map(c => ({ n: c.n, dv: c.dv, dm: c.dm, d: c.d, trace: c.trace, medOf: c.medOf })),
+  corners: C.corners.map(c => ({ n: c.n, dt: c.dt, level: c.level, tips: c.tips.length, cause: !!c.cause })) }));
+""", REAL_IBT)
+    cs = {c["n"]: c for c in r["cs"]}
+    assert all(c["medOf"] == 21 for c in r["cs"]), "every corner from all 21 laps"
+    assert abs(cs[8]["dv"]) < 0.5 and cs[8]["trace"]["dv"] > 2, "corner 8: level at the apex, not quicker"
+    assert abs(cs[13]["dm"] - 3.9) < 0.5 and cs[13]["trace"]["dm"] > 8
+    assert abs(cs[4]["d"] + 7.7) < 0.5, "corner 4: the middle of 21 braking points, not a step of the 4.25 m grid"
+    for c in r["corners"]:
+        assert c["level"] == (not c["dt"] > 0.02)
+        if c["level"]:
+            assert c["tips"] == 0 and not c["cause"], c
+    assert sum(1 for c in r["corners"] if c["level"]) == 4 and sum(1 for c in r["corners"] if c["cause"]) >= 8
+
+
+def test_a_lap_is_not_given_the_time_of_the_lap_before():
+    # The accuracy audit, the driver's own files (Nov 2026): iRacing posts a lap's time a moment AFTER the line, and
+    # until then LapLastLapTime still holds the lap before's. The page took the first value near this lap's clock, so
+    # a lap within 0.05 s of the one before got ITS time: Suzuka's lap 8 read 119.888 (lap 7's) for 119.911, Sebring
+    # 121.875 for 121.915, and Watkins Glen's best lap 107.771 for 107.768. The fake posted the time on the line, to
+    # the sample: here it comes 2.5 s late and is the lap's real time, as in the sim.
+    if not NODE:
+        return
+    true = {1: 61.250, 2: 61.273, 3: 61.262, 4: 61.900, 5: 61.262}       # 2 and 3 within 0.05 s of the lap before
+    rows, t, last, due = [], 0.0, 0.0, None
+    for lap in range(1, 7):
+        T = true.get(lap, 30.0)
+        n = int(round(T * HZ))
+        for i in range(n if lap < 6 else 400):
+            if due is not None and t >= due[0]:
+                last, due = due[1], None
+            rows.append({"SessionTime": t, "Lap": lap, "LapDistPct": i / n, "Speed": 50.0, "Throttle": 1.0, "Gear": 4,
+                         "LapCurrentLapTime": i / HZ, "LapLastLapTime": last, "FuelLevel": 40 - 0.01 * len(rows) / 60,
+                         "TrackTempCrew": 30.0})
+            t += 1 / HZ
+        due = (t + 2.5, T)
+    path = os.path.join(tempfile.mkdtemp(), "close.ibt")
+    write_ibt(path, SESSION_YAML, CHANNELS, rows)
+    out = run_js("""
+const ib = ibt(readBytes(ARGS[0]));
+console.log(JSON.stringify({ laps: ib.laps.filter(l => l.time > 0).map(l => [l.lap, l.time]) }));
+""", path)
+    got = {int(k): v for k, v in out["laps"]}
+    for lap, T in true.items():
+        assert abs(got[lap] - T) < 1e-4, (lap, got[lap], T)
+    page = open(PAGE, encoding="utf-8").read()
+    assert "const was=rd(V.LapLastLapTime,e-1)" in page and "v>0&&v!==was&&Math.abs(v-tc)<.05" in page
+
+
+def test_a_tracks_corners_are_the_same_corners_in_every_session():
+    # The accuracy audit (Nov 2026): the driver's two Watkins Glen sessions, the same car minutes apart, had 14 and 13
+    # corners (a kink on the edge of counting), so "Corner 9" was one place in the first and another in the second.
+    if not NODE:
+        return
+    out = run_js("""
+const mk = (aps) => aps.map(ap => ({ ap, rs: ap - 12, re: ap + 14 }));
+cbForget('Test Track');
+const first = trackCorners(mk([100, 300, 520, 800]), 'Test Track');                  // the first lap seen: it writes the book
+const second = trackCorners(mk([104, 296, 805]), 'Test Track');                       // corner 3 does not show on this lap
+const third = trackCorners(mk([100, 200, 300, 520, 800]), 'Test Track');              // a kink the book does not have
+const other = trackCorners(mk([50, 400, 900]), 'Another Track');
+const oval = trackCorners([{ ap: 200 }, { ap: 700 }], 'Test Track');                  // an oval's corners: left as found
+const none = trackCorners(mk([100, 300, 520]), '');
+console.log(JSON.stringify({ first: first.map(c => c.ap), second: second.map(c => [c.ap, !!c.book]), third: third.map(c => c.ap),
+  other: other.map(c => c.ap), oval: oval.map(c => c.ap), none: none.map(c => c.ap), keys: Object.keys(cbLoad()).sort() }));
+""")
+    assert out["first"] == [100, 300, 520, 800]
+    assert out["second"] == [[104, False], [296, False], [520, True], [805, False]], "still four corners, at the same places"
+    assert out["third"] == [100, 300, 520, 800], "a corner the book does not have is not a corner at this track"
+    assert out["other"] == [50, 400, 900] and out["oval"] == [200, 700] and out["none"] == [100, 300, 520]
+    assert out["keys"] == ["anothertrack", "testtrack"]
+    page = open(PAGE, encoding="utf-8").read()
+    assert "cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack())" in page
+    d = "/mnt/user-data/uploads/iRacing Telemetry Files/iRacing/"
+    files = [d + "formulair04_watkinsglen 2021 fullcourse 2026-11-05 19-38-39.ibt", d + "formulair04_watkinsglen 2021 fullcourse 2026-11-05 19-51-45.ibt"]
+    if not all(os.path.exists(f) for f in files):
+        return
+    js = """
+const run = f => { IB.a = ibt(readBytes(f)); COACH.src = 'ibt'; COACH.to = 'best'; return coachRun().C.R.cs.map(c => c.pos) };
+console.log(JSON.stringify({ one: run(ARGS[0]), two: run(ARGS[1]) }));
+"""
+    for a, b in (files, files[::-1]):
+        r = run_js(js, a, b)
+        assert len(r["one"]) == len(r["two"]), "the same corners whichever session is opened first"
+        assert all(abs(p - q) < 70 for p, q in zip(r["one"], r["two"])), "and each number is the same place"

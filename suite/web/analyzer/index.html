@@ -662,7 +662,11 @@ const V={};for(let i=0;i<nv;i++){const p=vo+i*144;V[tx(p+16,32).replace(/[^\w.-]
 for(const k of['Lap','LapDistPct','Speed','Brake','Throttle','SteeringWheelAngle','Gear'])if(!V[k])throw new Error('This does not look like an iRacing telemetry (.ibt) file: missing '+k);
 const rd=(v,r)=>{const a=bo+r*bl+v.o;return v.t===1?u8[a]:v.t===4?dv.getFloat32(a,true):v.t===5?dv.getFloat64(a,true):v.t===2||v.t===3?dv.getInt32(a,true):0};
 const lc=Int32Array.from({length:rc},(_,r)=>rd(V.Lap,r)),laps=[];
-for(let s=0;s<rc;){let e=s;while(e<rc&&lc[e]===lc[s])e++;const l={lap:lc[s],s,e,time:0,ok:false},tick=I(8)||60,span=V.SessionTime?rd(V.SessionTime,e-1)-rd(V.SessionTime,s)+1/tick:(e-s)/tick;let tc=V.LapCurrentLapTime?rd(V.LapCurrentLapTime,e-1):span,told=false;if(e<rc&&V.LapLastLapTime)for(let r=e;r<Math.min(rc,e+900);r++){const v=rd(V.LapLastLapTime,r);if(v>0&&Math.abs(v-tc)<.05){tc=v;told=true;break}}if(e<rc&&!told&&s>0&&V.SessionTime&&rc-e<4*tick){const X=r=>{const a=rd(V.LapDistPct,r-1),b=rd(V.LapDistPct,r),ta=rd(V.SessionTime,r-1),tb=rd(V.SessionTime,r),sp=(1-a)+b;return a>=b&&sp>0?ta+(tb-ta)*(1-a)/sp:tb};if(rd(V.LapDistPct,s)<.05){const c=X(e)-X(s);if(c>20&&Math.abs(c-tc)<.5)tc=c}}if(e<rc)l.time=tc;l.span=span;
+// A lap's time is the first NEW LapLastLapTime after its own last sample: iRacing posts it a moment after the line,
+// and until then the variable still holds the lap before's. Taking the first value near this lap's clock gave a lap
+// the time of the one before whenever the two were within 0.05 s (Suzuka: lap 8 read 119.888, lap 7's, for 119.911;
+// Sebring 121.875 for 121.915; Watkins Glen's best lap 107.771 for 107.768). The same rule as library.session_summary.
+for(let s=0;s<rc;){let e=s;while(e<rc&&lc[e]===lc[s])e++;const l={lap:lc[s],s,e,time:0,ok:false},tick=I(8)||60,span=V.SessionTime?rd(V.SessionTime,e-1)-rd(V.SessionTime,s)+1/tick:(e-s)/tick;let tc=V.LapCurrentLapTime?rd(V.LapCurrentLapTime,e-1):span,told=false;if(e<rc&&V.LapLastLapTime){const was=rd(V.LapLastLapTime,e-1);for(let r=e;r<Math.min(rc,e+900);r++){const v=rd(V.LapLastLapTime,r);if(v>0&&v!==was&&Math.abs(v-tc)<.05){tc=v;told=true;break}}}if(e<rc&&!told&&s>0&&V.SessionTime&&rc-e<4*tick){const X=r=>{const a=rd(V.LapDistPct,r-1),b=rd(V.LapDistPct,r),ta=rd(V.SessionTime,r-1),tb=rd(V.SessionTime,r),sp=(1-a)+b;return a>=b&&sp>0?ta+(tb-ta)*(1-a)/sp:tb};if(rd(V.LapDistPct,s)<.05){const c=X(e)-X(s);if(c>20&&Math.abs(c-tc)<.5)tc=c}}if(e<rc)l.time=tc;l.span=span;
 const d0=rd(V.LapDistPct,s),d1=rd(V.LapDistPct,e-1);let pit=false;if(V.OnPitRoad)for(let r=s;r<e;r++)if(rd(V.OnPitRoad,r)){pit=true;break}
 let away=false;if(V.IsOnTrack&&!pit){let n0=0,n=0;for(let r=s;r<e;r+=10){n++;if(!rd(V.IsOnTrack,r))n0++}away=n>0&&n0/n>.2}l.away=away;
 // iRacing's active reset (lone practice) moves the car back (or on) to a saved point mid-lap while the clock runs:
@@ -707,11 +711,28 @@ for(let i=1;i<mins.length;i++){const a=mins[i-1],b=mins[i];let pk=a;for(let g=a;
 parts.forEach(([s0,e0])=>{let mn=s0,kx=s0;const kap=g=>Math.abs(lg[g])/Math.max(sm[g],8)**2;for(let g=s0;g<=e0;g++){if(sm[g]<sm[mn])mn=g;if(kap(g)>kap(kx))kx=g}
 cs.push({ap:mn>s0+2&&mn<e0-2&&Math.min(sm[s0],sm[e0])-sm[mn]>=1.5?mn:kx,rs:s0,re:e0})});   // a real dip inside the turn, else the tightest point
 return cs}
+// A track's corners are the same corners in every session. They are found from the reference lap's cornering load,
+// and a kink on the edge of counting came and went with the lap: the driver's two Watkins Glen sessions (Nov 2026,
+// the same car, minutes apart) had 14 and 13 corners, so "Corner 9" was one place in the first and another in the
+// second. The first lap analysed at a track writes its corners in a book (this browser's, by track: where each one's
+// load starts, its apex and where it ends, as parts of the lap); after that the track's corners are the book's: a
+// corner found again keeps its own measure from this lap, one the lap does not show is still there at the book's
+// place (so its time is still counted), and one the book does not have is not a corner at this track. Ovals (no
+// load regions) are left as found. cbForget(track) starts a track again.
+const CBOOK_KEY='suite:cornerBook';
+function cbLoad(){try{return JSON.parse(localStorage.getItem(CBOOK_KEY)||'{}')||{}}catch(e){return {}}}
+function cbSave(o){try{localStorage.setItem(CBOOK_KEY,JSON.stringify(o))}catch(e){}}
+function cbForget(track){const o=cbLoad();delete o[cnTrackKey(track)];cbSave(o)}
+function trackCorners(cs,track){const key=cnTrackKey(track);if(!key||!cs.length||cs.some(c=>c.rs==null))return cs;const all=cbLoad(),book=all[key],fr=g=>g/(N-1);
+if(!book||!book.length){if(cs.length>=3){all[key]=cs.map(c=>({p:+fr(c.ap).toFixed(4),s:+fr(c.rs).toFixed(4),e:+fr(c.re).toFixed(4)}));cbSave(all)}return cs}
+const used=new Set(),out=book.map(b=>{let best=null,bd=1;cs.forEach(c=>{if(used.has(c))return;const d=Math.abs(((fr(c.ap)-b.p+1.5)%1)-.5);if(d<bd){bd=d;best=c}});
+if(best&&bd<.012){used.add(best);return best}return{ap:Math.round(b.p*(N-1)),rs:Math.round(b.s*(N-1)),re:Math.round(b.e*(N-1)),book:true}});
+return out.sort((p,q)=>p.ap-q.ap)}
 function analyze(a,b){const xs=[];if(a.ext&&b.ext)for(const n in a.ext)if(n in b.ext){xs.push('x:'+n);a['x:'+n]=a.ext[n];b['x:'+n]=b.ext[n]}
 const A=rs(a,xs),B=rs(b,xs),len=a.Speed.reduce((s,v)=>s+v,0)*a.lap/(a.n-1),mpg=len/(N-1),dl=new Float64Array(N);
 for(let g=0;g<N;g++)dl[g]=(A.t[g]-A.t[0])-(B.t[g]-B.t[0]);
 derive(A);derive(B);
-const sm=sma(B.Speed,9),cs=findCorners(B,sm);
+const sm=sma(B.Speed,9),cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack());
 cs.forEach((c,i)=>{c.n=i+1;if(c.rs!=null){c.s=Math.min(c.rs,am(sm,Math.max(0,c.ap-80),c.ap));c.e=Math.max(c.re,c.ap+5)}else{c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80))}
 if(i){const p=cs[i-1];p.e=Math.min(p.e,c.ap-1);c.s=Math.max(c.s,p.e)}if(c.s>=c.ap)c.s=c.ap-5;
 c.a=met(A,c);c.b=met(B,c);c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
@@ -2382,6 +2403,8 @@ if(!steps.length&&cc.dv<=-1.5)steps.push({k:'apex_speed',o:7,w:1,t:'Carry more s
 const target=cc.dv<=-1.5&&b.ms&&y.ms?{ms:b.ms,now:y.ms,t:'Aim for '+S(b.ms)+' at the slowest point (now '+S(y.ms)+').'}:null;
 const hd=steps.slice(0,2).map((x,i)=>{const t=CO_HEAD[x.k]||x.t.split(/[:.]/)[0];return i?t.charAt(0).toLowerCase()+t.slice(1):t}).join(', then ');
 return steps.length||target?{steps,target,head:hd||'Carry more speed',focus:coFocus(cc.after,u)}:null}
+const coMed=a=>{const v=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q),n=v.length;return n?(n%2?v[(n-1)/2]:(v[n/2-1]+v[n/2])/2):null};
+const CO_LEVEL_S=0.02;      // a corner within this of the reference is level: nothing to say about it
 function coachCompare(avg,best,laps){const R0=analyze(avg,best),u=U(),out={total:R0.total,pct:R0.pct,len:R0.len,corners:[],R:R0};
 // the reference lap with its extra channels, and each lap's facts in every corner, measured against it
 const xs=CO_XK.filter(k=>best.ext&&best.ext[k]);xs.forEach(k=>best['x:'+k]=best.ext[k]);const Bx=rs(best,xs.map(k=>'x:'+k));
@@ -2389,6 +2412,18 @@ const fb=R0.cs.map((c,k)=>coachFacts(Bx,c,k?R0.cs[k-1].e:null,null,null,0)),side
 const per=[],LF=[];(laps||[]).forEach(l=>{try{const r=analyze(l,best);per.push(r.cs);if(r.cs.length!==R0.cs.length)return;const off=coLineOff(r.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(r.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k])))}catch(e){}});
 if(!LF.length){const off=coLineOff(R0.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(R0.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k])))}
 R0.cs.forEach((c,k)=>{c.fx=Object.assign({b:fb[k]},coachFactsSum(LF.map(L=>L[k]),c.mpg))});
+// What you do in a corner is the MIDDLE of what your laps did there, each lap measured on its own against the
+// reference: the brake point, the slowest speed, where the throttle comes back and where it is fully open. The
+// average lap's trace blurs them (its slowest point is the average of speeds at one place, not of each lap's slowest
+// speed, and a threshold on an averaged pedal is nobody's braking point): Indianapolis, 21 laps, corner 8 read
+// 2.3 km/h quicker than the best lap at the apex where the laps' middle was level with it, and corner 13's throttle
+// 8.5 m late where the middle was 3.9 m. Time lost stays the average lap's (it IS a sum over the laps: checked to
+// 0.005 s a corner against the file's own clock). Three laps or more; a pedal point only from laps that used it.
+R0.cs.forEach(c=>{const qs=per.map(cs=>{let b=null,bd=1e9;cs.forEach(q=>{const d=Math.abs(q.ap-c.ap);if(d<bd){bd=d;b=q}});return bd<=30?b:null}).filter(Boolean);
+if(qs.length<3)return;c.trace={d:c.d,dv:c.dv,dm:c.dm,dp:c.dp};
+const set=(k,vals)=>{if(vals.length>=3&&vals.length*2>=qs.length){const m=coMed(vals);if(m!=null)c[k]=m}};
+set('dv',qs.map(q=>q.dv));set('dp',qs.map(q=>q.dp));
+set('d',qs.filter(q=>q.a.ba>=0&&q.b.ba>=0).map(q=>q.d));set('dm',qs.filter(q=>q.a.ta>=0&&q.b.ta>=0).map(q=>q.dm));c.medOf=qs.length});
 R0.cs.forEach(c=>{const ds=per.map(cs=>{let b=null,bd=1e9;cs.forEach(q=>{const d=Math.abs(q.ap-c.ap);if(d<bd){bd=d;b=q}});return bd<=30&&b?b.dt:null}).filter(v=>v!=null);
 const m=ds.length?ds.reduce((s,x)=>s+x,0)/ds.length:null,sd=ds.length>1?Math.sqrt(ds.reduce((s,x)=>s+(x-m)**2,0)/(ds.length-1)):null;
 let coastA=0,coastB=0;for(let g=c.s;g<=c.e;g++){coastA+=R0.A.Coast[g];coastB+=R0.B.Coast[g]}const coast=(coastA-coastB)*c.mpg;
@@ -2401,7 +2436,10 @@ if(coast>=8)tips.push({k:'coast',w:coast,t:'Less coasting: '+ds2(coast)+' more w
 if(c.dp<=-10&&c.a.ba>=0)tips.push({k:'brake_harder',w:-c.dp,t:'Brake harder at the start: your best uses '+Math.abs(c.dp).toFixed(0)+'% more peak brake pressure.'});
 if(sd!=null&&sd>=0.12*(COACH.tol||1))tips.push({k:'consistency',w:sd*100,t:'Inconsistent here (±'+sd.toFixed(2)+' s lap to lap): pick one fixed marker for braking and turn-in and repeat it.'});
 tips.sort((p,q)=>q.w-p.w);const after=coFullAfter(R0.B,c.ap,c.mpg);
-const o={n:c.n,ap:c.ap,s:c.s,e:c.e,pos:c.pos,mpg:c.mpg,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips,fx:c.fx,after};o.cause=coachCause(o,u);out.corners.push(o)});
+const o={n:c.n,ap:c.ap,s:c.s,e:c.e,pos:c.pos,mpg:c.mpg,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips,fx:c.fx,after};
+// no advice for a corner where no time is lost (level with the reference, or quicker): Indianapolis offered "get 1.5 m
+// closer to the apex" in a corner taken 0.02 s QUICKER than the best lap, and an early apex in one 0.008 s slower
+o.level=!(c.dt>CO_LEVEL_S);if(o.level)o.tips=[];o.cause=o.level?null:coachCause(o,u);out.corners.push(o)});
 out.corners.sort((p,q)=>q.dt-p.dt);out.between=R0.total-R0.cs.reduce((s,c)=>s+c.dt,0);return out}
 // live laps kept per car and track (compact: 250 points), so an average can be built later
 const COACH_LIVE_KEY='coachLive',COACH_LIVE_MAX=40,COACH_PTS=250;
@@ -3144,6 +3182,30 @@ if(d==null||d<0)return;const gd=t>0?lvAt(LV.ref.t,LV.ref.d,t):null;
 if(gd!=null){const[X,Y]=P(gd);g.strokeStyle=lvCol('--ref');g.lineWidth=3*devicePixelRatio;g.beginPath();g.arc(X,Y,8*devicePixelRatio,0,7);g.stroke()}
 const[X,Y]=P(d);g.fillStyle=lvCol('--you');g.beginPath();g.arc(X,Y,6.5*devicePixelRatio,0,7);g.fill();
 const gp=$('tlGhGap'),rt=liveRefTime(ref,d),dd=rt!=null&&t>0?t-rt:null,txt=dd==null||Math.abs(dd)>60?'':(Math.abs(dd)<0.005?'level':(dd>0?'behind by ':'ahead by ')+Math.abs(dd).toFixed(2)+' s');if(gp&&gp.textContent!==txt){gp.textContent=txt;gp.className='tl-ghgap '+(dd>0.02?'bad':dd<-0.02?'good':'')}}
+// Laps still to run in a timed race, counting the one in progress (the same sum as PitWall's timed_laps_left). The
+// race ends at the leader's first crossing of the line after the clock runs out, each car at its own next crossing
+// after that: so it depends on where the car is on its lap (it reaches the line in (1 - pct) laps' time, then once a
+// lap). The clock over the lap time alone counts as if the car were on the line now: a lap short for most of every
+// lap (Indianapolis, the driver's own race: half way round lap 30, 129 s left at 85 s a lap, "2 laps" with 2.5 to
+// drive). leader {pct, lapS, me, white}: the flag falls at ITS crossing; without it the car's own crossings stand in.
+function timedLapsLeft(remain,pct,lapS,leader){if(remain==null||!(lapS>0))return null;const r=Math.max(0,remain),p=pct!=null&&pct>=0?Math.min(1,Math.max(0,pct)):0,own=(1-p)*lapS,
+after=(first,lap)=>first>r?first:first+(Math.floor((r-first)/lap)+1)*lap;
+if(leader&&!leader.me&&leader.pct!=null&&leader.pct>=0&&leader.lapS>0){const first=(1-Math.min(1,Math.max(0,leader.pct)))*leader.lapS,flag=leader.white?first:after(first,leader.lapS);
+return own>=flag-1e-6?1:1+Math.floor((flag-own)/lapS-1e-9)+1}
+if(leader&&leader.white)return 1;return 1+Math.round((after(own,lapS)-own)/lapS)}
+// Fuel to the finish (pure): the burn over the last three full laps, the laps still to run (iRacing's count in a lap
+// race; in a timed one timedLapsLeft from your usual lap, counting one lap more where a pace 1.5% quicker would mean
+// one: for fuel a lap too few is the end of the race), and what that needs: the rest of this lap and the laps after.
+const TIMED_PACE_MARGIN=0.015;
+function teleFuel(v,laps,sideLap){const used=(laps||[]).filter(l=>l.fuel>0).slice(-3).map(l=>l.fuel),per=used.length?used.reduce((a,b)=>a+b,0)/used.length:null,
+ok=(laps||[]).filter(l=>l.valid&&l.time>0).slice(-5).map(l=>l.time).sort((a,b)=>a-b),usual=ok.length?ok[(ok.length-1)>>1]:null,lastL=(laps||[]).length?laps[laps.length-1].time:null,
+lapT=usual||sideLap||(lastL>20?lastL:null),counted=v.SessionLapsRemainEx!=null&&v.SessionLapsRemainEx>=0&&v.SessionLapsRemainEx<32767,over=v.SessionState!=null&&v.SessionState>=5;
+let leader=null;const P=v.CarIdxPosition,D=v.CarIdxLapDistPct,LT=v.CarIdxLastLapTime,white=!!(v.SessionFlags&0x2);
+if(P&&D&&P.length){const li=P.indexOf(1);if(li>=0)leader={pct:D[li],lapS:li===v.PlayerCarIdx?lapT:(LT&&LT[li]>0?LT[li]:lapT),me:li===v.PlayerCarIdx,white}}
+const q=leader&&leader.lapS?Object.assign({},leader,{lapS:leader.lapS*(1-TIMED_PACE_MARGIN)}):leader,
+lr=counted?v.SessionLapsRemainEx:!lapT?null:over?1:v.SessionTimeRemain!=null&&v.SessionTimeRemain>=0&&v.SessionTimeRemain<259200?Math.max(timedLapsLeft(v.SessionTimeRemain,v.LapDistPct,lapT,leader),timedLapsLeft(v.SessionTimeRemain,v.LapDistPct,lapT*(1-TIMED_PACE_MARGIN),q)):null,
+frac=v.LapDistPct!=null&&v.LapDistPct>=0?1-v.LapDistPct:0,need=per&&lr!=null?per*(Math.max(0,lr-1)+frac):null,short=need!=null&&v.FuelLevel!=null?need-v.FuelLevel:null;
+return{per,lapT,lr,counted,need,short}}
 function teleOn(){return document.body.dataset.view==='live'}
 // ---- Live telemetry, more: per-lap input stats, sectors, fuel to the finish, warnings, the wheel's force,
 // brakes and shocks per corner, tyres and the pit menu, the cars around, the wind. All from your car's own
@@ -3266,13 +3328,11 @@ const hit=s=>{const k=Object.keys(s.hits||{});return k.length?k.map(x=>x+' '+s.h
 set('tlStats',rows.length?'<div style="overflow-x:auto"><table><tr><th>Lap</th><th>Time</th><th title="Throttle over 98%">Full throttle</th><th title="Brake over 5%">Braking</th><th title="Neither pedal">Coasting</th><th>Peak brake</th><th>Top speed</th><th title="Average revs at each upshift">Upshift at</th><th title="The wheel\'s force at its limit (clipping)">Force at limit</th><th title="A corner at the deepest shock travel seen this session, most likely its bump stop">Shocks at the stop</th></tr>'+
 rows.map(r=>'<tr'+(r.b?' style="background:rgba(128,128,128,.10)"':'')+'><td>'+r.lab+'</td><td>'+(r.t>0?ft(r.t):'–')+'</td><td>'+r.s.full+'%</td><td>'+r.s.brk+'%</td><td>'+r.s.coast+'%</td><td>'+r.s.peak+'%</td><td>'+(r.s.top?kmh(r.s.top):'–')+'</td><td>'+(r.s.up||'–')+'</td><td>'+r.s.clip+'%</td><td>'+hit(r.s)+'</td></tr>').join('')+'</table></div>':'<p class="m">Appears as you drive.</p>')}
 // fuel to the finish
-{const used=LIVE.laps.filter(l=>l.fuel>0).slice(-3).map(l=>l.fuel),per=used.length?used.reduce((a,b)=>a+b,0)/used.length:null,kgL=(LIVE.meta&&LIVE.meta.fuelKg)||0.75,
-lapT=(LIVE.side&&LIVE.side.lapT)||(LIVE.laps.length?LIVE.laps[LIVE.laps.length-1].time:null),cc=LIVE.cur,now=cc&&cc.f0!=null&&v.FuelLevel!=null&&(cc.cov||0)>0.25&&!cc.pit&&cc.f0>v.FuelLevel?(cc.f0-v.FuelLevel)/cc.cov:null,
-lr=v.SessionLapsRemainEx!=null&&v.SessionLapsRemainEx<32767?v.SessionLapsRemainEx:v.SessionTimeRemain>0&&lapT?Math.ceil(v.SessionTimeRemain/lapT):null,
-frac=v.LapDistPct!=null&&v.LapDistPct>=0?1-v.LapDistPct:0,need=per&&lr!=null?per*(Math.max(0,lr-1)+frac):null,short=need!=null&&v.FuelLevel!=null?need-v.FuelLevel:null,
+{const cc=LIVE.cur,now=cc&&cc.f0!=null&&v.FuelLevel!=null&&(cc.cov||0)>0.25&&!cc.pit&&cc.f0>v.FuelLevel?(cc.f0-v.FuelLevel)/cc.cov:null,
+FU=teleFuel(v,LIVE.laps,LIVE.side&&LIVE.side.lapT),per=FU.per,lr=FU.lr,need=FU.need,short=FU.short,
 pitAdd=v.PitSvFlags!=null&&(v.PitSvFlags&0x10)?v.PitSvFuel:null;
 set('tlFuelBox',row('Fuel aboard',fu(v.FuelLevel))+row('Per lap (last full laps)',fu(per))+row('This lap so far',now!=null?fu(now)+' a lap':null,'Fuel used since the line, over the share of the lap driven')+
-row('Laps to go',lr!=null?String(lr)+(v.SessionLapsRemainEx<32767?'':' (from the clock)'):null)+row('Needed to the finish',fu(need))+
+row('Laps to go',lr!=null?String(lr)+(FU.counted?'':' (from the clock and where you are on the lap)'):null,'In a timed race the flag falls the first time the leader crosses the line after the clock runs out, and for you at your next crossing after that')+row('Needed to the finish',fu(need))+
 row(short!=null&&short>0?'Short by':'Spare at the flag',short!=null?fu(Math.abs(short)):null)+row('Save per lap to finish',short!=null&&short>0&&lr>0?(per&&short/lr<=0.15*per?fu(short/lr):'too much to save: a stop is needed'):null)+
 row('Pit menu adds',pitAdd!=null?fu(pitAdd):v.PitSvFlags!=null?'no fuel':null))}
 // around the car

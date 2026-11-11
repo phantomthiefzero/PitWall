@@ -516,6 +516,52 @@ Broadcast (broadcast/)
   director (the finish story; no replays in a timed race's last laps, lapsByTime). The caution is read from the
   field's speed whenever no racing flag comes (a spectator's flags carry only start lights after the start), not
   only when there are no bits at all. tests: test_what_a_spectator_is_not_sent_is_filled_in_everywhere.
+- Accuracy audit against the driver's own race file (Nov 2026: Indianapolis road course, Ferrari 296 GT3, 45 minutes,
+  one stop; the .ibt read independently with irsdk and compared with what the pages say). Agreed: all 29 timed laps'
+  times with iRacing's LapLastLapTime and their fuel with the tank's level line to line; Coaching's gap is exactly
+  the average lap minus the best lap. Wrong, now fixed: a timed race's laps to go (PitWall's fuel and Live
+  telemetry's "fuel to the finish") were the clock over the last lap's time, as if the car were on the line now: a
+  lap short for ~97% of every lap of the last stint (half way round lap 30, 129 s left at 85 s a lap: "2 laps" and
+  1.5 laps of fuel with 2.5 laps to drive), and the last lap could be an in- or out-lap (98 s, 122 s). Now
+  normalize.timed_laps_left / the analyzer's timedLapsLeft (the same sum): the flag falls at the leader's first
+  crossing after the clock and each car's at its own next one, so the count uses where the car is on its lap, the
+  leader's place and pace when known, the car's usual lap (Deriver.own_lap_time: the median of its last five laps
+  off the pit lane; the analyzer: its valid laps), the white flag and the clock being out; where a pace 1.5%
+  quicker (TIMED_PACE_MARGIN) would mean a lap more, fuel counts that lap. Right on every tick of the last stint of
+  that race; far from the end it stays an estimate (a lap either way) and says so. race_length's lapsByTime uses the
+  same sum. test: test_a_timed_races_laps_left_depend_on_where_the_car_is_on_the_lap. Check a number against a
+  second measure in the driver's own file before trusting it; the captures are spectator's and carry no fuel.
+  Coaching, same file (21 laps against the best lap): the time lost in each of the 14 corners agrees with the
+  file's own clock to 0.005 s (the average lap IS a sum over the laps). What you do in a corner did not: it was read
+  off the average lap's trace, whose slowest point is not the laps' slowest speed and whose pedal thresholds are
+  nobody's (corner 8 "2.3 km/h quicker at the apex" where the laps' middle was level; corner 13's throttle "8.5 m
+  late" where it was 3.9 m; braking points in steps of the 4.25 m grid). Now coachCompare takes the MEDIAN over the
+  laps, each measured on its own against the reference (c.d, c.dv, c.dm, c.dp; c.trace keeps the old; three laps or
+  more, a pedal point only from laps that used it), and a corner within CO_LEVEL_S of the reference is level: no
+  tips, no cause (it offered "get 1.5 m closer to the apex" in a corner taken 0.02 s quicker than the best lap).
+  Setup on the same file: mid-corner understeer, front bar softer / rear bar stiffer (said to be at its maximum,
+  90) / wing / front ride height last: the directions match the 296's manual (0 softest, 90 stiffest). The
+  understeer measure itself (steering used against neutral) has no second measure in the file: not verified.
+  test: test_coaching_measures_each_lap_and_says_nothing_where_no_time_is_lost.
+  More of the driver's files (E:\iRacing Telemetry Files: Ferrari 296 GT3 at Sebring and Suzuka, Mustang GT3 at
+  Sebring, Formula iR-04 at Watkins Glen, two files): a lap within 0.05 s of the one before was given ITS time
+  (the analyzer's lap parser took the first LapLastLapTime near the lap's clock; iRacing posts it a moment after
+  the line and the variable holds the lap before's until then): Suzuka 119.888 for 119.911, Sebring 121.875 for
+  121.915, Watkins Glen's best lap 107.771 for 107.768. Now the first NEW value after the lap's own last sample
+  (as library.session_summary and the live path already did). After it every timed lap in all six files has
+  iRacing's time and the tank's fuel, and Coaching's time lost per corner agrees with each file's clock to 0.007 s
+  (13 to 17 corners a file). The fake posted lap times on the line, to the sample;
+  test_a_lap_is_not_given_the_time_of_the_lap_before posts them late and exact, as the sim does.
+  A track's corners are the same in every session (trackCorners, the corner book: localStorage suite:cornerBook, by
+  track): the two Watkins Glen files found 14 and 13 corners (a kink on the edge of counting; the corners come from
+  the reference lap's load), so "Corner 9" was two places. The first lap analysed at a track writes its corners;
+  after that a corner found again keeps this lap's measure, one the lap does not show stays at the book's place
+  (its time still counted), one the book does not have is not a corner there; ovals are left as found; cbForget
+  starts a track again. The book is this browser's: an engineer on the share link has their own, so the numbers can
+  differ between two people until the book travels with the session (not done).
+  test: test_a_tracks_corners_are_the_same_corners_in_every_session.
+  Live telemetry against the file view (three of those files played through liveTick as if live): the same laps
+  count (live valid = the file's clean laps), with the same times and fuel.
 - PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
   race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
   option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution
