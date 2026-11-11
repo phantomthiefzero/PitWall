@@ -639,12 +639,24 @@ function rs(o,xs){const R={},ks=['Speed','Brake','Throttle','Steer','Gear','Lat'
 for(let g=0;g<N;g++){const d=g/(N-1);while(j<o.n-2&&o.D[j+1]<d)j++;const f=Math.min(1,Math.max(0,(d-o.D[j])/((o.D[j+1]-o.D[j])||1)));ks.forEach(k=>{const a=o[k];R[k][g]=a[j]+(a[j+1]-a[j])*f})}return R}
 function sma(a,w){const r=new Float64Array(N);for(let i=0;i<N;i++){let s=0,c=0;for(let k=-w;k<=w;k++){const q=i+k;if(q>=0&&q<N){s+=a[q];c++}}r[i]=s/c}return r}
 function am(a,lo,hi){let b=lo;for(let i=lo;i<=hi;i++)if(a[i]>a[b])b=i;return b}
+// Where a pedal crosses its line, between two points of the lap's grid. The grid is 1000 points a lap: 4 m at
+// Indianapolis, 5.8 m at Suzuka, 13.6 m at Le Mans, so a braking point read as a grid point was only good to that
+// (the file itself has a sample every metre or so at speed). The pedal is a ramp between two grid points; where
+// it crosses is read off the ramp. Checked against the files' own samples (crossPt; test below).
+function crossPt(v,g,th){if(g<=0)return g;const a=v[g-1],b=v[g];return a<th&&b>a?g-1+(th-a)/(b-a):g}
+// Better still, the lap's own samples (about one a metre at speed, finer than the grid): the first sample over the
+// line near the grid's crossing, placed between it and the sample before. o is the lap as read (o.D: part of the
+// lap at each sample); gF the grid's own answer, kept when the samples show no crossing there.
+function rawCross(o,key,g,gF,th){const v=o&&o[key],D=o&&o.D;if(!v||!D||g<0||!(o.n>N))return gF;const lo=(g-2)/(N-1),hi=(g+1)/(N-1);
+let j=0,a=0,b=o.n-1;while(a<b){const m=(a+b)>>1;if(D[m]<lo)a=m+1;else b=m}j=Math.max(1,a);
+for(;j<o.n&&D[j]<=hi;j++){if(v[j]>th&&v[j-1]<=th&&D[j]>=D[j-1]){const f=(th-v[j-1])/(v[j]-v[j-1]);return(D[j-1]+(D[j]-D[j-1])*f)*(N-1)}}return gF}
 function met(X,c){let ba=-1,pb=0,ms=1e9,mg=c.ap,ta=-1;for(let g=c.s;g<=c.ap;g++)if(X.Brake[g]>.08){ba=g;break}
 for(let g=c.s;g<=c.e;g++){pb=Math.max(pb,X.Brake[g]);if(X.Speed[g]<ms){ms=X.Speed[g];mg=g}}
 for(let g=mg;g<=c.e;g++)if(X.Throttle[g]>.6){ta=g;break}
 let br=-1,tf=-1;if(ba>=0)for(let g=ba;g<=c.e;g++)if(X.Brake[g]<.08){br=g;break}for(let g=mg;g<=c.e;g++)if(X.Throttle[g]>.95){tf=g;break}
 let lat=0,dec=0,ab=0,co=0,ps=0;const nn=c.e-c.s+1;for(let g=c.s;g<=c.e;g++){lat=Math.max(lat,Math.abs(X.LatG[g]));dec=Math.max(dec,-X.LonG[g]);ab+=X.ABS[g];co+=X.Coast[g];ps=Math.max(ps,Math.abs(X.Steer[g]))}
-return{ba,br,mg,pb,ms:ms*3.6,ta,tf,es:X.Speed[c.s]*3.6,xs:X.Speed[c.e]*3.6,t:X.t[c.e]-X.t[c.s],lat:lat/9.80665,dec:dec/9.80665,ab:ab/nn*100,co:co/nn*100,sa:Math.abs(X.Steer[mg])*57.2958,ps:ps*57.2958,gr:X.Gear[mg]||X.Gear[mg-1]||X.Gear[mg+1],rpm:X.RPM[mg]}}
+const baF=ba>=0?crossPt(X.Brake,ba,.08):-1,taF=ta>=0?crossPt(X.Throttle,ta,.6):-1;
+return{baF,taF,ba,br,mg,pb,ms:ms*3.6,ta,tf,es:X.Speed[c.s]*3.6,xs:X.Speed[c.e]*3.6,t:X.t[c.e]-X.t[c.s],lat:lat/9.80665,dec:dec/9.80665,ab:ab/nn*100,co:co/nn*100,sa:Math.abs(X.Steer[mg])*57.2958,ps:ps*57.2958,gr:X.Gear[mg]||X.Gear[mg-1]||X.Gear[mg+1],rpm:X.RPM[mg]}}
 function setupTree(y){const m=/^CarSetup:[^\n]*$/m.exec(y);if(!m)return null;const top={},stack=[{ind:-1,o:top}],lines=y.slice(m.index).split(/\r?\n/);
 for(let li=1;li<lines.length;li++){const l=lines[li];if(!l.trim())continue;if(!/^\s/.test(l))break;const ind=l.length-l.trimStart().length,t=l.trim(),k=t.indexOf(':');if(k<0)continue;const key=t.slice(0,k).trim(),val=t.slice(k+1).trim();
 while(stack[stack.length-1].ind>=ind)stack.pop();const par=stack[stack.length-1].o;if(val===''){const o={};par[key]=o;stack.push({ind,o})}else par[key]=val}
@@ -735,8 +747,8 @@ derive(A);derive(B);
 const sm=sma(B.Speed,9),cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack());
 cs.forEach((c,i)=>{c.n=i+1;if(c.rs!=null){c.s=Math.min(c.rs,am(sm,Math.max(0,c.ap-80),c.ap));c.e=Math.max(c.re,c.ap+5)}else{c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80))}
 if(i){const p=cs[i-1];p.e=Math.min(p.e,c.ap-1);c.s=Math.max(c.s,p.e)}if(c.s>=c.ap)c.s=c.ap-5;
-c.a=met(A,c);c.b=met(B,c);c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
-c.d=(c.a.ba-c.b.ba)*mpg;c.dv=c.a.ms-c.b.ms;c.dm=(c.a.ta-c.b.ta)*mpg;c.dp=(c.a.pb-c.b.pb)*100;c.tin=dl[c.ap]-dl[c.s];c.tout=dl[c.e]-dl[c.ap]});
+c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
+c.d=(c.a.baF-c.b.baF)*mpg;c.dv=c.a.ms-c.b.ms;c.dm=(c.a.taF-c.b.taF)*mpg;c.dp=(c.a.pb-c.b.pb)*100;c.tin=dl[c.ap]-dl[c.s];c.tout=dl[c.e]-dl[c.ap]});
 return{A,B,len,dl,cs,a,b,X:a.ext&&b.ext?extStats(a,b):null,Sa:lapStats(a),Sb:lapStats(b),total:a.lap-b.lap,pct:a.lap/b.lap*100}}
 //ENDCORE
 const $=id=>document.getElementById(id),F={},ft=t=>Math.floor(t/60)+':'+(t%60).toFixed(3).padStart(6,'0'),sg=v=>{const r=+v.toFixed(3);return(r>0?'+':r<0?'−':'')+Math.abs(r).toFixed(3)};
@@ -1691,7 +1703,7 @@ const rows=runs.slice().reverse().map(({s,laps})=>{const ok=laps.filter(l=>l.val
 const ch=s.n===1?'<span class="m">starting setup</span>':(s.diff.length?s.diff.map(d=>'<b>'+d.lab+'</b>'+(d.ctx&&/(Left|Right) (front|rear)/.test(d.ctx)?' <span class="m">'+d.ctx.split(' · ')[0]+'</span>':'')+' '+suFmtVal(d.from)+' → '+suFmtVal(d.to)).join('<br>'):'<span class="m">no setting changes</span>');
 const tc=LIVE_TIRES.map(k=>liveTemp(liveMed(ok.map(l=>l.tc[k])))).join(' ');
 return '<tr><td><b>Run '+s.n+'</b>'+(s.n===LIVE.vers.length?' <span class="m">current</span>':'')+'</td><td style="min-width:200px">'+ch+'</td><td>'+ok.length+(laps.length>ok.length?' <span class="m">+'+(laps.length-ok.length)+' invalid</span>':'')+'</td><td>'+(best?ft(best):'—')+'</td><td>'+(avg?ft(avg):'—')+'</td><td>'+liveMm(S.f)+' / '+liveMm(S.r)+'</td><td>'+liveMm(C.f)+' / '+liveMm(C.r)+'</td><td>'+(rise==null?'—':(rise>=0?'+':'−')+liveMm(Math.abs(rise)))+'</td><td>'+(ok.length?liveSpd(Math.max(...ok.map(l=>l.top))):'—')+'</td><td style="white-space:nowrap">'+tc+'</td></tr>'}).join('');
-return '<div style="margin-top:10px"><b>Runs by setup</b> <small class="m">A new run starts each time the setup changes in the garage. Values are medians across the run\'s valid laps. Ride heights are front / rear.</small><div style="overflow-x:auto;margin-top:4px"><table><tr><th>Run</th><th>Changes from the run before</th><th>Valid laps</th><th>Best</th><th>Average</th><th>Ride height, straights</th><th>Ride height, fast corners</th><th>Rear rise braking</th><th>Top speed</th><th>Carcass temps LF RF LR RR</th></tr>'+rows+'</table></div></div>'}
+return '<div style="margin-top:10px"><b>Runs by setup</b> <small class="m">A new run starts each time the setup changes in the garage. Values are medians across the run\'s valid laps. Ride heights are front / rear.</small><div style="overflow-x:auto;margin-top:4px"><table><tr><th>Run</th><th>Changes from the run before</th><th>Valid laps</th><th>Best</th><th>Average</th><th>Ride height, straights</th><th>Ride height, fast corners</th><th>Rear rise braking</th><th>Top speed</th><th title="iRacing only updates the carcass temperatures while the car is in its pit stall: these are from the last stop, not from the laps">Carcass temps at the last stop LF RF LR RR</th></tr>'+rows+'</table></div></div>'}
 function liveLapsHtml(){const L=LIVE.laps.slice(-12).reverse();if(!L.length)return '';return '<details style="margin-top:8px"><summary><b>Recent laps</b> <span class="m">'+LIVE.laps.length+' recorded this session</span></summary><div style="overflow-x:auto"><table><tr><th>Lap</th><th>Time</th><th>Run</th><th>Ride height straights F / R</th><th>Top speed</th><th>Brake bias</th></tr>'+L.map(l=>{const q=l.st&&l.st.find(z=>z.id==='straight');return '<tr><td>'+l.lap+'</td><td>'+(l.time>0?ft(l.time):'–')+(l.valid?'':' <span class="m">'+(l.why||'invalid')+'</span>')+'</td><td>'+l.ver+'</td><td>'+(q&&q.n?liveMm(q.f)+' / '+liveMm(q.r):'—')+'</td><td>'+liveSpd(l.top)+'</td><td>'+(l.bb!=null?l.bb.toFixed(1)+'%':'—')+'</td></tr>'}).join('')+'</table></div></details>'}
 /* ---- Live graphs: current lap against the best or last lap, by track position ---- */
 let LIVE_CMP=(()=>{try{return localStorage.getItem('liveCmp')||'best'}catch(e){return 'best'}})();
@@ -2341,19 +2353,21 @@ for(let g=0;g<N;g++){const p=Math.max(0,g-2),q=Math.min(N-1,g+2),dx=bx(q)-bx(p),
 function coSide(B,c){if(!B||!B.Lat||!B.Lat[c.s]||!B.Lat[c.e])return 0;const mx=Math.cos(B.Lat[c.s]*Math.PI/180),h=g=>{const p=Math.max(0,g-2),q=Math.min(N-1,g+2);return[(B.Lon[q]-B.Lon[p])*mx,B.Lat[q]-B.Lat[p]]},a=h(c.s),b=h(c.e),x=a[0]*b[1]-a[1]*b[0];return x>0?1:x<0?-1:0}
 // pure: one lap (resampled) through corner c. Grid indices for positions, km/h for speed, seconds for times.
 // ref: the same facts on the reference lap, so the line, kerbs and zones are measured where the reference turns in and is slowest.
-function coachFacts(X,c,prevE,ref,off,side){const s=c.s,e=c.e,ap=c.ap,f={};
+function coachFacts(X,c,prevE,ref,off,side,raw){const s=c.s,e=c.e,ap=c.ap,f={};
 // turn-in: back from the most steering before the apex to where the steering was under 30% of it (the
 // steering left over from the corner before does not count)
 let pg=s;for(let g=s;g<=Math.min(e,ap+3);g++)if(Math.abs(X.Steer[g])>Math.abs(X.Steer[pg]))pg=g;const mx=Math.abs(X.Steer[pg]),sgn=Math.sign(X.Steer[pg]);
-f.tin=-1;if(mx>.05){let g=pg;while(g>s&&Math.sign(X.Steer[g-1])===sgn&&Math.abs(X.Steer[g-1])>=.3*mx)g--;f.tin=g}
+f.tin=-1;f.tinF=-1;if(mx>.05){let g=pg;while(g>s&&Math.sign(X.Steer[g-1])===sgn&&Math.abs(X.Steer[g-1])>=.3*mx)g--;f.tin=g;
+// between two grid points (the grid is 4 to 14 m a point by track; advice starts at a 6 m difference)
+const p0=g>0&&Math.sign(X.Steer[g-1])===sgn?Math.abs(X.Steer[g-1]):0,p1=Math.abs(X.Steer[g]),th=.3*mx;f.tinF=g>0&&p0<th&&p1>p0?g-1+(th-p0)/(p1-p0):g}
 // track-out: where the steering has unwound to 20% after the corner (the end of the zone when it never does)
 f.tout=e;if(mx>.05)for(let g=pg;g<=e;g++)if(Math.abs(X.Steer[g])<.2*mx||Math.sign(X.Steer[g])!==sgn){f.tout=g;break}
 const from=Math.max(0,s-150,prevE!=null?prevE:0);let ba=-1,pk=0,pkg=-1;for(let g=from;g<=ap;g++)if(X.Brake[g]>.08){if(ba<0)ba=g;if(X.Brake[g]>pk){pk=X.Brake[g];pkg=g}}
-f.braked=pk>=.3;f.ba=f.braked?ba:-1;f.pk=f.braked?pk:0;f.tpk=null;f.off=-1;f.abs=null;
+f.braked=pk>=.3;f.ba=f.braked?ba:-1;f.baF=f.braked?rawCross(raw,'Brake',ba,crossPt(X.Brake,ba,.08),.08):-1;f.pk=f.braked?pk:0;f.tpk=null;f.off=-1;f.abs=null;
 if(f.braked){for(let g=ba;g<=pkg;g++)if(X.Brake[g]>=.9*pk){f.tpk=X.t[g]-X.t[ba];break}for(let g=pkg;g<=e;g++)if(X.Brake[g]<.05){f.off=g;break}
 let a=0,n=0;for(let g=ba;g<=(f.off>=0?f.off:ap);g++){n++;if(X.ABS[g]>.5)a++}f.abs=n?a/n:null}
 let ms=1e9,mg=ap;for(let g=s;g<=e;g++)if(X.Speed[g]<ms){ms=X.Speed[g];mg=g}f.mg=mg;f.ms=ms*3.6;f.gr=Math.round(X.Gear[mg]||0);
-f.ta=-1;f.tf=-1;for(let g=mg;g<=e;g++){if(f.ta<0&&X.Throttle[g]>.6)f.ta=g;if(X.Throttle[g]>.95){f.tf=g;break}}
+f.ta=-1;f.tf=-1;for(let g=mg;g<=e;g++){if(f.ta<0&&X.Throttle[g]>.6)f.ta=g;if(X.Throttle[g]>.95){f.tf=g;break}}f.taF=f.ta>=0?rawCross(raw,'Throttle',f.ta,crossPt(X.Throttle,f.ta,.6),.6):-1;
 let co=0;for(let g=Math.max(s,f.tin>=0?f.tin:s);g<e;g++)if(X.Brake[g]<.05&&X.Throttle[g]<.05)co+=X.t[g+1]-X.t[g];f.coast=co;f.ct=X.t[e]-X.t[s];
 const Rf=ref||f;if(off&&side){const at=g=>off[g]*side;f.line={in:at(Rf.tin>=0?Rf.tin:s),ap:at(Rf.mg),ex:at(Rf.tout!=null?Rf.tout:e)}}
 const W=['LF','RF','LR','RR'].map(k=>X['x:'+k+'speed']);
@@ -2367,14 +2381,15 @@ return f}
 function coachFactsSum(L,mpg){const md=a=>{const v=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q),m=v.length;return m?m%2?v[(m-1)/2]:(v[m/2-1]+v[m/2])/2:null},
 sdv=a=>{const v=a.filter(x=>x!=null&&isFinite(x));if(v.length<3)return null;const m=v.reduce((s,x)=>s+x,0)/v.length;return Math.sqrt(v.reduce((s,x)=>s+(x-m)**2,0)/(v.length-1))},
 share=(A,f)=>A.length?A.filter(f).length/A.length:null,pos=a=>a.map(x=>x>=0?x:null),br=L.filter(f=>f.braked),gs={};L.forEach(f=>{if(f.gr)gs[f.gr]=(gs[f.gr]||0)+1});
-const y={n:L.length,braked:share(L,f=>f.braked),ba:md(br.map(f=>f.ba)),pk:md(br.map(f=>f.pk)),tpk:md(br.map(f=>f.tpk)),off:md(pos(br.map(f=>f.off))),abs:md(br.map(f=>f.abs)),
-trail:share(br.filter(f=>f.tin>=0),f=>f.off<0||f.off>f.tin),tin:md(pos(L.map(f=>f.tin))),mg:md(L.map(f=>f.mg)),ms:md(L.map(f=>f.ms)),gr:+(Object.keys(gs).sort((a,b)=>gs[b]-gs[a])[0]||0),
-ta:md(pos(L.map(f=>f.ta))),tf:md(pos(L.map(f=>f.tf))),coast:md(L.map(f=>f.coast)),ct:md(L.map(f=>f.ct))};
+const F=(f,k)=>f[k+'F']!=null?f[k+'F']:f[k];
+const y={n:L.length,braked:share(L,f=>f.braked),ba:md(br.map(f=>F(f,'ba'))),pk:md(br.map(f=>f.pk)),tpk:md(br.map(f=>f.tpk)),off:md(pos(br.map(f=>f.off))),abs:md(br.map(f=>f.abs)),
+trail:share(br.filter(f=>f.tin>=0),f=>f.off<0||f.off>f.tin),tin:md(pos(L.map(f=>F(f,'tin')))),mg:md(L.map(f=>f.mg)),ms:md(L.map(f=>f.ms)),gr:+(Object.keys(gs).sort((a,b)=>gs[b]-gs[a])[0]||0),
+ta:md(pos(L.map(f=>F(f,'ta')))),tf:md(pos(L.map(f=>f.tf))),coast:md(L.map(f=>f.coast)),ct:md(L.map(f=>f.ct))};
 const ln=L.filter(f=>f.line);y.line=ln.length?{in:md(ln.map(f=>f.line.in)),ap:md(ln.map(f=>f.line.ap)),ex:md(ln.map(f=>f.line.ex))}:null;
 const kb=L.filter(f=>f.kerb);y.kerb=kb.length?{in:share(kb,f=>f.kerb.in),ap:share(kb,f=>f.kerb.ap),ex:share(kb,f=>f.kerb.ex),n:kb.length}:null;
 const wh=L.filter(f=>'lock' in f);y.lock=wh.length?share(wh,f=>f.lock):null;y.spin=wh.length?share(wh,f=>f.spin):null;y.nw=wh.length;
 const ot=L.filter(f=>'offTrack' in f);y.offTrack=ot.length?share(ot,f=>f.offTrack):null;
-const sd={ba:sdv(br.map(f=>f.ba)),ms:sdv(L.map(f=>f.ms)),tin:sdv(pos(L.map(f=>f.tin))),ta:sdv(pos(L.map(f=>f.ta))),ct:sdv(L.map(f=>f.ct))};['ba','tin','ta'].forEach(k=>{if(sd[k]!=null)sd[k]*=mpg});return{y,sd}}
+const sd={ba:sdv(br.map(f=>F(f,'ba'))),ms:sdv(L.map(f=>f.ms)),tin:sdv(pos(L.map(f=>F(f,'tin')))),ta:sdv(pos(L.map(f=>F(f,'ta')))),ct:sdv(L.map(f=>f.ct))};['ba','tin','ta'].forEach(k=>{if(sd[k]!=null)sd[k]*=mpg});return{y,sd}}
 // pure: from the facts, what to do differently in this corner, in the order you meet it, at most three things,
 // and the speed to aim for. Distances are measured against the reference lap: m later, m further out.
 const CO_HEAD={brake_later:'Brake later',brake_earlier:'Brake earlier',no_brake:'Lift instead of braking',brake_harder:'Brake harder at the start',lock:'Stop the wheels locking',trail:'Trail the brake into the turn',turn_later:'Turn in later',turn_sooner:'Turn in sooner',wide_entry:'Use the width on entry',gear:'Use the same gear as your best',early_apex:'Apex later',miss_apex:'Get closer to the apex',kerb_apex:'Use the apex kerb',throttle_sooner:'Throttle sooner',coast:'Less coasting',spin:'Less wheelspin on exit',use_exit:'Use the exit width',kerb_exit:'Use the exit kerb',apex_speed:'Carry more speed'};
@@ -2408,9 +2423,9 @@ const CO_LEVEL_S=0.02;      // a corner within this of the reference is level: n
 function coachCompare(avg,best,laps){const R0=analyze(avg,best),u=U(),out={total:R0.total,pct:R0.pct,len:R0.len,corners:[],R:R0};
 // the reference lap with its extra channels, and each lap's facts in every corner, measured against it
 const xs=CO_XK.filter(k=>best.ext&&best.ext[k]);xs.forEach(k=>best['x:'+k]=best.ext[k]);const Bx=rs(best,xs.map(k=>'x:'+k));
-const fb=R0.cs.map((c,k)=>coachFacts(Bx,c,k?R0.cs[k-1].e:null,null,null,0)),side=R0.cs.map(c=>coSide(Bx,c));
-const per=[],LF=[];(laps||[]).forEach(l=>{try{const r=analyze(l,best);per.push(r.cs);if(r.cs.length!==R0.cs.length)return;const off=coLineOff(r.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(r.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k])))}catch(e){}});
-if(!LF.length){const off=coLineOff(R0.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(R0.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k])))}
+const fb=R0.cs.map((c,k)=>coachFacts(Bx,c,k?R0.cs[k-1].e:null,null,null,0,best)),side=R0.cs.map(c=>coSide(Bx,c));
+const per=[],LF=[];(laps||[]).forEach(l=>{try{const r=analyze(l,best);per.push(r.cs);if(r.cs.length!==R0.cs.length)return;const off=coLineOff(r.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(r.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k],r.a)))}catch(e){}});
+if(!LF.length){const off=coLineOff(R0.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(R0.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k],avg)))}
 R0.cs.forEach((c,k)=>{c.fx=Object.assign({b:fb[k]},coachFactsSum(LF.map(L=>L[k]),c.mpg))});
 // What you do in a corner is the MIDDLE of what your laps did there, each lap measured on its own against the
 // reference: the brake point, the slowest speed, where the throttle comes back and where it is fully open. The
