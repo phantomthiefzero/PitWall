@@ -3221,27 +3221,55 @@ class Deriver:
     def session_best_sectors(self) -> list:
         return list(self._sect_best)
 
+    def own_lap_time(self, last_lap_s, lap_completed, on_pit_road):
+        """Your usual lap: the median of your last five laps that did not touch the pit lane, from LapLastLapTime
+        as each lap is scored. The last lap alone may be an in- or out-lap (Indianapolis: 98 s and 122 s against
+        85 s, which moved the projected finish by three laps for the two laps after the stop)."""
+        st = getattr(self, "_own_laps", None)
+        if st is None:
+            st = self._own_laps = {"laps": [], "seen": None, "lc": lap_completed, "pit": bool(on_pit_road), "prev_pit": True}
+        if on_pit_road:
+            st["pit"] = True
+        if lap_completed is not None and lap_completed != st["lc"]:
+            st["prev_pit"], st["pit"], st["lc"] = st["pit"], bool(on_pit_road), lap_completed    # the lap just finished
+        if last_lap_s and last_lap_s > 0 and last_lap_s != st["seen"]:
+            first, st["seen"] = st["seen"] is None, last_lap_s
+            if not first and not st["prev_pit"]:          # the first value seen is of a lap that was not watched
+                st["laps"] = (st["laps"] + [float(last_lap_s)])[-5:]
+        laps = sorted(st["laps"])
+        if not laps:
+            return None
+        n = len(laps)
+        return laps[n // 2] if n % 2 else (laps[n // 2 - 1] + laps[n // 2]) / 2
+
     @staticmethod
-    def laps_remaining(laps_remain_ex, time_remain_s, lap_time_s):
-        """(laps, is_estimate) or (None, False).
+    def laps_remaining(laps_remain_ex, time_remain_s, lap_time_s, lap_pct=None, leader=None, ended=False):
+        """(laps, is_estimate) or (None, False), counting the lap in progress.
 
         A lap-limited session states it outright. A timed one does not, so it has
-        to be projected from the clock and the last lap -- which is a guess, and
-        is flagged as one. iRacing uses 32767 as "unlimited"; anything at or above
-        that is not a count.
+        to be projected from the clock, the pace and where the car is on the lap
+        (timed_laps_left) -- which is a guess, and is flagged as one. iRacing uses
+        32767 as "unlimited"; anything at or above that is not a count.
         """
         if laps_remain_ex is not None and 0 <= laps_remain_ex < 32767:
             return int(laps_remain_ex), False
-        if time_remain_s and lap_time_s and lap_time_s > 0 and time_remain_s < 86400 * 3:
-            return math.ceil(time_remain_s / lap_time_s), True
+        if ended and lap_time_s and lap_time_s > 0:
+            return 1, True                    # the clock is out: this lap is the last
+        if time_remain_s is not None and time_remain_s >= 0 and lap_time_s and lap_time_s > 0 \
+                and time_remain_s < 86400 * 3:
+            # for fuel, a lap too many is cheap and a lap too few is the end of the race: where a pace a little
+            # quicker (TIMED_PACE_MARGIN) would mean one more lap, that lap is counted
+            quick = dict(leader, lapS=leader["lapS"] * (1 - TIMED_PACE_MARGIN)) if leader and leader.get("lapS") else leader
+            return max(timed_laps_left(time_remain_s, lap_pct, lap_time_s, leader),
+                       timed_laps_left(time_remain_s, lap_pct, lap_time_s * (1 - TIMED_PACE_MARGIN), quick)), True
         return None, False
 
     def fuel(self, lap_completed, fuel_level, laps_remain_ex=None,
-             time_remain_s=None, lap_time_s=None, on_pit_road=None, lap_pct=None) -> dict:
+             time_remain_s=None, lap_time_s=None, on_pit_road=None, lap_pct=None, leader=None, ended=False) -> dict:
         out = {"fuelPerLap": None, "lapsOfFuel": None, "fuelPerLapSamples": len(self._fuel_per_lap_samples),
                "lapsRemaining": None, "lapsRemainingIsEstimate": False,
                "fuelToFinishL": None, "fuelMarginL": None, "fuelSavePerLapL": None}
-        laps_left, est = self.laps_remaining(laps_remain_ex, time_remain_s, lap_time_s)
+        laps_left, est = self.laps_remaining(laps_remain_ex, time_remain_s, lap_time_s, lap_pct, leader, ended)
         out["lapsRemaining"], out["lapsRemainingIsEstimate"] = laps_left, est
         if lap_completed is None or fuel_level is None:
             return out
@@ -3303,6 +3331,45 @@ class Deriver:
                     out["fuelSavePerLapL"] = round((need - fuel_level) / laps_left, 3)
         out["fuelPerLapSamples"] = len(self._fuel_per_lap_samples)
         return out
+
+
+TIMED_PACE_MARGIN = 0.015
+
+
+def timed_laps_left(remain_s, lap_pct, lap_s, leader=None) -> int | None:
+    """Laps still to run in a timed race, counting the one in progress (SessionLapsRemainEx's sense).
+
+    A timed race ends at the leader's first crossing of the line after the clock runs out, and each car at its
+    own next crossing after that (Indianapolis, Nov 2026, the driver's own file: over the line with 2.4 s on the
+    clock, so one more lap, and the flag at the end of it). So the count depends on WHERE the car is on its lap:
+    it reaches the line in (1 - lap_pct) laps' time, then once a lap. Dividing the clock by the lap time alone
+    (what this used to do) counts as if the car were on the line now, and was a lap short for most of every lap:
+    half way round lap 30 of that race, 129 s left at 85 s a lap, it said 2 laps (1.5 laps of fuel) with 2.5 laps
+    still to drive.
+
+    leader: {"pct", "lapS", "me", "white"} when known: the flag falls at the leader's first crossing after the
+    clock (now, on its lap in progress, when the white flag is out); a car that reaches the line before the
+    leader does has another lap to run. Without it the car's own crossings stand in (right for the leader and
+    for cars near it, a lap short for a car just ahead of the leader on the road).
+    An estimate: it assumes the pace holds."""
+    if remain_s is None or not (lap_s and lap_s > 0):
+        return None
+    r = max(0.0, float(remain_s))
+    p = min(1.0, max(0.0, lap_pct)) if lap_pct is not None and lap_pct >= 0 else 0.0
+    own = (1.0 - p) * lap_s                                  # the car's next crossing, seconds from now
+
+    def after_clock(first, lap):                             # first crossing after the clock runs out
+        return first if first > r else first + (math.floor((r - first) / lap) + 1) * lap
+
+    lp, ll = (leader or {}).get("pct"), (leader or {}).get("lapS")
+    if leader and not leader.get("me") and lp is not None and lp >= 0 and ll and ll > 0:
+        first = (1.0 - min(1.0, max(0.0, lp))) * ll
+        flag = first if leader.get("white") else after_clock(first, ll)
+        # the car's first crossing at or after the flag
+        return 1 if own >= flag - 1e-6 else 1 + int(math.floor((flag - own) / lap_s - 1e-9)) + 1
+    if leader and leader.get("white"):
+        return 1                                             # the leader (you) is on the last lap
+    return 1 + int(round((after_clock(own, lap_s) - own) / lap_s))
 
 
 def fuel_plan(fuel_l, fpl, laps_left, laps_left_est, lap_pct, lap_no, tank_l,
@@ -3721,11 +3788,28 @@ def build_state(src: TelemetrySource, deriver: Deriver, session_msg: dict | None
         # "at the live edge" reads as is not yet characterised.
         "replayFramesFromEnd": _num(g("ReplayFrameNumEnd")),
     }
+    # A timed race's laps left: from the car's own pace (the median of its racing laps; the last lap alone may be
+    # an in- or out-lap), where it is on the lap, and the leader's place and pace (the flag falls at the leader's
+    # first crossing after the clock). Once the clock is out the lap in progress is the last.
+    own_i = player["carIdx"]
+    usual = deriver.own_lap_time(_num(g("LapLastLapTime")), player["lapCompleted"], player["onPitRoad"])
+    own_lap_s = (deriver.pace(own_i) if own_i is not None else None) or usual or _num(g("LapLastLapTime"))
+    leader = None
+    try:
+        pos, pcts, lasts = g("CarIdxPosition"), g("CarIdxLapDistPct"), g("CarIdxLastLapTime")
+        li = next((i for i, v in enumerate(pos or []) if v == 1), None)
+        if li is not None and pcts is not None and li < len(pcts):
+            lt = deriver.pace(li) or (lasts[li] if lasts is not None and li < len(lasts) and lasts[li] and lasts[li] > 0 else None)
+            leader = {"pct": pcts[li], "lapS": lt, "me": li == own_i,
+                      "white": bool(flags is not None and int(flags) & 0x2)}
+    except (TypeError, ValueError):
+        leader = None
     derived = deriver.fuel(player["lapCompleted"], player["fuelL"],
                            laps_remain_ex=_num(g("SessionLapsRemainEx")),
                            time_remain_s=_num(g("SessionTimeRemain")),
-                           lap_time_s=_num(g("LapLastLapTime")),
-                           on_pit_road=player["onPitRoad"], lap_pct=player["lapPct"])
+                           lap_time_s=own_lap_s,
+                           on_pit_road=player["onPitRoad"], lap_pct=player["lapPct"], leader=leader,
+                           ended=st is not None and int(st) >= 5)
     deriver.refuel(session["timeS"], player["fuelL"], bool(player["inPitStall"]))
     derived["refuelLps"] = deriver.refuel_rate()
     live = bool(player["isOnTrack"]) or (player["speedMs"] or 0) > 0.5
@@ -4434,7 +4518,9 @@ def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver,
     pace = deriver.pace(leader["idx"]) if (deriver is not None and leader) else None
     by_time = None
     if limit_s and remain is not None and pace:
-        by_time = int(math.ceil(remain / pace)) if remain > 0 else 0
+        # the leader's laps still to run, the one in progress counted: from where the leader is on the lap
+        # (timed_laps_left), not the clock over the lap time alone, which was a lap short for most of every lap
+        by_time = timed_laps_left(remain, leader.get("pct"), pace, {"me": True, "white": "white" in (flags or [])}) if remain > 0 else 0
     if total and (not limit_s or by_time is None or to_go is None or to_go <= by_time):
         ends = "laps"
     elif limit_s:

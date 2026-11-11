@@ -516,6 +516,21 @@ Broadcast (broadcast/)
   director (the finish story; no replays in a timed race's last laps, lapsByTime). The caution is read from the
   field's speed whenever no racing flag comes (a spectator's flags carry only start lights after the start), not
   only when there are no bits at all. tests: test_what_a_spectator_is_not_sent_is_filled_in_everywhere.
+- Accuracy audit against the driver's own race file (Nov 2026: Indianapolis road course, Ferrari 296 GT3, 45 minutes,
+  one stop; the .ibt read independently with irsdk and compared with what the pages say). Agreed: all 29 timed laps'
+  times with iRacing's LapLastLapTime and their fuel with the tank's level line to line; Coaching's gap is exactly
+  the average lap minus the best lap. Wrong, now fixed: a timed race's laps to go (PitWall's fuel and Live
+  telemetry's "fuel to the finish") were the clock over the last lap's time, as if the car were on the line now: a
+  lap short for ~97% of every lap of the last stint (half way round lap 30, 129 s left at 85 s a lap: "2 laps" and
+  1.5 laps of fuel with 2.5 laps to drive), and the last lap could be an in- or out-lap (98 s, 122 s). Now
+  normalize.timed_laps_left / the analyzer's timedLapsLeft (the same sum): the flag falls at the leader's first
+  crossing after the clock and each car's at its own next one, so the count uses where the car is on its lap, the
+  leader's place and pace when known, the car's usual lap (Deriver.own_lap_time: the median of its last five laps
+  off the pit lane; the analyzer: its valid laps), the white flag and the clock being out; where a pace 1.5%
+  quicker (TIMED_PACE_MARGIN) would mean a lap more, fuel counts that lap. Right on every tick of the last stint of
+  that race; far from the end it stays an estimate (a lap either way) and says so. race_length's lapsByTime uses the
+  same sum. test: test_a_timed_races_laps_left_depend_on_where_the_car_is_on_the_lap. Check a number against a
+  second measure in the driver's own file before trusting it; the captures are spectator's and carry no fuel.
 - PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
   race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
   option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution

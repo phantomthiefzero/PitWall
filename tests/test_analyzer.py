@@ -2365,3 +2365,32 @@ def test_coaching_has_a_goal_light_and_a_session_report():
     assert "el.cloneNode(true)" in rep and "querySelectorAll('button,select,input" in rep and 'data-theme="light"' in rep
     assert "api.save_report(html,name)" in rep and "rb.id='coReport'" in page
     assert ".cogoal.miss .cogoal-l{" in page
+
+
+def test_live_fuel_counts_a_timed_races_laps_as_pitwall_does():
+    # The accuracy audit (Nov 2026, the driver's own Indianapolis race): "Laps to go" was the clock over the last lap's
+    # time, a lap short for most of every lap of the last stint, so "needed to the finish" was a lap of fuel short.
+    # The page's sum must be PitWall's (normalize.timed_laps_left): the same cases, the same answers.
+    from pitwall.normalize import timed_laps_left
+    cases = [(171.9, 0.0, 85.0, None), (169.0, 0.03, 85.0, None), (129.0, 0.5, 85.0, None), (87.4, 0.0, 85.0, None),
+             (8.4, 0.915, 85.0, None), (2.4, 0.008, 85.0, None), (0.0, 0.5, 85.0, None), (100.0, None, 85.0, None),
+             (60.0, 0.5, 85.0, {"pct": 0.45, "lapS": 80.0}), (60.0, 0.5, 85.0, {"pct": 0.2, "lapS": 80.0}),
+             (30.0, 0.5, 85.0, {"pct": 0.55, "lapS": 80.0}), (30.0, 0.98, 85.0, {"pct": 0.95, "lapS": 80.0, "white": True}),
+             (30.0, 0.9, 85.0, {"pct": 0.95, "lapS": 80.0, "white": True}),
+             (30.0, 0.9, 85.0, {"pct": 0.9, "lapS": 85.0, "me": True, "white": True}), (1500.0, 0.37, 92.3, {"pct": 0.8, "lapS": 90.1})]
+    out = run_js("""
+const cases = %s;
+const laps = [84.9, 85.1, 84.6, 98.0].map((t, k) => ({ time: t, valid: k < 3, fuel: 2.48 }));
+const v = { SessionLapsRemainEx: 32767, SessionTimeRemain: 129.0, LapDistPct: 0.5, FuelLevel: 8.8, SessionState: 4, SessionFlags: 0 };
+const F = teleFuel(v, laps, null);
+const lapRace = teleFuel(Object.assign({}, v, { SessionLapsRemainEx: 12 }), laps, null);
+const over = teleFuel(Object.assign({}, v, { SessionState: 5, SessionTimeRemain: 133.8 }), laps, null);
+console.log(JSON.stringify({ got: cases.map(c => timedLapsLeft(c[0], c[1], c[2], c[3])), F, lapRace: lapRace.lr, counted: lapRace.counted, over: over.lr }));
+""" % json.dumps(cases))
+    assert out["got"] == [timed_laps_left(*c) for c in cases]
+    f = out["F"]
+    # half way round lap 30: three laps to run (this one counted), from the usual lap (the in-lap's 98 s left out)
+    assert f["lr"] == 3 and abs(f["lapT"] - 84.9) < 1e-6 and abs(f["per"] - 2.48) < 1e-6
+    assert abs(f["need"] - 2.48 * 2.5) < 1e-6 and f["short"] < 0, "the rest of this lap and two more: enough aboard"
+    assert out["lapRace"] == 12 and out["counted"] is True, "a lap race states it outright"
+    assert out["over"] == 1, "the clock is out: this lap is the last"
