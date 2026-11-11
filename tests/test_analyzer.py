@@ -2465,3 +2465,41 @@ console.log(JSON.stringify({ laps: ib.laps.filter(l => l.time > 0).map(l => [l.l
         assert abs(got[lap] - T) < 1e-4, (lap, got[lap], T)
     page = open(PAGE, encoding="utf-8").read()
     assert "const was=rd(V.LapLastLapTime,e-1)" in page and "v>0&&v!==was&&Math.abs(v-tc)<.05" in page
+
+
+def test_a_tracks_corners_are_the_same_corners_in_every_session():
+    # The accuracy audit (Nov 2026): the driver's two Watkins Glen sessions, the same car minutes apart, had 14 and 13
+    # corners (a kink on the edge of counting), so "Corner 9" was one place in the first and another in the second.
+    if not NODE:
+        return
+    out = run_js("""
+const mk = (aps) => aps.map(ap => ({ ap, rs: ap - 12, re: ap + 14 }));
+cbForget('Test Track');
+const first = trackCorners(mk([100, 300, 520, 800]), 'Test Track');                  // the first lap seen: it writes the book
+const second = trackCorners(mk([104, 296, 805]), 'Test Track');                       // corner 3 does not show on this lap
+const third = trackCorners(mk([100, 200, 300, 520, 800]), 'Test Track');              // a kink the book does not have
+const other = trackCorners(mk([50, 400, 900]), 'Another Track');
+const oval = trackCorners([{ ap: 200 }, { ap: 700 }], 'Test Track');                  // an oval's corners: left as found
+const none = trackCorners(mk([100, 300, 520]), '');
+console.log(JSON.stringify({ first: first.map(c => c.ap), second: second.map(c => [c.ap, !!c.book]), third: third.map(c => c.ap),
+  other: other.map(c => c.ap), oval: oval.map(c => c.ap), none: none.map(c => c.ap), keys: Object.keys(cbLoad()).sort() }));
+""")
+    assert out["first"] == [100, 300, 520, 800]
+    assert out["second"] == [[104, False], [296, False], [520, True], [805, False]], "still four corners, at the same places"
+    assert out["third"] == [100, 300, 520, 800], "a corner the book does not have is not a corner at this track"
+    assert out["other"] == [50, 400, 900] and out["oval"] == [200, 700] and out["none"] == [100, 300, 520]
+    assert out["keys"] == ["anothertrack", "testtrack"]
+    page = open(PAGE, encoding="utf-8").read()
+    assert "cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack())" in page
+    d = "/mnt/user-data/uploads/iRacing Telemetry Files/iRacing/"
+    files = [d + "formulair04_watkinsglen 2021 fullcourse 2026-11-05 19-38-39.ibt", d + "formulair04_watkinsglen 2021 fullcourse 2026-11-05 19-51-45.ibt"]
+    if not all(os.path.exists(f) for f in files):
+        return
+    js = """
+const run = f => { IB.a = ibt(readBytes(f)); COACH.src = 'ibt'; COACH.to = 'best'; return coachRun().C.R.cs.map(c => c.pos) };
+console.log(JSON.stringify({ one: run(ARGS[0]), two: run(ARGS[1]) }));
+"""
+    for a, b in (files, files[::-1]):
+        r = run_js(js, a, b)
+        assert len(r["one"]) == len(r["two"]), "the same corners whichever session is opened first"
+        assert all(abs(p - q) < 70 for p, q in zip(r["one"], r["two"])), "and each number is the same place"

@@ -711,11 +711,28 @@ for(let i=1;i<mins.length;i++){const a=mins[i-1],b=mins[i];let pk=a;for(let g=a;
 parts.forEach(([s0,e0])=>{let mn=s0,kx=s0;const kap=g=>Math.abs(lg[g])/Math.max(sm[g],8)**2;for(let g=s0;g<=e0;g++){if(sm[g]<sm[mn])mn=g;if(kap(g)>kap(kx))kx=g}
 cs.push({ap:mn>s0+2&&mn<e0-2&&Math.min(sm[s0],sm[e0])-sm[mn]>=1.5?mn:kx,rs:s0,re:e0})});   // a real dip inside the turn, else the tightest point
 return cs}
+// A track's corners are the same corners in every session. They are found from the reference lap's cornering load,
+// and a kink on the edge of counting came and went with the lap: the driver's two Watkins Glen sessions (Nov 2026,
+// the same car, minutes apart) had 14 and 13 corners, so "Corner 9" was one place in the first and another in the
+// second. The first lap analysed at a track writes its corners in a book (this browser's, by track: where each one's
+// load starts, its apex and where it ends, as parts of the lap); after that the track's corners are the book's: a
+// corner found again keeps its own measure from this lap, one the lap does not show is still there at the book's
+// place (so its time is still counted), and one the book does not have is not a corner at this track. Ovals (no
+// load regions) are left as found. cbForget(track) starts a track again.
+const CBOOK_KEY='suite:cornerBook';
+function cbLoad(){try{return JSON.parse(localStorage.getItem(CBOOK_KEY)||'{}')||{}}catch(e){return {}}}
+function cbSave(o){try{localStorage.setItem(CBOOK_KEY,JSON.stringify(o))}catch(e){}}
+function cbForget(track){const o=cbLoad();delete o[cnTrackKey(track)];cbSave(o)}
+function trackCorners(cs,track){const key=cnTrackKey(track);if(!key||!cs.length||cs.some(c=>c.rs==null))return cs;const all=cbLoad(),book=all[key],fr=g=>g/(N-1);
+if(!book||!book.length){if(cs.length>=3){all[key]=cs.map(c=>({p:+fr(c.ap).toFixed(4),s:+fr(c.rs).toFixed(4),e:+fr(c.re).toFixed(4)}));cbSave(all)}return cs}
+const used=new Set(),out=book.map(b=>{let best=null,bd=1;cs.forEach(c=>{if(used.has(c))return;const d=Math.abs(((fr(c.ap)-b.p+1.5)%1)-.5);if(d<bd){bd=d;best=c}});
+if(best&&bd<.012){used.add(best);return best}return{ap:Math.round(b.p*(N-1)),rs:Math.round(b.s*(N-1)),re:Math.round(b.e*(N-1)),book:true}});
+return out.sort((p,q)=>p.ap-q.ap)}
 function analyze(a,b){const xs=[];if(a.ext&&b.ext)for(const n in a.ext)if(n in b.ext){xs.push('x:'+n);a['x:'+n]=a.ext[n];b['x:'+n]=b.ext[n]}
 const A=rs(a,xs),B=rs(b,xs),len=a.Speed.reduce((s,v)=>s+v,0)*a.lap/(a.n-1),mpg=len/(N-1),dl=new Float64Array(N);
 for(let g=0;g<N;g++)dl[g]=(A.t[g]-A.t[0])-(B.t[g]-B.t[0]);
 derive(A);derive(B);
-const sm=sma(B.Speed,9),cs=findCorners(B,sm);
+const sm=sma(B.Speed,9),cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack());
 cs.forEach((c,i)=>{c.n=i+1;if(c.rs!=null){c.s=Math.min(c.rs,am(sm,Math.max(0,c.ap-80),c.ap));c.e=Math.max(c.re,c.ap+5)}else{c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80))}
 if(i){const p=cs[i-1];p.e=Math.min(p.e,c.ap-1);c.s=Math.max(c.s,p.e)}if(c.s>=c.ap)c.s=c.ap-5;
 c.a=met(A,c);c.b=met(B,c);c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;

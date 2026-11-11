@@ -550,9 +550,18 @@ Broadcast (broadcast/)
   121.915, Watkins Glen's best lap 107.771 for 107.768. Now the first NEW value after the lap's own last sample
   (as library.session_summary and the live path already did). After it every timed lap in all six files has
   iRacing's time and the tank's fuel, and Coaching's time lost per corner agrees with each file's clock to 0.007 s
-  (13 to 17 corners a file). Open: the two Watkins Glen files find 14 and 13 corners (the corners come from the
-  reference lap), so "Corner 9" is not the same place in both. The fake posted lap times on the line, to the
-  sample; test_a_lap_is_not_given_the_time_of_the_lap_before posts them late and exact, as the sim does.
+  (13 to 17 corners a file). The fake posted lap times on the line, to the sample;
+  test_a_lap_is_not_given_the_time_of_the_lap_before posts them late and exact, as the sim does.
+  A track's corners are the same in every session (trackCorners, the corner book: localStorage suite:cornerBook, by
+  track): the two Watkins Glen files found 14 and 13 corners (a kink on the edge of counting; the corners come from
+  the reference lap's load), so "Corner 9" was two places. The first lap analysed at a track writes its corners;
+  after that a corner found again keeps this lap's measure, one the lap does not show stays at the book's place
+  (its time still counted), one the book does not have is not a corner there; ovals are left as found; cbForget
+  starts a track again. The book is this browser's: an engineer on the share link has their own, so the numbers can
+  differ between two people until the book travels with the session (not done).
+  test: test_a_tracks_corners_are_the_same_corners_in_every_session.
+  Live telemetry against the file view (three of those files played through liveTick as if live): the same laps
+  count (live valid = the file's clean laps), with the same times and fuel.
 - PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
   race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
   option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution
