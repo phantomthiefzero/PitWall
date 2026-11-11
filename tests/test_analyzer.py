@@ -2431,3 +2431,37 @@ console.log(JSON.stringify({ cs: C.R.cs.map(c => ({ n: c.n, dv: c.dv, dm: c.dm, 
         if c["level"]:
             assert c["tips"] == 0 and not c["cause"], c
     assert sum(1 for c in r["corners"] if c["level"]) == 4 and sum(1 for c in r["corners"] if c["cause"]) >= 8
+
+
+def test_a_lap_is_not_given_the_time_of_the_lap_before():
+    # The accuracy audit, the driver's own files (Nov 2026): iRacing posts a lap's time a moment AFTER the line, and
+    # until then LapLastLapTime still holds the lap before's. The page took the first value near this lap's clock, so
+    # a lap within 0.05 s of the one before got ITS time: Suzuka's lap 8 read 119.888 (lap 7's) for 119.911, Sebring
+    # 121.875 for 121.915, and Watkins Glen's best lap 107.771 for 107.768. The fake posted the time on the line, to
+    # the sample: here it comes 2.5 s late and is the lap's real time, as in the sim.
+    if not NODE:
+        return
+    true = {1: 61.250, 2: 61.273, 3: 61.262, 4: 61.900, 5: 61.262}       # 2 and 3 within 0.05 s of the lap before
+    rows, t, last, due = [], 0.0, 0.0, None
+    for lap in range(1, 7):
+        T = true.get(lap, 30.0)
+        n = int(round(T * HZ))
+        for i in range(n if lap < 6 else 400):
+            if due is not None and t >= due[0]:
+                last, due = due[1], None
+            rows.append({"SessionTime": t, "Lap": lap, "LapDistPct": i / n, "Speed": 50.0, "Throttle": 1.0, "Gear": 4,
+                         "LapCurrentLapTime": i / HZ, "LapLastLapTime": last, "FuelLevel": 40 - 0.01 * len(rows) / 60,
+                         "TrackTempCrew": 30.0})
+            t += 1 / HZ
+        due = (t + 2.5, T)
+    path = os.path.join(tempfile.mkdtemp(), "close.ibt")
+    write_ibt(path, SESSION_YAML, CHANNELS, rows)
+    out = run_js("""
+const ib = ibt(readBytes(ARGS[0]));
+console.log(JSON.stringify({ laps: ib.laps.filter(l => l.time > 0).map(l => [l.lap, l.time]) }));
+""", path)
+    got = {int(k): v for k, v in out["laps"]}
+    for lap, T in true.items():
+        assert abs(got[lap] - T) < 1e-4, (lap, got[lap], T)
+    page = open(PAGE, encoding="utf-8").read()
+    assert "const was=rd(V.LapLastLapTime,e-1)" in page and "v>0&&v!==was&&Math.abs(v-tc)<.05" in page

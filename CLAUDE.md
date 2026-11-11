@@ -543,6 +543,16 @@ Broadcast (broadcast/)
   90) / wing / front ride height last: the directions match the 296's manual (0 softest, 90 stiffest). The
   understeer measure itself (steering used against neutral) has no second measure in the file: not verified.
   test: test_coaching_measures_each_lap_and_says_nothing_where_no_time_is_lost.
+  More of the driver's files (E:\iRacing Telemetry Files: Ferrari 296 GT3 at Sebring and Suzuka, Mustang GT3 at
+  Sebring, Formula iR-04 at Watkins Glen, two files): a lap within 0.05 s of the one before was given ITS time
+  (the analyzer's lap parser took the first LapLastLapTime near the lap's clock; iRacing posts it a moment after
+  the line and the variable holds the lap before's until then): Suzuka 119.888 for 119.911, Sebring 121.875 for
+  121.915, Watkins Glen's best lap 107.771 for 107.768. Now the first NEW value after the lap's own last sample
+  (as library.session_summary and the live path already did). After it every timed lap in all six files has
+  iRacing's time and the tank's fuel, and Coaching's time lost per corner agrees with each file's clock to 0.007 s
+  (13 to 17 corners a file). Open: the two Watkins Glen files find 14 and 13 corners (the corners come from the
+  reference lap), so "Corner 9" is not the same place in both. The fake posted lap times on the line, to the
+  sample; test_a_lap_is_not_given_the_time_of_the_lap_before posts them late and exact, as the sim does.
 - PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
   race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
   option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution
