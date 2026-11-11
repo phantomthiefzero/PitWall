@@ -39,6 +39,14 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .camwhere{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-left:112px}
 .camwhere input{width:70px;min-height:30px;padding:2px 6px}
 .camwhere button{min-height:30px;padding:2px 10px}
+#camMapBox{margin:6px 0 10px}
+#camMapBox.nomap canvas{display:none}
+.cammaphead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.cammaphead b{flex:1 1 200px}
+.cammaphead button{min-height:30px;padding:2px 10px}
+#camMap{width:100%;max-width:420px;aspect-ratio:1;display:block;background:var(--panel2);border:1px solid var(--line)}
+#camMapBox.picking #camMap{cursor:crosshair;border-color:var(--acc)}
+.camrow.picking>b{color:var(--acc)}
 .camwarn{color:#f0b040;font-style:normal;font-weight:600}
 select,input[type=text],input[type=number],input[type=password]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-height:34px;min-width:0}
 input[type=color]{width:42px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);padding:2px}
@@ -459,7 +467,11 @@ header{padding:6px 12px}
         <div id="dirOpts"></div>
         <p class="note">With replays on, the director shows the best recent moment again (a contact, a spin, a pass for the top places, a new leader) when nothing big is happening live, or under a caution: with the stinger in and out, from another angle, and straight back to live if something big happens meanwhile. At most one every 75 s.</p>
       <h3>Your cameras</h3>
-        <p class="note">What the director takes each camera group for, camera packs included. A camera that stands at one place (a corner, the start / finish line) is used only as a car comes past it, so the director has to know where it stands: put a car on camera, and as it passes that camera press "It is here". Until then the director leaves that camera alone. Kept for this track.</p>
+        <p class="note">What the director takes each camera group for, camera packs included. A camera that stands at one place (a corner, the start / finish line) is used only as a car comes past it, so the director has to know where it stands: click where it stands on the track map ("Place them on the map" takes each in turn), or put a car on camera and press "It is here" as it passes that camera. Until then the director leaves that camera alone. Kept for this track.</p>
+        <div id="camMapBox">
+          <div class="cammaphead"><b id="camMapSay"></b><button id="camMapGo" data-campick="next"></button><button id="camMapSkip" data-campick="skip" class="hide">Skip</button><button id="camMapStop" data-campick="" class="hide">Done</button></div>
+          <canvas id="camMap" width="720" height="720"></canvas>
+        </div>
         <div id="camList"></div>
       </section>
       <section id="setTicker"><h2>Race control ticker</h2><div id="tickerOpts"></div></section>
@@ -806,23 +818,115 @@ header{padding:6px 12px}
     if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return; }
     if (send({ type: "cmd", cmd: "director", action: "camera", ...obj })) pending.push(label);
   }
+  // ---- placing the cameras on the track map (the outline the overlay's map draws: points[i] is i / n of the lap).
+  //      A click on the track is that part of the lap; with "Place them on the map" each unplaced camera in turn.
+  //      Only a number the producer picks: nothing is worked out here but which point of the outline was clicked.
+  let camPick = null, camHover = null;
+  const camSpots = () => ((S.director || {}).cameras || []).filter(c => c.kind === "spot");
+  function camMapFits(m) {
+    const t = S.session && S.session.track;
+    if (!m || !m.points || !m.points.length) return false;
+    if (!t || m.trackId == null) return true;
+    return String(m.trackId) === String(t.TrackID) && (m.config || "default") === (t.TrackConfigName || "default");
+  }
+  const CAM_W = 720, CAM_PAD = 60;
+  function camXY(pct) {
+    const pts = S.camMap.points, n = pts.length, f = (((pct % 1) + 1) % 1) * n, i = Math.floor(f) % n, j = (i + 1) % n, r = f - Math.floor(f), z = CAM_W - CAM_PAD * 2;
+    return [CAM_PAD + (pts[i][0] + (pts[j][0] - pts[i][0]) * r) * z, CAM_PAD + (pts[i][1] + (pts[j][1] - pts[i][1]) * r) * z];
+  }
+  function camNearest(ev) {
+    const cv = $("camMap"), r = cv.getBoundingClientRect(), x = (ev.clientX - r.left) * CAM_W / r.width, y = (ev.clientY - r.top) * CAM_W / r.height;
+    const pts = S.camMap.points, z = CAM_W - CAM_PAD * 2;
+    let best = 0, bd = 1e18;
+    for (let i = 0; i < pts.length; i++) { const dx = CAM_PAD + pts[i][0] * z - x, dy = CAM_PAD + pts[i][1] * z - y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = i; } }
+    return bd > 60 * 60 ? null : best / pts.length;            // a click well off the track is not a place
+  }
+  function camPickNext(after) {
+    const sp = camSpots(), from = Math.max(0, sp.findIndex(c => c.name === after) + 1);
+    const nx = sp.slice(from).concat(sp.slice(0, from)).find(c => c.at == null && c.name !== after);
+    return nx ? nx.name : null;
+  }
+  function drawCamMap() {
+    // only this session's track (the relay may still hold the last one's outline; the session may come after it)
+    const box = $("camMapBox"), sp = camSpots(), map = S.camMap = camMapFits(S.camMapRaw) ? S.camMapRaw : null;
+    if (camPick && !sp.some(c => c.name === camPick)) camPick = null;
+    const todo = sp.filter(c => c.at == null).length;
+    box.classList.toggle("hide", !sp.length);
+    box.classList.toggle("nomap", !map);
+    box.classList.toggle("picking", !!(map && camPick));
+    $("camMapSay").textContent = !map ? "No track map for this track yet (the app draws one once you have driven here). Use \"It is here\" below."
+      : camPick ? `Click where "${camPick}" stands` : todo ? `${todo} camera${todo > 1 ? "s" : ""} not placed yet` : "Every camera is placed";
+    $("camMapGo").textContent = "Place them on the map";
+    $("camMapGo").classList.toggle("hide", !map || !!camPick || !todo || !canCamera());
+    $("camMapSkip").classList.toggle("hide", !map || !camPick || todo < 2);
+    $("camMapStop").classList.toggle("hide", !map || !camPick);
+    if (!map) return;
+    const g = $("camMap").getContext("2d"), cs = getComputedStyle(document.documentElement), v = k => cs.getPropertyValue(k).trim();
+    g.clearRect(0, 0, CAM_W, CAM_W);
+    g.lineJoin = g.lineCap = "round";
+    g.beginPath();
+    for (let k = 0; k <= 600; k++) { const [x, y] = camXY(k / 600); k ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.strokeStyle = v("--mut") || "#93a0b2"; g.lineWidth = 12; g.stroke();
+    // the line, and which way the cars go from it
+    const [sx, sy] = camXY(0), [ax, ay] = camXY(0.02), ang = Math.atan2(ay - sy, ax - sx);
+    g.save(); g.translate(sx, sy); g.rotate(ang); g.fillStyle = v("--fg") || "#fff"; g.fillRect(-3, -18, 6, 36);
+    g.beginPath(); g.moveTo(34, 0); g.lineTo(14, -11); g.lineTo(14, 11); g.closePath(); g.fill(); g.restore();
+    g.font = "600 22px " + (v("--txt") || "sans-serif"); g.textBaseline = "middle";
+    const label = (text, x, y, col) => {
+      const w = g.measureText(text).width, lx = x + 16 + w > CAM_W - 4 ? x - 16 - w : x + 16;
+      g.fillStyle = v("--bg") || "#000"; g.globalAlpha = .8; g.fillRect(lx - 4, y - 14, w + 8, 28); g.globalAlpha = 1;
+      g.fillStyle = col; g.fillText(text, lx, y);
+    };
+    for (const c of sp) {
+      if (c.at == null) continue;
+      const [x, y] = camXY(c.at), on = c.name === camPick;
+      g.beginPath(); g.arc(x, y, on ? 12 : 9, 0, Math.PI * 2); g.fillStyle = on ? (v("--acc") || "#fc0") : (v("--good") || "#2fd27a"); g.fill();
+      g.lineWidth = 3; g.strokeStyle = v("--bg") || "#000"; g.stroke();
+      label(c.name, x, y, v("--fg") || "#fff");
+    }
+    // the car on camera, to check a place against the picture
+    const cam = S.state && S.state.camera && S.state.camera.carIdx, car = cam != null && S.cars && Object.values(S.cars.cars || {}).find(c => c && c.idx === cam);
+    if (car && car.pct != null && car.pct >= 0 && car.surface !== "not_in_world") {
+      const [x, y] = camXY(car.pct);
+      g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.fillStyle = v("--bad") || "#f55"; g.fill();
+    }
+    if (camPick && camHover != null) {
+      const [x, y] = camXY(camHover);
+      g.beginPath(); g.arc(x, y, 13, 0, Math.PI * 2); g.strokeStyle = v("--acc") || "#fc0"; g.lineWidth = 4; g.stroke();
+      label(camPick + "  " + (camHover * 100).toFixed(1) + "%", x, y, v("--acc") || "#fc0");
+    }
+  }
+  $("camMap").addEventListener("mousemove", e => { if (!S.camMap || !camPick) return; camHover = camNearest(e); drawCamMap(); });
+  $("camMap").addEventListener("mouseleave", () => { camHover = null; if (S.camMap) drawCamMap(); });
+  $("camMap").addEventListener("click", e => {
+    if (!S.camMap || !camPick) return;
+    const at = camNearest(e);
+    if (at == null) return;
+    const name = camPick;
+    camSet({ name, at: Math.round(at * 10000) / 10000 }, name + ": " + (at * 100).toFixed(1) + "% of the lap");
+    camPick = camPickNext(name); camHover = null;                // on to the next one not placed
+    renderCamList(S.director || {});
+  });
   function renderCamList(dr) {
     const box = $("camList"), list = dr.cameras || [];
     const ae = document.activeElement;
     if (ae && box.contains(ae) && ae.matches("select,input")) return;     // not rebuilt while a field in it is open
-    const sig = JSON.stringify(list) + canCamera();
+    drawCamMap();
+    const sig = JSON.stringify(list) + canCamera() + !!S.camMap + camPick;
     if (sig === renderCamList.sig) return;
     renderCamList.sig = sig;
     if (!list.length) { box.innerHTML = '<p class="note">No session yet.</p>'; return; }
     const dis = canCamera() ? "" : "disabled";
-    box.innerHTML = list.map(c => {
+    // the cameras at one place first (the ones to place), then the rest in iRacing's order
+    box.innerHTML = [...list].sort((a, b) => (b.kind === "spot") - (a.kind === "spot")).map(c => {
       const mine = c.kind !== c.auto, spot = c.kind === "spot";
       const opts = `<option value=""${mine ? "" : " selected"}>Automatic: ${esc(CAM_KIND[c.auto] || c.auto)}</option>` +
         Object.entries(CAM_KIND).map(([k, l]) => `<option value="${k}"${mine && c.kind === k ? " selected" : ""}>${esc(l)}</option>`).join("");
       const where = !spot ? "" : `<div class="camwhere"><input type="number" min="0" max="100" step="0.5" data-camat="${esc(c.name)}" value="${c.at == null ? "" : +(c.at * 100).toFixed(1)}" placeholder="?" title="Where it stands: percent of the lap from the line" ${dis}><span class="note">% of the lap</span>` +
         `<button data-camhere="${esc(c.name)}" title="The car on camera is passing this camera now" ${dis}>It is here</button>` +
+        (S.camMap ? `<button data-campick="${esc(c.name)}" title="Click where it stands on the track map above" ${dis}>On the map</button>` : "") +
         (c.at == null ? '<em class="camwarn">Not used until placed</em>' : "") + "</div>";
-      return `<div class="camrow"><b>${esc(c.name)}</b><select data-camkind="${esc(c.name)}" ${dis}>${opts}</select>${where}</div>`;
+      return `<div class="camrow${camPick === c.name ? " picking" : ""}"><b>${esc(c.name)}</b><select data-camkind="${esc(c.name)}" ${dis}>${opts}</select>${where}</div>`;
     }).join("");
   }
   // ---- the camera and replay check (pitwall/simcheck.py): each command once, and what iRacing did
@@ -1596,6 +1700,11 @@ header{padding:6px 12px}
     else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
     else if (ds.renders) cmd({ cmd: "livery", action: "renders", on: !(S.lv && S.lv.config && S.lv.config.renders !== false) }, "Car pictures from iRacing");
     else if (ds.gwboard) cmd({ cmd: "director", action: "set", gridBoard: ds.gwboard }, "Grid board first: " + ({ auto: "automatic", always: "always", never: "never" }[ds.gwboard] || ds.gwboard));
+    else if (ds.campick !== undefined) {
+      camPick = ds.campick === "next" ? camPickNext(null) : ds.campick === "skip" ? camPickNext(camPick) : (ds.campick === camPick ? null : ds.campick || null);
+      camHover = null; renderCamList(S.director || {});
+      if (camPick) $("camMapBox").scrollIntoView({ block: "nearest" });
+    }
     else if (ds.camhere) camSet({ name: ds.camhere, here: true }, ds.camhere + ": it stands where that car is now");
     else if (ds.dirreel) cmd({ cmd: "director", action: "set", reel: !(S.director && S.director.reelOn !== false) }, "Highlight reel");
     else if (ds.dirrep) cmd({ cmd: "director", action: "set", replays: !(S.director && S.director.replays !== false) }, "Director replays");
@@ -2184,6 +2293,7 @@ header{padding:6px 12px}
         else if (was !== now && m.note) log(esc(m.note));
         dirty.cam = dirty.ctl = dirty.field = true; renderCameraButtons(true); renderDirector(); break;
       }
+      case "map": S.camMapRaw = m; renderCamList(S.director || {}); break;
       case "camera_packs": S.packs = m; renderCameraButtons(true); break;
       case "simcheck": S.simcheck = m; renderCheck(); break;
       case "livery_status": S.lv = m; dirty.lv = true; dirty.ctl = true; break;

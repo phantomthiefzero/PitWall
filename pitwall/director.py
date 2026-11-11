@@ -174,6 +174,19 @@ BATTLE_HOT_MAX_S = 240.0
 BATTLE_HOT_FATIGUE = 0.08
 BATTLE_STAY = 30.0
 BATTLE_GRACE_S = 6.0
+# Suzuka, Nov 2026 (39 cars, two classes, 46 minutes): 84% of the race was battles, one of them for 205 s and
+# another for 195 s, while the other class's lead changed hands four times in 30 s unseen; and with a fight
+# always on somewhere there were two replays in the whole race (1 of 285 passes not seen live was replayed).
+# A close battle keeps the air to BATTLE_HOT_MAX_S only while nothing as good is waiting: with another story within
+# SHARE_WITHIN of its score that has not been on air lately, it gives way at BATTLE_SHARE_MAX_S (and comes back).
+BATTLE_SHARE_MAX_S = 70.0
+SHARE_WITHIN = 20.0
+SHARE_REST_S = 40.0          # "not on air lately": off air this long
+# A lead change or a pass for a podium place the camera did not show is owed a replay: it does not wait for a quiet
+# stretch (there is none in a big field) nor for the battle on air to cool, only for the story on air to have had
+# SEGMENT_MIN_S, for nobody on air to be side by side or going for it, and REPLAY_OWED_GAP_S since the last replay.
+REPLAY_OWED_GAP_S = 75.0
+REPLAY_OWED_TOP = 3
 # Going for it (normalize attacks: the live gap over the last seconds, not the closing rate per lap): the camera goes
 # there before the move, so the pass is live, not its aftermath. Measured with scripts/director_report.py.
 ATTACK_INTERRUPT_BY = 5.0    # an attack may cut into a story younger than SEGMENT_MIN_S if it beats it by this
@@ -193,9 +206,14 @@ INCIDENT_FIGHT = 55.0        # a lone spin waits for a replay while a fight this
 # left alone. The producer can also say what any group is (Director.set_cameras).
 KINDS = ("far", "chase", "rear", "onboard", "detail", "gyro", "trackside", "spot", "aerial", "pit", "never")
 _W = lambda *ws: re.compile(r"(?<![a-z])(?:" + "|".join(ws) + r")(?![a-z])")
-_RE_LINE = _W(r"s/?f", r"start ?(?:/|-|and|&)? ?finish", r"finish(?: ?line)?", r"start ?line", r"flag ?stand", r"starter")
+_RE_LINE = _W(r"s/?f", r"start ?(?:/|-|and|&)? ?finish", r"finish(?: ?line)?", r"start(?: ?line)?", r"flag ?stand", r"starter",
+             r"grid", r"lights")
 _RE_PLACE = _W(r"turns?", r"t ?\d+[a-z]?", r"corners?", r"chicane", r"hairpin", r"esses", r"bend", r"straight", r"bridge",
                r"carousel", r"kink", r"curve", r"grandstands?", r"tower", r"apex", r"exit", r"entry", r"braking")
+# corners with a name of their own (a pack's "Drone Spoon", "Eau Rouge Cam"): the usual words in such names
+_PLACE_NAMES = re.compile(r"spoon|degner|dunlop|130r|eau rouge|raidillon|parabolica|lesmo|ascari|maggot|becket|copse|stowe|"
+                          r"corkscrew|karussell|pouhon|blanchimont|tosa|rivazza|variante|loop|sweeper|banking|oval|"
+                          r"north|south|east|west|infield|paddock|hill|crest|dip|tunnel|section|sector|complex")
 _RE_AIR = re.compile(r"drone|heli|blimp|chopper|aerial|sky|overhead|bird")
 _RE_DETAIL = re.compile(r"susp|wheel|tire|tyre|gearbox|brake|pedal|exhaust|engine|foot")
 _RE_ONBOARD = re.compile(r"cockpit|dash|helmet|visor|driver|on-?board|in-?car|hood|bonnet|bumper|nose|roof|roll ?bar|mirror|"
@@ -222,7 +240,8 @@ def camera_role(name: str | None, cams=None) -> tuple:
     if re.match(r"tv(?![a-z])|broadcast|trackside", n):
         return "trackside", None
     if _RE_AIR.search(n):
-        return "aerial", None                   # "Drone Cam" flies above
+        # "Drone Cam" flies above the car it is given; "Drone Turn 1" hangs over one place (Suzuka, Nov 2026)
+        return ("spot", None) if _RE_PLACE.search(n) or _PLACE_NAMES.search(n) else ("aerial", None)
     if "pit" in n.split() or n.startswith("pit"):
         return "pit", None
     if _RE_LINE.search(n):
@@ -908,6 +927,10 @@ class Director:
         self._aired[key] = spans
         return sum(b - max(a, now - FATIGUE_S) for a, b in spans)
 
+    def _off_air_s(self, key, now):
+        ends = [b for _, b in self._aired.get(key, [])]
+        return now - max(ends) if ends else 1e9
+
     def _stories(self, cars, by, cars_msg, moments, t_live, now) -> list[dict]:
         """Every story worth a camera now, with its interest score (before fatigue)."""
         out = []
@@ -1094,8 +1117,13 @@ class Director:
             sc = st["score"] - st.get("fatigue", 0.4) * self._aired_s(st["key"], now)
             if seg and st["key"] == seg["key"]:
                 age = now - seg["start"]
-                sc += 25 if age < SEGMENT_MIN_S else -200 if age >= st.get("max", SEGMENT_MAX_S) else 0
-                if st.get("hot") and age >= SEGMENT_MIN_S and age < st.get("max", SEGMENT_MAX_S):
+                mx = st.get("max", SEGMENT_MAX_S)
+                if st.get("hot") and mx > BATTLE_SHARE_MAX_S and any(
+                        o is not st and o["score"] >= st["score"] - SHARE_WITHIN and self._off_air_s(o["key"], now) >= SHARE_REST_S
+                        for o in stories):
+                    mx = BATTLE_SHARE_MAX_S           # something as good is waiting: share the air
+                sc += 25 if age < SEGMENT_MIN_S else -200 if age >= mx else 0
+                if st.get("hot") and age >= SEGMENT_MIN_S and age < mx:
                     sc += BATTLE_STAY                 # still close: something must be much bigger to take the air
             st["now"] = sc
             if sc > best_s:
@@ -1229,7 +1257,8 @@ class Director:
         held = [c for ts, c in h if ts <= t - SEEN_LIVE_S][-1:]      # on air as the window opened, held into it
         return any(c in pair for c in held) or any(t - SEEN_LIVE_S < ts <= t and c in pair for ts, c in h)
 
-    def _replay_candidate(self, by, t_live, snum=None):
+    def _replay_candidate(self, by, t_live, snum=None, owed=False):
+        """The best moment to show again. owed: only a lead change or a pass for a podium place the camera missed."""
         best, best_s = None, REPLAY_MIN
         done = [self._moments[k] for k in self._replayed if k in self._moments]
         for key, e in self._moments.items():
@@ -1244,6 +1273,9 @@ class Director:
             if t_live is None or e.get("t") is None or not (REPLAY_AFTER_S <= t_live - e["t"] <= REPLAY_WINDOW_S):
                 continue
             k, what = e.get("kind"), e.get("what")
+            if owed and not ((k == "class_lead" or (k == "pass" and (e.get("classPos") or 99) <= REPLAY_OWED_TOP))
+                             and not self._seen_live(e)):
+                continue
             if k == "race_incident":
                 if what not in ("contact", "spin", "lost_speed") or (what == "lost_speed" and e.get("confidence") == "low"):
                     continue
@@ -1262,7 +1294,7 @@ class Director:
         return best
 
     def _maybe_replay(self, groups, cars, by, cars_msg, moments, t_live, race_state, now) -> bool:
-        if not (self.replay_fn and self.replays_on) or now - self._last_replay_at < REPLAY_GAP_S:
+        if not (self.replay_fn and self.replays_on) or now - self._last_replay_at < REPLAY_OWED_GAP_S:
             return False
         caution = bool(((cars_msg.get("derived") or {}).get("caution") or {}).get("active"))
         race = (cars_msg.get("derived") or {}).get("race") or {}
@@ -1274,16 +1306,25 @@ class Director:
         if self.segment and now - self.segment["start"] < SEGMENT_MIN_S:
             return False                              # let the story on air have its time first
         stories = self._stories(cars, by, cars_msg, moments, t_live, now)
-        if self.segment and any(st.get("hot") and st["key"] == self.segment["key"] for st in stories):
-            return False                              # a close battle on air is not left for a replay
-        if not caution and any(st.get("urgent") for st in stories):
+        snum = getattr(self, "_snum", None)
+        owed = self._replay_candidate(by, t_live, snum, owed=True)
+        if owed is None and now - self._last_replay_at < REPLAY_GAP_S:
+            return False
+        on_air = next((st for st in stories if self.segment and st["key"] == self.segment["key"]), None)
+        if on_air is not None and on_air.get("hot"):
+            b = self._battle_of(cars_msg, self.segment.get("cars"))
+            close = bool(b and b.get("gapsS")) and min(b["gapsS"]) < MOVE_GAP_S * (b.get("scale") or 1.0)
+            if owed is None or close or on_air.get("urgent"):
+                return False                          # a close battle on air is not left for a replay (one owed
+                                                      # may take it while the two are not right together)
+        if not caution and owed is None and any(st.get("urgent") for st in stories):
             return False                              # someone going for it right now: a pass may come any second
-        if not caution:
+        if not caution and owed is None:
             live = max((st["score"] - st.get("fatigue", 0.4) * self._aired_s(st["key"], now)
                         for st in stories), default=0.0)
             if live >= REPLAY_CALM:
                 return False
-        pick = self._replay_candidate(by, t_live, getattr(self, "_snum", None))
+        pick = owed or self._replay_candidate(by, t_live, snum)
         if not pick:
             return False
         key, e = pick
