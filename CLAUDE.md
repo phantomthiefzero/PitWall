@@ -535,7 +535,7 @@ Broadcast (broadcast/)
   file's own clock to 0.005 s (the average lap IS a sum over the laps). What you do in a corner did not: it was read
   off the average lap's trace, whose slowest point is not the laps' slowest speed and whose pedal thresholds are
   nobody's (corner 8 "2.3 km/h quicker at the apex" where the laps' middle was level; corner 13's throttle "8.5 m
-  late" where it was 3.9 m; braking points in steps of the 4.25 m grid). Now coachCompare takes the MEDIAN over the
+  late" where it was 3.9 m, 5.9 m once read finely; braking points in steps of the 4.25 m grid). Now coachCompare takes the MEDIAN over the
   laps, each measured on its own against the reference (c.d, c.dv, c.dm, c.dp; c.trace keeps the old; three laps or
   more, a pedal point only from laps that used it), and a corner within CO_LEVEL_S of the reference is level: no
   tips, no cause (it offered "get 1.5 m closer to the apex" in a corner taken 0.02 s quicker than the best lap).
@@ -562,6 +562,21 @@ Broadcast (broadcast/)
   test: test_a_tracks_corners_are_the_same_corners_in_every_session.
   Live telemetry against the file view (three of those files played through liveTick as if live): the same laps
   count (live valid = the file's clean laps), with the same times and fuel.
+- Methods review: how the data is read and what the advice stands on (Nov 2026, the driver's files; 292 channels a
+  file at 60 Hz). Sound, checked in the files: Brake is the pedal the car gets (the driver's force curve applied;
+  BrakeRaw is the foot, 0.04-0.19 apart on average) and ABS does not pull it down, so it is the right braking signal;
+  Throttle equals ThrottleRaw; tyre temperatures in a FILE are the surface ones (LFtempL/M/R, live at 60 Hz) and
+  Setup uses those; the carcass temperatures and wear (tempCL/CM/CR, wearL/M/R) only change in the pit stall, in a
+  file as live (the Live page's runs table now says "at the last stop"); understeer is steering against the
+  low-load fit (the usual understeer gradient; VelocityY gives body slip for oversteer). Not good enough, fixed:
+  pedal points were grid points (N = 1000 a lap: 4 m at Indianapolis, 6 m at Suzuka, 14 m at Le Mans) and
+  Coaching's advice starts at 6 m, so one grid point made "Brake 6 m later" / "Turn in 6 m sooner" at Suzuka. Now
+  read between the grid's points from the lap's own samples (crossPt, rawCross: met's baF / taF, coachFacts' baF /
+  taF / tinF; the integer ones stay for indexing; coachFactsSum's medians use the fine ones): a braking point's
+  error against the file went from a median of 0.7-1.8 m to 0.2-0.6 m, Suzuka's corner 8 reads "Brake 11 m later".
+  A new distance in advice must come from a fine reading, not a grid index. The slowest point's place (mg) is still
+  a grid point (a flat minimum has no sharper place). test:
+  test_pedal_points_are_read_between_the_grids_points_from_the_laps_own_samples.
 - PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
   race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
   option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution

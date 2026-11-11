@@ -1834,10 +1834,10 @@ class CoachCauseTest(unittest.TestCase):
 
     def test_the_cause_in_the_order_you_meet_it(self):
         r = self.r
-        # the three biggest, in corner order; a long straight after the corner puts its exit (wheelspin, the exit
-        # width) ahead of the turn-in (coWeight)
-        self.assertEqual(r["steps"], ["brake_later", "spin", "use_exit"])
-        self.assertEqual(r["head"], "Brake later, then less wheelspin on exit")
+        # the three biggest, in corner order. The turn-in is 14.4 m early in this lap (see d_tin below); read off the
+        # grid it was 12 m and fell just behind the exit width, read between grid points it is ahead of it
+        self.assertEqual(r["steps"], ["brake_later", "turn_later", "spin"])
+        self.assertEqual(r["head"], "Brake later, then turn in later")
         self.assertIsNone(r["c2"])                                             # the same in every lap: nothing to say
 
     def test_measured_against_the_best(self):
@@ -2424,8 +2424,8 @@ console.log(JSON.stringify({ cs: C.R.cs.map(c => ({ n: c.n, dv: c.dv, dm: c.dm, 
     cs = {c["n"]: c for c in r["cs"]}
     assert all(c["medOf"] == 21 for c in r["cs"]), "every corner from all 21 laps"
     assert abs(cs[8]["dv"]) < 0.5 and cs[8]["trace"]["dv"] > 2, "corner 8: level at the apex, not quicker"
-    assert abs(cs[13]["dm"] - 3.9) < 0.5 and cs[13]["trace"]["dm"] > 8
-    assert abs(cs[4]["d"] + 7.7) < 0.5, "corner 4: the middle of 21 braking points, not a step of the 4.25 m grid"
+    assert abs(cs[13]["dm"] - 5.9) < 0.5 and cs[13]["trace"]["dm"] > 8
+    assert abs(cs[4]["d"] + 9.6) < 0.5, "corner 4: the middle of 21 braking points, not a step of the 4.25 m grid"
     for c in r["corners"]:
         assert c["level"] == (not c["dt"] > 0.02)
         if c["level"]:
@@ -2503,3 +2503,32 @@ console.log(JSON.stringify({ one: run(ARGS[0]), two: run(ARGS[1]) }));
         r = run_js(js, a, b)
         assert len(r["one"]) == len(r["two"]), "the same corners whichever session is opened first"
         assert all(abs(p - q) < 70 for p, q in zip(r["one"], r["two"])), "and each number is the same place"
+
+
+def test_pedal_points_are_read_between_the_grids_points_from_the_laps_own_samples():
+    # The methods review (Nov 2026). The lap is put on a grid of 1000 points: 4 m a point at Indianapolis, 6 m at
+    # Suzuka and Sebring, 14 m at Le Mans; the file has a sample every metre or so at speed. A braking or throttle
+    # point read as a grid point was only good to a point, and Coaching's advice starts at a 6 m difference: at
+    # Suzuka ONE grid point made "Brake 6 m later" and "Turn in 6 m sooner". Against the files' own samples a braking
+    # point's error went from a median of 0.7-1.8 m to 0.2-0.6 m (four files), and Suzuka's corner 8 reads "Brake
+    # 11 m later" with no turn-in advice.
+    if not NODE:
+        return
+    out = run_js("""
+const n = 9000, o = { n, D: new Float64Array(n), Brake: new Float64Array(n), Throttle: new Float64Array(n) };
+const at = 0.31234;                                              // the pedal goes down here: between two grid points
+for (let i = 0; i < n; i++) { o.D[i] = i / (n - 1); o.Brake[i] = o.D[i] >= at ? Math.min(1, (o.D[i] - at) * 400) : 0 }
+const X = rs(Object.assign({ Speed: new Float64Array(n).fill(50), Steer: new Float64Array(n), Gear: new Float64Array(n), Lat: new Float64Array(n), Lon: new Float64Array(n),
+  t: Float64Array.from({ length: n }, (_, i) => i / 60), RPM: new Float64Array(n), ABS: new Float64Array(n), LatG: new Float64Array(n), LonG: new Float64Array(n), VertG: new Float64Array(n), YawRate: new Float64Array(n) }, o), []);
+let g = 0; while (X.Brake[g] <= .08) g++;
+const truth = (at + .08 / 400) * (N - 1);
+console.log(JSON.stringify({ grid: g, truth, between: crossPt(X.Brake, g, .08), raw: rawCross(o, 'Brake', g, crossPt(X.Brake, g, .08), .08),
+  noRaw: rawCross({ n: N, D: X.Brake, Brake: X.Brake }, 'Brake', g, 123.4, .08), none: rawCross(o, 'Brake', 700, 700.5, .08), flat: crossPt([0.5, 0.5], 1, .08) }));
+""")
+    assert abs(out["raw"] - out["truth"]) < 0.02, "the file's own samples: to a fiftieth of a grid point"
+    assert abs(out["between"] - out["truth"]) < 0.5 < abs(out["grid"] - out["truth"]) + 0.5 and out["grid"] - out["truth"] > 0.3
+    assert out["noRaw"] == 123.4 and out["none"] == 700.5 and out["flat"] == 1, "no samples, or no crossing there: the grid's answer"
+    page = open(PAGE, encoding="utf-8").read()
+    for need in ("c.d=(c.a.baF-c.b.baF)*mpg", "c.dm=(c.a.taF-c.b.taF)*mpg", "f.baF=f.braked?rawCross(raw,'Brake',ba,", "f.tinF=g>0&&p0<th&&p1>p0?",
+                 "ba:md(br.map(f=>F(f,'ba')))", "tin:md(pos(L.map(f=>F(f,'tin'))))", "Carcass temps at the last stop"):
+        assert need in page, need
