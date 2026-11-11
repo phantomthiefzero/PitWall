@@ -531,6 +531,18 @@ Broadcast (broadcast/)
   that race; far from the end it stays an estimate (a lap either way) and says so. race_length's lapsByTime uses the
   same sum. test: test_a_timed_races_laps_left_depend_on_where_the_car_is_on_the_lap. Check a number against a
   second measure in the driver's own file before trusting it; the captures are spectator's and carry no fuel.
+  Coaching, same file (21 laps against the best lap): the time lost in each of the 14 corners agrees with the
+  file's own clock to 0.005 s (the average lap IS a sum over the laps). What you do in a corner did not: it was read
+  off the average lap's trace, whose slowest point is not the laps' slowest speed and whose pedal thresholds are
+  nobody's (corner 8 "2.3 km/h quicker at the apex" where the laps' middle was level; corner 13's throttle "8.5 m
+  late" where it was 3.9 m; braking points in steps of the 4.25 m grid). Now coachCompare takes the MEDIAN over the
+  laps, each measured on its own against the reference (c.d, c.dv, c.dm, c.dp; c.trace keeps the old; three laps or
+  more, a pedal point only from laps that used it), and a corner within CO_LEVEL_S of the reference is level: no
+  tips, no cause (it offered "get 1.5 m closer to the apex" in a corner taken 0.02 s quicker than the best lap).
+  Setup on the same file: mid-corner understeer, front bar softer / rear bar stiffer (said to be at its maximum,
+  90) / wing / front ride height last: the directions match the 296's manual (0 softest, 90 stiffest). The
+  understeer measure itself (steering used against neutral) has no second measure in the file: not verified.
+  test: test_coaching_measures_each_lap_and_says_nothing_where_no_time_is_lost.
 - PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
   race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
   option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution

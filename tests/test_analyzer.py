@@ -2394,3 +2394,40 @@ console.log(JSON.stringify({ got: cases.map(c => timedLapsLeft(c[0], c[1], c[2],
     assert abs(f["need"] - 2.48 * 2.5) < 1e-6 and f["short"] < 0, "the rest of this lap and two more: enough aboard"
     assert out["lapRace"] == 12 and out["counted"] is True, "a lap race states it outright"
     assert out["over"] == 1, "the clock is out: this lap is the last"
+
+
+def test_coaching_measures_each_lap_and_says_nothing_where_no_time_is_lost():
+    # The accuracy audit (Nov 2026, Indianapolis, 21 laps against the best lap). Checked against the file's own clock:
+    # the time lost in each of the 14 corners, to 0.005 s. Not concrete: what you DO in a corner was read off the
+    # average lap's trace (corner 8: "2.3 km/h quicker at the apex" where the laps' middle was level; corner 13: the
+    # throttle "8.5 m late" where it was 3.9 m), and advice was offered in corners where no time is lost ("get 1.5 m
+    # closer to the apex" in a corner taken 0.02 s quicker than the best lap).
+    page = open(PAGE, encoding="utf-8").read()
+    cmp_ = page.split("function coachCompare(avg,best,laps){")[1].split("\nfunction ")[0]
+    assert "c.trace={d:c.d,dv:c.dv,dm:c.dm,dp:c.dp}" in cmp_ and "if(qs.length<3)return" in cmp_
+    assert "set('d',qs.filter(q=>q.a.ba>=0&&q.b.ba>=0).map(q=>q.d))" in cmp_, "a braking point only from laps that braked"
+    assert cmp_.index("c.trace=") < cmp_.index("tips.push"), "the tips are written from each lap's own measure"
+    assert "o.level=!(c.dt>CO_LEVEL_S);if(o.level)o.tips=[];o.cause=o.level?null:coachCause(o,u)" in cmp_
+    out = run_js("""
+console.log(JSON.stringify({ odd: coMed([3, 1, 2]), even: coMed([4, 1, 3, 2]), holes: coMed([null, 5, NaN, 7]), none: coMed([]), level: CO_LEVEL_S }));
+""")
+    assert out == {"odd": 2, "even": 2.5, "holes": 6, "none": None, "level": 0.02}
+    if not os.path.exists(REAL_IBT):
+        return
+    r = run_js("""
+IB.a = ibt(readBytes(ARGS[0]));
+COACH.src = 'ibt'; COACH.to = 'best';
+const X = coachRun(), C = X.C;
+console.log(JSON.stringify({ cs: C.R.cs.map(c => ({ n: c.n, dv: c.dv, dm: c.dm, d: c.d, trace: c.trace, medOf: c.medOf })),
+  corners: C.corners.map(c => ({ n: c.n, dt: c.dt, level: c.level, tips: c.tips.length, cause: !!c.cause })) }));
+""", REAL_IBT)
+    cs = {c["n"]: c for c in r["cs"]}
+    assert all(c["medOf"] == 21 for c in r["cs"]), "every corner from all 21 laps"
+    assert abs(cs[8]["dv"]) < 0.5 and cs[8]["trace"]["dv"] > 2, "corner 8: level at the apex, not quicker"
+    assert abs(cs[13]["dm"] - 3.9) < 0.5 and cs[13]["trace"]["dm"] > 8
+    assert abs(cs[4]["d"] + 7.7) < 0.5, "corner 4: the middle of 21 braking points, not a step of the 4.25 m grid"
+    for c in r["corners"]:
+        assert c["level"] == (not c["dt"] > 0.02)
+        if c["level"]:
+            assert c["tips"] == 0 and not c["cause"], c
+    assert sum(1 for c in r["corners"] if c["level"]) == 4 and sum(1 for c in r["corners"] if c["cause"]) >= 8

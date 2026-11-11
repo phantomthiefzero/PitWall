@@ -2382,6 +2382,8 @@ if(!steps.length&&cc.dv<=-1.5)steps.push({k:'apex_speed',o:7,w:1,t:'Carry more s
 const target=cc.dv<=-1.5&&b.ms&&y.ms?{ms:b.ms,now:y.ms,t:'Aim for '+S(b.ms)+' at the slowest point (now '+S(y.ms)+').'}:null;
 const hd=steps.slice(0,2).map((x,i)=>{const t=CO_HEAD[x.k]||x.t.split(/[:.]/)[0];return i?t.charAt(0).toLowerCase()+t.slice(1):t}).join(', then ');
 return steps.length||target?{steps,target,head:hd||'Carry more speed',focus:coFocus(cc.after,u)}:null}
+const coMed=a=>{const v=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q),n=v.length;return n?(n%2?v[(n-1)/2]:(v[n/2-1]+v[n/2])/2):null};
+const CO_LEVEL_S=0.02;      // a corner within this of the reference is level: nothing to say about it
 function coachCompare(avg,best,laps){const R0=analyze(avg,best),u=U(),out={total:R0.total,pct:R0.pct,len:R0.len,corners:[],R:R0};
 // the reference lap with its extra channels, and each lap's facts in every corner, measured against it
 const xs=CO_XK.filter(k=>best.ext&&best.ext[k]);xs.forEach(k=>best['x:'+k]=best.ext[k]);const Bx=rs(best,xs.map(k=>'x:'+k));
@@ -2389,6 +2391,18 @@ const fb=R0.cs.map((c,k)=>coachFacts(Bx,c,k?R0.cs[k-1].e:null,null,null,0)),side
 const per=[],LF=[];(laps||[]).forEach(l=>{try{const r=analyze(l,best);per.push(r.cs);if(r.cs.length!==R0.cs.length)return;const off=coLineOff(r.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(r.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k])))}catch(e){}});
 if(!LF.length){const off=coLineOff(R0.A,Bx);LF.push(R0.cs.map((c,k)=>coachFacts(R0.A,c,k?R0.cs[k-1].e:null,fb[k],off,side[k])))}
 R0.cs.forEach((c,k)=>{c.fx=Object.assign({b:fb[k]},coachFactsSum(LF.map(L=>L[k]),c.mpg))});
+// What you do in a corner is the MIDDLE of what your laps did there, each lap measured on its own against the
+// reference: the brake point, the slowest speed, where the throttle comes back and where it is fully open. The
+// average lap's trace blurs them (its slowest point is the average of speeds at one place, not of each lap's slowest
+// speed, and a threshold on an averaged pedal is nobody's braking point): Indianapolis, 21 laps, corner 8 read
+// 2.3 km/h quicker than the best lap at the apex where the laps' middle was level with it, and corner 13's throttle
+// 8.5 m late where the middle was 3.9 m. Time lost stays the average lap's (it IS a sum over the laps: checked to
+// 0.005 s a corner against the file's own clock). Three laps or more; a pedal point only from laps that used it.
+R0.cs.forEach(c=>{const qs=per.map(cs=>{let b=null,bd=1e9;cs.forEach(q=>{const d=Math.abs(q.ap-c.ap);if(d<bd){bd=d;b=q}});return bd<=30?b:null}).filter(Boolean);
+if(qs.length<3)return;c.trace={d:c.d,dv:c.dv,dm:c.dm,dp:c.dp};
+const set=(k,vals)=>{if(vals.length>=3&&vals.length*2>=qs.length){const m=coMed(vals);if(m!=null)c[k]=m}};
+set('dv',qs.map(q=>q.dv));set('dp',qs.map(q=>q.dp));
+set('d',qs.filter(q=>q.a.ba>=0&&q.b.ba>=0).map(q=>q.d));set('dm',qs.filter(q=>q.a.ta>=0&&q.b.ta>=0).map(q=>q.dm));c.medOf=qs.length});
 R0.cs.forEach(c=>{const ds=per.map(cs=>{let b=null,bd=1e9;cs.forEach(q=>{const d=Math.abs(q.ap-c.ap);if(d<bd){bd=d;b=q}});return bd<=30&&b?b.dt:null}).filter(v=>v!=null);
 const m=ds.length?ds.reduce((s,x)=>s+x,0)/ds.length:null,sd=ds.length>1?Math.sqrt(ds.reduce((s,x)=>s+(x-m)**2,0)/(ds.length-1)):null;
 let coastA=0,coastB=0;for(let g=c.s;g<=c.e;g++){coastA+=R0.A.Coast[g];coastB+=R0.B.Coast[g]}const coast=(coastA-coastB)*c.mpg;
@@ -2401,7 +2415,10 @@ if(coast>=8)tips.push({k:'coast',w:coast,t:'Less coasting: '+ds2(coast)+' more w
 if(c.dp<=-10&&c.a.ba>=0)tips.push({k:'brake_harder',w:-c.dp,t:'Brake harder at the start: your best uses '+Math.abs(c.dp).toFixed(0)+'% more peak brake pressure.'});
 if(sd!=null&&sd>=0.12*(COACH.tol||1))tips.push({k:'consistency',w:sd*100,t:'Inconsistent here (±'+sd.toFixed(2)+' s lap to lap): pick one fixed marker for braking and turn-in and repeat it.'});
 tips.sort((p,q)=>q.w-p.w);const after=coFullAfter(R0.B,c.ap,c.mpg);
-const o={n:c.n,ap:c.ap,s:c.s,e:c.e,pos:c.pos,mpg:c.mpg,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips,fx:c.fx,after};o.cause=coachCause(o,u);out.corners.push(o)});
+const o={n:c.n,ap:c.ap,s:c.s,e:c.e,pos:c.pos,mpg:c.mpg,dt:c.dt,d:c.d,dv:c.dv,dm:c.dm,dp:c.dp,coast,sd,laps:ds.length,tips,fx:c.fx,after};
+// no advice for a corner where no time is lost (level with the reference, or quicker): Indianapolis offered "get 1.5 m
+// closer to the apex" in a corner taken 0.02 s QUICKER than the best lap, and an early apex in one 0.008 s slower
+o.level=!(c.dt>CO_LEVEL_S);if(o.level)o.tips=[];o.cause=o.level?null:coachCause(o,u);out.corners.push(o)});
 out.corners.sort((p,q)=>q.dt-p.dt);out.between=R0.total-R0.cs.reduce((s,c)=>s+c.dt,0);return out}
 // live laps kept per car and track (compact: 250 points), so an average can be built later
 const COACH_LIVE_KEY='coachLive',COACH_LIVE_MAX=40,COACH_PTS=250;
