@@ -229,6 +229,7 @@ SessionTimeRemain; with both limits, `endsBy` picks whichever ends first at the 
   QualifyPositions or QualifyResultsInfo; iRacing's 0-based positions shown from 1. `perRow` is the first number of
   WeekendOptions/StartingGrid ("2x2 inline pole on left" -> 2; 2 when unreadable), and `row` counts by it.
 - `director` (bridge): `{owner: you|race|grid|battle, on, mode, resume, style, holdS, autoGrid,
+  gridAuto (the director walks the grid by itself at this start), cameras: [{num, name, kind, auto, at, n}] (what each camera group is taken for),
   gridHoldS, gridLeft, gridTotal, gridByRow, gridShort, gridPaused, gridManual, gridAt, gridBoard: {row, rows}|null (the grid board on air: the row its light is on, 0 while it comes in), gridBoardMode: auto|always|never, replays, stinger: {seq, dir: toReplay|toLive}|null, replay: {label, car, phase}|null, battle: [idx]|null, note, current: {car, num, group, groupName,
   reason, gridPos?}, styles}`. One owner moves the camera at a time. Any `camera` command (a cut by
   hand) makes the owner `you`; `grid` and `battle` are temporary and hand back to `resume` when they
@@ -443,6 +444,10 @@ Director and liveries (producer token, `--allow-camera`):
 {"type":"cmd","cmd":"director","action":"set","on":true,"style":"cinematic"|"onboard"|"tv","holdS":8,"autoGrid":true,"gridHoldS":5,"gridRows":true,"replays":true,"stinger":true,"stingerCutMs":420}
 {"type":"cmd","cmd":"director","action":"grid_walk","holdS":5,"capture":false,"manual":false}
 {"type":"cmd","cmd":"director","action":"grid_next"}   // also grid_prev, grid_pause {on}, grid_jump {car: idx}
+{"type":"cmd","cmd":"director","action":"camera","name":"Turn 5","kind":"spot","at":0.53}
+    // what a camera group is (kind: far, chase, rear, onboard, detail, gyro, trackside, spot, aerial, pit, never;
+    // "" = what its name says) and, for a camera at one place, where it stands ("at": fraction of the lap, or
+    // "here": true = where the car on camera is now). Kept per track. Works with the broadcast off.
 {"type":"cmd","cmd":"director","action":"grid_walk","holdS":5,"capture":true}
 {"type":"cmd","cmd":"director","action":"follow_battle","cars":[12,7]}
 {"type":"cmd","cmd":"director","action":"stop"}

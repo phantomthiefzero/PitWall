@@ -33,6 +33,13 @@ button.on{background:var(--acc);color:var(--ink);border-color:var(--acc);font-we
 button.big{font-weight:700;min-height:40px}
 button.warn{background:var(--bad);border-color:var(--bad);color:#fff;font-weight:700}
 button:disabled{opacity:.45;cursor:not-allowed}
+.camrow{display:grid;grid-template-columns:104px minmax(0,1fr);align-items:center;gap:4px 8px;padding:5px 0;border-top:1px solid var(--line)}
+.camrow>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.camrow select{min-height:30px;padding:2px 6px;width:100%}
+.camwhere{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-left:112px}
+.camwhere input{width:70px;min-height:30px;padding:2px 6px}
+.camwhere button{min-height:30px;padding:2px 10px}
+.camwarn{color:#f0b040;font-style:normal;font-weight:600}
 select,input[type=text],input[type=number],input[type=password]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-height:34px;min-width:0}
 input[type=color]{width:42px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);padding:2px}
 header{position:sticky;top:0;z-index:5;background:#07090c;border-bottom:1px solid var(--line);padding:8px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -451,6 +458,9 @@ header{padding:6px 12px}
         <h2>Auto-director</h2>
         <div id="dirOpts"></div>
         <p class="note">With replays on, the director shows the best recent moment again (a contact, a spin, a pass for the top places, a new leader) when nothing big is happening live, or under a caution: with the stinger in and out, from another angle, and straight back to live if something big happens meanwhile. At most one every 75 s.</p>
+      <h3>Your cameras</h3>
+        <p class="note">What the director takes each camera group for, camera packs included. A camera that stands at one place (a corner, the start / finish line) is used only as a car comes past it, so the director has to know where it stands: put a car on camera, and as it passes that camera press "It is here". Until then the director leaves that camera alone. Kept for this track.</p>
+        <div id="camList"></div>
       </section>
       <section id="setTicker"><h2>Race control ticker</h2><div id="tickerOpts"></div></section>
     </div>
@@ -787,6 +797,33 @@ header{padding:6px 12px}
     if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return false; }
     if (send({ type: "cmd", ...obj })) { pending.push(label); return true; }
     return false;
+  }
+  // ---- your cameras (director.cameras; pitwall/director.py camera_role and set_cameras): what each group is, and
+  //      for a camera at one place, where it stands. A setting: it works with the broadcast off.
+  const CAM_KIND = { far: "Main chase", chase: "Close chase", rear: "Looking back from in front", onboard: "On the car", detail: "Close-up (wheel, gearbox)",
+    gyro: "Gyro", trackside: "TV cameras round the lap", spot: "One camera at one place", aerial: "From above", pit: "Pit lane", never: "Never use" };
+  function camSet(obj, label) {
+    if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return; }
+    if (send({ type: "cmd", cmd: "director", action: "camera", ...obj })) pending.push(label);
+  }
+  function renderCamList(dr) {
+    const box = $("camList"), list = dr.cameras || [];
+    const ae = document.activeElement;
+    if (ae && box.contains(ae) && ae.matches("select,input")) return;     // not rebuilt while a field in it is open
+    const sig = JSON.stringify(list) + canCamera();
+    if (sig === renderCamList.sig) return;
+    renderCamList.sig = sig;
+    if (!list.length) { box.innerHTML = '<p class="note">No session yet.</p>'; return; }
+    const dis = canCamera() ? "" : "disabled";
+    box.innerHTML = list.map(c => {
+      const mine = c.kind !== c.auto, spot = c.kind === "spot";
+      const opts = `<option value=""${mine ? "" : " selected"}>Automatic: ${esc(CAM_KIND[c.auto] || c.auto)}</option>` +
+        Object.entries(CAM_KIND).map(([k, l]) => `<option value="${k}"${mine && c.kind === k ? " selected" : ""}>${esc(l)}</option>`).join("");
+      const where = !spot ? "" : `<div class="camwhere"><input type="number" min="0" max="100" step="0.5" data-camat="${esc(c.name)}" value="${c.at == null ? "" : +(c.at * 100).toFixed(1)}" placeholder="?" title="Where it stands: percent of the lap from the line" ${dis}><span class="note">% of the lap</span>` +
+        `<button data-camhere="${esc(c.name)}" title="The car on camera is passing this camera now" ${dis}>It is here</button>` +
+        (c.at == null ? '<em class="camwarn">Not used until placed</em>' : "") + "</div>";
+      return `<div class="camrow"><b>${esc(c.name)}</b><select data-camkind="${esc(c.name)}" ${dis}>${opts}</select>${where}</div>`;
+    }).join("");
   }
   // ---- the camera and replay check (pitwall/simcheck.py): each command once, and what iRacing did
   const CK_WORD = { waiting: "", running: "…", passed: "Worked", failed: "Did not work", "not sent": "Not sent", stopped: "Stopped" };
@@ -1136,6 +1173,8 @@ header{padding:6px 12px}
   // the league table typed in or fixed by hand, and its link's "keep it up to date"
   document.addEventListener("change", e => {
     const t = e.target, ds = t.dataset || {};
+    if (ds.camkind) { t.blur(); camSet({ name: ds.camkind, kind: t.value }, ds.camkind + ": " + (CAM_KIND[t.value] || "automatic")); return; }
+    if (ds.camat) { t.blur(); const v = t.value.trim(); camSet({ name: ds.camat, at: v === "" ? null : Math.min(100, Math.max(0, Number(v) || 0)) / 100 }, ds.camat + (v === "" ? ": nowhere yet" : ": " + v + "% of the lap")); return; }
     if (ds.lged) {
       const [i, k] = ds.lged.split("."), rows = (G("league.rows", []) || []).map(r => ({ ...r }));
       if (!rows[+i]) return;
@@ -1403,6 +1442,7 @@ header{padding:6px 12px}
       const k = cutMs + "|" + on;
       if (k !== renderControls.stingKey) { renderControls.stingKey = k; if (send({ type: "cmd", cmd: "director", action: "set", stingerCutMs: cutMs, stinger: on })) pending.push(QUIET); }
     }
+    renderCamList(dr);
     $("gwAuto").innerHTML = sw("sw-gwauto", dr.autoGrid !== false, 'data-gwauto="1"', "Start it when the pace laps begin");
     { const byRow = dr.gridByRow !== false;
       $("gwBy").innerHTML = `<button data-gwby="1" class="${byRow ? "on" : ""}" ${dis}>A row at a time</button><button data-gwby="0" class="${byRow ? "" : "on"}" ${dis}>One car at a time</button>`; }
@@ -1556,6 +1596,7 @@ header{padding:6px 12px}
     else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
     else if (ds.renders) cmd({ cmd: "livery", action: "renders", on: !(S.lv && S.lv.config && S.lv.config.renders !== false) }, "Car pictures from iRacing");
     else if (ds.gwboard) cmd({ cmd: "director", action: "set", gridBoard: ds.gwboard }, "Grid board first: " + ({ auto: "automatic", always: "always", never: "never" }[ds.gwboard] || ds.gwboard));
+    else if (ds.camhere) camSet({ name: ds.camhere, here: true }, ds.camhere + ": it stands where that car is now");
     else if (ds.dirreel) cmd({ cmd: "director", action: "set", reel: !(S.director && S.director.reelOn !== false) }, "Highlight reel");
     else if (ds.dirrep) cmd({ cmd: "director", action: "set", replays: !(S.director && S.director.replays !== false) }, "Director replays");
     else if (ds.gwauto) cmd({ cmd: "director", action: "set", autoGrid: !(S.director && S.director.autoGrid !== false) }, "Automatic grid walk");

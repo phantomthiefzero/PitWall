@@ -3086,6 +3086,9 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (mode === "on") return true;
     if (mode === "off") return false;
     const st = S.state && S.state.session && S.state.session.state;
+    // the director walks the grid by itself at this start (its board and row cards): the paged grid stays off. It
+    // came up for the three seconds the walk waits for the pace, and again as "Positions 11–12 of 12" after the walk
+    if (S.director && S.director.gridAuto) return false;
     return isRace() && (st === "parade_laps" || st === "warmup");
   }
   // The grid board: every car in its grid slot (columns as the grid forms up: StartingGrid's cars a row, each
