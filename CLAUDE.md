@@ -453,6 +453,17 @@ Broadcast (broadcast/)
   attack seldom comes before a pass (the gaps swing all the time: hence the 0.3 s floor). More captures of road
   races will say more; tests: test_an_attack_is_seen_as_it_happens_and_through_traffic_is_a_story,
   test_the_director_goes_to_an_attack_and_replays_the_passes_it_missed.
+- A big field (Suzuka, Nov 2026: 39 cars, GTP and GT3, 46 minutes, a rolling start, a pack with 18 corner cameras
+  loaded mid-race: the camera list and its group numbers change in a session). Before: 84% of the race on battles,
+  one for 205 s, the GT3 lead changing hands four times in 30 s unseen, two replays all race. Now a close battle
+  keeps the air past BATTLE_SHARE_MAX_S only while nothing within SHARE_WITHIN of its score has been off air
+  SHARE_REST_S (two good fights take turns), and a lead change or a podium-place pass the camera missed is OWED a
+  replay (_replay_candidate owed: no waiting for a quiet stretch, which a big field never has, nor for the battle on
+  air to cool unless its cars are right together; REPLAY_OWED_GAP_S): longest stay 99 s, 10 replays, 6 of the 13
+  podium-place passes not live replayed (5 of the 18 live, as before). One camera cannot be live on 300 passes:
+  judge the director on the top 3.
+  Pack names: "Start Cam" is the line's camera, "Drone Turn 1" / "Drone Spoon" stand at one place (_PLACE_NAMES).
+  test: test_close_battles_share_the_air_and_a_missed_lead_change_is_owed_a_replay.
 - Checking it on the sim (Nov 2026). The camera and replay check (producer Setup > Check; pitwall/simcheck.py, bridge
   `simcheck` command, producer token, the broadcast on; it takes the camera from the director): each command the
   broadcast uses, sent once through the CommandGate, and the telemetry's answer (CamCarIdx / CamGroupNumber,

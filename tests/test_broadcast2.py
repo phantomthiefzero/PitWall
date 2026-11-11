@@ -3221,3 +3221,67 @@ def test_the_grid_walk_is_one_steady_walk_and_the_lights_are_watched_from_the_fr
     ov = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
     wanted = ov.split("function gridWanted() {")[1].split("\n  }")[0]
     assert "S.director.gridAuto) return false" in wanted and wanted.index("gridAuto") < wanted.index("parade_laps")
+
+
+def test_close_battles_share_the_air_and_a_missed_lead_change_is_owed_a_replay():
+    # Suzuka, Nov 2026 (39 cars, two classes, 46 minutes; scripts/director_report.py on the capture): 84% of the race
+    # was battles, one for 205 s and another for 195 s, while the other class's lead changed hands four times in 30 s
+    # unseen; two replays all race, 1 of 285 passes not seen live replayed. After: the longest stay 110 s, 12 replays,
+    # 5 of the 12 podium-place passes not seen live replayed.
+    from pitwall.director import BATTLE_SHARE_MAX_S, BATTLE_HOT_MAX_S, REPLAY_OWED_GAP_S, REPLAY_GAP_S
+    lead_a = {"id": "1:0", "cars": [0, 1], "gapsS": [0.5], "closingSPerLap": [0.0], "forClassPos": 1}
+    lead_b = {"id": "2:4", "cars": [4, 5], "gapsS": [0.5], "closingSPerLap": [0.0], "forClassPos": 1}
+    # two classes, each with a close fight for its lead
+    d, sess, msg, t, log, kinds = _craft_rig(n=8, battles=[lead_a, lead_b])
+    for c in msg["cars"][4:]:
+        c["classId"], c["classPos"] = 2, c["idx"] - 3
+    d.replays_on = False
+    spans = []
+    for k in range(3000):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [])
+        key = d.segment and d.segment["key"]
+        if not spans or spans[-1][0] != key:
+            spans.append([key, t[0], t[0]])
+        spans[-1][2] = t[0]
+    on_air = {k: sum(b - a for kk, a, b in spans if kk == k) for k in ("battle:1:0", "battle:2:4")}
+    assert max(b - a for _, a, b in spans) <= BATTLE_SHARE_MAX_S + 12, "neither keeps the air while the other waits"
+    assert min(on_air.values()) > 60, on_air
+    # alone, a close battle still keeps it (nothing as good is waiting)
+    d, sess, msg, t, log, kinds = _craft_rig(n=8, battles=[lead_a])
+    d.replays_on = False
+    for k in range(1500):
+        t[0] += 0.1
+        d.tick(sess, msg, _state(500.0 + k * 0.1), [])
+    assert d.segment["key"] == "battle:1:0" and t[0] - d.segment["start"] > BATTLE_SHARE_MAX_S + 30 < BATTLE_HOT_MAX_S
+
+    # the camera is on the first class's fight when the second class's lead changes hands, unseen: owed a replay,
+    # over the close battle (the two are not right together), without waiting for a quiet stretch
+    d, sess, msg, t, log, kinds = _craft_rig(n=8, battles=[lead_a])
+    for c in msg["cars"][4:]:
+        c["classId"], c["classPos"] = 2, c["idx"] - 3
+    change = {"kind": "class_lead", "idx": 5, "prevIdx": 4, "t": 520.0, "replayT": 516.0, "sessionNum": 2, "classId": 2}
+    for k in range(600):
+        t[0] += 0.1
+        tl = 500.0 + k * 0.1
+        d.tick(sess, msg, _state(tl), [change] if tl >= 520.0 else [])
+        if d.rp:
+            break
+    assert d.rp and d.rp["moment"] is change and d.rp["car"] == 5, "the lead change it missed"
+    # but not while the two on air are side by side, and not a midfield pass (that waits for a quiet stretch)
+    for battles, moment in (([dict(lead_a, gapsS=[0.1])], change),
+                            ([lead_a], {"kind": "pass", "idx": 6, "passedIdx": [5], "t": 520.0, "replayT": 516.0,
+                                        "sessionNum": 2, "classPos": 6})):
+        d, sess, msg, t, log, kinds = _craft_rig(n=8, battles=battles)
+        for k in range(600):
+            t[0] += 0.1
+            tl = 500.0 + k * 0.1
+            d.tick(sess, msg, _state(tl), [moment] if tl >= 520.0 else [])
+        assert d.rp is None and not log["replay"], moment["kind"]
+    assert REPLAY_OWED_GAP_S < REPLAY_GAP_S
+    # more pack cameras (Suzuka's): the start camera is the line's, a drone over one corner is a camera at one place
+    from pitwall.director import camera_role
+    assert camera_role("Start Cam") == ("spot", 0.0)
+    assert camera_role("Drone Turn 1")[0] == "spot" and camera_role("Drone Spoon")[0] == "spot" and camera_role("Drone Cam")[0] == "aerial"
+    for name in ("Esses 1", "Dunlop", "Degner", "Hairpin", "130R", "Backstretch", "Last Curve", "Chicane Entry"):
+        assert camera_role(name, [{"name": "CamPit Lane 5"}])[0] == "spot", name
