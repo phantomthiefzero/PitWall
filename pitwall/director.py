@@ -187,6 +187,17 @@ SHARE_REST_S = 40.0          # "not on air lately": off air this long
 # SEGMENT_MIN_S, for nobody on air to be side by side or going for it, and REPLAY_OWED_GAP_S since the last replay.
 REPLAY_OWED_GAP_S = 75.0
 REPLAY_OWED_TOP = 3
+# Le Mans, Nov 2026 (two classes in slipstream packs): the fight on air was never "not right together", so the passes
+# for P2 and P3 the camera missed in the second half were never replayed. A fight that has had the air OWED_TAKES_S
+# gives way to an owed replay even while close, unless its cars are side by side (SIDE_BY_SIDE_S) or one is going
+# for it right now. A pass the two cars have since swapped back (the slipstream's back and forth) is not owed, nor one
+# whose two cars are still in a fight together: that fight is a live story, not a replay.
+OWED_TAKES_S = 45.0
+SIDE_BY_SIDE_S = 0.15        # (class seconds) closer than this the two are side by side: the move is happening
+# The last lap: a fight for a class win is the race's ending (Le Mans: the BMWs' leaders side by side, 0.01 s apart,
+# lost the air to a GR86 fight 0.4 s apart, and the lead changed hands unseen).
+LAST_LAP_WIN = 25.0
+LAST_LAP_PODIUM = 10.0
 # Going for it (normalize attacks: the live gap over the last seconds, not the closing rate per lap): the camera goes
 # there before the move, so the pass is live, not its aftermath. Measured with scripts/director_report.py.
 ATTACK_INTERRUPT_BY = 5.0    # an attack may cut into a story younger than SEGMENT_MIN_S if it beats it by this
@@ -962,6 +973,8 @@ class Director:
                             "why": "a pass for %sP%s" % ("class " if multi else "", cp),
                             "cars": [x for x in (e.get("passedIdx") or [])[:1] if x in by] + [e["idx"]]})
         # battles: how close, closing or not, what they are for, how many cars
+        rc = (cars_msg.get("derived") or {}).get("race") or {}
+        last_lap = 1 if (rc.get("white") or rc.get("lapsToGo") == 1) and not rc.get("finished") else 0
         start_cars = set(out[0]["cars"]) if out and out[0]["key"] == "start" else set()
         for b in (cars_msg.get("derived") or {}).get("battles") or []:
             cs = [i for i in b.get("cars") or [] if i in by]
@@ -974,9 +987,10 @@ class Director:
             gap = min(b.get("gapsS") or [9.9]) / k
             closing = max([x for x in b.get("closingSPerLap") or [] if x is not None] or [0.0]) / k
             fp = b.get("forClassPos") or 99
-            score = 35 + (30 if gap < 0.3 else 18 if gap < 0.6 else 6) + (12 if closing > 0.1 else 0) \
+            score = 35 + (40 if gap < SIDE_BY_SIDE_S else 30 if gap < 0.3 else 18 if gap < 0.6 else 6) + (12 if closing > 0.1 else 0) \
                 + (30 if fp == 1 else 18 if fp <= 3 else 8 if fp <= 6 else 0) + 5 * (len(cs) - 2) \
-                + self._pass_in.get(frozenset(b.get("cars") or []), 0)        # places just changed in it
+                + self._pass_in.get(frozenset(b.get("cars") or []), 0) \
+                + (LAST_LAP_WIN if fp == 1 else LAST_LAP_PODIUM if fp <= 3 else 0) * last_lap       # the ending
             hot = gap < BATTLE_HOT_S or (gap < BATTLE_WARM_S and closing > 0.1)
             out.append({"key": "battle:%s" % b.get("id"), "score": score, "cars": cs, "fp": fp,
                         "why": "battle for %sP%s" % ("class " if multi else "", fp),
@@ -1257,7 +1271,7 @@ class Director:
         held = [c for ts, c in h if ts <= t - SEEN_LIVE_S][-1:]      # on air as the window opened, held into it
         return any(c in pair for c in held) or any(t - SEEN_LIVE_S < ts <= t and c in pair for ts, c in h)
 
-    def _replay_candidate(self, by, t_live, snum=None, owed=False):
+    def _replay_candidate(self, by, t_live, snum=None, owed=False, fights=None):
         """The best moment to show again. owed: only a lead change or a pass for a podium place the camera missed."""
         best, best_s = None, REPLAY_MIN
         done = [self._moments[k] for k in self._replayed if k in self._moments]
@@ -1276,6 +1290,12 @@ class Director:
             if owed and not ((k == "class_lead" or (k == "pass" and (e.get("classPos") or 99) <= REPLAY_OWED_TOP))
                              and not self._seen_live(e)):
                 continue
+            if owed and self._undone(e, by):
+                continue                              # swapped back since: the slipstream's back and forth
+            if owed and fights and any(len(cars & f) >= 2 for f in fights):
+                continue                              # the two are still at it: the fight is live television, go there
+                                                      # (Suzuka: the replay of a pass for the GT3 lead ran while the
+                                                      # same two swapped back and a third went by, all unseen)
             if k == "race_incident":
                 if what not in ("contact", "spin", "lost_speed") or (what == "lost_speed" and e.get("confidence") == "low"):
                     continue
@@ -1293,6 +1313,19 @@ class Director:
                 best, best_s = (key, e), score
         return best
 
+    @staticmethod
+    def _undone(e, by) -> bool:
+        """A pass (or a lead change) the two cars have swapped back since: the car passed is ahead again on the road
+        (laps and part of the lap: iRacing's places only change at a timing line)."""
+        me = by.get(e.get("idx"))
+        other = (e.get("passedIdx") or [None])[0] if e.get("kind") == "pass" else e.get("prevIdx")
+        o = by.get(other)
+        run = lambda c: (c.get("lap") or 0) + c["pct"] if c and c.get("pct") is not None and c["pct"] >= 0 else None
+        a, b = run(me), run(o)
+        if a is None or b is None or me.get("classId") != o.get("classId") or abs(a - b) > 0.5:
+            return False
+        return b > a
+
     def _maybe_replay(self, groups, cars, by, cars_msg, moments, t_live, race_state, now) -> bool:
         if not (self.replay_fn and self.replays_on) or now - self._last_replay_at < REPLAY_OWED_GAP_S:
             return False
@@ -1307,13 +1340,18 @@ class Director:
             return False                              # let the story on air have its time first
         stories = self._stories(cars, by, cars_msg, moments, t_live, now)
         snum = getattr(self, "_snum", None)
-        owed = self._replay_candidate(by, t_live, snum, owed=True)
+        fights = [set(b.get("cars") or []) for b in (cars_msg.get("derived") or {}).get("battles") or []]
+        owed = self._replay_candidate(by, t_live, snum, owed=True, fights=fights)
         if owed is None and now - self._last_replay_at < REPLAY_GAP_S:
             return False
         on_air = next((st for st in stories if self.segment and st["key"] == self.segment["key"]), None)
         if on_air is not None and on_air.get("hot"):
             b = self._battle_of(cars_msg, self.segment.get("cars"))
-            close = bool(b and b.get("gapsS")) and min(b["gapsS"]) < MOVE_GAP_S * (b.get("scale") or 1.0)
+            k = (b.get("scale") or 1.0) if b else 1.0
+            gap = min(b["gapsS"]) if b and b.get("gapsS") else None
+            close = gap is not None and gap < MOVE_GAP_S * k
+            # a fight that has had the air a while gives way to an owed replay unless they are side by side
+            close = close and (now - self.segment["start"] < OWED_TAKES_S or gap < SIDE_BY_SIDE_S * k)
             if owed is None or close or on_air.get("urgent"):
                 return False                          # a close battle on air is not left for a replay (one owed
                                                       # may take it while the two are not right together)
