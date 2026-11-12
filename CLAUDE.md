@@ -517,6 +517,9 @@ Broadcast (broadcast/)
   cars that have finished are no story, and normalize's battles and attacks leave them out); then _after_finish and
   the reel. The overlay's Auto: the result while the field comes in and FINISH_BOARD_MS after, the lap chart
   FINISH_CHART_MS, then the podium (CTX.allAt). A feed without allFinished keeps the winner's flag.
+  The racing graphics go in two steps: the race-wide ones (FINISH_OFF: closing, pace, strategy, pit stops, penalties
+  and the like) at the winner's flag; those that follow cars still racing (FINISH_OFF_ALL: battle, head to head, the
+  card, onboard, the map, race control) when the field is in (fieldIn); no card or onboard for a car that has finished.
   test: test_the_podium_waits_for_the_whole_field_to_finish.
   The overlay calls them on screen (flagcall, a tile under Alerts, on by default): green as a race goes racing or
   after a caution or red, white for the final lap, checkered with the winner; only on a change it sees.

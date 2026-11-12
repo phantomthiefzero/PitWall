@@ -1461,13 +1461,21 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // After the checkered flag the race is over: what was about the racing (battles, who is closing, pace, strategy,
   // pit stops, the card, race control's alerts) leaves the air, and the result, the lap chart and the podium have it
   // (the user's call, Nov 2026). gfx finish.solo false keeps them.
-  const FINISH_OFF = ["battle", "h2h", "closing", "pace", "strategy", "faster", "traffic", "onboard", "pitstop", "tyres",
-    "trap", "card", "penalty", "fastlap", "ticker", "map", "qlap", "strip"];
+  // In two steps (the user's call, Nov 2026): what was about the race as a whole goes at the winner's flag; what
+  // follows the cars still racing (a class still fighting for its win: battles, head to head, the card, onboard, the
+  // map, race control) stays until the field has taken the flag (allDone). normalize keeps finished cars out of the
+  // battles, and the card does not come up for a car that has finished (it is on its cool-down lap).
+  const FINISH_OFF = ["closing", "pace", "strategy", "faster", "traffic", "pitstop", "tyres",
+    "trap", "penalty", "fastlap", "qlap", "strip"];
+  const FINISH_OFF_ALL = ["battle", "h2h", "card", "onboard", "ticker", "map"];
   const finishUp = () => isRace() && racingFlag() === "checkered";
+  const fieldIn = () => finishUp() && CTX.all;
+  const cardFinished = () => { const c = cardCar(); return !!c && finishUp() && !!(c.derived && c.derived.finished); };
   const EDIT_ALL = Q.get("edit") === "all";
   const shown = name => allowed(name) && !sceneUp() &&
     (EDIT_ALL || (G("auto.on", false) && CONTEXTUAL[name] && CONTEXTUAL[name]() ? ctxWants(name) : (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)))) &&
-    !(finishUp() && FINISH_OFF.includes(name) && G("finish.solo", true)) &&
+    !(G("finish.solo", true) && (finishUp() && FINISH_OFF.includes(name) || fieldIn() && FINISH_OFF_ALL.includes(name)
+      || (name === "card" || name === "onboard") && cardFinished())) &&
     !(gridUp && ["pitstop", "closing", "pace", "strategy", "lapchart", "tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.

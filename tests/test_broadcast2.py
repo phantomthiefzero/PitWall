@@ -2821,7 +2821,7 @@ def test_after_the_flag_the_racing_graphics_go_and_the_camera_turns_cinematic():
     assert not log["replay"] and d.note.startswith("after the flag")
     # the overlay: the racing graphics step off once the checkered flag is out in a race
     page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
-    off = page.split("const FINISH_OFF = [")[1].split("]")[0]
+    off = page.split("const FINISH_OFF = [")[1].split("]")[0] + page.split("const FINISH_OFF_ALL = [")[1].split("]")[0]
     for name in ("battle", "h2h", "closing", "pace", "strategy", "onboard", "card", "ticker", "penalty", "traffic"):
         assert '"%s"' % name in off, name
     for name in ("tower", "board", "lapchart", "podium", "banner", "flagcall"):
@@ -3375,3 +3375,13 @@ def test_the_podium_waits_for_the_whole_field_to_finish():
     assert 'if (name === "podium") return after >= FINISH_BOARD_MS + FINISH_CHART_MS;' in aw
     assert 'return done ? after < FINISH_BOARD_MS' in aw
     assert "r.allFinished !== false" in ov and "if (all !== CTX.all) { CTX.all = all; CTX.allAt = now; }" in ov
+    # the racing graphics that follow the cars still racing stay until the field is in (the user's call, Nov 2026):
+    # a class still fighting for its win keeps its battle box; the race-wide ones go at the winner's flag
+    off = ov.split("const FINISH_OFF = [")[1].split("]")[0]
+    off_all = ov.split("const FINISH_OFF_ALL = [")[1].split("]")[0]
+    for name in ("battle", "h2h", "card", "onboard", "ticker", "map"):
+        assert '"%s"' % name in off_all and '"%s"' % name not in off, name
+    for name in ("closing", "pace", "strategy", "pitstop", "fastlap", "penalty"):
+        assert '"%s"' % name in off, name
+    assert "fieldIn() && FINISH_OFF_ALL.includes(name)" in ov and "const fieldIn = () => finishUp() && CTX.all;" in ov
+    assert '(name === "card" || name === "onboard") && cardFinished()' in ov, "no card for a car on its cool-down lap"
