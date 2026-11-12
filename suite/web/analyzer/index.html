@@ -733,13 +733,20 @@ return cs}
 // load regions) are left as found. cbForget(track) starts a track again.
 const CBOOK_KEY='suite:cornerBook';
 function cbLoad(){try{return JSON.parse(localStorage.getItem(CBOOK_KEY)||'{}')||{}}catch(e){return {}}}
-function cbSave(o){try{localStorage.setItem(CBOOK_KEY,JSON.stringify(o))}catch(e){}}
+function cbSave(o){try{localStorage.setItem(CBOOK_KEY,JSON.stringify(o))}catch(e){}try{cornersPush()}catch(e){}}
 function cbForget(track){const o=cbLoad();delete o[cnTrackKey(track)];cbSave(o)}
 function trackCorners(cs,track){const key=cnTrackKey(track);if(!key||!cs.length||cs.some(c=>c.rs==null))return cs;const all=cbLoad(),book=all[key],fr=g=>g/(N-1);
 if(!book||!book.length){if(cs.length>=3){all[key]=cs.map(c=>({p:+fr(c.ap).toFixed(4),s:+fr(c.rs).toFixed(4),e:+fr(c.re).toFixed(4)}));cbSave(all)}return cs}
 const used=new Set(),out=book.map(b=>{let best=null,bd=1;cs.forEach(c=>{if(used.has(c))return;const d=Math.abs(((fr(c.ap)-b.p+1.5)%1)-.5);if(d<bd){bd=d;best=c}});
 if(best&&bd<.012){used.add(best);return best}return{ap:Math.round(b.p*(N-1)),rs:Math.round(b.s*(N-1)),re:Math.round(b.e*(N-1)),book:true}});
 return out.sort((p,q)=>p.ap-q.ap)}
+// The slowest point of a corner, from the lap's own samples too: the slowest sample near the grid's, and where the
+// curve through it and its two neighbours is lowest (a sample every 0.4 m in a slow corner; the grid has one every
+// 4 to 14 m), inside the corner (s..e) only. {g: place in grid points, v: the speed there}; null when the lap has no samples finer than the grid.
+function rawMin(o,g,s,e){const v=o&&o.Speed,D=o&&o.D;if(!v||!D||g<0||!(o.n>N))return null;const lo=Math.max(g-2,s!=null?s:0)/(N-1),hi=Math.min(g+2,e!=null?e:N-1)/(N-1);
+let a=0,b=o.n-1;while(a<b){const m=(a+b)>>1;if(D[m]<lo)a=m+1;else b=m}let j=-1;for(let q=Math.max(1,a);q<o.n-1&&D[q]<=hi;q++)if(D[q]>=D[q-1]&&(j<0||v[q]<v[j]))j=q;if(j<0)return null;
+const y0=v[j-1],y1=v[j],y2=v[j+1],den=y0-2*y1+y2,x=den>1e-9?Math.max(-.5,Math.min(.5,.5*(y0-y2)/den)):0,w=x>=0?D[j+1]-D[j]:D[j]-D[j-1];
+return{g:(D[j]+x*(w>0&&w<.01?w:0))*(N-1),v:y1-.25*(y0-y2)*x}}
 function analyze(a,b){const xs=[];if(a.ext&&b.ext)for(const n in a.ext)if(n in b.ext){xs.push('x:'+n);a['x:'+n]=a.ext[n];b['x:'+n]=b.ext[n]}
 const A=rs(a,xs),B=rs(b,xs),len=a.Speed.reduce((s,v)=>s+v,0)*a.lap/(a.n-1),mpg=len/(N-1),dl=new Float64Array(N);
 for(let g=0;g<N;g++)dl[g]=(A.t[g]-A.t[0])-(B.t[g]-B.t[0]);
@@ -747,7 +754,7 @@ derive(A);derive(B);
 const sm=sma(B.Speed,9),cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack());
 cs.forEach((c,i)=>{c.n=i+1;if(c.rs!=null){c.s=Math.min(c.rs,am(sm,Math.max(0,c.ap-80),c.ap));c.e=Math.max(c.re,c.ap+5)}else{c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80))}
 if(i){const p=cs[i-1];p.e=Math.min(p.e,c.ap-1);c.s=Math.max(c.s,p.e)}if(c.s>=c.ap)c.s=c.ap-5;
-c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
+c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);{const ma=rawMin(a,c.a.mg,c.s,c.e),mb=rawMin(b,c.b.mg,c.s,c.e);c.a.mgF=ma?ma.g:c.a.mg;c.b.mgF=mb?mb.g:c.b.mg;if(ma&&mb){c.a.ms=ma.v;c.b.ms=mb.v}}c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
 c.d=(c.a.baF-c.b.baF)*mpg;c.dv=c.a.ms-c.b.ms;c.dm=(c.a.taF-c.b.taF)*mpg;c.dp=(c.a.pb-c.b.pb)*100;c.tin=dl[c.ap]-dl[c.s];c.tout=dl[c.e]-dl[c.ap]});
 return{A,B,len,dl,cs,a,b,X:a.ext&&b.ext?extStats(a,b):null,Sa:lapStats(a),Sb:lapStats(b),total:a.lap-b.lap,pct:a.lap/b.lap*100}}
 //ENDCORE
@@ -843,7 +850,14 @@ const fr=g=>(g/(N-1)).toFixed(4);
 const CNAMES_KEY='cornerNames';
 function cnTrackKey(t){return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,'')}
 function cnLoad(){try{return JSON.parse(localStorage.getItem(CNAMES_KEY)||'{}')||{}}catch(e){return {}}}
-function cnSaveAll(o){try{localStorage.setItem(CNAMES_KEY,JSON.stringify(o))}catch(e){}}
+function cnSaveAll(o){try{localStorage.setItem(CNAMES_KEY,JSON.stringify(o))}catch(e){}try{cornersPush()}catch(e){}}
+// The corner book and the corner names travel with the session: the driver's page (in the app) hands them to the
+// suite, which sends them to everyone on the share link, so "Corner 9" is the same place on the engineer's screen.
+// The driver's are the ones that count: a viewer takes them for the tracks the driver has and never sends its own.
+function cornersPush(){if(typeof LIVE_SHARE==='undefined'||LIVE_SHARE||!liveOnBridge()||typeof fetch!=='function')return;clearTimeout(cornersPush.t);cornersPush.t=setTimeout(()=>{try{const body=JSON.stringify({book:cbLoad(),names:cnLoad()});if(body===cornersPush.sent||body.length>46000)return;cornersPush.sent=body;const r=fetch('/api/corners',{method:'POST',headers:{'Content-Type':'application/json'},body});if(r&&r.catch)r.catch(()=>{cornersPush.sent=null})}catch(e){}},400)}
+// pure but for the two stores: a viewer takes the driver's book and names; true when anything changed
+function cornersTake(m){let ch=false;const put=(load,save,src)=>{if(!src||typeof src!=='object')return;const all=load();let c=false;for(const k in src){if(!Array.isArray(src[k]))continue;if(JSON.stringify(all[k])!==JSON.stringify(src[k])){all[k]=src[k];c=true}}if(c){save(all);ch=true}};
+put(cbLoad,o=>{try{localStorage.setItem(CBOOK_KEY,JSON.stringify(o))}catch(e){}},m.book);put(cnLoad,o=>{try{localStorage.setItem(CNAMES_KEY,JSON.stringify(o))}catch(e){}},m.names);return ch}
 function cnSet(track,p,name){const k=cnTrackKey(track);if(!k)return;const o=cnLoad(),L=(o[k]||[]).filter(e=>Math.abs(((p-e.p+1.5)%1)-.5)>=.012);name=String(name||'').trim().slice(0,24);if(name)L.push({p:+p.toFixed(4),name});o[k]=L;if(!L.length)delete o[k];cnSaveAll(o)}
 // pure: put the names on found corners (c.label), nearest apex first; each name used once
 function nameCorners(cs,track,names){if(!cs)return cs;cs.forEach(c=>{c.label=null});const L=((names||cnLoad())[cnTrackKey(track)]||[]).slice();
@@ -999,7 +1013,7 @@ function renderBalance(){const el=$('balance');if(!el)return;if(!IB.a){el.hidden
 let SD=null;try{SD=coachSetupData({S:{id:'ibt',car:IB.a.carPath,track:IB.a.track||'',key:''}})}catch(e){console.error('balance',e)}
 let h='<b>How the car handles on your laps</b> <span class="m">from the steering, yaw rate and slip in your .ibt file</span>';
 if(!SD||!SD.H)h+='<p class="m" style="margin:6px 0 0">'+plain((SD&&SD.why)||'Needs steering, yaw rate and enough cornering in the file.')+'</p>';
-else h+='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:8px"><div style="max-width:100%;overflow-x:auto">'+coachBalanceGrid(SD.H)+'<small class="m">How much more steering you need than a neutral car, by phase.</small></div><div style="flex:1;min-width:240px">'+
+else h+='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:8px"><div style="max-width:100%;overflow-x:auto">'+coachBalanceGrid(SD.H)+'<small class="m">How much more steering you need than '+balWord(SD.H.base)+', by phase.</small></div><div style="flex:1;min-width:240px">'+
 (SD.picks.length||SD.other.length?'<b>What to change</b><ul style="margin:4px 0 0 18px;padding:0">'+SD.picks.map(p=>'<li><b>'+plain(p.label)+'</b> '+suFmtVal(String(p.from)+(p.u?' '+p.u:''))+' → <b>'+suFmtVal(String(p.to)+(p.u?' '+p.u:''))+'</b> <span class="m">for '+(p.f.kind==='us'?'understeer':'oversteer')+' '+plain(p.f.lab.toLowerCase())+'</span></li>').join('')+SD.other.map(o=>'<li><b>'+plain(o.ch.label)+'</b>: '+plain(o.ch.word.toLowerCase())+' <span class="m">(now '+plain(o.ch.cur)+')</span></li>').join('')+'</ul>'+
 '<p class="m" style="font-size:13px;margin:6px 0 0">Directions are for this car (iRacing\'s manual). Start the engineer below while driving to measure each change over 6 laps.</p>':'<p style="margin:0">No phase shows clear understeer or oversteer: the car is balanced on these laps.</p>')+'</div></div>';
 el.innerHTML=h;el.hidden=false}
@@ -1357,7 +1371,7 @@ let v;if(ro)v=x?x.cv(x.nu.n)+(x.un?' '+x.un:''):suFmtVal(r.v);else{const st=x.de
 return '<tr'+(diff?' class="sxd"':'')+'><td class="sxl">'+r.lab.replace(/^(Front|Rear) (?=ARB|low-|high-)/,'').replace(/^./,c=>c.toUpperCase())+'</td><td>'+v+(diff?'<br><small class="m">ref '+suFmtVal(rb)+'</small>':'')+'</td><td style="width:1%"><a href="#" data-inf="'+id+'" title="What this setting does">ⓘ</a></td></tr><tr data-infr="'+id+'" hidden><td colspan="3">'+setupInfoHtml({type,cells:{v:i}})+'</td></tr>'}
 function setupSection(name,idx,both,mapB){return '<div class="sx"><div class="sxh">'+(SETUP_SECN[name]||name)+'</div><table class="sxt">'+idx.map(i=>setupLine(i,both,mapB)).join('')+'</table>'+(name==='Aero Balance Calc'?aeroTargetsHtml()+aeroMeasuredHtml():'')+'</div>'}
 // ---- Setup suggestions: handling measured on your clean laps, mapped to this car's settings ----
-// Balance: the steering a neutral car would need for the curve it is on is K x (yaw rate /
+// Balance (see also BAL_TYPICAL below: what each phase is read against): the steering for the curve the car is on is K x (yaw rate /
 // speed), where K (steering ratio x wheelbase) is fitted from this file's gentle cornering.
 // Using more steering than that is understeer; opposite lock, or a large sideways slip angle,
 // is oversteer. Measured in three phases (braking in, mid-corner, throttle out) for slow
@@ -1369,16 +1383,39 @@ function pctile(a,p){if(!a.length)return null;const s=Float64Array.from(a).sort(
 // steering used against what a neutral car needs (K, fitted from this run's gentle cornering), by
 // phase and speed. ui is relative to the run's own middle (which phase is weakest); raw is
 // absolute, so two runs can be compared.
-function handlingCore(smp){const fit=smp.filter(q=>q.v>20&&q.g>.15&&q.g<.5&&Math.abs(q.k)>.002).map(q=>q.s/q.k);if(fit.length<200)return{few:true};
+// What the reading is measured against. Steering used per curve is not level through a corner on ANY car: braking
+// in turns the car (less steering), mid-corner needs the most, and fast corners more than slow ones (the car's
+// understeer grows with speed squared). Read against the run's own middle, mid-corner "understeer" showed on every
+// file looked at, the six fastest Garage 61 laps of the Ferrari 296 GT3 at Indianapolis included (1:22.1 to 1:22.7:
+// mid-corner +8 to +42%; the driver's own +13 / +23% sat inside them and was called understeer). So each phase is
+// read against what that phase shows on fast laps: the reference laps loaded for this car and track (Garage 61
+// laps, the lap in the right box) when there are any, else the usual shape (BAL_TYPICAL: the middle of 16 laps
+// and sessions in 6 cars; lap to lap it varies by about 0.06, mid-corner in fast corners by 0.09).
+const BAL_TYPICAL={entry_slow:.82,entry_fast:.73,mid_slow:1.09,mid_fast:1.26,exit_slow:.88,exit_fast:1.06},BAL_BINS=Object.keys(BAL_TYPICAL);
+// pure: one lap's shape (each phase's steering per curve over the lap's own middle); null with too little cornering
+function balShape(o,vmed){if(!o||!o.Speed||!o.YawRate||!o.LatG||!o.Steer||!o.Brake||!o.Throttle)return null;const q={},all=[];
+for(let r=0;r<o.n;r++){const v=o.Speed[r];if(!(v>=12))continue;const k=o.YawRate[r]/v;if(!(Math.abs(o.LatG[r])/9.80665>.8)||!(Math.abs(k)>.003))continue;const x=o.Steer[r]/k,b=(o.Brake[r]>.05?'entry':o.Throttle[r]>=.6?'exit':'mid')+'_'+(v<vmed?'slow':'fast');(q[b]=q[b]||[]).push(x);all.push(x)}
+if(all.length<300)return null;const mid=median(all),out={};if(!(mid>0))return null;BAL_BINS.forEach(b=>{out[b]=q[b]&&q[b].length>=40?median(q[b])/mid:null});return out}
+// the reference laps for the car and track in use (never your own laps)
+function balRefLaps(){try{const srcs=coachSources(),S=srcs.find(x=>x.id===COACH.src)||srcs[0],here=S?{car:[S.car,S.carName],track:coTrack(S)}:IB.a?{car:[IB.a.carPath,IB.a.carName],track:coTrack()}:null;if(!here)return [];
+const L=(COACH.g61||[]).filter(g=>sameWhere(here,g).ok);if(F.b&&!SELF&&!F.b.limited&&sameWhere(here,F.b).ok&&!L.includes(F.b))L.push(F.b);return L.filter(o=>o&&o.YawRate&&o.LatG)}catch(e){return []}}
+function balSig(){const L=balRefLaps();return L.length?L.map(o=>(o.who||'')+':'+(o.lap||0)+':'+o.n).join('|'):'typical'}
+function balBase(vmed){const shapes=balRefLaps().map(o=>balShape(o,vmed)).filter(Boolean),vals={};
+BAL_BINS.forEach(b=>{const x=shapes.map(h=>h[b]).filter(v=>v!=null);vals[b]=x.length?median(x):BAL_TYPICAL[b]});return{vals,n:shapes.length,src:shapes.length?'ref':'typical'}}
+const balWord=b=>b&&b.src==='ref'?(b.n===1?'the reference lap':'the '+b.n+' reference laps')+' for this car and track':'fast laps usually do';
+function handlingCore(smp,base){const fit=smp.filter(q=>q.v>20&&q.g>.15&&q.g<.5&&Math.abs(q.k)>.002).map(q=>q.s/q.k);if(fit.length<200)return{few:true};
 const K=median(fit);if(!(K>5&&K<200))return null;
 const cor=smp.filter(q=>q.g>.8&&Math.abs(q.k)>.003);if(cor.length<500)return{few:true};
 cor.forEach(q=>{q.ui=q.s/(K*q.k);q.cs=Math.sign(q.s)!==Math.sign(q.y)&&Math.abs(q.y)>.08});
-const uref=median(cor.map(q=>q.ui)),vmed=median(cor.map(q=>q.v));
+const uref=median(cor.map(q=>q.ui)),vmed=median(cor.map(q=>q.v));base=base||balBase(vmed);
 const ph=q=>q.b>.05?'entry':q.t>=.6?'exit':'mid';const B={};
+// each sample against its own phase's measure, and the whole read against its own middle: a car with the usual shape
+// reads 1 in every phase whatever mix of corners the track has
+const bin=q=>ph(q)+'_'+(q.v<vmed?'slow':'fast'),rel=median(cor.map(q=>q.ui/(base.vals[bin(q)]||1)))||1;
 for(const p of['entry','mid','exit'])for(const s of['slow','fast']){const xs=cor.filter(q=>ph(q)===p&&(q.v<vmed)===(s==='slow'));const raw=xs.length?median(xs.map(q=>q.ui)):null;
-B[p+'_'+s]={n:xs.length,raw,ui:raw!=null?raw/uref:null,cs:xs.length?xs.filter(q=>q.cs).length/xs.length*100:0,slip:xs.length&&xs[0].beta!=null?pctile(xs.map(q=>Math.abs(q.beta)),90):null,abs:xs.length?xs.filter(q=>q.abs).length/xs.length*100:0}}
-return{K,uref,vmed,B,n:cor.length}}
-function handlingStats(ib){if(!ib||!ib._rd)return null;if(ib._hand!==undefined)return ib._hand;const S=sessionStats(ib),rd=ib._rd,V=ib._V;
+B[p+'_'+s]={n:xs.length,raw,own:raw!=null?raw/uref:null,ui:xs.length?median(xs.map(q=>q.ui/(base.vals[p+'_'+s]||1)))/rel:null,cs:xs.length?xs.filter(q=>q.cs).length/xs.length*100:0,slip:xs.length&&xs[0].beta!=null?pctile(xs.map(q=>Math.abs(q.beta)),90):null,abs:xs.length?xs.filter(q=>q.abs).length/xs.length*100:0}}
+return{K,uref,vmed,B,n:cor.length,base:{src:base.src,n:base.n}}}
+function handlingStats(ib){if(!ib||!ib._rd)return null;const sig=balSig();if(ib._hand!==undefined&&ib._handSig===sig)return ib._hand;ib._handSig=sig;const S=sessionStats(ib),rd=ib._rd,V=ib._V;
 const need=['Speed','SteeringWheelAngle','YawRate','LatAccel','Throttle','Brake'];if(!S||need.some(k=>!V[k]))return ib._hand=null;
 const laps=S.clean.filter(r=>r.time<=S.cbest*1.03).map(r=>ib.laps[r.i]);if(laps.length<2)return ib._hand={few:true,laps:laps.length};
 const ch=k=>V[k]?r=>rd(V[k],r):null,sp=ch('Speed'),sw=ch('SteeringWheelAngle'),yr=ch('YawRate'),ay=ch('LatAccel'),th=ch('Throttle'),bk=ch('Brake'),vx=ch('VelocityX'),vy=ch('VelocityY'),abs=ch('BrakeABSactive'),op=ch('OnPitRoad');
@@ -1390,7 +1427,7 @@ if(n){const[a,m,c]=acc.map(x=>x/n),outer=t[0]==='L'?a:c,inner=t[0]==='L'?c:a;T[t
 // bottoming: the splitter (or each corner) near the ground at speed
 const BT={};const rh=[['front','CFSRrideHeight'],['LF','LFrideHeight'],['RF','RFrideHeight'],['LR','LRrideHeight'],['RR','RRrideHeight']];
 for(const[nm2,k]of rh){if(!V[k])continue;let n=0,low=0;for(const l of laps)for(let r=l.s;r<l.e;r+=STEP){if(sp(r)<40)continue;n++;if(rd(V[k],r)<.003)low++}if(n)BT[nm2]={frac:low/n*100,n}}
-return ib._hand={K,uref,vmed,B,T,BT,laps:laps.length,samples:cor.length}}
+return ib._hand={K,uref,vmed,B,T,BT,laps:laps.length,samples:cor.length,base:core.base}}
 // the findings, strongest first
 function handlingFindings(h){const F=[];if(!h||h.few)return F;const B=h.B,US=1.12;
 for(const[p,lab]of HPH){const s=B[p+'_slow'],f=B[p+'_fast'],big=x=>x&&x.n>=150;
@@ -1465,14 +1502,14 @@ const rows=setupRows(ib.setup||{}),B=h.B,cell=x=>{if(!x||x.n<150)return '<td cla
 const cls=os?'bad':d>=12?'bad':'',txt=os?`oversteer: ${x.cs>=1.5?x.cs.toFixed(1)+'% opposite lock':''}${x.cs>=1.5&&(x.slip||0)>=3.5?', ':''}${(x.slip||0)>=3.5?'slides to '+x.slip.toFixed(1)+'°':''}`:d>=12?'understeer':d<=-12?'rotates freely':'neutral';
 return `<td class="${cls}"><b>${d>=0?'+':'−'}${Math.abs(d).toFixed(0)}%</b> steering · ${txt}<br><small class="m">slip ${x.slip!=null?x.slip.toFixed(1)+'°':'–'} · ${x.n} samples</small></td>`};
 const u=U(),vs=(h.vmed*3.6*u.s[0]).toFixed(0)+' '+u.s[1];
-let o=`<p class="m" style="margin:0 0 8px">Measured on your ${h.laps} clean laps in this file. <b>Steering</b> is how much you use compared with what a neutral car would need for the same curve (fitted from this car's own gentle cornering): more is understeer, less means the car is rotating. Oversteer is only called when there is opposite lock or a big slide. Slow corners are below ${vs}, fast ones above.</p>`+
+let o=`<p class="m" style="margin:0 0 8px">Measured on your ${h.laps} clean laps in this file. <b>Steering</b> is how much you use for the curve you are on in each phase, against what ${balWord(h.base)} in that phase (every car needs less steering braking in and more mid-corner, so each phase has its own measure): more is understeer, less means the car is rotating. Oversteer is only called when there is opposite lock or a big slide. Slow corners are below ${vs}, fast ones above.</p>`+
 `<table><tr><th></th><th>Slow corners</th><th>Fast corners</th></tr>${HPH.map(([p,lab])=>`<tr><td><b>${lab}</b></td>${cell(B[p+'_slow'])}${cell(B[p+'_fast'])}</tr>`).join('')}</table>`;
 const T=h.T;if(Object.keys(T).length)o+=`<table style="margin-top:8px"><tr><th>Tyre at speed</th>${TYRES.filter(t=>T[t]).map(t=>`<th>${t}</th>`).join('')}</tr><tr><td>Surface outer · middle · inner</td>${TYRES.filter(t=>T[t]).map(t=>`<td>${[T[t].outer,T[t].mid,T[t].inner].map(v=>uv(v,'C',0).split(' ')[0]).join(' · ')} ${SETUP_UNITS==='imperial'?'°F':'°C'}</td>`).join('')}</tr><tr><td>Hot pressure</td>${TYRES.filter(t=>T[t]).map(t=>`<td>${uv(T[t].p,'kPa',1)}</td>`).join('')}</tr></table>`;
 const F=handlingFindings(h);
 if(!F.length)return o+`<p style="margin-top:10px"><b>Nothing stands out.</b> No phase shows clear understeer or oversteer, nothing touches the ground at speed and the tyres are hotter on the inside as they should be. Work on the driving first (see Every lap in your file, above).</p>`;
 const title=f=>f.kind==='us'?`Understeer ${f.lab.toLowerCase()}${f.where==='both'?'':' in '+f.where+' corners'}`:f.kind==='os'?`Oversteer ${f.lab.toLowerCase()}${f.where==='both'?'':' in '+f.where+' corners'}`:
 f.kind==='bottom'?`Touching the ground at speed (${f.BT.map(([n2,x])=>(n2==='front'?'splitter':n2)+' '+x.frac.toFixed(1)+'% of the time').join(', ')})`:f.kind==='camber_more'?`${CORNER_OF[f.t]} tyre hotter on the outside`:f.kind==='camber_less'?`${CORNER_OF[f.t]} tyre much hotter on the inside`:`ABS working ${f.v.toFixed(0)}% of the time while braking into corners`;
-const why=f=>f.kind==='us'?`You use ${((B[f.p+'_'+(f.where==='slow'?'slow':'fast')]||B[f.p+'_slow']).ui*100-100).toFixed(0)}% more steering than neutral here.`+(f.p!=='entry'&&f.where==='fast'?' It is worse in fast corners, which points at aero balance first.':f.p!=='entry'&&f.where==='slow'?' It is worse in slow corners, which points at mechanical balance (anti-roll bars) first.':''):
+const why=f=>f.kind==='us'?`You use ${((B[f.p+'_'+(f.where==='slow'?'slow':'fast')]||B[f.p+'_slow']).ui*100-100).toFixed(0)}% more steering here than ${balWord(h.base)}.`+(f.p!=='entry'&&f.where==='fast'?' It is worse in fast corners, which points at aero balance first.':f.p!=='entry'&&f.where==='slow'?' It is worse in slow corners, which points at mechanical balance (anti-roll bars) first.':''):
 f.kind==='os'?`The car needs opposite lock or slides more than usual here.`:f.kind==='bottom'?'Bottoming upsets the aero and the balance.':f.kind.startsWith('camber')?`Outer ${uv(f.x.outer,'C',0)}, inner ${uv(f.x.inner,'C',0)} (surface, at speed). Usually the inside runs a few degrees hotter.`:'A lot of ABS while turning in often means the fronts are doing too much of the braking.';
 o+=`<h4 style="margin:14px 0 4px">What to try</h4><ol style="margin:0 0 0 18px;padding:0">`+F.slice(0,5).map(f=>{const ch=adviceChanges(f).map(c=>adviceRow(rows,c,ib.carPath)).filter(Boolean),use=ch.filter(c=>!c.at).slice(0,3),blocked=ch.filter(c=>c.at);
 return `<li style="margin-bottom:10px"><b>${title(f)}</b>. <span class="m">${why(f)}</span>`+(use.length?`<ul style="margin:4px 0 0 18px">${use.map(c=>`<li><b>${c.label}</b>: ${c.word.toLowerCase()} <span class="m">(now ${plain(c.cur)})</span>${c.why?` <small class="m">— ${plain(c.why)}</small>`:''}</li>`).join('')}</ul>`:`<div class="m">This car's setup has no matching setting to change.</div>`)+
@@ -1654,7 +1691,9 @@ if(LIVE_SHARE){const code=ev&&ev.code;LIVE.err=code===4003?'The driver stopped s
 else if(was==='connecting')LIVE.err='No bridge answered at '+liveUrl()+'. Make sure the bridge is running. If it is, open http://localhost:'+LIVE.port+' in your browser, which always works.';liveRender();renderSetup()};
 ws.onerror=()=>{}}
 function liveDisconnect(){LIVE.userOff=true;if(LIVE.ws)LIVE.ws.close()}
-function liveMsg(m){if(m.type==='hello'){LIVE.mode=m.mode;LIVE.remote=!!m.remote;liveRender()}else if(m.type==='status'){LIVE.sim=!!m.connected;liveRender()}else if(m.type==='session'&&typeof m.yaml==='string')liveSession(m.yaml);else if(m.type==='tick'&&m.v)liveTick(m.v)}
+function liveMsg(m){if(m.type==='hello'){LIVE.mode=m.mode;LIVE.remote=!!m.remote;liveRender()}else if(m.type==='status'){LIVE.sim=!!m.connected;liveRender()}else if(m.type==='session'&&typeof m.yaml==='string')liveSession(m.yaml);else if(m.type==='tick'&&m.v)liveTick(m.v);
+else if(m.type==='corners'){if(LIVE.remote){if(cornersTake(m)){COACH.memo=null;try{if(R)run()}catch(e){}try{renderCoach()}catch(e){}}}}
+if(m.type==='hello'&&!m.remote)try{cornersPush()}catch(e){}}
 function liveSession(y){if(!LIVE.startedAt)LIVE.startedAt=Date.now();try{LIVE.race=liveRaceSessions(y)}catch(e){}try{LIVE.secs=[...String(y).matchAll(/SectorStartPct:\s*([\d.]+)/g)].map(m=>+m[1]).filter(p=>p>0&&p<1).sort((a,b)=>a-b);const il=/IncidentLimit:\s*(\d+)/.exec(y);LIVE.incLimit=il?+il[1]:null}catch(e){}try{ghSession(y)}catch(e){console.error('driver laps',e)}y=plain(y);LIVE.yaml=y;LIVE.meta=liveMeta(y);const t=setupTree(y);if(!t)return;const s=liveSig(t),first=!LIVE.setup;
 if(s!==LIVE.sig){if(LIVE.setup&&LIVE.cur)LIVE.cur.pit=true;   /* a setup only changes in the garage: the lap in progress is not a clean lap of either run */
 const prev=LIVE.vers[LIVE.vers.length-1];LIVE.vers.push({n:LIVE.vers.length+1,tree:t,diff:prev?liveDiff(prev.tree,t):[],at:Date.now()});LIVE.sig=s;
@@ -2035,7 +2074,7 @@ out.call=Math.abs(out.dt)>Math.max(2*out.se,.05)?(out.dt<0?'faster':'slower'):'c
 out.phases=[];if(ha&&hb&&!ha.few&&!hb.few)for(const[p,lab]of HPH)for(const s of['slow','fast']){const a=ha.B[p+'_'+s],b=hb.B[p+'_'+s];if(!a||!b||a.n<150||b.n<150||!a.raw||!b.raw)continue;
 const ch=b.raw/a.raw-1,dcs=b.cs-a.cs;if(Math.abs(ch)>=.08)out.phases.push({p,s,lab,kind:'steer',ch});if(Math.abs(dcs)>=1.5)out.phases.push({p,s,lab,kind:'os',d:dcs})}
 return out}
-function liveRunCore(n){const R=(LIVE.runH||{})[n];if(!R||!R.length)return null;LIVE.runHc=LIVE.runHc||{};const c=LIVE.runHc[n];if(c&&c.len===R.length)return c.h;let h=null;try{h=handlingCore(R)}catch(e){}LIVE.runHc[n]={len:R.length,h};return h}
+function liveRunCore(n){const R=(LIVE.runH||{})[n];if(!R||!R.length)return null;LIVE.runHc=LIVE.runHc||{};const c=LIVE.runHc[n],sig=balSig();if(c&&c.len===R.length&&c.sig===sig)return c.h;let h=null;try{h=handlingCore(R)}catch(e){}LIVE.runHc[n]={len:R.length,h,sig};return h}
 // ---- every setup change you have tried here, across sessions: what it did, kept in this browser
 const SETUP_LOG='setupLog';
 function setupLogLoad(){try{return JSON.parse(localStorage.getItem(SETUP_LOG)||'{}')||{}}catch(e){return {}}}
@@ -2137,7 +2176,7 @@ gbPredictHtml(p,GBS,gbCalc(S.setup))+'<br>'+(p.basis.kind==='learned'?`<span>Pre
 :`<span class="m">Starting estimate: this setting has not been measured yet, so the size is a typical first step${PRIOR_STEP[p.k]==null&&setupLim(p.r)?' (a tenth of its range)':''} in the direction that should help ${p.f.kind==='us'?'the understeer':'the oversteer'}. Drive ${RUN_MIN} clean laps after the change and the next prediction will use what it did.</span>`)+`</li>`}).join('')}</ol>`:'<p class="m">This car has no matching setting to change.</p>'}
 const ss=Object.values(sens);if(ss.length)o+=`<details style="margin-top:8px"><summary><b>What your tests have measured</b> <span class="m">per unit of each setting</span></summary><div style="overflow-x:auto"><table><tr><th>Setting</th><th>Tests</th>${PHASES.map(p=>`<th>${PH_LAB[p]}</th>`).join('')}<th>Lap time here</th></tr>`+
 ss.map(s=>`<tr><td><b>${plain(s.lab)}</b> <span class="m">${plain(s.ax)}</span></td><td>${s.n}</td>${PHASES.map(p=>`<td>${s.ph[p]&&s.ph[p].per?pct(s.ph[p].per)+'<small class="m"> /unit</small>':'–'}</td>`).join('')}<td>${s.dt[track]?(s.dt[track].per>0?'+':'−')+Math.abs(s.dt[track].per).toFixed(3)+' s /unit':'–'}</td></tr>`).join('')+
-`</table></div><p class="m" style="font-size:13px">Steering is what you need at the limit against a neutral car: less means less understeer in that phase. Lap time per unit is only from tests at this track. Changes of more than one setting at once are kept but not used, because their effects cannot be separated.</p></details>`;
+`</table></div><p class="m" style="font-size:13px">Steering is what you need at the limit for the curve you are on: less means less understeer in that phase. Lap time per unit is only from tests at this track. Changes of more than one setting at once are kept but not used, because their effects cannot be separated.</p></details>`;
 return o+gbHtml(car)}
 
 // ---- Garage calculations: what iRacing's garage computes for a setup, learned per setting ----
@@ -2366,7 +2405,7 @@ const from=Math.max(0,s-150,prevE!=null?prevE:0);let ba=-1,pk=0,pkg=-1;for(let g
 f.braked=pk>=.3;f.ba=f.braked?ba:-1;f.baF=f.braked?rawCross(raw,'Brake',ba,crossPt(X.Brake,ba,.08),.08):-1;f.pk=f.braked?pk:0;f.tpk=null;f.off=-1;f.abs=null;
 if(f.braked){for(let g=ba;g<=pkg;g++)if(X.Brake[g]>=.9*pk){f.tpk=X.t[g]-X.t[ba];break}for(let g=pkg;g<=e;g++)if(X.Brake[g]<.05){f.off=g;break}
 let a=0,n=0;for(let g=ba;g<=(f.off>=0?f.off:ap);g++){n++;if(X.ABS[g]>.5)a++}f.abs=n?a/n:null}
-let ms=1e9,mg=ap;for(let g=s;g<=e;g++)if(X.Speed[g]<ms){ms=X.Speed[g];mg=g}f.mg=mg;f.ms=ms*3.6;f.gr=Math.round(X.Gear[mg]||0);
+let ms=1e9,mg=ap;for(let g=s;g<=e;g++)if(X.Speed[g]<ms){ms=X.Speed[g];mg=g}{const rm=rawMin(raw,mg,s,e);f.mgF=rm?rm.g:mg;if(rm)ms=rm.v}f.mg=mg;f.ms=ms*3.6;f.gr=Math.round(X.Gear[mg]||0);
 f.ta=-1;f.tf=-1;for(let g=mg;g<=e;g++){if(f.ta<0&&X.Throttle[g]>.6)f.ta=g;if(X.Throttle[g]>.95){f.tf=g;break}}f.taF=f.ta>=0?rawCross(raw,'Throttle',f.ta,crossPt(X.Throttle,f.ta,.6),.6):-1;
 let co=0;for(let g=Math.max(s,f.tin>=0?f.tin:s);g<e;g++)if(X.Brake[g]<.05&&X.Throttle[g]<.05)co+=X.t[g+1]-X.t[g];f.coast=co;f.ct=X.t[e]-X.t[s];
 const Rf=ref||f;if(off&&side){const at=g=>off[g]*side;f.line={in:at(Rf.tin>=0?Rf.tin:s),ap:at(Rf.mg),ex:at(Rf.tout!=null?Rf.tout:e)}}
@@ -2383,7 +2422,7 @@ sdv=a=>{const v=a.filter(x=>x!=null&&isFinite(x));if(v.length<3)return null;cons
 share=(A,f)=>A.length?A.filter(f).length/A.length:null,pos=a=>a.map(x=>x>=0?x:null),br=L.filter(f=>f.braked),gs={};L.forEach(f=>{if(f.gr)gs[f.gr]=(gs[f.gr]||0)+1});
 const F=(f,k)=>f[k+'F']!=null?f[k+'F']:f[k];
 const y={n:L.length,braked:share(L,f=>f.braked),ba:md(br.map(f=>F(f,'ba'))),pk:md(br.map(f=>f.pk)),tpk:md(br.map(f=>f.tpk)),off:md(pos(br.map(f=>f.off))),abs:md(br.map(f=>f.abs)),
-trail:share(br.filter(f=>f.tin>=0),f=>f.off<0||f.off>f.tin),tin:md(pos(L.map(f=>F(f,'tin')))),mg:md(L.map(f=>f.mg)),ms:md(L.map(f=>f.ms)),gr:+(Object.keys(gs).sort((a,b)=>gs[b]-gs[a])[0]||0),
+trail:share(br.filter(f=>f.tin>=0),f=>f.off<0||f.off>f.tin),tin:md(pos(L.map(f=>F(f,'tin')))),mg:md(L.map(f=>F(f,'mg'))),ms:md(L.map(f=>f.ms)),gr:+(Object.keys(gs).sort((a,b)=>gs[b]-gs[a])[0]||0),
 ta:md(pos(L.map(f=>F(f,'ta')))),tf:md(pos(L.map(f=>f.tf))),coast:md(L.map(f=>f.coast)),ct:md(L.map(f=>f.ct))};
 const ln=L.filter(f=>f.line);y.line=ln.length?{in:md(ln.map(f=>f.line.in)),ap:md(ln.map(f=>f.line.ap)),ex:md(ln.map(f=>f.line.ex))}:null;
 const kb=L.filter(f=>f.kerb);y.kerb=kb.length?{in:share(kb,f=>f.kerb.in),ap:share(kb,f=>f.kerb.ap),ex:share(kb,f=>f.kerb.ex),n:kb.length}:null;
@@ -2404,7 +2443,7 @@ if(b.braked&&b.tin>=0&&(b.off<0||b.off>b.tin+1)&&y.trail!=null&&y.trail<.5)add('
 if(b.tin>=0&&y.tin!=null){const d=(y.tin-b.tin)*m;if(d<=-6)add('turn_later',4,-d/6,'Turn in '+D(d)+' later.');else if(d>=6)add('turn_sooner',4,d/6,'Turn in '+D(d)+' sooner.')}
 if(y.line&&y.line.in!=null&&y.line.in>=1)add('wide_entry',5,y.line.in,'Turn in from '+Lm(y.line.in)+' further out: use the width of the track on the way in.');
 if(y.gr&&b.gr&&y.gr!==b.gr)add('gear',6,1.5,'Take it in gear '+b.gr+' like your best (you use '+y.gr+').');
-if(y.mg!=null){const d=(y.mg-b.mg)*m;if(d<=-10)add('early_apex',7,-d/10,'Your slowest point comes '+D(d)+' earlier than on your best (an early apex): turn in a touch later so the car points out of the corner sooner.')}
+if(y.mg!=null){const d=(y.mg-(b.mgF!=null?b.mgF:b.mg))*m;if(d<=-10)add('early_apex',7,-d/10,'Your slowest point comes '+D(d)+' earlier than on your best (an early apex): turn in a touch later so the car points out of the corner sooner.')}
 if(y.line&&y.line.ap!=null&&y.line.ap<=-1)add('miss_apex',7.5,-y.line.ap,'Get '+Lm(y.line.ap)+' closer to the apex.');
 if(b.kerb&&y.kerb&&b.kerb.ap&&y.kerb.ap<.5)add('kerb_apex',7.6,1.2,'Your best rides the apex kerb; you touch it on '+of(y.kerb.ap)+'.');
 if(b.ta>=0&&y.ta!=null){const d=(y.ta-b.ta)*m;if(d>=6&&d<=60)add('throttle_sooner',8,d/6,'Back on the throttle '+D(d)+' sooner.')}
@@ -2513,7 +2552,7 @@ if(COACH.to==='g61best'&&g61.length){const g=g61.slice().sort((p,q)=>p.lap-q.lap
 else if(COACH.to==='ref'&&F.b&&!SELF&&!fits(F.b)){skipped='the lap in the right box is '+whereTxt(F.b)+', not this car and track, so your own best lap is used';COACH.to='best'}
 else if(COACH.to==='ref'&&F.b&&!SELF){best=F.b;bestLab='the reference lap in the right box ('+(F.b.who||'')+', '+ft(F.b.lap)+')'}
 else if(COACH.to==='before'&&coachBefore(S)){best=coachBefore(S);bestLab='your best before today ('+new Date(best.at).toLocaleDateString()+', '+ft(best.lap)+')'}
-else COACH.to='best';
+else if(!(COACH.to==='g61near'&&g61.length))COACH.to='best';   // (a near lap was picked above: it stays the choice)
 if(skipped)bestLab+=' ('+skipped+')';
 COACH.tol=consistTol(best.lap,COACH.style);
 const use=COACH.to==='best'?own.slice(1):own,avg=avgLap(use),C=coachCompare(avg,best,use);nameCorners(C.R.cs,coTrack(S));return{S,laps:use,avg,best,bestLab,C,n:use.length,G}}
@@ -2664,7 +2703,7 @@ items.push({kind:'drive',gain:c.dt,title:coName(rc)+': '+(t?t.t.split(':')[0]:no
 if(SD&&SD.H){SD.picks.forEach(p=>{const G=coachSetupGain(X,p.f,SD.H),pct=p.f.kind==='us'?Math.round((Math.max(...['slow','fast'].map(z=>(SD.H.B[p.f.p+'_'+z]||{}).ui||1))-1)*100):null;
 items.push({kind:'setup',gain:G.g*.5,worth:G.g,title:plain(p.label)+' '+suFmtVal(String(p.from)+(p.u?' '+p.u:''))+' → '+suFmtVal(String(p.to)+(p.u?' '+p.u:'')),
 do:'Fixes '+(p.f.kind==='us'?'understeer':'oversteer')+' '+p.f.lab.toLowerCase()+' in '+(p.f.where==='both'?'slow and fast':p.f.where)+' corners'+(p.basis.kind==='learned'?'; size learned from '+p.basis.n+' test'+(p.basis.n===1?'':'s')+' of yours':'; a first step, measured once you drive it'),
-why:[(pct!=null?'You need '+pct+'% more steering than a neutral car there':'The car needs opposite lock or slides there')+', on every lap, not just the slow ones: the car is limiting you, not only the driving.'],ev:G.cs.length?'affects corner'+(G.cs.length>1?'s ':' ')+G.cs.join(', '):''})});
+why:[(pct!=null?'You need '+pct+'% more steering there than '+balWord(SD.H.base):'The car needs opposite lock or slides there')+', on every lap, not just the slow ones: the car is limiting you, not only the driving.'],ev:G.cs.length?'affects corner'+(G.cs.length>1?'s ':' ')+G.cs.join(', '):''})});
 SD.other.forEach(o=>items.push({kind:'setup',gain:0,title:plain(o.ch.label)+': '+o.ch.word.toLowerCase(),do:o.f.kind==='abs'?'ABS works '+o.f.v.toFixed(0)+'% of the time braking into corners.':o.f.kind==='bottom'?'The car touches the ground at speed.':CORNER_OF[o.f.t]+' tyre temperatures across the tread call for it.',why:[],ev:'now '+plain(o.ch.cur)}))}
 const d=items.filter(i=>i.kind==='drive').sort((a,b)=>b.gain-a.gain),s=items.filter(i=>i.kind==='setup').sort((a,b)=>b.gain-a.gain),out=[];
 // lead with what is worth most; a setup change that limits several corners goes in second at the latest
@@ -2737,7 +2776,7 @@ if(b.braked&&y.abs!=null&&(y.abs>.02||b.abs>.02))row('ABS working',P(y.abs)+' of
 if(b.braked&&b.tin>=0&&y.trail!=null)row('Brake on at turn-in',of(y.trail),b.off<0||b.off>b.tin?'yes':'no',y.trail<.5&&(b.off<0||b.off>b.tin))}
 if(b.tin>=0&&y.tin!=null)row('Turns in',rel(y.tin,b.tin,'earlier','later'),'—',Math.abs((y.tin-b.tin)*m)>=6);
 if(y.line){const L=v=>v==null?'—':Math.abs(v)<.5?'same line':(Math.abs(v)*u.d[0]).toFixed(1)+' '+u.d[1]+' '+(v>0?'tighter':'wider');row('Line at turn-in',L(y.line.in),'—',y.line.in>=1);row('Line at the apex',L(y.line.ap),'—',y.line.ap<=-1);row('Line on exit',L(y.line.ex),'—',y.line.ex>=1.5)}
-row('Slowest point',S(y.ms)+(y.mg!=null&&Math.abs((y.mg-b.mg)*m)>=3?', '+rel(y.mg,b.mg,'earlier','later'):''),S(b.ms),cc.dv<=-1.5);
+row('Slowest point',S(y.ms)+(y.mg!=null&&Math.abs((y.mg-(b.mgF!=null?b.mgF:b.mg))*m)>=3?', '+rel(y.mg,b.mgF!=null?b.mgF:b.mg,'earlier','later'):''),S(b.ms),cc.dv<=-1.5);
 if(y.gr&&b.gr)row('Gear there',y.gr,b.gr,y.gr!==b.gr);
 if(b.ta>=0&&y.ta!=null)row('Back on the throttle',rel(y.ta,b.ta,'sooner','later'),'—',(y.ta-b.ta)*m>=6);
 if(y.coast!=null&&(y.coast>.15||b.coast>.15))row('Coasting',y.coast.toFixed(1)+' s',b.coast.toFixed(1)+' s',y.coast-b.coast>=.25);
@@ -2788,12 +2827,14 @@ const COACH_PRAC_KEY='coachPrac',PRAC_MAX=3,PRAC_LAPS=10;
 function pracLoad(){try{return JSON.parse(localStorage.getItem(COACH_PRAC_KEY)||'{}')||{}}catch(e){return {}}}
 function pracSave(P){try{localStorage.setItem(COACH_PRAC_KEY,JSON.stringify(P))}catch(e){}}
 // pure: a corner of the coaching result -> a target (grid positions and the best lap's numbers)
-function pracTarget(cc,name){const b=cc.fx.b;return{n:cc.n,name,s:cc.s,e:cc.e,mg:b.mg,ba:b.braked?b.ba:-1,ta:b.ta,ms:b.ms,ct:b.ct,mpg:cc.mpg,focus:cc.cause?cc.cause.steps.map(s=>s.k):[],head:cc.cause?cc.cause.head:'',watch:(CAR_STYLE[COACH.style]||{}).watch||null,at:Date.now()}}
+function pracTarget(cc,name){const b=cc.fx.b;return{n:cc.n,name,s:cc.s,e:cc.e,mg:b.mg,ba:b.braked?b.ba:-1,ta:b.ta,baF:b.braked&&b.baF!=null?b.baF:null,taF:b.taF!=null&&b.taF>=0?b.taF:null,ms:b.ms,ct:b.ct,mpg:cc.mpg,focus:cc.cause?cc.cause.steps.map(s=>s.k):[],head:cc.cause?cc.cause.head:'',watch:(CAR_STYLE[COACH.style]||{}).watch||null,at:Date.now()}}
 // pure: one lap (a lap object) graded on the targets. dct: corner time against the best (s, + slower);
 // dba / dta: braking and throttle point against the best (m, + later); ms: slowest speed (km/h).
 function pracGrade(lap,T){const X=rs(lap);return T.map(t=>{const s=t.s,e=t.e;let ms=1e9;for(let g=s;g<=e;g++)ms=Math.min(ms,X.Speed[g]);ms*=3.6;
 let ba=-1;if(t.ba>=0)for(let g=Math.max(0,t.ba-40);g<=t.mg;g++)if(X.Brake[g]>.08){ba=g;break}let mg=s;for(let g=s;g<=e;g++)if(X.Speed[g]<X.Speed[mg])mg=g;let ta=-1;for(let g=mg;g<=e;g++)if(X.Throttle[g]>.6){ta=g;break}
-const r={n:t.n,dct:X.t[e]-X.t[s]-t.ct,ms,dms:ms-t.ms,dba:ba>=0&&t.ba>=0?(ba-t.ba)*t.mpg:null,dta:ta>=0&&t.ta>=0?(ta-t.ta)*t.mpg:null};
+// read as the targets were: between the grid's points, from the lap's own samples
+const rm=rawMin(lap,mg,s,e);if(rm)ms=rm.v*3.6;const baF=ba>=0?rawCross(lap,'Brake',ba,crossPt(X.Brake,ba,.08),.08):-1,taF=ta>=0?rawCross(lap,'Throttle',ta,crossPt(X.Throttle,ta,.6),.6):-1,tb=t.baF!=null?t.baF:t.ba,tt=t.taF!=null?t.taF:t.ta;
+const r={n:t.n,dct:X.t[e]-X.t[s]-t.ct,ms,dms:ms-t.ms,dba:ba>=0&&t.ba>=0?(baF-tb)*t.mpg:null,dta:ta>=0&&t.ta>=0?(taF-tt)*t.mpg:null};
 r.ok={time:r.dct<=.03,speed:r.dms>=-1.5,brake:r.dba==null?null:r.dba>=-5,throttle:r.dta==null?null:r.dta<=6};return r})}
 function pracOnLap(o){try{const P=pracLoad(),k=coachLiveKey(),E=P[k];if(!E||!E.targets||!E.targets.length)return;const lap=coachFromSaved(o);E.laps=E.laps||[];E.laps.push({lap:o.lap,at:Date.now(),r:pracGrade(lap,E.targets)});while(E.laps.length>PRAC_LAPS)E.laps.shift();pracSave(P);renderPractice()}catch(e){console.error('practice',e)}}
 function pracKeyOf(X){return(X.S.car||(IB.a&&IB.a.carPath)||'')+'|'+(X.S.track||(IB.a?ghTrackOf(IB.a.yaml):''))}
@@ -3239,8 +3280,9 @@ const tq=v.SteeringWheelPctTorqueSign!=null?Math.abs(v.SteeringWheelPctTorqueSig
 if(c.lg!=null&&v.Gear>c.lg&&c.lg>0&&c.lr)st.up.push(c.lr);c.lg=v.Gear;c.lr=v.RPM;
 // shocks: a corner sitting at the deepest travel seen this session (most likely the bump stop) counts once per visit
 LIVE.shMax=LIVE.shMax||{};LIVE.shMaxT=LIVE.shMaxT||{};const now=v.SessionTime!=null?v.SessionTime:performance.now()/1000;TCORN.forEach(k=>{const d=v[k+'shockDefl'];if(d==null)return;if(!(d<=LIVE.shMax[k]*1.02)){LIVE.shMaxT[k]=now}if(!(d<=LIVE.shMax[k]))LIVE.shMax[k]=d;const at=LIVE.shMax[k]>0.01&&d>=LIVE.shMax[k]*0.97&&now-LIVE.shMaxT[k]>30;if(at&&!(c['at'+k]))st.hits[k]=(st.hits[k]||0)+1;c['at'+k]=at});
-// sectors: the lap clock as the car crosses each sector line
-const B=LIVE.secs||[],d=v.LapDistPct;if(B.length&&d!=null&&c.pd2!=null&&d>c.pd2&&d-c.pd2<0.05){c.sx=c.sx||[];const k=c.sx.length;if(k<B.length&&c.pd2<B[k]&&d>=B[k]&&v.LapCurrentLapTime>0)c.sx.push(v.LapCurrentLapTime)}c.pd2=d}
+// sectors: the lap clock as the car crosses each sector line, placed between the two ticks either side of it
+// (the first tick after the line read up to 0.05 s late against the file)
+const B=LIVE.secs||[],d=v.LapDistPct;if(B.length&&d!=null&&c.pd2!=null&&d>c.pd2&&d-c.pd2<0.05){c.sx=c.sx||[];const k=c.sx.length;if(k<B.length&&c.pd2<B[k]&&d>=B[k]&&v.LapCurrentLapTime>0){const T=v.LapCurrentLapTime,T0=c.pt2;c.sx.push(T0>0&&T0<T&&T-T0<1?T0+(B[k]-c.pd2)/(d-c.pd2)*(T-T0):T)}}c.pd2=d;c.pt2=v.LapCurrentLapTime}
 // a lap's sector times: the crossings, then the lap time (iRacing's, once it arrives) for the last one
 function teleSecs(l){if(!l||!l.sx||!(l.time>0))return null;const a=[...l.sx,l.time];return a.map((t,i)=>t-(i?a[i-1]:0))}
 function teleStatsOut(c){const st=c.ts;if(!st||!st.n)return null;const pc=x=>Math.round(x/st.n*1000)/10;

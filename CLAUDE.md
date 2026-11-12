@@ -79,9 +79,9 @@ sets, in-car settings and CarLeftRight are your-car-only.
 
 A recurring trap, worth stating plainly: FakeSource repeatedly encoded the same
 assumption as the code under test, so the suite passed while the sim disagreed.
-It has now been corrected six times -- the F2Time placeholder, gap monotonicity,
+It has now been corrected seven times -- the F2Time placeholder, gap monotonicity,
 the yaw convention (mirrored, then turned 90 degrees; settled against GPS), impossible best laps,
-and single-class-only fields. Where a real file carries a second measure of the same thing (GPS
+single-class-only fields, and CarIdxEstTime as a straight line in LapDistPct (Nov 2026: the pit-lane loss). Where a real file carries a second measure of the same thing (GPS
 against velocity and heading), test against that rather than the fake.
 When adding a derived value, make the fake reproduce the sim's awkward shape
 (placeholders, "carry over", mixed classes), not the convenient one.
@@ -577,6 +577,34 @@ Broadcast (broadcast/)
   A new distance in advice must come from a fine reading, not a grid index. The slowest point's place (mg) is still
   a grid point (a flat minimum has no sharper place). test:
   test_pedal_points_are_read_between_the_grids_points_from_the_laps_own_samples.
+- The open parts, checked against the driver's files (Nov 2026). Garage 61: a CSV is the same channels as the .ibt to
+  the sample (his 1:24.636 is lap 23 of the 19-49 session), and Coaching's time lost per corner against each of the
+  six Indianapolis laps agrees with both files' clocks to 0.001 s; "a lap a little quicker than yours" fell back to
+  the fastest one (fixed). The slowest point of a corner is read from the lap's own samples (rawMin: the slowest sample
+  inside the corner and a parabola through its neighbours; 0.6-1.2 m off as a grid point, 0.05-0.13 m now; mgF).
+  Live telemetry: sector times are placed between the two ticks either side of the line (they read up to 0.05 s
+  late; now 0.017 s against the file, which is the lap clock's own offset); the predicted lap, lap stats, top speed,
+  brake split and ABS agree with the file. PitWall's your-car values through normalize (an .ibt as a source, the
+  player's car in its slot): a stint's laps took the time of the lap before (iRacing posts LastLapTime ~1.6 s after
+  the counter moves), so the in-lap opened the next stint ("avg 1:29.2" for 1:24.8 laps): Deriver.stint waits for a
+  new time, and its average is of racing laps; a stop's stationary time is the car standing still (CarIdxLapDistPct
+  not moving: 13.2 s, not the stall surface's 14.6 s; STILL_PCT_S); the lane loss counts the stretch beside the lane
+  as its share of the lap's TIME (the class profile, _u_of_pct) and the slowing for the entry and the speed after the
+  exit (PIT_BEFORE_U / PIT_AFTER_U): 28.3 s became 37.0 s, the file says 36.8-37.0 (FakeSource's CarIdxEstTime was a
+  straight line in LapDistPct, the convenient shape; it now follows the track's speed: lap_time_share); your own
+  incidents (PlayerCarMyIncidentCount rising) end the clean-lap streak. Balance: steering per curve is not level
+  through a corner on ANY car (less braking in, most mid-corner, more in fast corners); read against the run's own
+  middle, every file showed mid-corner "understeer", the six fastest Garage 61 laps included (+8 to +42%). Each
+  phase is now read against what fast laps do in it: the reference laps for this car and track when loaded, else
+  BAL_TYPICAL (16 laps and sessions, 6 cars); the fake (SIM_SHAPE) steers in that shape. On his Indianapolis race
+  the car reads balanced and Coaching no longer sends him to Setup. Still not verified: whether a phase's excess
+  steering IS what a setup change fixes (no second measure: VelocityY's rear-axle slip agreed only loosely, r -0.2
+  to -0.5). The corner book and names travel with the session: the driver's page POSTs them to the suite
+  (/api/corners, this PC only, clean_corners), which sends {type: corners} to the share link's viewers on connect
+  and on change; a viewer takes them for the driver's tracks (cornersTake) and never sends its own.
+  tests: test_the_open_parts_slowest_point_garage_61_choice_live_sectors_and_balance, GarageSixtyOneAgainstTheFileTest,
+  test_a_viewer_takes_the_drivers_corner_book, test_a_stints_laps_get_their_own_times,
+  test_a_stop_is_timed_standing_still_and_your_incidents_end_the_clean_streak, test_the_corner_book_travels_with_the_session.
 - PitWall's dashboard, audited (Nov 2026): "Your car" says it is spectating instead of showing empty panels; outside a
   race the standings' Int and Gap come from best laps (derived.classBestIntervalS, classPoleGapS); race strategy's best
   option is the best projected finish (time only between equal finishes), its tyre stop is not offered under a caution

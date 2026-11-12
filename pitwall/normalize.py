@@ -454,7 +454,9 @@ class Deriver:
                 out["catchLaps"] = round(laps, 1)
         return out
 
-    def pit(self, idx, t, on_pit_road, in_box, lap, pct=None) -> dict:
+    STILL_PCT_S = 5e-5          # part of a lap a second: under this a car in its box is standing (0.2 m/s on 4 km)
+
+    def pit(self, idx, t, on_pit_road, in_box, lap, pct=None, class_id=None) -> dict:
         """Competitor stop tracking, from CarIdxOnPitRoad and CarIdxTrackSurface.
 
         Knowing who still has to stop changes the effective order more than any
@@ -491,6 +493,8 @@ class Deriver:
             return out
         was_away = st.get("away", False)
         st["away"] = pct is not None and pct < 0     # out of the world (LapDistPct -1)
+        st["cls"] = class_id
+        self._pit_approach(idx, st, t, on_pit_road, pct)
         # first seen before it was in the world (lap -1: the grid filling at a standing start, Summit Point): its
         # first stint starts when it shows up on lap 0 or 1 (it read "this stint: unknown" all race)
         if st.get("stintStart") is None and not st["stops"] and lap is not None and 0 <= lap <= 1:
@@ -507,12 +511,22 @@ class Deriver:
             step = (pct - st["lastPct"]) % 1.0
             if 0.05 < step < 0.995:
                 st["bad"] = True
+        # Stationary time is the time the car stands STILL in its box. The stall's surface is wider than the
+        # stop: the car rolls in and pulls away on it, which read 14.6 s for a stop of 13.2 s (the driver's own
+        # Indianapolis file: Speed 0 for 13.2 s) and 0 to 2.5 s long over 55 stops at Suzuka. A standing car's
+        # CarIdxLapDistPct does not move at all (seen: exactly 0 from tick to tick).
+        if in_box and st["inBox"] and st.get("boxT") is not None and pct is not None and pct >= 0 \
+                and st.get("lastPct") is not None and st.get("lastT") is not None and 0 < t - st["lastT"] < 2:
+            st["boxPct"] = True
+            if abs(pct - st["lastPct"]) / (t - st["lastT"]) < self.STILL_PCT_S:
+                st["still"] = st.get("still", 0.0) + (t - st["lastT"])
         if pct is not None and pct >= 0:
             st["lastPct"] = pct
-        if in_box and not st["inBox"]:                       # stopped in the box
-            st["boxT"] = t
+        st["lastT"] = t
+        if in_box and not st["inBox"]:                       # in the box
+            st["boxT"], st["still"], st["boxPct"] = t, 0.0, False
         if st["inBox"] and not in_box and st["boxT"] is not None:
-            st["boxS"] = t - st["boxT"]                      # stationary time
+            st["boxS"] = st.get("still", 0.0) if st.get("boxPct") else t - st["boxT"]   # stationary time
             st["lastBoxS"] = round(st["boxS"], 1)
             st["boxT"] = None
         if st["onRoad"] and not on_pit_road:                 # left the lane
@@ -549,22 +563,40 @@ class Deriver:
         out = {"stintLaps": 0, "stintAvgS": None, "degSPerLap": None}
         if idx is None or lap_completed is None:
             return out
-        st = self._stint.setdefault(idx, {"laps": [], "lastLap": None, "stops": stops_seen})
+        # iRacing posts a lap's time a moment AFTER its lap counter moves (a median of 1.6 s later for the field
+        # at Suzuka, a tick or more for your own car), and LastLapTime holds the lap before's until then. Taking
+        # the time as the counter moved gave every lap the time of the lap before, the first one twice, and the
+        # in-lap to the stint after the stop (Indianapolis: "avg 1:29.2" for a stint of 1:24.8 laps). So a lap
+        # waits for a NEW time; a lap that never gets one is left out.
+        st = self._stint.get(idx)
+        if st is None:      # first sight: the time showing is of a lap that was not watched
+            st = self._stint[idx] = {"laps": [], "lastLap": lap_completed, "stops": stops_seen,
+                                     "stale": last_lap_s, "wait": None}
         if stops_seen != st["stops"]:          # a stop ended the stint
-            st["laps"], st["lastLap"], st["stops"] = [], None, stops_seen
-        if (last_lap_s and last_lap_s > 0 and lap_completed != st["lastLap"]):
-            st["laps"].append((lap_completed, last_lap_s))
-            st["lastLap"] = lap_completed
-            st["laps"] = st["laps"][-40:]
+            st["laps"], st["stops"] = [], stops_seen
+            st["wait"] = None if st["wait"] is None else lap_completed   # the in-lap's time is not this stint's
+            st["skip"] = st["wait"] is not None
+        if lap_completed != st["lastLap"]:
+            st["wait"] = lap_completed if lap_completed > (st["lastLap"] or 0) else None   # (the counter can go back in the pits)
+            st["lastLap"], st["skip"] = lap_completed, False
+        if last_lap_s and last_lap_s > 0 and last_lap_s != st["stale"]:
+            st["stale"] = last_lap_s
+            if st["wait"] is not None:
+                if not st.get("skip"):
+                    st["laps"].append((st["wait"], last_lap_s))
+                    st["laps"] = st["laps"][-40:]
+                st["wait"], st["skip"] = None, False
         laps = st["laps"]
         out["stintLaps"] = len(laps)
         if not laps:
             return out
-        out["stintAvgS"] = round(sum(l[1] for l in laps) / len(laps), 3)
+        # the average is of racing laps, as the trend below: an out-lap (2:02 against 1:25) is not the stint's pace
+        quick = min(l[1] for l in laps)
+        racing = [l[1] for l in laps if l[1] <= quick * self.STINT_SLOW_LAP]
+        out["stintAvgS"] = round(sum(racing) / len(racing), 3)
         # The trend is read from racing laps only: an out-lap, a lap behind the pace
         # car or one with a spin says nothing about the tyres (a caution lap ran
         # 2.5x slower in the fake race and made fresh tyres look worth minutes).
-        quick = min(l[1] for l in laps)
         laps = [l for l in laps if l[1] <= quick * self.STINT_SLOW_LAP]
         if len(laps) >= self.STINT_MIN_LAPS:
             n = len(laps)
@@ -1129,6 +1161,68 @@ class Deriver:
         return {"laneLossS": None if med is None else round(med, 2), "samples": len(lane),
                 "boxMedianS": None if bmed is None else round(bmed, 1), "boxSamples": len(boxes)}
 
+    def _u_of_pct(self, class_id, pct):
+        """Lap-time fraction at a track position, from the class's lap profile (the other way round from
+        _pct_of_u); the position itself when too little of the lap has been seen."""
+        bins = self._prof.get(class_id) or {}
+        pts = sorted((sp / n, su / n) for sp, su, n in bins.values() if n)
+        if len(pts) < self.PROFILE_BINS // 4:
+            return pct % 1.0
+        pct = pct % 1.0
+        pts = [(p - 1.0, uu - 1.0) for p, uu in pts[-3:]] + pts + [(p + 1.0, uu + 1.0) for p, uu in pts[:3]]
+        for (p0, u0), (p1, u1) in zip(pts, pts[1:]):
+            if p0 <= pct <= p1 and p1 > p0:
+                return (u0 + (u1 - u0) * (pct - p0) / (p1 - p0)) % 1.0
+        return pct
+
+    # What a trip through the pit lane costs is more than the time between its two lines: the car brakes for the
+    # entry and gets back up to speed after the exit. So the loss is timed from a little before the entry to a
+    # little after the exit, in lap-time fractions (the class's profile), against the car's own pace over the
+    # same part of the lap. The driver's own Indianapolis file: 58.6 s between the lines, 13.2 s standing, and
+    # the same stretch takes 12.0 s at speed (the lane runs beside the main straight): 33.4 s lost between the
+    # lines and 35.6 s in all. Taking the stretch as its share of the lap's LENGTH (a fifth: 17.0 s) said 28.3.
+    PIT_BEFORE_U = 0.04
+    PIT_AFTER_U = 0.08
+
+    def _pit_approach(self, idx, st, t, on_pit_road, pct):
+        """The last seconds on track before a lane entry, and the wait after an exit for the car to be back up
+        to speed; then the stop's loss sample is made whole."""
+        if pct is None or pct < 0:
+            return
+        if not on_pit_road:
+            h = st.setdefault("hist", [])
+            h.append((t, pct))
+            while h and t - h[0][0] > 25.0:
+                h.pop(0)
+            post = st.get("post")
+            if post is not None:
+                u = self._u_of_pct(st.get("cls"), pct)
+                gone = (u - post["uExit"]) % 1.0
+                if t - post["tExit"] > 60.0 or gone > 0.5:
+                    st["post"] = None
+                elif gone >= self.PIT_AFTER_U:
+                    pt, pg = post.get("prev", (post["tExit"], 0.0))
+                    f = (self.PIT_AFTER_U - pg) / (gone - pg) if gone > pg else 1.0
+                    t_after = pt + f * (t - pt)
+                    span = (post["uExit"] + self.PIT_AFTER_U - post["uPre"]) % 1.0
+                    full = (t_after - post["tPre"]) - (post["box"] or 0.0) - span * post["pace"]
+                    rec = post["rec"]
+                    if rec["laneLossS"] - 1.0 <= full < 150.0:
+                        rec["linesS"], rec["laneLossS"], rec["whole"] = rec["laneLossS"], round(full, 2), True
+                    st["post"] = None
+                else:
+                    post["prev"] = (t, gone)
+        else:
+            st["post"] = None
+            if not st.get("onRoad"):       # the entry line, this tick: where was the car PIT_BEFORE_U of a lap ago
+                cls, pre = st.get("cls"), None
+                u_in = self._u_of_pct(cls, pct)
+                h = [(ht, (u_in - self._u_of_pct(cls, hp)) % 1.0) for ht, hp in st.get("hist", [])]
+                for (t0, b0), (t1, b1) in zip(h, h[1:]):      # b: lap-time fraction still to go to the entry line
+                    if b0 >= self.PIT_BEFORE_U >= b1 and b0 > b1 and b0 < 0.5:
+                        pre = t0 + (b0 - self.PIT_BEFORE_U) / (b0 - b1) * (t1 - t0)
+                st["preT"], st["hist"] = pre, []
+
     def _pit_lane_sample(self, idx, st, t, pct, box_s):
         """Called when a car leaves the lane after a stop we watched."""
         if st.get("bad") or st.get("enterPct") is None or pct is None or pct < 0:
@@ -1136,14 +1230,22 @@ class Deriver:
         pace = self.pace(idx)
         if not pace:
             return None
+        cls = st.get("cls")
         frac = (pct - st["enterPct"]) % 1.0
+        u_in, u_out = self._u_of_pct(cls, st["enterPct"]), self._u_of_pct(cls, pct)
+        track_s = ((u_out - u_in) % 1.0) * pace          # this stretch at the car's pace
         lane_t = t - st["enterT"]
-        loss = lane_t - (box_s or 0.0) - frac * pace
+        loss = lane_t - (box_s or 0.0) - track_s
         if not (frac < 0.3 and 0.0 < loss < 120.0):
             return None
-        rec = {"idx": idx, "laneLossS": round(loss, 2), "boxS": box_s, "laneS": round(lane_t, 1)}
+        rec = {"idx": idx, "laneLossS": round(loss, 2), "boxS": box_s, "laneS": round(lane_t, 1),
+               "trackS": round(track_s, 2)}
         self._loss.append(rec)
         del self._loss[:-30]
+        pre = st.get("preT")              # the approach (set at the entry line)
+        if pre is not None:
+            st["post"] = {"rec": rec, "tPre": pre, "uPre": (u_in - self.PIT_BEFORE_U) % 1.0, "uExit": u_out,
+                          "tExit": t, "box": box_s, "pace": pace}
         return rec
 
     # ---- rejoin --------------------------------------------------------------
@@ -2445,7 +2547,8 @@ class Deriver:
                 if st.get("rejoinAt") != st["enterT"]:
                     st["rejoinAt"] = st["enterT"]
                     st["rejoin"] = self.predict_rejoin(cars, c["idx"], loss) if loss is not None else None
-                box = (t - st["boxT"]) if st.get("boxT") is not None else st.get("boxS")
+                box = ((st.get("still", 0.0) if st.get("boxPct") else t - st["boxT"])
+                       if st.get("boxT") is not None else st.get("boxS"))
                 if t - st["enterT"] > self.PIT_LONG_S:
                     continue                  # in the garage or out of the race (Summit Point: 368 s and counting)
                 prev = recent.get(c["idx"]) or {}
@@ -2981,7 +3084,7 @@ class Deriver:
         if not active or r is None or green is None or not self._loss:
             return out
         drive = self._median([s["laneS"] - (s["boxS"] or 0.0) for s in self._loss])
-        track = self._median([s["laneS"] - (s["boxS"] or 0.0) - s["laneLossS"] for s in self._loss])
+        track = self._median([s.get("trackS", s["laneS"] - (s["boxS"] or 0.0) - s["laneLossS"]) for s in self._loss])
         box = self.pit_loss()["boxMedianS"] or 0.0
         now = max(0.0, drive - max(1.0, r) * track) + box
         out["lossNowS"] = round(now, 1)
@@ -4123,6 +4226,15 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
         except (TypeError, ValueError):
             deriver.tank_l = None
         deriver._player_idx = own_idx if own is not None else None
+        # Your own car's incidents are iRacing's count, not the guess made for the field: any rise marks the lap
+        # (the driver's Indianapolis file: a 4x and two 1x went unseen by the telemetry signs, and the clean-lap
+        # streak ran through them).
+        my_inc = _num(g("PlayerCarMyIncidentCount")) if own is not None else None
+        if my_inc is not None:
+            was = deriver.__dict__.get("_own_inc")
+            if was is not None and my_inc > was:
+                deriver.__dict__.setdefault("_dirty", set()).add(own_idx)
+            deriver.__dict__["_own_inc"] = my_inc
         track_len = track_length_m(session_msg)
         opts = (session_msg or {}).get("options") or {}
         try:
@@ -4150,7 +4262,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                 ahead_idx=ahead_of.get(c.get("idx"))))
             c["derived"].update(deriver.pit(
                 c.get("idx"), now, c.get("onPitRoad"),
-                c.get("surface") == "in_pit_stall", c.get("lap"), pct=c.get("pct")))
+                c.get("surface") == "in_pit_stall", c.get("lap"), pct=c.get("pct"), class_id=c.get("classId")))
             v = deriver.car_speed(c, now, track_len)
             c["derived"]["speedMs"] = None if v is None else round(v, 1)
             c["derived"].update(deriver.stint(

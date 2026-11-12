@@ -1691,3 +1691,55 @@ def test_the_home_page_checks_how_the_director_did(tmp_path):
     assert all(set(("t", "verdict", "name", "passedName", "near", "replayed")) <= set(x) for x in r["rows"])
     page = open(os.path.join(os.path.dirname(__file__), "..", "suite", "web", "index.html"), encoding="utf-8").read()
     assert 'id="dck"' in page and "dircheck_start(+$('dckSel').value)" in page
+
+
+def test_the_corner_book_travels_with_the_session():
+    """The driver's corner book and corner names go to everyone on the share link, so "Corner 9" is the same place on
+    the engineer's screen (it was each browser's own: the two Watkins Glen files found 14 and 13 corners)."""
+    import asyncio
+    from suite import bridge as B
+    ok = B.clean_corners({"book": {"indy": [{"p": 0.12, "s": 0.1, "e": 0.14}, {"p": 3, "s": 0, "e": 1}, "x"]},
+                          "names": {"indy": [{"p": 0.12, "name": "  Turn 1 " + "x" * 40}], "": [{"p": 0.1, "name": "a"}]}})
+    assert ok == {"book": {"indy": [{"p": 0.12, "s": 0.1, "e": 0.14}]}, "names": {"indy": [{"p": 0.12, "name": ("Turn 1 " + "x" * 40)[:24]}]}}
+    assert B.clean_corners({"book": {"t": [{"p": True, "s": 0, "e": 1}]}}) is None
+    assert B.clean_corners("nope") is None and B.clean_corners({"book": {"t": [{"p": "0.1"}]}}) is None
+
+    class Src:
+        mode = "live"
+
+    hub = B.Hub(Src(), 10)
+    sent = []
+
+    class C:
+        wants_ticks = True
+
+        async def send_text(self, text):
+            sent.append(json.loads(text))
+
+    async def go():
+        hub.clients.add(C())
+        body = json.dumps({"book": {"indy": [{"p": 0.5, "s": 0.48, "e": 0.52}]}, "names": {}}).encode()
+        req = (b"POST /api/corners HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: %d\r\n\r\n" % len(body)) + body
+        reader = asyncio.StreamReader()
+        reader.feed_data(req)
+        reader.feed_eof()
+
+        class W:
+            out = b""
+
+            def write(self, b):
+                W.out += b
+
+            async def drain(self):
+                pass
+
+            def close(self):
+                pass
+        await B.make_handler(hub)(reader, W())
+        return W.out
+    reply = asyncio.run(go())
+    assert reply.startswith(b"HTTP/1.1 200"), reply[:60]
+    assert hub.corners == {"book": {"indy": [{"p": 0.5, "s": 0.48, "e": 0.52}]}, "names": {}}
+    assert sent and sent[-1]["type"] == "corners" and sent[-1]["book"]["indy"][0]["p"] == 0.5
+    page = open(os.path.join(os.path.dirname(__file__), "..", "suite", "web", "analyzer", "index.html"), encoding="utf-8").read()
+    assert "fetch('/api/corners'" in page and "m.type==='corners'" in page and "if(LIVE.remote){if(cornersTake(m))" in page
