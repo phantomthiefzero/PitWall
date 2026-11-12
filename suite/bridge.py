@@ -296,6 +296,7 @@ class Hub:
         self.yaml = None
         self.update = 0
         self.extra = None  # callable adding app-level info (PitWall) to /api/info
+        self.corners = None  # the driver's corner book and corner names (clean_corners), for the share link
 
     async def send(self, client, obj):
         try:
@@ -421,6 +422,8 @@ async def ws_session(hub, reader, writer, key, ticks=True):
     await hub.send(client, {"type": "status", "connected": bool(hub.connected), "source": hub.source.mode})
     if hub.yaml:
         await hub.send(client, {"type": "session", "yaml": hub.yaml, "update": hub.update})
+    if hub.corners:
+        await hub.send(client, dict(hub.corners, type="corners"))
     hub.clients.add(client)
     try:
         while True:  # read-only: only ping and close are handled
@@ -506,6 +509,8 @@ async def relay_feed(hub, ws):
     await c.send_text(json.dumps({"type": "status", "connected": bool(hub.connected), "source": hub.source.mode}))
     if hub.yaml:
         await c.send_text(json.dumps({"type": "session", "yaml": hub.yaml, "update": hub.update}))
+    if hub.corners:         # the driver's corners, so "Corner 9" is the same place for everyone
+        await c.send_text(json.dumps(dict(hub.corners, type="corners")))
     hub.clients.add(c)
     writer = asyncio.ensure_future(c.run())
     try:
@@ -571,6 +576,41 @@ def _hostname(value: str) -> str:
     if v.startswith("["):
         return v.split("]", 1)[0] + "]"
     return v.rsplit(":", 1)[0] if v.count(":") == 1 else v
+
+
+CORNERS_MAX = 48 * 1024
+
+
+def clean_corners(obj):
+    """The driver's corner book ({track: [{p, s, e}]}: where each corner is, as parts of the lap) and corner
+    names ({track: [{p, name}]}) as the Lap Analyzer keeps them, checked before they are passed on to the
+    viewers on the share link: only numbers from 0 to 1 and short names get through. None if nothing does."""
+    def part(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1
+    out = {"book": {}, "names": {}}
+    if not isinstance(obj, dict):
+        return None
+    for kind in ("book", "names"):
+        src = obj.get(kind)
+        if not isinstance(src, dict):
+            continue
+        for track, rows in list(src.items())[:60]:
+            if not isinstance(track, str) or not 0 < len(track) <= 80 or not isinstance(rows, list):
+                continue
+            keep = []
+            for r in rows[:60]:
+                if not isinstance(r, dict) or not part(r.get("p")):
+                    continue
+                if kind == "book":
+                    if part(r.get("s")) and part(r.get("e")):
+                        keep.append({"p": round(r["p"], 4), "s": round(r["s"], 4), "e": round(r["e"], 4)})
+                elif isinstance(r.get("name"), str) and r["name"].strip():
+                    keep.append({"p": round(r["p"], 4), "name": r["name"].strip()[:24]})
+            if keep:
+                out[kind][track] = keep
+    if not out["book"] and not out["names"]:
+        return None
+    return out if len(json.dumps(out)) <= CORNERS_MAX else None
 
 
 def request_allowed(headers: dict) -> bool:
@@ -732,6 +772,24 @@ def make_handler(hub):
             if path.split("?")[0] == "/api/info":
                 await http_reply(writer, "200 OK", json.dumps(hub.info()).encode(), "application/json",
                                  gzip_ok=accepts_gzip(headers))
+                return
+            if path.split("?")[0] == "/api/corners" and parts[0] == "POST":
+                # the driver's own page (this PC only: request_allowed) hands over its corner book and names
+                n = int(headers.get("content-length") or 0)
+                if not 0 < n <= CORNERS_MAX:
+                    await http_reply(writer, "413 Payload Too Large", b"Too large")
+                    return
+                try:
+                    got = clean_corners(json.loads((await asyncio.wait_for(reader.readexactly(n), 10)).decode("utf-8")))
+                except Exception:
+                    got = None
+                if got is None:
+                    await http_reply(writer, "400 Bad Request", b"Bad request")
+                    return
+                if got != hub.corners:
+                    hub.corners = got
+                    await hub.send_all(dict(got, type="corners"))
+                await http_reply(writer, "200 OK", b"{}", "application/json")
                 return
             if path.split("?")[0] == "/api/library/stream" and headers.get("upgrade", "").lower() == "websocket":
                 await library_stream(reader, writer, path, headers.get("sec-websocket-key", ""))

@@ -586,6 +586,23 @@ class FakeSource(TelemetrySource):
             out.append((cp, c))
         return out
 
+    def lap_time_share(self, pct: float) -> float:
+        """The share of a lap's TIME it takes to reach pct, from the track's speed profile. CarIdxEstTime follows
+        the reference lap, which is slow in the corners and quick on the straights (Suzuka: 8.6 s to 0.1 of the
+        lap, 30.5 s more to 0.25); the fake once made it pct x the lap, the convenient straight line."""
+        tab = getattr(self, "_lts", None)
+        if tab is None:
+            M = 2000
+            inv = [1.0 / max(0.05, self.curvature_speed_factor((i + 0.5) / M)) for i in range(M)]
+            tot, acc, tab = sum(inv), 0.0, [0.0]
+            for x in inv:
+                acc += x
+                tab.append(acc / tot)
+            self._lts = tab
+        x = min(max(pct, 0.0), 1.0) * (len(tab) - 1)
+        i = min(int(x), len(tab) - 2)
+        return tab[i] + (tab[i + 1] - tab[i]) * (x - i)
+
     def _est_lap(self, i):
         # CarIdxEstTime runs against the CLASS reference lap, not the car's own.
         return self.cars[i].cls["lap"] if i < self.n_cars else 90.0
@@ -907,7 +924,7 @@ class FakeSource(TelemetrySource):
             "CarIdxLap": laps, "CarIdxLapCompleted": lapsc, "CarIdxLapDistPct": pcts,
             "CarIdxPosition": pos, "CarIdxClassPosition": self._class_positions(pos),
             "CarIdxClass": [self.cars[i].cls["id"] if i < self.n_cars else 0 for i in range(64)],
-            "CarIdxF2Time": f2, "CarIdxEstTime": [p * self._est_lap(i) if p >= 0 else 0.0 for i, p in enumerate(pcts)],
+            "CarIdxF2Time": f2, "CarIdxEstTime": [self.lap_time_share(p) * self._est_lap(i) if p >= 0 else 0.0 for i, p in enumerate(pcts)],
             "CarIdxOnPitRoad": onpit, "CarIdxTrackSurface": surf,
             "CarIdxLastLapTime": last, "CarIdxBestLapTime": best, "CarIdxBestLapNum": lapsc,
             "CarIdxTireCompound": comp, "CarIdxSessionFlags": self._car_flags(),

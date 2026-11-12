@@ -437,9 +437,17 @@ HCH = [("SessionTime", 5, "s"), ("Lap", 2, ""), ("LapDistPct", 4, "%"), ("Speed"
 K_TRUE = 50.0      # steering ratio x wheelbase of the synthetic car
 
 
+# Steering per curve by phase on a well balanced car, as the sim has it (the middle of 16 real laps and sessions in
+# 6 cars, the analyzer's BAL_TYPICAL): less braking in, most mid-corner, more in fast corners. A fake that steered the
+# same in every phase made a flat car the "neutral" one, and every real car then read as understeering mid-corner.
+SIM_SHAPE = {("entry", "slow"): .82, ("entry", "fast"): .73, ("mid", "slow"): 1.09, ("mid", "fast"): 1.26,
+             ("exit", "slow"): .88, ("exit", "fast"): 1.06}
+
+
 def build_handling(path, factor=None, exit_countersteer=False, splitter=0.03, laps=5):
     """Laps of steady segments. factor[(phase, speed)] is steering used / steering a
-    neutral car needs; 1 everywhere is a neutral car. A gentle curve gives the fit.
+    balanced car needs; 1 everywhere is a balanced car, which steers in the sim's own
+    shape (SIM_SHAPE). A gentle curve gives the fit.
     exit_countersteer: on fast exits the car yaws against the steering (oversteer)."""
     factor = factor or {}
     # (seconds, speed m/s, curvature 1/m, brake, throttle, phase, speed class)
@@ -458,7 +466,7 @@ def build_handling(path, factor=None, exit_countersteer=False, splitter=0.03, la
         seg_i, seg_t = 0, 0.0
         for i in range(n):
             d, v, k, br, th, ph, sp = segs[seg_i]
-            f = factor.get((ph, sp), 1.0) if ph else 1.0
+            f = factor.get((ph, sp), 1.0) * SIM_SHAPE[(ph, sp)] if ph else 1.0
             yaw, sw, vy = v * k, K_TRUE * k * f, -0.3 * v * k * 10
             if exit_countersteer and ph == "exit" and sp == "fast":
                 sw = -0.5 * K_TRUE * k                  # opposite lock
@@ -1422,7 +1430,8 @@ class CarManualTest(unittest.TestCase):
 ENGINEER_JS = r"""
 LIVE.ws = {}; LIVE.state = 'bridge';
 let Tm = 100, lap = 1;
-// mid-corner understeer of Fmid at the limit; entry and exit neutral
+// mid-corner understeer of Fmid at the limit; entry and exit as a balanced car steers (the sim's shape, SIM_SHAPE)
+const SHAPE = { entry_slow: .82, entry_fast: .73, mid_slow: 1.09, mid_fast: 1.26, exit_slow: .88, exit_fast: 1.06 };
 function drive(yaml, laps, Fmid, lapTime) {
   if (yaml) liveSession(yaml);
   for (let L = 0; L < laps; L++, lap++) {
@@ -1431,7 +1440,8 @@ function drive(yaml, laps, Fmid, lapTime) {
       const d = i / n, ph = (d * 8) % 1, g = 1.25 * Math.abs(Math.sin(d * 8 * Math.PI)), v = 34 + 12 * (Math.floor(d * 8) % 2);
       const yaw = g * 9.80665 / v * (Math.floor(d * 16) % 2 ? 1 : -1), k = yaw / v;
       const brake = ph < 0.18 ? 0.4 : 0, thr = ph > 0.30 ? 0.8 : 0.2, mid = !brake && thr < 0.5;
-      const steer = 40 * k * (g > 0.8 && mid ? Fmid : 1);
+      const shape = SHAPE[(brake ? 'entry' : thr >= 0.6 ? 'exit' : 'mid') + '_' + (v < 40 ? 'slow' : 'fast')];
+      const steer = 40 * k * (g > 0.8 ? shape * (mid ? Fmid : 1) : 1);
       liveTick({ Lap: lap, LapDistPct: d, LapCurrentLapTime: i / 60, LapLastLapTime: lap > 1 ? lapTime : -1, Speed: v, Brake: brake, Throttle: thr,
                  SteeringWheelAngle: steer, YawRate: yaw, LatAccel: g * 9.80665 * Math.sign(yaw), OnPitRoad: false, SessionTime: Tm });
       Tm += 1 / 60;
@@ -1741,7 +1751,9 @@ console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind),
 
     def test_sections_and_visuals(self):
         r = self.r
-        self.assertEqual(r["sections"], [True] * 6)
+        # Setup is pointed to only when the car costs time: against what fast laps steer in each phase, these
+        # laps are balanced (mid-corner +3% slow, -5% fast), so Coaching says nothing about the car
+        self.assertEqual(r["sections"], [True] * 5 + [False])
         self.assertGreaterEqual(r["lineMaps"], 3)             # the three things and the corner cards
         self.assertTrue(r["hasMap"])
         self.assertTrue(r["mapFirst"])                        # beside the page, not down in one section
@@ -1771,7 +1783,10 @@ console.log(JSON.stringify({ n: X.n, gap: X.C.total, kinds: PR.map(p => p.kind),
     def test_priorities_mix_driving_and_setup_ranked_by_time(self):
         r = self.r
         self.assertIn("drive", r["kinds"])
-        self.assertIn("setup", r["kinds"])                    # the laps understeer mid-corner
+        # Read against a flat measure these laps understeered mid-corner (+13% / +20%), but the six fastest
+        # Garage 61 laps of this car here steer +8 to +42% more mid-corner too: every car does. Against what
+        # fast laps do in each phase the car is balanced, so the time is all in the driving.
+        self.assertNotIn("setup", r["kinds"])
         drive = [g for k, g in zip(r["kinds"], r["gains"]) if k == "drive"]
         self.assertEqual(drive, sorted(drive, reverse=True))
         self.assertGreater(r["notes"], 0)                     # technique differences against the best lap
@@ -2532,3 +2547,107 @@ console.log(JSON.stringify({ grid: g, truth, between: crossPt(X.Brake, g, .08), 
     for need in ("c.d=(c.a.baF-c.b.baF)*mpg", "c.dm=(c.a.taF-c.b.taF)*mpg", "f.baF=f.braked?rawCross(raw,'Brake',ba,", "f.tinF=g>0&&p0<th&&p1>p0?",
                  "ba:md(br.map(f=>F(f,'ba')))", "tin:md(pos(L.map(f=>F(f,'tin'))))", "Carcass temps at the last stop"):
         assert need in page, need
+
+
+def test_the_open_parts_slowest_point_garage_61_choice_live_sectors_and_balance():
+    # The open parts (Nov 2026), each checked against the driver's files first.
+    if not NODE:
+        return
+    out = run_js(r"""
+// 1. the slowest point of a corner, read from the lap's own samples (a parabola through the slowest sample and its
+//    neighbours), inside the corner only. Against the files: 0.6-1.2 m off as a grid point, 0.05-0.13 m now.
+const n = 9000, o = { n, D: new Float64Array(n), Speed: new Float64Array(n) }, at = 0.42345;
+for (let i = 0; i < n; i++) { o.D[i] = i / (n - 1); o.Speed[i] = 20 + 4000 * (o.D[i] - at) ** 2 }
+const g = Math.round(at * (N - 1)) + 1, m = rawMin(o, g, g - 30, g + 30), edge = rawMin(o, g, g + 1, g + 30);
+// 2. "a Garage 61 lap a little quicker than yours" stays the choice (it fell back to the fastest one)
+const src = COACH.to; COACH.to = 'g61near';
+// 3. the live sector line placed between the two ticks either side of it
+LIVE.secs = [0.5]; const c = { b: {}, ts: null }; LIVE.cur = c;
+teleLapStats(c, { Speed: 50, Throttle: 1, Brake: 0, LapDistPct: 0.49, LapCurrentLapTime: 40.0, SessionTime: 1 });
+teleLapStats(c, { Speed: 50, Throttle: 1, Brake: 0, LapDistPct: 0.51, LapCurrentLapTime: 40.4, SessionTime: 1.4 });
+// 4. balance: each phase against what fast laps steer in it. A car steering in the usual shape reads 1 everywhere,
+//    whatever mix of corners; 20% more mid-corner in fast corners is understeer there and nowhere else
+// counts per bin (slow and fast add up the same, and one sample at 35 m/s sets the line between them)
+const EVEN = { entry_slow: 200, mid_slow: 200, exit_slow: 200, entry_fast: 200, mid_fast: 200, exit_fast: 200 },
+  SKEW = { entry_slow: 200, mid_slow: 40, exit_slow: 60, entry_fast: 40, mid_fast: 200, exit_fast: 60 };
+const smp = (shape, counts) => { const out = [], k = 0.01;
+  for (const [b, f] of Object.entries(shape)) { const [p, s] = b.split('_'), v = s === 'slow' ? 25 : 45;
+    for (let i = 0; i < counts[b]; i++) out.push({ v, k, s: 50 * k * f, y: v * k, g: 1.2, t: p === 'exit' ? 1 : 0, b: p === 'entry' ? .5 : 0, beta: 0, abs: 0 }) }
+  out.push({ v: 35, k, s: 50 * k * shape.mid_fast, y: 0.35, g: 1.2, t: 0, b: 0, beta: 0, abs: 0 });
+  for (let i = 0; i < 400; i++) out.push({ v: 30, k: 0.003, s: 50 * 0.003, y: 0.09, g: 0.3, t: 0.3, b: 0, beta: 0, abs: 0 });
+  return out };
+const flat = handlingCore(smp(BAL_TYPICAL, EVEN)), mix = handlingCore(smp(BAL_TYPICAL, SKEW)),
+  us = handlingCore(smp(Object.assign({}, BAL_TYPICAL, { mid_fast: BAL_TYPICAL.mid_fast * 1.2 }), EVEN));
+const ui = h => Object.fromEntries(Object.entries(h.B).map(([k, b]) => [k, +b.ui.toFixed(3)]));
+console.log(JSON.stringify({ m, edge, src, sx: c.sx, flat: ui(flat), mix: ui(mix), us: ui(us), usF: handlingFindings({ B: us.B, T: {}, BT: {} }).map(f => f.kind + ' ' + f.p + ' ' + f.where),
+  base: flat.base, flatF: handlingFindings({ B: flat.B, T: {}, BT: {} }).length }));
+""")
+    truth = 0.42345 * 999
+    assert abs(out["m"]["g"] - truth) < 0.05 and abs(out["m"]["v"] - 20) < 0.01, out["m"]
+    assert out["edge"]["g"] >= truth + 0.9, "only the corner's own samples count"
+    assert abs(out["sx"][0] - 40.2) < 1e-6, out["sx"]                 # not 40.4, the first tick after the line
+    for k, v in out["flat"].items():
+        assert abs(v - 1) < 0.01, (k, v)
+    for k, v in out["mix"].items():
+        assert abs(v - 1) < 0.01, ("a track with few slow corners", k, v)
+    assert out["base"] == {"src": "typical", "n": 0} and out["flatF"] == 0
+    assert out["us"]["mid_fast"] > 1.15 and out["usF"] == ["us mid fast"], out
+    page = open(PAGE, encoding="utf-8").read()
+    assert "else if(!(COACH.to==='g61near'&&g61.length))COACH.to='best';" in page
+    assert "rawMin(raw,mg,s,e)" in page and "rawMin(lap,mg,s,e)" in page and "y.mg-(b.mgF!=null?b.mgF:b.mg)" in page
+
+
+@unittest.skipUnless(NODE and os.path.exists(REAL_IBT), "needs Node and the real Indianapolis file")
+class GarageSixtyOneAgainstTheFileTest(unittest.TestCase):
+    """Coaching against a Garage 61 lap, checked against the CSV's own clock (a row every 1/60 s: the driver's own
+    1:24.636 is lap 23 of his 19-49 session to the sample). All six Indianapolis laps: the time lost per corner
+    agreed with the files' clocks to 0.001 s."""
+
+    def test_the_reference_laps_corner_times_are_its_own_clock(self):
+        import glob
+        import csv as _csv
+        g61 = sorted(glob.glob("/mnt/user-data/uploads/Garage_61_-_nick*.csv"))
+        if not g61:
+            self.skipTest("the Garage 61 lap is not here")
+        js = r"""
+IB.a = ibt(readBytes(ARGS[0])); const td = new TextDecoder();
+COACH.g61 = [parse(td.decode(new Uint8Array(readBytes(ARGS[1]))), ARGS[1].split('/').pop())];
+COACH.src = 'ibt'; COACH.to = 'g61best';
+const X = coachRun(), C = X.C, B = C.R.B;
+console.log(JSON.stringify({ lab: X.bestLab, total: C.total, avg: X.avg.lap, ref: X.best.lap,
+  cs: C.R.cs.map(c => ({ s: c.s, e: c.e, tb: B.t[c.e] - B.t[c.s] })) }));
+"""
+        r = run_js(js, REAL_IBT, g61[0])
+        self.assertIn("nick kalra", r["lab"])
+        self.assertAlmostEqual(r["total"], r["avg"] - 83.75, places=6)
+        rows = list(_csv.DictReader(open(g61[0], encoding="utf-8")))
+        rd = [float(x["LapDistPct"]) for x in rows]
+        for i in range(1, len(rd)):
+            if rd[i] < rd[i - 1] - 0.5:
+                rd[i:] = [x + 1 for x in rd[i:]]
+                break
+
+        def clock(p):              # the CSV's own clock at part p of the lap
+            lo, hi = 0, len(rd) - 1
+            while hi - lo > 1:
+                mid = (lo + hi) // 2
+                lo, hi = (mid, hi) if rd[mid] <= p else (lo, mid)
+            f = (p - rd[lo]) / ((rd[hi] - rd[lo]) or 1)
+            return (lo + f) / 60.0 * 83.75 / ((len(rd) - 1) / 60.0)
+        worst = max(abs(c["tb"] - (clock(c["e"] / 999) - clock(c["s"] / 999))) for c in r["cs"])
+        self.assertLess(worst, 0.003)
+
+
+def test_a_viewer_takes_the_drivers_corner_book():
+    if not NODE:
+        return
+    out = run_js(r"""
+cbSave({ mine: [{ p: 0.3, s: 0.28, e: 0.32 }], indy: [{ p: 0.9, s: 0.88, e: 0.92 }] });
+const a = cornersTake({ type: 'corners', book: { indy: [{ p: 0.5, s: 0.48, e: 0.52 }] }, names: { indy: [{ p: 0.5, name: 'Turn 7' }] } });
+const b = cornersTake({ type: 'corners', book: { indy: [{ p: 0.5, s: 0.48, e: 0.52 }] }, names: { indy: [{ p: 0.5, name: 'Turn 7' }] } });
+console.log(JSON.stringify({ a, b, book: cbLoad(), names: cnLoad() }));
+""")
+    assert out["a"] is True and out["b"] is False, "the same book twice changes nothing"
+    assert out["book"]["indy"] == [{"p": 0.5, "s": 0.48, "e": 0.52}], "the driver's book wins for his tracks"
+    assert out["book"]["mine"] == [{"p": 0.3, "s": 0.28, "e": 0.32}], "the viewer's other tracks are left alone"
+    assert out["names"]["indy"][0]["name"] == "Turn 7"

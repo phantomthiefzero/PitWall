@@ -541,15 +541,54 @@ def test_fuel_save_target_appears_only_when_short():
     assert abs(short["fuelSavePerLapL"] - abs(short["fuelMarginL"]) / 200) < 0.01
 
 
+def _stint_laps(d, idx, times, first_lap=1, stops=0, last=-1.0):
+    """Laps as the sim scores them: the lap counter moves at the line and the lap's time is posted a moment
+    later (1.6 s for the field at Suzuka); until then LastLapTime still holds the lap before's."""
+    out = None
+    for k, lt in enumerate(times):
+        d.stint(idx, first_lap + k, last, stops_seen=stops)      # the line: the counter moves, the time is stale
+        out = d.stint(idx, first_lap + k, lt, stops_seen=stops)  # then the lap's own time
+        last = lt
+    return out, last
+
+
 def test_stint_resets_at_a_pit_stop():
     d = Deriver()
-    for lap in range(1, 9):                    # eight laps, steadily slower
-        out = d.stint(4, lap, 90.0 + lap * 0.1, stops_seen=0)
+    d.stint(4, 0, -1.0, stops_seen=0)
+    out, last = _stint_laps(d, 4, [90.0 + lap * 0.1 for lap in range(1, 9)])   # eight laps, steadily slower
     assert out["stintLaps"] == 8
     assert out["degSPerLap"] is not None and out["degSPerLap"] > 0.05, out
-    out = d.stint(4, 9, 90.9, stops_seen=1)    # pitted: the stint is over
-    assert out["stintLaps"] <= 1, "stint carried across a pit stop"
+    out = d.stint(4, 8, last, stops_seen=1)    # pitted: the stint is over
+    assert out["stintLaps"] == 0, "stint carried across a pit stop"
     assert out["degSPerLap"] is None
+
+
+def test_a_stints_laps_get_their_own_times():
+    """The driver's own Indianapolis race through PitWall: every lap of a stint had the time of the lap before
+    (the first one twice), the in-lap (1:38) opened the stint after the stop and, with the out-lap (2:02), made
+    "this stint: avg 1:29.2" of laps driven at 1:24.8."""
+    d = Deriver()
+    d.stint(7, 3, 84.0, stops_seen=0)                    # first sight, mid-race: 84.0 is a lap nobody watched
+    out, last = _stint_laps(d, 7, [85.0, 86.0, 87.0], first_lap=4, last=84.0)
+    assert out["stintLaps"] == 3 and out["stintAvgS"] == 86.0, out          # not 84, 84, 85
+    # the in-lap: scored in the pit lane before the stop is counted, so it is the old stint's
+    out, last = _stint_laps(d, 7, [98.3], first_lap=7, last=last)
+    assert out["stintLaps"] == 4
+    out = d.stint(7, 7, last, stops_seen=1)              # out of the lane: a new stint, with nothing in it yet
+    assert out["stintLaps"] == 0 and out["stintAvgS"] is None, out
+    out, last = _stint_laps(d, 7, [121.7, 84.9, 85.1, 84.6], first_lap=8, stops=1, last=last)
+    assert out["stintLaps"] == 4
+    assert abs(out["stintAvgS"] - (84.9 + 85.1 + 84.6) / 3) < 0.001, out    # the out-lap is not the stint's pace
+    # a stall before the line: the stop is counted first, then the in-lap is scored. It is not this stint's.
+    d2 = Deriver()
+    d2.stint(1, 5, 84.0, stops_seen=0)
+    d2.stint(1, 6, 84.0, stops_seen=0)                   # the line (in the lane), no time yet
+    out = d2.stint(1, 6, 84.0, stops_seen=1)             # the stop is counted before the in-lap's time arrives
+    out = d2.stint(1, 6, 97.0, stops_seen=1)
+    assert out["stintLaps"] == 0, out
+    # the lap counter going back (the car put back in its box after the flag) adds nothing
+    out = d.stint(7, 10, last, stops_seen=1)
+    assert out["stintLaps"] == 4
 
 
 def test_replay_loop_signals_a_restart():
@@ -1153,9 +1192,21 @@ def test_pit_lane_loss_matches_the_fake_pit_lane():
     d = r["d"]
     src = FakeSource(realtime=False)
     lane_t = 0.09 * src.length / FakeSource.PIT_LANE_MS
+    # the same stretch of track at the car's pace: its share of the lap's TIME, not of its length. The lane runs
+    # beside the main straight, where the car is quickest (the driver's Indianapolis file: a fifth of the lap's
+    # length, a seventh of its time; taken as a fifth, the loss read 5 s short)
+    inv = [1.0 / src.curvature_speed_factor(i / 2000.0) for i in range(2000)]
+    share = sum(inv[i] for i in range(2000) if i / 2000.0 >= FakeSource.PIT_IN_PCT or i / 2000.0 < FakeSource.PIT_OUT_PCT) / sum(inv)
+    assert abs(share - 0.09) > 0.005, share       # the fake's speed varies round the lap: the two differ
     assert d._loss, "no lane loss measured in a 25-minute race"
     for s in d._loss:
-        expect = lane_t - 0.09 * d.pace(s["idx"])
+        expect = lane_t - share * d.pace(s["idx"])
+        if s.get("whole"):
+            # timed from before the entry to after the exit as well: the fake car has no approach to slow for, but
+            # it leaves on the other compound (4% off) and its pace wanders, so the whole measure may add a little
+            assert -0.3 < s["laneLossS"] - s["linesS"] < 1.6, s
+            assert abs(s["linesS"] - expect) < 1.0, (s, expect)     # the lines, each sampled every 0.27 s of sim time
+            continue
         # entry, exit and the box are each sampled at ~4 Hz of sim time, and the
         # pace drifts a little: within 0.8 s
         assert abs(s["laneLossS"] - expect) < 0.8, (s, expect)
@@ -2235,10 +2286,10 @@ def test_stint_trend_leaves_out_laps_that_are_not_racing_laps():
     worth minutes in the fake race."""
     d = Deriver()
     laps = [100.0, 100.1, 100.2, 250.0, 240.0, 100.4, 100.5]      # two laps behind the pace car
-    out = None
-    for k, t in enumerate(laps, start=1):
-        out = d.stint(1, k, t, 0)
+    d.stint(1, 0, -1.0, 0)
+    out, _ = _stint_laps(d, 1, laps)
     assert out["stintLaps"] == 7
+    assert abs(out["stintAvgS"] - 100.24) < 0.001, out          # the average too is of the racing laps
     assert 0.05 <= out["degSPerLap"] <= 0.12, out             # ~0.08 s a lap from the racing laps
 
 
@@ -2847,3 +2898,44 @@ def test_a_timed_races_laps_left_depend_on_where_the_car_is_on_the_lap():
     d._last_lap_completed, d._fuel_at_lap_start = 29, 10.07
     out = d.fuel(29, 8.8, laps_remain_ex=32767, time_remain_s=129.0, lap_time_s=T, lap_pct=0.5)
     assert out["lapsRemaining"] == 3 and abs(out["fuelToFinishL"] - 2.48 * 2.5) < 0.01 and out["fuelMarginL"] > 0
+
+
+def test_a_stop_is_timed_standing_still_and_your_incidents_end_the_clean_streak():
+    """The driver's own Indianapolis race through PitWall (Nov 2026). The stall's surface is wider than the stop:
+    "stopped 14.6 s" for 13.2 s standing (Speed 0), and 0 to 2.5 s long over 55 stops at Suzuka. And iRacing's own
+    incident count for your car (a 4x, two 1x) did not end the clean-lap streak, which only the telemetry guess fed."""
+    d = Deriver()
+    t, pct = 0.0, 0.90
+    d.pit(5, t, False, False, 10, pct=pct, class_id=1)
+    for _ in range(20):                                      # down the lane
+        t, pct = t + 0.5, pct + 0.0012
+        d.pit(5, t, True, False, 10, pct=pct, class_id=1)
+    for _ in range(4):                                       # onto the stall, still rolling: 2 s
+        t, pct = t + 0.5, pct + 0.0004
+        d.pit(5, t, True, True, 10, pct=pct, class_id=1)
+    for _ in range(26):                                      # standing: 13 s
+        t += 0.5
+        d.pit(5, t, True, True, 10, pct=pct, class_id=1)
+    for _ in range(3):                                       # pulling away, still on the stall: 1.5 s
+        t, pct = t + 0.5, pct + 0.0004
+        d.pit(5, t, True, True, 10, pct=pct, class_id=1)
+    t += 0.5
+    d.pit(5, t, True, False, 10, pct=pct + 0.0012, class_id=1)
+    out = d.pit(5, t + 5, False, False, 11, pct=(pct + 0.01) % 1, class_id=1)
+    assert out["stopsSeen"] == 1
+    assert abs(out["lastStopS"] - 13.0) <= 0.5, out          # not 16.5, the time on the stall's surface
+
+    # your own incidents: iRacing's count rising ends the streak on that lap
+    src = FakeSource(realtime=False)
+    src.connect()
+    dv = Deriver()
+    sess = build_session(src)
+    import types
+    real_get = src.get
+    count = {"n": 0}
+    src.get = types.MethodType(lambda self, k: count["n"] if k == "PlayerCarMyIncidentCount" else real_get(k), src)
+    build_cars(src, sess, dv)
+    count["n"] = 4
+    build_cars(src, sess, dv)
+    own = src.get("PlayerCarIdx")
+    assert own in dv._dirty, "your own 4x did not mark the lap"
