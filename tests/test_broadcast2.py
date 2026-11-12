@@ -3024,7 +3024,7 @@ def test_while_racing_the_graphics_leave_the_picture_to_the_cars():
     assert '!(TIGHT && $("h2h").classList.contains("on"))' in ov and ":root[data-tight] #h2h{top:36px}" in ov
     # Auto keeps the standings board for a caution while the race is on
     board = ov.split('if (name === "board") return')[1].split(";")[0]
-    assert '(caution || !G("race.compact", true))' in board and "done ? since < 35000" in board
+    assert '(caution || !G("race.compact", true))' in board and "done ? after < FINISH_BOARD_MS" in board
     # the producer can turn it off
     assert 'data-gflag="race.compact" data-gdef="1"' in pr
 
@@ -3294,3 +3294,84 @@ def test_close_battles_share_the_air_and_a_missed_lead_change_is_owed_a_replay()
     assert camera_role("Drone Turn 1")[0] == "spot" and camera_role("Drone Spoon")[0] == "spot" and camera_role("Drone Cam")[0] == "aerial"
     for name in ("Esses 1", "Dunlop", "Degner", "Hairpin", "130R", "Backstretch", "Last Curve", "Chicane Entry"):
         assert camera_role(name, [{"name": "CamPit Lane 5"}])[0] == "spot", name
+
+
+def test_the_podium_waits_for_the_whole_field_to_finish():
+    # Nov 2026, the user: "the podium and everything show up immediately after the car in P1 finishes ... we need to
+    # either wait for all the cars to finish or find another solution". Le Mans, two classes: the podium was up 60 s
+    # after the overall winner, the GR86s' winner crossed at 122 s and the last car at 176 s. And the BMWs' new leader
+    # (car 10, past car 4 on the last lap) crossed first while iRacing still had car 4 first: the race ended at car
+    # 4's crossing and car 10, the winner, was never marked as having finished.
+    from pitwall.normalize import Deriver
+
+    def car(i, lc, pct, cls=1, **kw):
+        return dict({"idx": i, "lapCompleted": lc, "pct": pct, "classId": cls, "surface": "on_track", "onPitRoad": False,
+                     "f2TimeS": 0.0, "derived": {}}, **kw)
+    d = Deriver()
+    # the clock runs out; iRacing still has car 4 first
+    assert d.race_end(2, "checkered", 5, None, True, 0.0, {4: 5, 10: 5, 20: 4}) is False
+    cars = [car(4, 5, 0.99), car(10, 5, 0.995), car(20, 4, 0.5, cls=2)]
+    d.finish_gaps(cars, None, 100.0, cars)
+    # car 10 crosses first: the race is over for the winner, whoever iRacing has first
+    assert d.race_end(2, "checkered", 5, None, True, 0.0, {4: 5, 10: 6, 20: 4}) is True
+    cars = [car(4, 5, 0.999), car(10, 6, 0.002), car(20, 4, 0.51, cls=2)]
+    d.finish_gaps(cars, "checkered", 100.1, cars)
+    assert cars[1]["derived"].get("finished") and cars[1]["derived"]["liveGapS"] == 0.0, "car 10 won"
+    assert not cars[0]["derived"].get("finished")
+    assert d.finish_state() == {"allFinished": False, "finishLeft": 2}
+    # car 4 crosses; then iRacing gives every car position -1 (ordered goes empty): the other class still races
+    cars = [car(4, 6, 0.001), car(10, 6, 0.01), car(20, 4, 0.6, cls=2)]
+    d.finish_gaps(cars, "checkered", 101.0, cars)
+    assert cars[0]["derived"].get("finished")
+    for k in range(1, 40):
+        cars = [car(4, 6, 0.1), car(10, 6, 0.1), car(20, 4, 0.6 + k * 0.01, cls=2)]
+        d.finish_gaps([], "checkered", 101.0 + k, cars)
+    assert d.finish_state() == {"allFinished": False, "finishLeft": 1}, "the other class's winner is still to come"
+    cars = [car(4, 6, 0.2), car(10, 6, 0.2), car(20, 5, 0.001, cls=2)]
+    d.finish_gaps([], "checkered", 141.0, cars)
+    assert d.finish_state() == {"allFinished": True, "finishLeft": 0}
+    # a car standing still on track, or gone into the lane, does not hold the finish up; a slow lap's time at most
+    d2 = Deriver()
+    d2.race_end(2, "checkered", 5, None, True, 0.0, {1: 5, 2: 3, 3: 4})
+    d2.finish_gaps([], None, 0.0, [car(1, 5, 0.99), car(2, 3, 0.4), car(3, 4, 0.2)])
+    d2.race_end(2, "checkered", 5, None, True, 0.0, {1: 6, 2: 3, 3: 4})
+    d2.finish_gaps([], "checkered", 1.0, [car(1, 6, 0.0), car(2, 3, 0.4), car(3, 4, 0.2, onPitRoad=True)])
+    assert d2.finish_state()["allFinished"] is False
+    d2.finish_gaps([], "checkered", 1.0 + Deriver.FINISH_STUCK_S, [car(1, 6, 0.1), car(2, 3, 0.4), car(3, 4, 0.2, onPitRoad=True)])
+    assert d2.finish_state()["allFinished"] is True, "a car parked on track is not coming to the line"
+
+    # the director: no podium shots while the field is still finishing; the next class's winner and the cars still
+    # racing to the line are the story; then the podium
+    dr, sess, msg, t, log, kinds = _craft_rig(n=6, battles=[])
+    dr.configure(reel=False)
+    for k in range(200):
+        t[0] += 0.1
+        dr.tick(sess, msg, _state(500.0 + k * 0.1), [])
+    msg["derived"]["race"] = {"finished": True, "allFinished": False, "finishLeft": 3}
+    for c in msg["cars"]:
+        c.setdefault("derived", {})
+        c["lapCompleted"], c["pct"] = 10, 0.5
+    msg["cars"][0]["derived"]["finished"] = True                         # the winner, on its cool-down lap
+    msg["cars"][3]["classId"], msg["cars"][3]["classPos"] = 2, 1         # the other class: no winner yet
+    msg["cars"][3]["pct"] = 0.8
+    n0 = len(log["cuts"])
+    for k in range(400):
+        t[0] += 0.1
+        dr.tick(sess, msg, _state(520.0 + k * 0.1), [])
+    during = log["cuts"][n0:]
+    assert not (dr.note or "").startswith("after the flag"), dr.note
+    assert during and 0 not in [c for c, _, _ in during], "the winner on its cool-down lap is no story"
+    assert 3 in [c for c, _, _ in during], "the other class's leader, coming to win it"
+    msg["derived"]["race"] = {"finished": True, "allFinished": True, "finishLeft": 0}
+    for k in range(100):
+        t[0] += 0.1
+        dr.tick(sess, msg, _state(560.0 + k * 0.1), [])
+    assert (dr.note or "").startswith("after the flag"), dr.note
+
+    # the overlay: the result while the field comes in, then the lap chart, then the podium, from the last car's flag
+    ov = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "overlay.html"), encoding="utf-8").read()
+    aw = ov.split("  function autoWants(name) {")[1].split("\n  }\n")[0]
+    assert "const after = done && CTX.all ? now - CTX.allAt : -1;" in aw
+    assert 'if (name === "podium") return after >= FINISH_BOARD_MS + FINISH_CHART_MS;' in aw
+    assert 'return done ? after < FINISH_BOARD_MS' in aw
+    assert "r.allFinished !== false" in ov and "if (all !== CTX.all) { CTX.all = all; CTX.allAt = now; }" in ov

@@ -1829,7 +1829,8 @@ class Deriver:
             for a, b in zip(cs, cs[1:]):
                 d = b.get("derived") or {}
                 gap, laps = d.get("liveClassIntervalS"), d.get("classIntervalLaps")
-                if a.get("onPitRoad") or b.get("onPitRoad") or gap is None or laps or gap < 0:
+                if a.get("onPitRoad") or b.get("onPitRoad") or gap is None or laps or gap < 0 \
+                        or (a.get("derived") or {}).get("finished") or (b.get("derived") or {}).get("finished"):
                     continue
                 seen.add(b["idx"])
                 h = hist.setdefault(b["idx"], [])
@@ -2206,6 +2207,9 @@ class Deriver:
                 # Both gaps must be ones we trust, and neither car may be in the
                 # pit lane: a car in the lane is not racing the one beside it.
                 if a.get("onPitRoad") or b.get("onPitRoad"):
+                    continue
+                # a car that has taken the checkered flag is on its cool-down lap, not racing the one behind
+                if (a.get("derived") or {}).get("finished") or (b.get("derived") or {}).get("finished"):
                     continue
                 # The live gap (CarIdxEstTime, live_gaps) where there is one, the same number the tower and the
                 # battle box show: F2Time only refreshes when iRacing's timing catches up with a car, and a battle
@@ -2600,13 +2604,24 @@ class Deriver:
         del out["closing"][6:]
         return out
 
-    def race_end(self, session_num, state, leader_laps, total, timed, remain) -> bool | None:
+    def race_end(self, session_num, state, leader_laps, total, timed, remain, lcs=None) -> bool | None:
         """Has the leader taken the checkered flag? A lap race: the leader has the laps. Otherwise the first line
         crossing after the end came (a timed race's clock out, or the session state turning checkered, which iRacing
-        does before the leader gets there). None while the end has not come (or for a session we cannot read)."""
+        does before the leader gets there). None while the end has not come (or for a session we cannot read).
+        The leader is whoever gets there first: lcs (every car's laps completed) is read as well as the car iRacing
+        has first, whose place only changes at a timing line. Le Mans, Nov 2026: car 10 passed car 4 for the lead
+        on the last lap and crossed first, iRacing still had car 4 first, so the race ended at car 4's crossing and
+        the real winner was never marked as having finished. The laps of the tick before it ended are kept
+        (_end_snap): the cars that crossed in the tick it ended took the flag in it."""
         ends = getattr(self, "_race_ends", {})
         st = ends.setdefault(session_num, {})
         self._race_ends = ends
+        lcs = {i: lc for i, lc in (lcs or {}).items() if lc is not None and lc >= 0}
+        if lcs:
+            most = max(lcs.values())
+            leader_laps = most if leader_laps is None else max(leader_laps, most)
+        prev = st.get("prev")
+        st["prev"] = lcs
         done = False
         if total and leader_laps is not None and leader_laps >= total:
             done = True
@@ -2621,29 +2636,95 @@ class Deriver:
             if not done and st.get("lc") is None:
                 self._race_finished = {**getattr(self, "_race_finished", {}), session_num: None}
                 return None
+        if done and not st.get("snap_set"):
+            st["snap_set"] = True
+            self._end_snap = {"session": session_num, "laps": dict(prev) if prev else None}
         self._race_finished = {**getattr(self, "_race_finished", {}), session_num: done}
         return done
 
     FINISH_SETTLE_S = 2.0       # F2Time is read for this long after a car takes the flag (the timing catching up)
+    # The race is over for everyone once every car still running has taken the flag. A car does not hold it up when it
+    # has left (not in the world), gone into the pit lane, or stood still on track for FINISH_STUCK_S (stopped or
+    # parked: iRacing ends its race there). However it goes, no longer than FINISH_WAIT_LAPS of the slowest running
+    # car's lap after the winner (every car still running reaches the line within one of its laps), FINISH_WAIT_MIN_S
+    # at least. Le Mans, Nov 2026, two classes: the GR86s' winner crossed 122 s after the overall winner and the last
+    # car 176 s after; the podium was on air at 60 s, before the second class had a winner.
+    FINISH_STUCK_S = 20.0
+    FINISH_WAIT_LAPS = 1.25
+    FINISH_WAIT_MIN_S = 45.0
 
-    def finish_gaps(self, ordered: list, state, t) -> None:
+    def _finish_all(self, ordered, fin, t) -> None:
+        if not fin or t is None:
+            return
+        if getattr(self, "_fin_all", None) is not None:
+            return                                   # once over, over
+        seen = getattr(self, "_fin_seen", None)
+        if seen is None:
+            seen = self._fin_seen = {}
+        win_t = min(f["t"] for f in fin.values())
+        pending, paces = [], []
+        for c in ordered:
+            i = c["idx"]
+            pct = c.get("pct")
+            mv = seen.get(i)
+            if pct is not None and pct >= 0 and (mv is None or abs(pct - mv[0]) > 1e-4):
+                seen[i] = mv = (pct, t)
+            if i in fin or c.get("surface") == "not_in_world" or c.get("onPitRoad") or (c.get("lapCompleted") or -1) < 0:
+                continue
+            if mv is not None and t - mv[1] >= self.FINISH_STUCK_S:
+                continue                             # standing still: it is not coming to the line
+            pending.append(i)
+            p = self.pace(i)
+            if p:
+                paces.append(p)
+        if not paces:
+            paces = [p for p in (self.pace(c["idx"]) for c in ordered) if p]
+        wait = max(self.FINISH_WAIT_MIN_S, self.FINISH_WAIT_LAPS * max(paces)) if paces else 300.0
+        self._fin_left = len(pending)
+        if not pending or t - win_t >= wait:
+            self._fin_all = t
+
+    def finish_state(self) -> dict:
+        """After the winner's flag: has everyone finished, and how many are still to come to the line."""
+        if not getattr(self, "_fin", None):
+            return {"allFinished": None, "finishLeft": None}
+        return {"allFinished": getattr(self, "_fin_all", None) is not None,
+                "finishLeft": 0 if getattr(self, "_fin_all", None) is not None else getattr(self, "_fin_left", None)}
+
+    def finish_gaps(self, ordered: list, state, t, cars=None) -> None:
         """After the checkered flag the gaps from where the cars are now mean nothing (the winner is on a cool-down
         lap while the rest still race to the line: the tower read +1:17.0 for a car on the lead lap). Each car's
         gap is taken as it takes the flag, from F2Time (iRacing's time behind the leader at the line) and the laps
-        it finished down, and held; cars still racing to the line keep their live gaps."""
+        it finished down, and held; cars still racing to the line keep their live gaps.
+        cars: every car, placed or not. A little after the winner's flag iRacing gives every car position -1 (Le Mans:
+        the ordered list went empty 47 s after the winner, with 16 cars still on their last lap), so who has crossed
+        the line is read from all of them."""
+        allc = cars if cars is not None else ordered
         if state not in ("checkered", "cool_down") or t is None:
-            self._fin, self._fin_lc = {}, {c["idx"]: c.get("lapCompleted") for c in ordered}
+            self._fin, self._fin_lc = {}, {c["idx"]: c.get("lapCompleted") for c in allc}
+            self._fin_seen, self._fin_all, self._fin_lead_laps = {}, None, None
             return
         fin, last = getattr(self, "_fin", {}), getattr(self, "_fin_lc", {})
-        if not fin and ordered:
-            lead = ordered[0]                          # the state turns checkered as the winner crosses the line
-            fin[lead["idx"]] = {"t": t, "laps": 0, "gap": 0.0}
-            self._fin_lead_laps = lead.get("lapCompleted")
+        if not fin and allc:
+            snap = (getattr(self, "_end_snap", None) or {}).get("laps")
+            crossed = [c for c in allc if snap and c.get("lapCompleted") is not None and snap.get(c["idx"]) is not None
+                       and c["lapCompleted"] > snap[c["idx"]]]
+            if crossed:
+                # the laps of the tick before the race ended: whoever crossed since took the flag (the winner first)
+                last = dict(snap)
+                self._fin_lead_laps = max(c["lapCompleted"] for c in crossed)
+            elif ordered:
+                # nothing to go by (the app started after the finish): iRacing's first car is the winner
+                lead = ordered[0]
+                fin[lead["idx"]] = {"t": t, "laps": 0, "gap": 0.0}
+                self._fin_lead_laps = lead.get("lapCompleted")
         lead_laps = getattr(self, "_fin_lead_laps", None)
-        for c in ordered:
+        for c in allc:
             lc, i = c.get("lapCompleted"), c["idx"]
             if i not in fin and lc is not None and last.get(i) is not None and lc > last[i]:
-                fin[i] = {"t": t, "laps": max(0, lead_laps - lc) if lead_laps is not None else 0, "gap": None}
+                first = not fin
+                fin[i] = {"t": t, "laps": max(0, lead_laps - lc) if lead_laps is not None else 0,
+                          "gap": 0.0 if first else None}
             f = fin.get(i)
             # at the line F2Time is fresh even where the checks for a running race (gapValid) do not pass
             if f is not None and f["laps"] == 0 and t - f["t"] <= self.FINISH_SETTLE_S and f["gap"] != 0.0 \
@@ -2652,6 +2733,7 @@ class Deriver:
             if lc is not None:
                 last[i] = lc
         self._fin, self._fin_lc = fin, last
+        self._finish_all(allc, fin, t)
         prev, cls_lead, cls_prev, seen = None, {}, {}, {}
         for c in ordered:
             f, d = fin.get(c["idx"]), c.setdefault("derived", {})
@@ -4192,7 +4274,7 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
     live_gaps(ordered)                     # the broadcast tower: iRacing's order, live gaps
     if deriver is not None:
         fin = (getattr(deriver, "_race_finished", {}) or {}).get(session_num) if is_race else None
-        deriver.finish_gaps(ordered, "checkered" if fin else None, _num(g("SessionTime")))
+        deriver.finish_gaps(ordered, "checkered" if fin else None, _num(g("SessionTime")), cars)
     run_gaps(running)                      # PitWall: the running order, live gaps
     for c in cars:
         d = c["derived"]
@@ -4307,6 +4389,10 @@ def build_cars(src: TelemetrySource, session_msg: dict | None, deriver: "Deriver
                            deriver, race_flags(decode_bits(g("SessionFlags"), FLAG_BITS),
                                                SESSION_STATE.get(g("SessionState"))), results=results,
                            state=SESSION_STATE.get(g("SessionState")))
+        # the winner's flag is not the end for everyone: the race is over when the field has taken it (_finish_all)
+        fs = deriver.finish_state()
+        race["allFinished"] = bool(race.get("finished")) and fs["allFinished"] is True
+        race["finishLeft"] = fs["finishLeft"] if race.get("finished") else None
         deriver._lead_lap = race.get("leaderLap")
         fi = deriver._fuel_info or {}
         deriver.stop_forecast(cars, race if is_race else None, own_idx if own is not None else None,
@@ -4643,7 +4729,8 @@ def race_length(session_msg, session_num, ordered: list, time_remain_s, deriver,
     if state is not None:
         # white and checkered as build_state reads them (a spectator's SessionFlags carry neither)
         if deriver is not None:
-            finished = deriver.race_end(session_num, state, done, total, bool(limit_s), remain)
+            finished = deriver.race_end(session_num, state, done, total, bool(limit_s), remain,
+                                        {c["idx"]: c.get("lapCompleted") for c in ordered if c.get("surface") != "not_in_world"})
         flags = race_flags(flags, state, remain, bool(limit_s), to_go, finished)
     return {"totalLaps": total, "leaderLapsDone": done,
             "leaderLap": leader.get("lap") if leader else None,

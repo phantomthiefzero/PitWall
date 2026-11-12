@@ -505,6 +505,19 @@ Broadcast (broadcast/)
   the director shows each class's podium in turn on big, slow shots (_after_finish, STORY_SEQ "after": aerial first,
   AFTER_HOLD_S or more each; no incidents, replays or battles). Arcade's final-lap kerbs run at .9 s (.45 s strobed).
   tests: test_after_the_flag_the_racing_graphics_go_and_the_camera_turns_cinematic.
+  The podium and everything after the race wait for the FIELD, not the winner (the user's call, Nov 2026; Le Mans,
+  two classes: the podium was up 60 s after the overall winner, the GR86s' winner crossed at 122 s, the last car at
+  176 s). normalize race.allFinished / finishLeft (Deriver._finish_all): every car still running has taken the flag;
+  one gone from the world, in the pit lane or standing still FINISH_STUCK_S does not hold it up, and FINISH_WAIT_LAPS
+  of the slowest running car's lap after the winner ends it anyway. Who has crossed is read from every car (iRacing
+  gives every car position -1 a little after the winner's flag), and the winner is whoever crosses first after the
+  end came (race_end lcs, _end_snap: car 10 passed car 4 on the last lap and crossed first while iRacing still had
+  car 4 first; the real winner was never marked finished). Until the field is in, the director shows each class's
+  leader coming to win it, the fights still racing to the line and the next car to the flag (_finishing_stories;
+  cars that have finished are no story, and normalize's battles and attacks leave them out); then _after_finish and
+  the reel. The overlay's Auto: the result while the field comes in and FINISH_BOARD_MS after, the lap chart
+  FINISH_CHART_MS, then the podium (CTX.allAt). A feed without allFinished keeps the winner's flag.
+  test: test_the_podium_waits_for_the_whole_field_to_finish.
   The overlay calls them on screen (flagcall, a tile under Alerts, on by default): green as a race goes racing or
   after a caution or red, white for the final lap, checkered with the winner; only on a change it sees.
   The leader's laps never go back in a session (race_length: ResultsPositions and the most seen are a floor), and
