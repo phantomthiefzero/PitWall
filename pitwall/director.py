@@ -156,7 +156,7 @@ FRESH_MOMENT_S = 12.0       # a pass or a lead change older than this is not wor
 SEGMENT_MIN_S = 14.0        # a story gets at least this long (two or three shots) unless something bigger happens
 SEGMENT_MAX_S = 40.0        # and at most this, then another story gets the air
 REEL_MAX = 5                # the highlight reel after the flag: at most this many moments, in the order they happened
-REEL_AFTER_S = 25.0         # and it starts this long after the leader takes the flag (the finish itself is live)
+REEL_AFTER_S = 25.0         # and it starts this long after the last car takes the flag (the finish itself is live)
 REEL_CLIP_S = 9.0           # each moment plays this long
 AFTER_HOLD_S = 12.0         # after the flag each shot is held this long at least (cinematic: no quick cuts)
 FATIGUE_S = 150.0           # a story just shown scores lower for this long
@@ -831,11 +831,13 @@ class Director:
         self._story_step(groups, cars, by, cars_msg, recent_incidents, t_live, weights, hold, now)
 
     def _after_finish(self, groups, cars, cars_msg, now) -> bool:
-        """The race is over (the leader has taken the flag, normalize race.finished): the overall winner, then each
+        """The race is over (every car has taken the flag, normalize race.allFinished): the overall winner, then each
         class's winner, then the rest of each class's podium, in turn, on the "after" shots (aerial first), each held
         AFTER_HOLD_S or more. False while the race is still on."""
         d = cars_msg.get("derived") or {}
-        if not d.get("isRace") or not (d.get("race") or {}).get("finished"):
+        race = d.get("race") or {}
+        # not at the winner's flag: when the field has taken it (race.allFinished; a feed without it: the winner's)
+        if not d.get("isRace") or not race.get("finished") or not race.get("allFinished", True):
             self._after = None
             return False
         if getattr(self, "_after", None) is None:
@@ -1081,6 +1083,40 @@ class Director:
         for c in cars:
             if c.get("surface") == "in_pit_stall" and (c.get("classPos") or 99) <= 5:
                 out.append({"key": "pit:%s" % c["idx"], "score": 30, "cars": [c["idx"]], "why": "pit stop", "pit": True})
+        race = (cars_msg.get("derived") or {}).get("race") or {}
+        if is_race and race.get("finished") and not race.get("allFinished"):
+            out = self._finishing_stories(cars, out)
+        return out
+
+    def _finishing_stories(self, cars, out) -> list:
+        """The winner has the flag, the rest are still coming to the line (normalize race.allFinished): a car that has
+        finished is on its cool-down lap and is no story; each class still without a winner has its leader coming to
+        win it (Le Mans, Nov 2026: the GR86s' winner crossed 122 s after the overall winner, and the camera had gone to
+        the podium shots); then the fights still racing to the line (normalize keeps battles of cars not finished),
+        then whoever is next to the line. The class leader is read from the laps run, not classPos: iRacing gives
+        every car position -1 a little after the winner's flag."""
+        fin = {c["idx"] for c in cars if (c.get("derived") or {}).get("finished")}
+        out = [st for st in out if any(i not in fin for i in st.get("cars") or [])]
+        won, front, near = set(), {}, None
+        for c in cars:
+            if c["idx"] in fin:
+                won.add(c.get("classId"))
+        for c in cars:
+            if c["idx"] in fin or c.get("onPitRoad") or c.get("surface") == "not_in_world" or c.get("pct") is None \
+                    or c["pct"] < 0 or (c.get("lapCompleted") or -1) < 0:
+                continue
+            run = c["lapCompleted"] + c["pct"]
+            k = c.get("classId")
+            if k not in won and (k not in front or run > front[k][0]):
+                front[k] = (run, c)
+            if near is None or c["pct"] > near[0]:
+                near = (c["pct"], c)
+        for k, (_, c) in front.items():
+            out.append({"key": "finish:%s" % k, "score": 97, "cars": [c["idx"]], "max": 240.0, "seq": "finish",
+                        "why": "to win the class"})
+        if near is not None:
+            out.append({"key": "flag:%s" % near[1]["idx"], "score": 45, "cars": [near[1]["idx"]], "max": 40.0,
+                        "seq": "finish", "why": "to the flag"})
         return out
 
     def _hot_on_air(self, cars, by, cars_msg, moments, t_live, now) -> bool:

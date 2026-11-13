@@ -1349,7 +1349,11 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // comes up for a few seconds when the camera finds a new car (and now and then on a long shot), the battle box
   // while the camera is on a battle, the onboard graphic on an onboard camera, the speed trap now and then outside
   // a race. Timed from when this page saw the change, never by another machine's clock.
-  const CTX = { cam: null, camAt: 0, group: null, groupAt: 0, flag: null, flagAt: 0, pit: {}, pitOut: {}, bat: null, batAt: 0 };
+  const CTX = { cam: null, camAt: 0, group: null, groupAt: 0, flag: null, flagAt: 0, all: false, allAt: 0, pit: {}, pitOut: {}, bat: null, batAt: 0 };
+  // The race is over for everyone, not only the winner (normalize race.allFinished: every car still running has
+  // taken the flag, or one of its laps has gone by). Le Mans, Nov 2026: the second class's winner crossed 122 s after
+  // the overall winner and the podium had been up since 60 s. A feed without the field's finish: the winner's flag.
+  function allDone() { const r = S.cars && S.cars.derived && S.cars.derived.race; return !!r && !!r.finished && r.allFinished !== false; }
   const CARD_SHOW_MS = [1500, 9500], CARD_AGAIN_MS = 45000, CARD_AGAIN_FOR = 7000;
   function ctxTick() {
     const cam = camIdx(), g = S.state && S.state.camera ? S.state.camera.group : null, now = performance.now();
@@ -1357,6 +1361,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     if (g !== CTX.group) { CTX.group = g; CTX.groupAt = now; }
     const f = racingFlag();
     if (f !== CTX.flag) { CTX.flag = f; CTX.flagAt = now; }
+    const all = isRace() && f === "checkered" && allDone();
+    if (all !== CTX.all) { CTX.all = all; CTX.allAt = now; }
     // a car leaving pit road (its tyres: the tyres graphic while the camera is on it)
     for (const c of allCars()) {
       if (CTX.pit[c.idx] && !c.onPitRoad) CTX.pitOut[c.idx] = now;
@@ -1395,26 +1401,31 @@ body.bc-off>*:not(script){visibility:hidden!important}
   //   head to head    a battle for the top five the camera has stayed on 12 s: 12 s, a pair every 3 minutes
   //   track map       under a caution; otherwise 20 s every 2 minutes once the race is past its first lap
   //   crawl           under a caution; otherwise 30 s every 4 minutes once past the first lap
-  //   standings       the finish (35 s), then the podium; 12 s every 5 minutes off a battle; in practice and
+  //   standings       the finish (while the field comes to the line and 20 s after), the lap chart (25 s), then the
+  //                   podium; 12 s every 5 minutes off a battle; in practice and
   //                   qualifying 15 s every 4 minutes
   //   tyres           the camera car just out of the pits (25 s), in a race or practice and qualifying
   //   league          before the start of a race (20 s every 2 minutes)
   //   sponsors        12 s every 5 minutes, off a battle (only with logos added)
   //   picture in picture stays the producer's: it needs their video link.
+  const FINISH_BOARD_MS = 20000, FINISH_CHART_MS = 25000;
   function autoWants(name) {
     if (!G("auto.on", false)) return false;
     const now = performance.now(), race = isRace(), f = racingFlag(), caution = f === "caution" || f === "red";
-    const done = race && f === "checkered", since = now - CTX.flagAt, racing = race && sessState() === "racing";
+    const done = race && f === "checkered", racing = race && sessState() === "racing";
+    // after the flag: the result while the field comes to the line and FINISH_BOARD_MS after the last of them, then
+    // the lap chart, then the podium (the podium waits for every class to have its winner and its result)
+    const after = done && CTX.all ? now - CTX.allAt : -1;
     if (name === "trap") return ctxWants("trap");
     if (name === "flagcall") return true;                  // on its own timing: only as a flag changes
     if (name === "pitstop") return racing && !!pitPick();
     if (name === "closing") return racing && pastLapOne() && !camBattle() && !!closingPick() && (closingPick().cam || every(180000, 12000, 120000));
     if (name === "pace") return racing && pastLapOne() && !camBattle() && every(300000, 15000, 90000);
     if (name === "strategy") return racing && pastLapOne() && anyStops() && (caution || every(360000, 15000, 240000));
-    if (name === "lapchart") return done && since >= 35000 && since < 60000;
-    if (name === "board") return done ? since < 35000 : race ? racing && pastLapOne() && !camBattle() && (caution || !G("race.compact", true)) && every(300000, 12000, 150000)
+    if (name === "lapchart") return after >= FINISH_BOARD_MS && after < FINISH_BOARD_MS + FINISH_CHART_MS;
+    if (name === "board") return done ? after < FINISH_BOARD_MS : race ? racing && pastLapOne() && !camBattle() && (caution || !G("race.compact", true)) && every(300000, 12000, 150000)
       : !qlapCar() && every(240000, 15000, 60000);
-    if (name === "podium") return done && since >= 60000;
+    if (name === "podium") return after >= FINISH_BOARD_MS + FINISH_CHART_MS;
     if (name === "map") return racing && pastLapOne() && (caution || every(120000, 20000, 60000));
     if (name === "strip") return racing && pastLapOne() && (caution || every(240000, 30000, 0));
     if (name === "tyres") { const c = carByIdx(camIdx()); return !!c && (racing || !race) && now - (CTX.pitOut[c.idx] || -1e9) < 25000; }
@@ -1450,13 +1461,21 @@ body.bc-off>*:not(script){visibility:hidden!important}
   // After the checkered flag the race is over: what was about the racing (battles, who is closing, pace, strategy,
   // pit stops, the card, race control's alerts) leaves the air, and the result, the lap chart and the podium have it
   // (the user's call, Nov 2026). gfx finish.solo false keeps them.
-  const FINISH_OFF = ["battle", "h2h", "closing", "pace", "strategy", "faster", "traffic", "onboard", "pitstop", "tyres",
-    "trap", "card", "penalty", "fastlap", "ticker", "map", "qlap", "strip"];
+  // In two steps (the user's call, Nov 2026): what was about the race as a whole goes at the winner's flag; what
+  // follows the cars still racing (a class still fighting for its win: battles, head to head, the card, onboard, the
+  // map, race control) stays until the field has taken the flag (allDone). normalize keeps finished cars out of the
+  // battles, and the card does not come up for a car that has finished (it is on its cool-down lap).
+  const FINISH_OFF = ["closing", "pace", "strategy", "faster", "traffic", "pitstop", "tyres",
+    "trap", "penalty", "fastlap", "qlap", "strip"];
+  const FINISH_OFF_ALL = ["battle", "h2h", "card", "onboard", "ticker", "map"];
   const finishUp = () => isRace() && racingFlag() === "checkered";
+  const fieldIn = () => finishUp() && CTX.all;
+  const cardFinished = () => { const c = cardCar(); return !!c && finishUp() && !!(c.derived && c.derived.finished); };
   const EDIT_ALL = Q.get("edit") === "all";
   const shown = name => allowed(name) && !sceneUp() &&
     (EDIT_ALL || (G("auto.on", false) && CONTEXTUAL[name] && CONTEXTUAL[name]() ? ctxWants(name) : (!!G(name + ".show", DEFAULT_ON[name]) || autoWants(name)))) &&
-    !(finishUp() && FINISH_OFF.includes(name) && G("finish.solo", true)) &&
+    !(G("finish.solo", true) && (finishUp() && FINISH_OFF.includes(name) || fieldIn() && FINISH_OFF_ALL.includes(name)
+      || (name === "card" || name === "onboard") && cardFinished())) &&
     !(gridUp && ["pitstop", "closing", "pace", "strategy", "lapchart", "tower", "card", "battle", "map", "board", "faster", "traffic", "fastlap", "penalty", "h2h", "onboard", "qlap", "tyres", "trap", "strip", "league"].includes(name) && G("grid.solo", true));
   // The grid walk (pitwall/director.py) is going down the grid: the card shows
   // the car it is on, with its starting position, instead of the full board.
