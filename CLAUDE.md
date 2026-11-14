@@ -468,6 +468,17 @@ Broadcast (broadcast/)
   judge the director on the top 3.
   Pack names: "Start Cam" is the line's camera, "Drone Turn 1" / "Drone Spoon" stand at one place (_PLACE_NAMES).
   test: test_close_battles_share_the_air_and_a_missed_lead_change_is_owed_a_replay.
+- Le Mans (Nov 2026: BMW M2 and GR86, slipstream packs, 146 passes after the opening lap; the first capture with
+  real mid-race fighting). The BMWs' leaders were side by side on the last lap and the camera was on a GR86 fight
+  0.4 s apart when the lead changed hands: a battle within SIDE_BY_SIDE_S scores more than one within 0.3 s, and on
+  the last lap a fight for a class win gets LAST_LAP_WIN (podium LAST_LAP_PODIUM). Owed replays: a fight that has had
+  the air OWED_TAKES_S gives way even while close (not side by side, not an attack); a pass swapped back since (on the
+  road, laps + pct: _undone) or whose two cars are still in a fight together is not owed: that fight is live
+  television (Suzuka: the replay of a GT3 lead pass ran while the same two swapped back and a third went by).
+  Measured on all four captures (top 3 after the start, live / in the picture / missed / not-live replayed): Le Mans
+  12/18/20/5 -> 11/18/18/3 and the last-lap lead change live (was missed); Suzuka 5/5/11/6 -> 5/6/10/7; Summit Point
+  1/1/1/0 -> 2/2/0/0 (2 passes); Talladega 23/52/20/9 -> 22/49/25/11 (a pack: seeds 2 and 3 before gave 24/50/20 and
+  22/53/22, so a little less live, a little more replayed). test: test_a_class_win_on_the_last_lap_and_an_owed_replay_in_a_slipstream_race.
 - Checking it on the sim (Nov 2026). The camera and replay check (producer Setup > Check; pitwall/simcheck.py, bridge
   `simcheck` command, producer token, the broadcast on; it takes the camera from the director): each command the
   broadcast uses, sent once through the CommandGate, and the telemetry's answer (CamCarIdx / CamGroupNumber,

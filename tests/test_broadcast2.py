@@ -3296,6 +3296,55 @@ def test_close_battles_share_the_air_and_a_missed_lead_change_is_owed_a_replay()
         assert camera_role(name, [{"name": "CamPit Lane 5"}])[0] == "spot", name
 
 
+def test_a_class_win_on_the_last_lap_and_an_owed_replay_in_a_slipstream_race():
+    # Le Mans, Nov 2026 (scripts/director_report.py): on the last lap the BMWs' leaders were side by side, 0.01 s
+    # apart, and the camera was on a GR86 fight 0.4 s apart when the BMW lead changed hands; and in the second half no
+    # missed pass for P2 or P3 was replayed, because the fight on air was never "not right together".
+    from pitwall.director import OWED_TAKES_S, SIDE_BY_SIDE_S
+    three = {"id": "2:4", "cars": [4, 5, 6], "gapsS": [0.4, 0.4], "closingSPerLap": [0.2, 0.2], "forClassPos": 1}
+    side = {"id": "1:0", "cars": [0, 1], "gapsS": [0.01], "closingSPerLap": [0.0], "forClassPos": 1}
+    d, sess, msg, t, log, kinds = _craft_rig(n=8, battles=[three, side])
+    for c in msg["cars"][4:]:
+        c["classId"], c["classPos"] = 2, c["idx"] - 3
+    msg["derived"]["race"] = {"lapsToGo": 1, "white": True}
+    by = {c["idx"]: c for c in msg["cars"]}
+    sc = {st["key"]: st["score"] for st in d._stories(msg["cars"], by, msg, [], 500.0, t[0])}
+    assert sc["battle:1:0"] > sc["battle:2:4"], sc            # side by side for a win beats a closer-to-come one
+    msg["derived"]["race"] = {"lapsToGo": 5}
+    sc2 = {st["key"]: st["score"] for st in d._stories(msg["cars"], by, msg, [], 500.0, t[0])}
+    assert sc["battle:1:0"] - sc2["battle:1:0"] >= 25, "the last lap makes a fight for the win bigger"
+
+    # a close fight (not side by side) that has had the air OWED_TAKES_S gives way to the replay of a lead change the
+    # camera missed; a younger one does not
+    fight = {"id": "1:0", "cars": [0, 1], "gapsS": [0.25], "closingSPerLap": [0.0], "forClassPos": 1}
+    d, sess, msg, t, log, kinds = _craft_rig(n=8, battles=[fight])
+    for c in msg["cars"][4:]:
+        c["classId"], c["classPos"] = 2, c["idx"] - 3
+    change = {"kind": "class_lead", "idx": 5, "prevIdx": 4, "t": 520.0, "replayT": 516.0, "sessionNum": 2, "classId": 2}
+    msg["cars"][5]["classPos"], msg["cars"][4]["classPos"] = 1, 2      # car 5 ahead on the road (pct .5 against .4)
+    when = None
+    for k in range(1200):
+        t[0] += 0.1
+        tl = 500.0 + k * 0.1
+        d.tick(sess, msg, _state(tl), [change] if tl >= 520.0 else [])
+        if d.rp and when is None:
+            when = (t[0], d.rp)
+    assert when and when[1]["moment"] is change, "owed, and replayed"
+    # the fight was on air from the start (t 100): not before it had OWED_TAKES_S
+    assert when[0] - 100.0 >= OWED_TAKES_S - 1, when[0]
+    assert 0.25 > SIDE_BY_SIDE_S
+    # the same lead change, swapped back since (the slipstream's back and forth): not owed
+    d, sess, msg, t, log, kinds = _craft_rig(n=8, battles=[fight])
+    for c in msg["cars"][4:]:
+        c["classId"], c["classPos"] = 2, c["idx"] - 3
+    msg["cars"][4]["pct"] = 0.55                                       # car 4 is back ahead of car 5 on the road
+    for k in range(1200):
+        t[0] += 0.1
+        tl = 500.0 + k * 0.1
+        d.tick(sess, msg, _state(tl), [change] if tl >= 520.0 else [])
+    assert not any(c.get("action") == "jump" for c, _ in log["replay"]), "an undone lead change is not owed"
+
+
 def test_the_podium_waits_for_the_whole_field_to_finish():
     # Nov 2026, the user: "the podium and everything show up immediately after the car in P1 finishes ... we need to
     # either wait for all the cars to finish or find another solution". Le Mans, two classes: the podium was up 60 s
