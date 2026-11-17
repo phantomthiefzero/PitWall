@@ -6,6 +6,9 @@ Hard rules
 - Any number shown to a user is either an iRacing variable copied through
   `pitwall/normalize.py` or lives under a `derived` key. No exceptions, no
   "helpful" estimates in the client.
+  normalize.py is now a front door: the code is in `pitwall/norm/` by topic (gaps, race, fuel, session,
+  state; the Deriver from d_laps, d_pits, d_traffic, d_events, d_incidents, d_finish, d_tv, d_strategy,
+  d_weather). Import from `pitwall.normalize` as before; add new code to the topic's module.
 - `pitwall/commands.py` is the only module that may call pyirsdk broadcast
   functions. Keep the allowlist there.
 - Tests in `tests/test_pipeline.py` must pass: `python -m pytest tests -q`.
