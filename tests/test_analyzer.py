@@ -2439,7 +2439,7 @@ console.log(JSON.stringify({ cs: C.R.cs.map(c => ({ n: c.n, dv: c.dv, dm: c.dm, 
     cs = {c["n"]: c for c in r["cs"]}
     assert all(c["medOf"] == 21 for c in r["cs"]), "every corner from all 21 laps"
     assert abs(cs[8]["dv"]) < 0.5 and cs[8]["trace"]["dv"] > 2, "corner 8: level at the apex, not quicker"
-    assert abs(cs[13]["dm"] - 5.9) < 0.5 and cs[13]["trace"]["dm"] > 8
+    assert abs(cs[13]["dm"] - 5.9) < 0.5 and cs[13]["trace"]["dm"] > 7      # the trace: 8.5 m once, 10% long (lapLen)
     assert abs(cs[4]["d"] + 9.6) < 0.5, "corner 4: the middle of 21 braking points, not a step of the 4.25 m grid"
     for c in r["corners"]:
         assert c["level"] == (not c["dt"] > 0.02)
@@ -2668,3 +2668,18 @@ console.log(JSON.stringify({ cs: R.cs.map(c => ({ a: c.a.ms, b: c.b.ms, es: c.b.
     for c in out["cs"]:
         assert 40 < c["b"] < 300 and c["b"] <= c["es"] + 1 and c["b"] <= c["xs"] + 1, c   # km/h, below entry and exit
         assert abs(c["a"] - c["b"]) < 25, c
+
+
+def test_coachings_distances_are_on_the_tracks_own_length():
+    # Nov 2026: the lap's length was the sum of its speeds times a sample's time, right for a lap sampled in time but
+    # not for Coaching's average lap, which is sampled in distance: Indianapolis (3.8452 km, iRacing's TrackLength)
+    # read 4,246 m, and every distance in Coaching against it was 10% too long.
+    if not NODE or not os.path.exists(REAL_IBT):
+        return
+    out = run_js("""
+IB.a = ibt(readBytes(ARGS[0])); COACH.src = 'ibt'; COACH.to = 'best';
+const X = coachRun(), c = X.C.R.cs[0];
+console.log(JSON.stringify({ len: c.mpg * (N - 1), one: analyze(X.laps[0], X.best).cs[0].mpg * (N - 1) }));
+""", REAL_IBT)
+    for k in ("len", "one"):
+        assert abs(out[k] - 3845.2) < 0.01 * 3845.2, out

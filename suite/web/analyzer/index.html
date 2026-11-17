@@ -747,8 +747,13 @@ function rawMin(o,g,s,e){const v=o&&o.Speed,D=o&&o.D;if(!v||!D||g<0||!(o.n>N))re
 let a=0,b=o.n-1;while(a<b){const m=(a+b)>>1;if(D[m]<lo)a=m+1;else b=m}let j=-1;for(let q=Math.max(1,a);q<o.n-1&&D[q]<=hi;q++)if(D[q]>=D[q-1]&&(j<0||v[q]<v[j]))j=q;if(j<0)return null;
 const y0=v[j-1],y1=v[j],y2=v[j+1],den=y0-2*y1+y2,x=den>1e-9?Math.max(-.5,Math.min(.5,.5*(y0-y2)/den)):0,w=x>=0?D[j+1]-D[j]:D[j]-D[j-1];
 return{g:(D[j]+x*(w>0&&w<.01?w:0))*(N-1),v:y1-.25*(y0-y2)*x}}
+// The lap's length: speed over the time between the grid's points. The sum of the samples' speeds times the time a
+// sample takes is right only for a lap sampled in time; Coaching's average lap is sampled in distance, where it
+// weighs the fast parts more: Indianapolis read 4,246 m for a 3,845 m track, so every distance in Coaching (brake
+// points, "only N m flat out", the straight after a corner) was 10% too long.
+function lapLen(A){let s=0;for(let g=0;g<N-1;g++)s+=(A.Speed[g]+A.Speed[g+1])/2*(A.t[g+1]-A.t[g]);return s}
 function analyze(a,b){const xs=[];if(a.ext&&b.ext)for(const n in a.ext)if(n in b.ext){xs.push('x:'+n);a['x:'+n]=a.ext[n];b['x:'+n]=b.ext[n]}
-const A=rs(a,xs),B=rs(b,xs),len=a.Speed.reduce((s,v)=>s+v,0)*a.lap/(a.n-1),mpg=len/(N-1),dl=new Float64Array(N);
+const A=rs(a,xs),B=rs(b,xs),len=lapLen(A),mpg=len/(N-1),dl=new Float64Array(N);
 for(let g=0;g<N;g++)dl[g]=(A.t[g]-A.t[0])-(B.t[g]-B.t[0]);
 derive(A);derive(B);
 const sm=sma(B.Speed,9),cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack());
