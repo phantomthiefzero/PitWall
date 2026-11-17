@@ -2651,3 +2651,20 @@ console.log(JSON.stringify({ a, b, book: cbLoad(), names: cnLoad() }));
     assert out["book"]["indy"] == [{"p": 0.5, "s": 0.48, "e": 0.52}], "the driver's book wins for his tracks"
     assert out["book"]["mine"] == [{"p": 0.3, "s": 0.28, "e": 0.32}], "the viewer's other tracks are left alone"
     assert out["names"]["indy"][0]["name"] == "Turn 7"
+
+
+def test_the_slowest_point_is_in_kmh_like_every_other_speed_in_a_corner():
+    # Nov 2026: reading the slowest point from the lap's own samples (rawMin, in m/s) put metres a second where the rest
+    # of a corner's speeds are km/h (met), so the Lap Analyzer's corner table showed the slowest point 3.6 times too low
+    # and "X km/h slower at the apex" was off by as much. Checked on the driver's own file against its Speed channel.
+    if not NODE or not os.path.exists(REAL_IBT):
+        return
+    out = run_js("""
+IB.a = ibt(readBytes(ARGS[0])); COACH.src = 'ibt'; COACH.to = 'best';
+const X = coachRun(), R = analyze(X.laps[2], X.best);
+console.log(JSON.stringify({ cs: R.cs.map(c => ({ a: c.a.ms, b: c.b.ms, es: c.b.es, xs: c.b.xs })) }));
+""", REAL_IBT)
+    assert len(out["cs"]) >= 10
+    for c in out["cs"]:
+        assert 40 < c["b"] < 300 and c["b"] <= c["es"] + 1 and c["b"] <= c["xs"] + 1, c   # km/h, below entry and exit
+        assert abs(c["a"] - c["b"]) < 25, c

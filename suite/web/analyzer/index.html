@@ -754,7 +754,7 @@ derive(A);derive(B);
 const sm=sma(B.Speed,9),cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack());
 cs.forEach((c,i)=>{c.n=i+1;if(c.rs!=null){c.s=Math.min(c.rs,am(sm,Math.max(0,c.ap-80),c.ap));c.e=Math.max(c.re,c.ap+5)}else{c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80))}
 if(i){const p=cs[i-1];p.e=Math.min(p.e,c.ap-1);c.s=Math.max(c.s,p.e)}if(c.s>=c.ap)c.s=c.ap-5;
-c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);{const ma=rawMin(a,c.a.mg,c.s,c.e),mb=rawMin(b,c.b.mg,c.s,c.e);c.a.mgF=ma?ma.g:c.a.mg;c.b.mgF=mb?mb.g:c.b.mg;if(ma&&mb){c.a.ms=ma.v;c.b.ms=mb.v}}c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
+c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);{const ma=rawMin(a,c.a.mg,c.s,c.e),mb=rawMin(b,c.b.mg,c.s,c.e);c.a.mgF=ma?ma.g:c.a.mg;c.b.mgF=mb?mb.g:c.b.mg;if(ma&&mb){c.a.ms=ma.v*3.6;c.b.ms=mb.v*3.6}}c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
 c.d=(c.a.baF-c.b.baF)*mpg;c.dv=c.a.ms-c.b.ms;c.dm=(c.a.taF-c.b.taF)*mpg;c.dp=(c.a.pb-c.b.pb)*100;c.tin=dl[c.ap]-dl[c.s];c.tout=dl[c.e]-dl[c.ap]});
 return{A,B,len,dl,cs,a,b,X:a.ext&&b.ext?extStats(a,b):null,Sa:lapStats(a),Sb:lapStats(b),total:a.lap-b.lap,pct:a.lap/b.lap*100}}
 //ENDCORE
