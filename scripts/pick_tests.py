@@ -24,6 +24,9 @@ RULES = [
     ("suite/second_camera.py", [SUITE, "tests/test_second_camera.py"]),
     ("suite/", [SUITE, ANALYZER]),                    # bridge, share, updater, page splitting
     ("broadcast/", PITWALL[1:] + [SUITE]),
+    ("pitwall/director_scorecard.py", ["tests/test_scorecard.py"]),
+    ("pitwall/director", PITWALL + [SUITE, "tests/test_scorecard.py"]),   # the director and its report
+    ("scripts/director_scorecard.py", ["tests/test_scorecard.py"]),
     ("pitwall/bridge.py", PITWALL + [SUITE, "tests/test_second_camera.py"]),
     ("relay/", PITWALL + [SUITE, "tests/test_second_camera.py"]),
     ("client/", ["tests/test_pipeline.py", "tests/test_client.py", SUITE]),

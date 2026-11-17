@@ -232,13 +232,10 @@ def records(files, me=None):
 # Your last session, for the home page: laps, clean laps, best, how consistent
 # --------------------------------------------------------------------------- #
 
-def session_summary(path, step=6):
-    """Your laps in one .ibt (read at every `step`th sample): each lap's time as iRacing gave it
-    (LapLastLapTime once it updates after the line) and whether it was clean (driven from the line,
-    no pit road, never off track, no new incident points). Raises ValueError for a file it cannot read.
-    iRacing updates LapLastLapTime a moment AFTER the line: at the start of a lap it still holds the lap
-    before last. So a lap's time is the first new value after its own last sample, not after its first one
-    (that gave every lap the previous lap's time)."""
+def _ibt_channels(path, names):
+    """Every sample of the named one-value channels of an .ibt, as arrays, plus the tick rate and the row count.
+    Missing channels are left out. One pass per channel over the file's rows (struct does the walking)."""
+    import array
     import mmap
     size = os.path.getsize(path)
     with open(path, "rb") as f:
@@ -248,88 +245,100 @@ def session_summary(path, step=6):
             tick, sl, so, nv, vo, bl, bo = i(8) or 60, i(16), i(20), i(24), i(28), i(36), i(52)
             if nv <= 0 or bl <= 0 or so + sl > size:
                 raise ValueError("not an .ibt")
-            fmt = {1: "<?", 2: "<i", 3: "<I", 4: "<f", 5: "<d"}
+            fmt = {1: ("?", 1, "b"), 2: ("i", 4, "i"), 3: ("I", 4, "I"), 4: ("f", 4, "f"), 5: ("d", 8, "d")}
             var = {}
             for k in range(nv):
                 q = vo + k * 144
                 t, off, cnt = struct.unpack_from("<iii", mm, q)
                 name = bytes(mm[q + 16:q + 48]).split(b"\0")[0].decode("latin-1")
-                if cnt == 1 and t in fmt:
+                if cnt == 1 and t in fmt and name in names:
                     var[name] = (fmt[t], off)
-            if "Lap" not in var or "LapLastLapTime" not in var:
-                raise ValueError("no lap channels")
             rows = (size - bo) // bl
-
-            def rd(r, n):
-                v = var.get(n)
-                return None if v is None else struct.unpack_from(v[0], mm, bo + r * bl + v[1])[0]
-            laps, cur, last_lt = [], None, None
-            # the last sample too: a one-lap file is on the next lap only in its very last sample
-            for r in list(range(0, rows, step)) + ([rows - 1] if rows and (rows - 1) % step else []):
-                lap, pct = rd(r, "Lap"), rd(r, "LapDistPct")
-                lt = rd(r, "LapLastLapTime")
-                if cur is not None and lap is not None and lap == cur["lap"] + 1:
-                    cur["end"] = r
-                    cur["lt_last"] = last_lt
-                    laps.append(cur)
-                    cur = None
-                if cur is None and lap is not None:
-                    cur = {"lap": lap, "start_pct": pct, "pit": False, "off": False, "inc0": rd(r, "PlayerCarMyIncidentCount"),
-                           "inc1": None, "end": None, "lt_before": lt, "r0": r}
-                if cur is not None:
-                    if rd(r, "OnPitRoad"):
-                        cur["pit"] = True
-                    if rd(r, "PlayerTrackSurface") == 0:
-                        cur["off"] = True
-                    cur["inc1"] = rd(r, "PlayerCarMyIncidentCount")
-                    last_lt = lt
-            out = []
-            for L in laps:
-                # the lap's time: LapLastLapTime once it changes, within 4 s after the line
-                t = None
-                for r in range(L["end"], min(rows, L["end"] + int(4 * tick)), 3):
-                    v = rd(r, "LapLastLapTime")
-                    if v and v > 0 and v != L["lt_last"]:
-                        t = v
-                        break
-                if not t and rows - L["end"] < 4 * tick:
-                    # the file ends just after the line, before iRacing gave the time: a lap cut out of a session
-                    # (one-lap files shared for coaching). Time it by the clock, line to line, at every sample.
-                    t = _clock_lap(rd, L["lap"], max(0, L["r0"] - step), L["end"], tick)
-                if not t or not (20 < t < 3600):
-                    continue
-                # timed as the Lap Analyzer times a lap: driven from the line, out of the pit lane, and the lap
-                # clock agreeing with the time it took (a lap begun in the pits or a formation lap does not)
-                took = (L["end"] - L["r0"]) / tick
-                timed = (L["start_pct"] is not None and 0 <= L["start_pct"] < 0.05 and not L["pit"]
-                         and abs(took - t) <= max(1.0, 2.0 * step / tick))
-                clean = timed and not L["off"] and (L["inc0"] is None or L["inc1"] == L["inc0"])
-                out.append({"lap": L["lap"], "t": round(t, 3), "clean": bool(clean), "timed": bool(timed)})
-            return out
+            body = memoryview(mm)[bo:bo + rows * bl]
+            out = {}
+            try:
+                for name, ((code, w, ac), off) in var.items():
+                    one = struct.Struct("<%dx%s%dx" % (off, code, bl - off - w))
+                    out[name] = array.array(ac, (v for (v,) in one.iter_unpack(body)))
+            finally:
+                body.release()
+            return out, tick, rows
         finally:
             mm.close()
 
 
-def _clock_lap(rd, lap, r0, r1, tick):
-    """A lap's time by the session clock from the first sample on `lap` to the first on the next lap,
-    the crossing placed between samples by LapDistPct. None when the lap was not driven from the line."""
-    s = r0
-    while s < r1 and rd(s, "Lap") != lap:
-        s += 1
-    e = r1
-    while e > s and rd(e - 1, "Lap") != lap:
-        e -= 1
-    if e <= s or rd(s, "LapDistPct") is None or rd(s, "LapDistPct") > 0.05 or rd(e, "SessionTime") is None:
-        return None
+SUMMARY_CHANNELS = ("Lap", "LapDistPct", "SessionTime", "LapCurrentLapTime", "LapLastLapTime", "OnPitRoad",
+                    "IsOnTrack", "PlayerTrackSurface", "PlayerCarMyIncidentCount")
 
-    def cross(r):            # time at the line between sample r-1 (lap end) and r (lap start)
-        a, b = rd(r - 1, "LapDistPct"), rd(r, "LapDistPct")
-        ta, tb = rd(r - 1, "SessionTime"), rd(r, "SessionTime")
-        if r <= 0 or a is None or b is None or ta is None or a < b:
-            return rd(r, "SessionTime")
-        span = (1.0 - a) + b
-        return ta + (tb - ta) * ((1.0 - a) / span if span > 0 else 1.0)
-    return cross(e) - cross(s)
+
+def session_summary(path, step=None):
+    """Your laps in one .ibt, timed and judged exactly as the Lap Analyzer does it (its ibt() lap parser and
+    sessionStats; CLAUDE.md "Your last session": the two must give the same numbers for the same file, and
+    tests/test_analyzer.py OneLapTimerTest runs both on every test file and on the driver's own files).
+
+    A lap is the samples on one Lap number. Its time is the first NEW LapLastLapTime after its own last sample that
+    agrees with its own clock (LapCurrentLapTime) to 0.05 s: iRacing posts it a moment after the line and until then
+    the variable holds the lap before's. A file that ends just after the line (a lap cut out of a session) is timed
+    by the clock, line to line, the crossings placed between samples. A lap is TIMED when it was driven from the
+    line to the line (d0 < 0.05, d1 > 0.95), at least 100 samples, its time within 0.25 s of the time it took, with
+    no moment on pit road, not driven by someone else (IsOnTrack), and no active reset (the lap distance jumping);
+    CLEAN when timed with no incident points and no moment off the track (summarize_laps adds the usual-time band
+    and the 7%). Returns [{lap, t, clean, timed}] for every lap that has a time. Raises ValueError for a file it
+    cannot read. `step` is no longer used (every sample is read)."""
+    ch, tick, rc = _ibt_channels(path, SUMMARY_CHANNELS)
+    if "Lap" not in ch or "LapLastLapTime" not in ch or "LapDistPct" not in ch:
+        raise ValueError("no lap channels")
+    lc, pct, st, cur, llt = ch["Lap"], ch["LapDistPct"], ch.get("SessionTime"), ch.get("LapCurrentLapTime"), ch["LapLastLapTime"]
+    pitc, ontr, surf, inc = ch.get("OnPitRoad"), ch.get("IsOnTrack"), ch.get("PlayerTrackSurface"), ch.get("PlayerCarMyIncidentCount")
+    out, s = [], 0
+    while s < rc:
+        e = s
+        while e < rc and lc[e] == lc[s]:
+            e += 1
+        span = (st[e - 1] - st[s] + 1.0 / tick) if st is not None else (e - s) / tick
+        tc = cur[e - 1] if cur is not None else span
+        told = False
+        if e < rc:
+            was = llt[e - 1]
+            for r in range(e, min(rc, e + 900)):
+                v = llt[r]
+                if v > 0 and v != was and abs(v - tc) < 0.05:
+                    tc, told = v, True
+                    break
+        if e < rc and not told and s > 0 and st is not None and rc - e < 4 * tick and pct[s] < 0.05:
+            def cross(r):
+                a, b, ta, tb = pct[r - 1], pct[r], st[r - 1], st[r]
+                sp = (1.0 - a) + b
+                return ta + (tb - ta) * (1.0 - a) / sp if a >= b and sp > 0 else tb
+            c = cross(e) - cross(s)
+            if c > 20 and abs(c - tc) < 0.5:
+                tc = c
+        t = tc if e < rc else 0.0
+        d0, d1 = pct[s], pct[e - 1]
+        pit = pitc is not None and any(pitc[r] for r in range(s, e))
+        away = False
+        if ontr is not None and not pit:
+            n = len(range(s, e, 10))
+            n0 = sum(1 for r in range(s, e, 10) if not ontr[r])
+            away = n > 0 and n0 / n > 0.2
+        reset = False
+        if not pit:
+            pp = d0
+            for r in range(s + 1, e):
+                p = pct[r]
+                dd = p - pp
+                if not (pp > 0.9 and p < 0.1) and (dd < -0.002 or dd > 0.006):
+                    reset = True
+                    break
+                pp = p
+        off = surf is not None and not pit and any(surf[r] == 0 for r in range(s, e, 2))
+        ok = (e < rc and t > 0 and abs(t - span) < 0.25 and e - s >= 100 and d0 < 0.05 and d1 > 0.95
+              and not pit and not away and not reset)
+        points = (inc[e - 1] - inc[s]) if inc is not None else 0
+        if t and 20 < t < 3600 and (ok or e - s >= tick):
+            out.append({"lap": lc[s], "t": round(t, 3), "clean": bool(ok and not points and not off), "timed": bool(ok)})
+        s = e
+    return out
 
 
 def lap_band(times):

@@ -1,0 +1,114 @@
+{
+ "Circuit-des-24-Heures-du-Mans-Race_2026-11-09_204045.jsonl.gz": {
+  "passes": 35,
+  "runs": [
+   {
+    "live": 11,
+    "missed": 18,
+    "near": 18,
+    "replayed": 3
+   },
+   {
+    "live": 11,
+    "missed": 18,
+    "near": 14,
+    "replayed": 3
+   },
+   {
+    "live": 11,
+    "missed": 20,
+    "near": 15,
+    "replayed": 2
+   }
+  ],
+  "seeds": [
+   1,
+   2,
+   3
+  ]
+ },
+ "Summit-Point-Raceway-Race_2026-11-03_193904.jsonl.gz": {
+  "passes": 2,
+  "runs": [
+   {
+    "live": 2,
+    "missed": 0,
+    "near": 2,
+    "replayed": 0
+   },
+   {
+    "live": 1,
+    "missed": 1,
+    "near": 1,
+    "replayed": 0
+   },
+   {
+    "live": 1,
+    "missed": 1,
+    "near": 1,
+    "replayed": 0
+   }
+  ],
+  "seeds": [
+   1,
+   2,
+   3
+  ]
+ },
+ "Suzuka-International-Racing-Course-Race_2026-11-10_205941.jsonl.gz": {
+  "passes": 18,
+  "runs": [
+   {
+    "live": 5,
+    "missed": 10,
+    "near": 6,
+    "replayed": 7
+   },
+   {
+    "live": 5,
+    "missed": 11,
+    "near": 5,
+    "replayed": 6
+   },
+   {
+    "live": 5,
+    "missed": 8,
+    "near": 7,
+    "replayed": 6
+   }
+  ],
+  "seeds": [
+   1,
+   2,
+   3
+  ]
+ },
+ "Talladega-Super-Speedway-Race_2026-10-25_192220.jsonl.gz": {
+  "passes": 57,
+  "runs": [
+   {
+    "live": 22,
+    "missed": 25,
+    "near": 49,
+    "replayed": 11
+   },
+   {
+    "live": 21,
+    "missed": 23,
+    "near": 49,
+    "replayed": 11
+   },
+   {
+    "live": 25,
+    "missed": 20,
+    "near": 48,
+    "replayed": 6
+   }
+  ],
+  "seeds": [
+   1,
+   2,
+   3
+  ]
+ }
+}
