@@ -2217,6 +2217,58 @@ def build_one_lap(path, lap_s=61.2345):
     return lap_s
 
 
+def test_test_one_change_walks_the_driver_through_it_and_judges_it_on_their_laps():
+    # Nov 2026, the user's pick: whether Setup's advice makes the car faster is answered on the driver's own laps:
+    # TEST_LAPS clean laps, ONE change in the garage, the same again, then the verdict, sector by sector.
+    if not NODE:
+        return
+    out = run_js("""
+LIVE.secs = [0.33, 0.66]; LIVE.vers = [{ n: 1, diff: [] }]; LIVE.laps = []; LIVE.meta = { carPath: 'ferrari296gt3' };
+const lap = (ver, t, k) => LIVE.laps.push({ ver, valid: true, time: t, sx: [t * 0.3, t * 0.65], lap: LIVE.laps.length + 1, tc: {}, st: [] });
+const say = () => setupTestHtml().replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+const out = { idle: say() };
+setupTestClick({ target: { closest: () => ({ dataset: { sutest: 'start' } }) } });
+out.base = LIVE.test.base; out.s1 = say();
+[85.1, 85.3, 85.0, 85.2, 85.4].forEach(t => lap(1, t)); out.s2 = say();
+LIVE.vers.push({ n: 2, diff: [{ lab: 'Rear wing', from: '6', to: '5' }] }); out.s3 = say();
+[84.6, 84.7, 84.5, 84.8, 84.6].forEach(t => lap(2, t)); out.done = say();
+LIVE.vers[1].diff.push({ lab: 'Front ARB', from: '3', to: '2' }); out.many = say();
+setupTestClick({ target: { closest: () => ({ dataset: { sutest: 'stop' } }) } }); out.stopped = LIVE.test;
+console.log(JSON.stringify(out));
+""")
+    assert "Test one change" in out["idle"] and "Start the test" in out["idle"]
+    assert out["base"] == 1 and "Step 1 of 3" in out["s1"] and "5 more clean laps" in out["s1"]
+    assert "Step 2 of 3" in out["s2"] and "change one setting" in out["s2"]
+    assert "Step 3 of 3" in out["s3"] and "Rear wing 6 → 5" in out["s3"] and "5 more clean laps" in out["s3"]
+    assert "Result" in out["done"] and "Faster" in out["done"] and "S1" in out["done"] and "S3" in out["done"], out["done"]
+    assert "You changed 2 settings" in out["many"]
+    assert out["stopped"] is None
+
+
+def test_the_track_notebook_keeps_how_a_track_is_driven_from_the_fastest_lap_loaded():
+    # Nov 2026, the user's pick, checked against the Garage 61 lap's own samples: corner 1 at Indianapolis, the brake
+    # 151 m before the slowest point (the CSV: 151 m), back on the throttle 2 m after (2 m), 87 km/h in 2nd.
+    import glob
+    g61 = glob.glob("/mnt/user-data/uploads/iRacing Telemetry Files/G61/*Tyhler Cook*.csv")
+    if not NODE or not os.path.exists(REAL_IBT) or not g61:
+        return
+    out = run_js("""
+IB.a = ibt(readBytes(ARGS[0])); const td = new TextDecoder();
+COACH.g61 = [parse(td.decode(new Uint8Array(readBytes(ARGS[1]))), ARGS[1].split('/').pop())];
+COACH.src = 'ibt'; COACH.to = 'g61best';
+const e1 = notebookPut(coachRun()); COACH.g61 = []; COACH.to = 'best'; COACH.memo = null;
+const e2 = notebookPut(coachRun()), h = notebookHtml(e2);
+console.log(JSON.stringify({ ref: e1.ref.lap, c1: e1.ref.cs[0], c3: e1.ref.cs[2], kept: e2.ref.lap, you: e2.you.against, html: h.length,
+  flat: /Flat out through it/.test(h), keys: Object.keys(nbLoad()).length }));
+""", REAL_IBT, g61[0])
+    assert out["ref"] == 82.153
+    c = out["c1"]
+    assert abs(c["brake"] - 151) <= 3 and abs(c["on"] - 2) <= 2 and c["gear"] == 2 and abs(c["min"] - 87.1) < 1, c
+    assert out["c3"]["flatOut"] and out["flat"]
+    assert out["kept"] == 82.153, "a slower reference (your own best) does not replace the fastest lap kept"
+    assert out["you"] != 82.153 and out["keys"] == 1
+
+
 @unittest.skipUnless(NODE, "Node.js is not installed")
 class OneLapFileTest(unittest.TestCase):
     """A one-lap file is timed by the clock, line to line, the same on the home page and in the analyzer,
@@ -2439,7 +2491,7 @@ console.log(JSON.stringify({ cs: C.R.cs.map(c => ({ n: c.n, dv: c.dv, dm: c.dm, 
     cs = {c["n"]: c for c in r["cs"]}
     assert all(c["medOf"] == 21 for c in r["cs"]), "every corner from all 21 laps"
     assert abs(cs[8]["dv"]) < 0.5 and cs[8]["trace"]["dv"] > 2, "corner 8: level at the apex, not quicker"
-    assert abs(cs[13]["dm"] - 5.9) < 0.5 and cs[13]["trace"]["dm"] > 8
+    assert abs(cs[13]["dm"] - 5.9) < 0.5 and cs[13]["trace"]["dm"] > 7      # the trace: 8.5 m once, 10% long (lapLen)
     assert abs(cs[4]["d"] + 9.6) < 0.5, "corner 4: the middle of 21 braking points, not a step of the 4.25 m grid"
     for c in r["corners"]:
         assert c["level"] == (not c["dt"] > 0.02)

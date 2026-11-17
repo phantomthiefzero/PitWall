@@ -747,14 +747,19 @@ function rawMin(o,g,s,e){const v=o&&o.Speed,D=o&&o.D;if(!v||!D||g<0||!(o.n>N))re
 let a=0,b=o.n-1;while(a<b){const m=(a+b)>>1;if(D[m]<lo)a=m+1;else b=m}let j=-1;for(let q=Math.max(1,a);q<o.n-1&&D[q]<=hi;q++)if(D[q]>=D[q-1]&&(j<0||v[q]<v[j]))j=q;if(j<0)return null;
 const y0=v[j-1],y1=v[j],y2=v[j+1],den=y0-2*y1+y2,x=den>1e-9?Math.max(-.5,Math.min(.5,.5*(y0-y2)/den)):0,w=x>=0?D[j+1]-D[j]:D[j]-D[j-1];
 return{g:(D[j]+x*(w>0&&w<.01?w:0))*(N-1),v:y1-.25*(y0-y2)*x}}
+// The lap's length: speed over the time between the grid's points. The sum of the samples' speeds times the time a
+// sample takes is right only for a lap sampled in time; Coaching's average lap is sampled in distance, where it
+// weighs the fast parts more: Indianapolis read 4,246 m for a 3,845 m track, so every distance in Coaching (brake
+// points, "only N m flat out", the straight after a corner) was 10% too long.
+function lapLen(A){let s=0;for(let g=0;g<N-1;g++)s+=(A.Speed[g]+A.Speed[g+1])/2*(A.t[g+1]-A.t[g]);return s}
 function analyze(a,b){const xs=[];if(a.ext&&b.ext)for(const n in a.ext)if(n in b.ext){xs.push('x:'+n);a['x:'+n]=a.ext[n];b['x:'+n]=b.ext[n]}
-const A=rs(a,xs),B=rs(b,xs),len=a.Speed.reduce((s,v)=>s+v,0)*a.lap/(a.n-1),mpg=len/(N-1),dl=new Float64Array(N);
+const A=rs(a,xs),B=rs(b,xs),len=lapLen(A),mpg=len/(N-1),dl=new Float64Array(N);
 for(let g=0;g<N;g++)dl[g]=(A.t[g]-A.t[0])-(B.t[g]-B.t[0]);
 derive(A);derive(B);
 const sm=sma(B.Speed,9),cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack());
 cs.forEach((c,i)=>{c.n=i+1;if(c.rs!=null){c.s=Math.min(c.rs,am(sm,Math.max(0,c.ap-80),c.ap));c.e=Math.max(c.re,c.ap+5)}else{c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80))}
 if(i){const p=cs[i-1];p.e=Math.min(p.e,c.ap-1);c.s=Math.max(c.s,p.e)}if(c.s>=c.ap)c.s=c.ap-5;
-c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);{const ma=rawMin(a,c.a.mg,c.s,c.e),mb=rawMin(b,c.b.mg,c.s,c.e);c.a.mgF=ma?ma.g:c.a.mg;c.b.mgF=mb?mb.g:c.b.mg;if(ma&&mb){c.a.ms=ma.v;c.b.ms=mb.v}}c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
+c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);{const ma=rawMin(a,c.a.mg,c.s,c.e),mb=rawMin(b,c.b.mg,c.s,c.e);c.a.mgF=ma?ma.g:c.a.mg;c.b.mgF=mb?mb.g:c.b.mg;if(ma&&mb){c.a.ms=ma.v*3.6;c.b.ms=mb.v*3.6}}c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
 c.d=(c.a.baF-c.b.baF)*mpg;c.dv=c.a.ms-c.b.ms;c.dm=(c.a.taF-c.b.taF)*mpg;c.dp=(c.a.pb-c.b.pb)*100;c.tin=dl[c.ap]-dl[c.s];c.tout=dl[c.e]-dl[c.ap]});
 return{A,B,len,dl,cs,a,b,X:a.ext&&b.ext?extStats(a,b):null,Sa:lapStats(a),Sb:lapStats(b),total:a.lap-b.lap,pct:a.lap/b.lap*100}}
 //ENDCORE
@@ -1785,7 +1790,8 @@ if(!LIVE.ws&&!LIVE.err)bar+='<div class="m" style="flex-basis:100%">Not connecte
 const lb=$('liveBar');if(lb){lb.innerHTML=bar;lb.hidden=false}
 // Setup's live panel: the engineer, the runs by setup and the ride height, while connected.
 let body='';
-if(on)body='<div class="m" style="margin:0 0 6px">'+(LIVE_SHARE?'The setup below is the driver\'s live setup and updates when they change it in the garage.':'The setup below is the live setup and updates when you change it in the garage.')+'</div>'+(()=>{try{return engHtml()}catch(e){console.error('engineer',e);return ''}})()+liveChartsHtml()+liveRunsHtml()+(()=>{try{return liveVerdictHtml()}catch(e){console.error('verdict',e);return ''}})()+liveLapsHtml();
+if(on)body='<div class="m" style="margin:0 0 6px">'+(LIVE_SHARE?'The setup below is the driver\'s live setup and updates when they change it in the garage.':'The setup below is the live setup and updates when you change it in the garage.')+'</div>'+(()=>{try{return setupTestHtml()}catch(e){console.error('setup test',e);return ''}})()+(()=>{try{return engHtml()}catch(e){console.error('engineer',e);return ''}})()+liveChartsHtml()+liveRunsHtml()+(()=>{try{return liveVerdictHtml()}catch(e){console.error('verdict',e);return ''}})()+liveLapsHtml();
+if(!el.dataset.sutest){el.dataset.sutest='1';el.addEventListener('click',setupTestClick)}
 el.innerHTML=body?'<details class="liveWrap"'+(open?' open':'')+' style="margin:0"><summary style="cursor:pointer"><b>Live engineer</b> <span class="m">runs by setup, verdicts and ride height while you drive</span></summary><div style="margin-top:8px">'+body+'</div></details>':'';el.hidden=!body;
 try{if(teleOn())teleBuild()}catch(e){}const w=el.querySelector('details.liveWrap');if(w)w.addEventListener('toggle',()=>{try{localStorage.setItem('liveOpen',w.open?'1':'0')}catch(e){}});
 const bOn=$('liveOn'),bOff=$('liveOff'),pi=$('livePort');if(bOn)bOn.onclick=()=>{if(pi){const p=+pi.value;if(p>0&&p<65536){LIVE.port=p;try{localStorage.setItem('livePort',String(p))}catch(e){}}}liveConnect()};if(bOff)bOff.onclick=liveDisconnect;
@@ -2102,6 +2108,40 @@ const title=f=>f.kind==='abs'?`ABS working ${f.v.toFixed(0)}% of the time into c
 h+=`<div style="margin-top:8px"><b>Try next on this setup</b> <small class="m">from your ${nCur} clean laps on it; change one thing, then run ${RUN_MIN} laps for the verdict</small><ol style="margin:4px 0 0 18px;padding:0">`+F.slice(0,3).map(f=>{const ch=adviceChanges(f).map(c=>adviceRow(rows,c,car)).filter(Boolean),use=ch.filter(c=>!c.at).slice(0,2);
 return `<li style="margin-bottom:6px"><b>${title(f)}</b>`+(use.length?': '+use.map(c=>`<b>${plain(c.label)}</b> ${plain(c.word.toLowerCase())} <span class="m">(now ${plain(c.cur)})</span>`).join(', or '):' <span class="m">(no matching setting on this car)</span>')+`</li>`}).join('')+`</ol></div>`;
 return h}
+
+// ---- Test one change (Nov 2026, the user's pick): the one question the app could not answer on its own was whether
+// Setup's advice makes the car faster. The test asks the driver to answer it on their own laps: TEST_LAPS clean laps
+// on this setup, ONE change in the garage (Setup's first suggestion for the biggest problem, or any one setting), the
+// same again, then the verdict (runVerdict, as "Did the change help?": median lap against the lap-to-lap spread),
+// sector by sector (each sector's median), what the change did to the phase it was meant for, and the track changing
+// under the two runs (runConditions). Pure but for LIVE; the result goes into "Your setup changes here" as every
+// verdict does. LIVE.test = {base: the run it started on, sug: what it suggested}.
+const TEST_LAPS=5;
+function testSuggest(){try{const cur=LIVE.vers.length,H=liveRunCore(cur);if(!H||H.few)return null;const F=handlingFindings({B:H.B,T:{},BT:{}}).filter(f=>f.kind==='us'||f.kind==='os');if(!F.length)return null;
+const f=F[0],rows=setupRows(LIVE.setup||{}),car=LIVE.meta&&LIVE.meta.carPath,ch=adviceChanges(f).map(c=>adviceRow(rows,c,car)).filter(c=>c&&!c.at);if(!ch.length)return null;const c=ch[0];
+return{what:(f.kind==='us'?'Understeer':'Oversteer')+' '+f.lab.toLowerCase()+(f.where==='both'?'':' in '+f.where+' corners'),label:c.label,word:c.word,cur:c.cur,bin:f.p+'_'+(f.where==='slow'?'slow':'fast'),kind:f.kind}}catch(e){return null}}
+function testSecs(laps){const n=LIVE.secs&&LIVE.secs.length;if(!n)return null;const L=laps.filter(l=>l.sx&&l.sx.length===n&&l.time>0);if(L.length<RUN_MIN)return null;
+const med=a=>{const v=a.slice().sort((p,q)=>p-q);return v[Math.floor(v.length/2)]};return Array.from({length:n+1},(_,j)=>med(L.map(l=>(j<n?l.sx[j]:l.time)-(j?l.sx[j-1]:0))))}
+function setupTestHtml(){const T=LIVE.test;if(LIVE_SHARE&&!T)return '';
+const wrap=(h,btn)=>'<div class="sutest" style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--ln,#8884);border-radius:8px"><b>Test one change</b> '+h+(btn||'')+'</div>';
+if(!T){const sg=testSuggest();return wrap('<span class="m">Find out on your own laps whether a setup change makes you faster: '+TEST_LAPS+' clean laps, one change in the garage, '+TEST_LAPS+' more. '+(sg?'Setup suggests: <b>'+plain(sg.label)+'</b> '+plain(sg.word.toLowerCase())+' for '+plain(sg.what.toLowerCase())+'.':'')+'</span>','<div style="margin-top:6px"><button type="button" data-sutest="start">Start the test</button></div>')}
+const stop='<button type="button" data-sutest="stop" class="clr" style="margin-left:8px">Stop the test</button>',again='<button type="button" data-sutest="start">Test another change</button>';
+const valid=n=>LIVE.laps.filter(l=>l.ver===n&&l.valid),A=valid(T.base),na=A.length;
+if(LIVE.vers.length<=T.base){if(na<TEST_LAPS)return wrap('<span class="m">Step 1 of 3</span><br>Drive <b>'+(TEST_LAPS-na)+' more clean lap'+(TEST_LAPS-na===1?'':'s')+'</b> on this setup ('+na+' of '+TEST_LAPS+' so far). Drive them the way you will drive the next ones.',stop);
+const sg=T.sug||(T.sug=testSuggest());
+return wrap('<span class="m">Step 2 of 3</span><br>In the garage, change <b>one</b> setting'+(sg?': Setup suggests <b>'+plain(sg.label)+'</b> '+plain(sg.word.toLowerCase())+' <span class="m">(now '+plain(sg.cur)+'), for '+plain(sg.what.toLowerCase())+'</span>':'')+'. One change only, so the laps can say what it did. The test sees the change by itself.',stop)}
+const n=T.base+1,s=LIVE.vers[n-1],B=valid(n),nb=B.length,many=s&&s.diff.length>1?'<br><span class="watch-t">You changed '+s.diff.length+' settings: the laps can say whether the setup is faster, not which change did it.</span>':'',later=LIVE.vers.length>n?'<br><span class="m">The setup was changed again after; the test compares run '+T.base+' and run '+n+'.</span>':'';
+const chg=s&&s.diff.length?s.diff.slice(0,4).map(d=>'<b>'+d.lab+'</b> '+suFmtVal(d.from)+' → '+suFmtVal(d.to)).join(', '):'no setting changed';
+if(nb<TEST_LAPS)return wrap('<span class="m">Step 3 of 3</span><br>Changed: '+chg+'. Now drive <b>'+(TEST_LAPS-nb)+' more clean lap'+(TEST_LAPS-nb===1?'':'s')+'</b> ('+nb+' of '+TEST_LAPS+').'+many+later,stop);
+const V=runVerdict(A.map(l=>l.time),B.map(l=>l.time),liveRunCore(T.base),liveRunCore(n)),sg2=x=>(x>0?'+':x<0?'−':'±')+Math.abs(x).toFixed(2)+' s';
+let h='<span class="m">Result</span><br>Changed: '+chg+'.<br>'+(V.call==='faster'?'<b class="good">Faster</b>':V.call==='slower'?'<b class="bad">Slower</b>':'<b>No clear difference</b>')+': median lap '+ft(V.tb)+' against '+ft(V.ta)+' ('+sg2(V.dt)+')'+(V.call==='close'?' <span class="m">within your lap-to-lap spread of ±'+(2*V.se).toFixed(2)+' s: drive more laps on each, or the change is too small to feel</span>':'')+'.';
+const sa=testSecs(A),sb=testSecs(B);if(sa&&sb)h+='<br>By sector: '+sa.map((x,j)=>'S'+(j+1)+' '+sg2(sb[j]-x)).join(' · ');
+const sg=T.sug,ha=liveRunCore(T.base),hb=liveRunCore(n);
+if(sg&&ha&&hb&&!ha.few&&!hb.few&&ha.B[sg.bin]&&hb.B[sg.bin]&&ha.B[sg.bin].ui!=null&&hb.B[sg.bin].ui!=null){const d=hb.B[sg.bin].ui-ha.B[sg.bin].ui;
+h+='<br>What it was for ('+plain(sg.what.toLowerCase())+'): '+(Math.abs(d)<.03?'no clear change':(d<0?'less':'more')+' steering needed there ('+Math.abs(d*100).toFixed(0)+'%): '+(d<0===(sg.kind==='us')?'the change did what it was meant to':'the opposite of what it was meant to'))+'.'}
+const cn=runConditions(A,B);if(cn)h+='<br><span class="watch-t">'+cn+'</span>';
+return wrap(h+many+later,'<div style="margin-top:6px">'+again+stop+'</div>')}
+function setupTestClick(e){const b=e.target.closest&&e.target.closest('[data-sutest]');if(!b)return;if(b.dataset.sutest==='start')LIVE.test={base:Math.max(1,LIVE.vers.length),sug:testSuggest(),at:Date.now()};else LIVE.test=null;liveRender()}
 
 // ---- Predicted changes: learned from your own runs ----
 // Every run (a loaded .ibt, or a live run on one setup) is kept as a short summary per car:
@@ -2666,7 +2706,33 @@ h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-t
 '<label class="dz" id="coDrop" style="padding:6px 10px;min-height:0"><input type="file" accept=".csv" multiple hidden><span>'+(COACH.g61.length?COACH.g61.length+' Garage 61 lap'+(COACH.g61.length===1?'':'s')+' added · drop more or click':'Drop Garage 61 laps (.csv) here')+'</span></label>'+(COACH.g61.length?'<button type="button" id="coClr" class="clr" style="display:inline-block;margin:0">Clear Garage 61 laps</button>':'')+'</div>'+(COACH.g61.length?'<div class="m" style="font-size:13px;margin-top:4px">Garage 61 laps here, fastest first: '+COACH.g61.map((g,i)=>({g,i})).sort((p,q)=>p.g.lap-q.g.lap).map(({g,i})=>'<span style="white-space:nowrap"><b>'+ft(g.lap)+'</b> '+plain(g.who||'')+' <a href="#" data-g61rm="'+i+'" title="Take this lap out">✕</a></span>').join(' · ')+'</div>':'');
 if(!srcs.length)return h+'<p class="m" style="margin-top:8px">Needs at least 2 clean laps: drop an .ibt file above, drive a few clean laps live (they are kept automatically, per car and track), or add several Garage 61 laps of your own here.</p>';
 let X=null;try{X=coachRun()}catch(e){console.error('coach',e)}if(!X)return h+'<p class="m">Could not build an average from these laps.</p>';COACH.last=X;if(document.body.dataset.view==='coach')setTimeout(()=>{try{lkHud()}catch(e){}requestAnimationFrame(()=>setTimeout(()=>{try{lkCoach()}catch(e){}},250))},0);
-return h+coachBody(X)}
+return h+coachBody(X)+(()=>{try{return notebookHtml(notebookPut(X))}catch(e){console.error('notebook',e);return ''}})()}
+// ---- The track notebook (Nov 2026, the user's pick): how this track is driven in this car, corner by corner, from the
+// fastest lap loaded here (yours or a Garage 61 lap): where it brakes (metres before the apex, read finely: baF), comes
+// off the brake, its slowest speed and gear, where it is back on the throttle (taF) and flat out (tf); and what you do
+// against it (the medians Coaching measured over your laps: c.d, c.dv, c.dm). Filled in by itself from what is loaded:
+// a faster reference lap replaces the one kept; your numbers are those of the latest look. Kept in this browser
+// (suite:trackNotebook) by car and track; the corner numbers are the corner book's, so they are the same every time.
+const NB_KEY='suite:trackNotebook';
+function nbLoad(){try{return JSON.parse(localStorage.getItem(NB_KEY)||'{}')||{}}catch(e){return {}}}
+function nbSave(o){try{localStorage.setItem(NB_KEY,JSON.stringify(o))}catch(e){}}
+function notebookPut(X){const S=X&&X.S,C=X&&X.C;if(!S||!C||!C.R||!C.R.cs||!C.R.cs.length)return null;
+const car=S.carName||S.car||'',track=coTrack(S);if(!track)return null;const key=(S.car||car)+'|'+track,nb=nbLoad(),old=nb[key];
+const real=!/^your average/.test(X.bestLab||''),r1=v=>v==null||!isFinite(v)?null:Math.round(v),r10=v=>v==null||!isFinite(v)?null:Math.round(v*10)/10;
+const cs=C.R.cs.map(c=>{const m=c.mpg,b=c.b,mg=(b.mgF!=null?b.mgF:b.mg),ap=mg*m,lift=b.ba>=0||b.tf>b.mg;
+  return{n:c.n,apex:r1(ap),brake:b.baF>=0?r1(ap-b.baF*m):null,off:b.br>=0?r1(ap-b.br*m):null,min:r10(b.ms),gear:b.gr||null,flatOut:!lift,
+  on:lift&&b.taF>=0?r1(Math.max(0,b.taF*m-ap)):null,flat:lift&&b.tf>=0?r1(Math.max(0,b.tf*m-ap)):null,you:{d:r1(c.d),dv:r10(c.dv),dm:r1(c.dm),dt:c.dt!=null?Math.round(c.dt*1000)/1000:null}}});
+const ref=real&&(!old||!old.ref||X.best.lap<=old.ref.lap+.0005||old.ref.n!==cs.length)?{lap:X.best.lap,who:X.bestLab||'',at:Date.now(),n:cs.length,cs}:old&&old.ref;
+const e={car,track,ref,you:{lap:X.avg&&X.avg.lap,laps:X.n,at:Date.now(),against:real?X.best.lap:null,cs:cs.map(c=>({n:c.n,...c.you}))},at:Date.now()};
+nb[key]=e;const ks=Object.keys(nb);if(ks.length>80){ks.sort((a,b)=>(nb[a].at||0)-(nb[b].at||0));delete nb[ks[0]]}nbSave(nb);return e}
+function notebookHtml(e){if(!e||!e.ref||!e.ref.cs)return '';const R=e.ref,Y=e.you&&e.you.against===R.lap?e.you:null,u=U(),k=u.s[0],S=u.s[1],dk=u.d[0],D=u.d[1];
+const m=v=>v==null?'—':Math.round(v*dk)+' '+D,sp=v=>v==null?'—':Math.round(v*k)+' '+S,sg=(v,u)=>v==null?'':(v>0?'+':v<0?'−':'±')+Math.abs(v)+u;
+const rows=R.cs.map(c=>{const y=Y&&Y.cs.find(z=>z.n===c.n);if(c.flatOut)return '<tr><td>Corner '+c.n+'</td><td colspan="5">Flat out through it <span class="m">· '+sp(c.min)+(c.gear?' · gear '+c.gear:'')+'</span></td>'+(Y?'<td class="m">'+(y&&y.dv!=null&&Math.abs(y.dv)>=1?'slowest '+sg(Math.round(y.dv*k),' '+S):'the same')+'</td>':'')+'</tr>';
+return '<tr><td>Corner '+c.n+'</td><td>'+(c.brake==null?'<span class="m">a lift, no brake</span>':m(c.brake)+' before')+'</td><td>'+(c.off==null?'—':m(c.off)+' before')+'</td><td>'+sp(c.min)+(c.gear?' · gear '+c.gear:'')+'</td><td>'+(c.on==null?'—':m(c.on)+' after')+'</td><td>'+(c.flat==null?'—':m(c.flat)+' after')+'</td>'+
+(Y?'<td class="m">'+(y?[y.d!=null&&c.brake!=null&&Math.abs(y.d)>=3?'brake '+sg(Math.round(-y.d*dk),' '+D):'',y.dv!=null&&Math.abs(y.dv)>=1?'slowest '+sg(Math.round(y.dv*k),' '+S):'',y.dm!=null&&Math.abs(y.dm)>=3?'throttle '+sg(Math.round(y.dm*dk),' '+D):''].filter(Boolean).join(', ')||'the same':'—')+'</td>':'')+'</tr>'}).join('');
+return '<details class="nb" style="margin-top:14px"><summary><b>Track notebook</b> <span class="m">'+plain(e.car)+' at '+plain(e.track)+' · from the fastest lap loaded here, '+ft(R.lap)+'</span></summary>'+
+'<p class="m" style="margin:4px 0">How this track is driven in this car, corner by corner, from that lap: distances are along the track from the slowest point of the corner'+(Y?'; "You" is what your laps do against it (brake: + is earlier)':'')+'. A faster lap loaded here replaces it.</p>'+
+'<div style="overflow-x:auto"><table><tr><th></th><th>Brakes</th><th>Off the brake</th><th>Slowest</th><th>Back on the throttle</th><th>Flat out</th>'+(Y?'<th>You</th>':'')+'</tr>'+rows+'</table></div></details>'}
 // ---- Coaching page: what the data says, in reading order ----
 // 1 summary, 2 where the time goes (delta trace, map, causes), 3 priorities (driving and setup merged,
 // ranked by time at stake, each with its evidence), 4 corner by corner, 5 setup (balance grid), 6 more.
