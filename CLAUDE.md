@@ -277,6 +277,12 @@ Broadcast (broadcast/)
   Log as tabs. Every setting lives in the Setup drawer (Graphics, Look, Studio, Liveries, OBS; Esc closes; data-setup
   opens it at a section). Long notes fold behind (i) (hintTidy). Keep it so: a new setting goes into Setup, not the
   columns, and a new graphic is a tile (TILE_GROUPS, SHORT, GEAR).
+  Setup starts Simple (Nov 2026, the user's pick): only the settings most shows need; "Show everything" adds the rest
+  (anything marked data-adv; #setup.simple hides it; per viewer, localStorage pitwall.producerSetup). A ⚙ that leads to
+  a hidden setting switches to everything. A new setting is data-adv unless most shows need it.
+  Go live (header #goLive): the broadcast switch on, the director on with replays, Auto graphics on, in that order (the
+  bridge takes commands in order; the director only runs with the switch on); End show turns the director and the
+  switch off. The switch and each part stay buttons of their own.
 - Grid walk (director GRID_SHOTS, overlay gwalk + gladder): the pole and each class's first car from in front (rear
   chase) and held GRID_POLE_HOLD times longer, the rest from in front too (one angle: see "The walk on screen"). On air it is a TV
   grid slot (gwalk, bottom left: place, row, livery, name, quali lap, gaps to pole and class pole, the lap it was set
