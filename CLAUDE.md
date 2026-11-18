@@ -138,7 +138,7 @@ iRacing Suite app (suite/)
   Don't add "click to open" to a summary: the arrow says it.
 - One-lap files (laps cut out of a session and shared for coaching, e.g. AlxanderSpetz_..._2.01.148_...ibt): no
   LapLastLapTime at all, one sample on the lap before and one on the next. The lap is timed by the clock from line
-  to line with the crossings placed between samples (library._clock_lap and the analyzer's lap parser, the same
+  to line with the crossings placed between samples (library.session_summary and the analyzer's lap parser, the same
   way: 2:01.148 and 1:49.898 as named); under a second of a lap at either end of a file is not a lap. Two laps are
   compared only on the same track and layout (sameWhere: car path or name, track by name, unknown counts as the
   same); a different car is shown with a warning in the Lap Analyzer and never used as Coaching's reference.
@@ -194,6 +194,11 @@ iRacing Suite app (suite/)
   named by what they are (read from the header and last sample, cached). Only the suite's own server serves
   them, by an id from the last listing, never a path from the page; over one WebSocket (/api/library/stream),
   with 96 KB pieces (/api/library/file) as the fallback. The relay never serves them.
+- One lap timer (Nov 2026): `library.session_summary` is a line-for-line port of the analyzer's lap parser and
+  sessionStats (every sample, the same rules for timed and clean), and tests/test_analyzer.py OneLapTimerTest runs both
+  on every file the tests build and on the driver's own files (PITWALL_IBT_DIR). The two had been kept in step by hand:
+  the home page read no laps at all from his 10-16 Indianapolis session (40 timed) and counted an in-lap as timed in
+  the 10-10 one. A change to how laps are timed goes into both, and that test says when they part.
 - Your last session (home page, `library.session_summary`): a lap's time is the first new LapLastLapTime after
   its OWN last sample (iRacing updates it after the line); a lap is timed as the analyzer times it (from the line, no pit
   lane, its clock agreeing with the time it took: "22 of 29", not of every lap), and clean laps are counted as the Lap Analyzer counts
@@ -444,6 +449,12 @@ Broadcast (broadcast/)
   for what is behind a car: the chaser in a battle (on the front car), the pack behind the leader at the start, a
   car on the grid from the front; never a car on its own (Summit Point: it was the most used shot, 21 of 101).
   A new shot is never the camera already on air (_fresh). tests: test_shots_come_in_an_order_and_a_close_fight_is_held.
+- The director's scorecard (Nov 2026): `python scripts/director_scorecard.py [recordings]` plays every recording (the
+  Record button's folder by default) through the director with three seeds each and compares the top-3 numbers (live,
+  in the picture, missed, replayed) with the range kept in docs/director_baseline.json; a race is worse only when it
+  falls outside that range by more than a pass (WORSE_BY: one run of a pack swings by four). Exit 1 when any is worse;
+  --save keeps the new range. Run it before and after every change to the director (or normalize's battles, passes,
+  attacks), and save the new range in the same pull request. pitwall/director_scorecard.py; tests/test_scorecard.py.
 - The director and the action (Nov 2026, measured with `scripts/director_report.py <capture>`: every pass for position
   in a race, live / in the picture / late / missed / replayed; run it before and after a change to the director):
   attacks (normalize `attacks`: the live class gap over the last 6 s against the same car ahead, 0.3-1.5 s and 0.15 s
