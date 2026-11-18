@@ -3262,6 +3262,8 @@ body.bc-off>*:not(script){visibility:hidden!important}
     let url;
     try { url = new URL(relayUrl().replace(/\/+$/, "") + "/view"); } catch (e) { return; }
     url.searchParams.set("token", token);
+    // the suite's health check counts the overlays OBS has open (the producer's monitor and preview are not OBS)
+    url.searchParams.set("page", Q.get("monitor") === "1" || Q.get("preview") === "1" ? "monitor" : "overlay");
     const sock = new WebSocket(url.href);
     sock.onopen = () => sock.send(JSON.stringify({ type: "resend" }));
     sock.onclose = ev => {

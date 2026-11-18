@@ -74,6 +74,10 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 .dck table{flex:1 1 100%;border-collapse:collapse;font-size:13px;margin-top:4px}.dck td{padding:3px 8px 3px 0;border-top:1px solid var(--ln);vertical-align:top}
 .dck td.t{color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}.dck .v{font-weight:700;white-space:nowrap}
 .dck .v.live{color:#2fb36a}.dck .v.near{color:#4b8bf0}.dck .v.late{color:#c9821a}.dck .v.missed{color:#d6333a}
+.hc{display:block}.hc summary{cursor:pointer;list-style-position:inside}.hc .hrow{display:grid;grid-template-columns:12px 190px 1fr;gap:4px 10px;align-items:baseline;padding:5px 0;border-top:1px solid var(--ln)}
+.hc .hrow:first-child{margin-top:8px}.hc .hdot{width:9px;height:9px;border-radius:50%;background:var(--mut);align-self:center}.hc .ok .hdot{background:#2fb36a}.hc .warn .hdot{background:#e0a100}.hc .bad .hdot{background:#d6333a}
+.hc .hfix{grid-column:3;color:var(--mut);font-size:13px}@media (max-width:640px){.hc .hrow{grid-template-columns:12px 1fr}.hc .hrow>span:nth-child(3),.hc .hfix{grid-column:2}}
+.recauto{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:-8px 0 14px;padding:0 14px;font-size:13px;color:var(--mut)}.recauto select{font:inherit;margin-left:6px}
 .dck details{flex:1 1 100%}.dck summary{cursor:pointer;color:var(--mut);font-size:13px}.rec .rmut{color:var(--mut)}.rec .rgo{margin-left:auto;display:flex;gap:8px}
 /* ---- LOOKS (generated from one source for the home page and the Lap Analyzer; same text in both): Pit wall and Arcade, set by suite:look on :root[data-look]. Basic is the page as it is. ---- */
 @font-face{font-family:"DSEG7 digits";font-weight:400 900;font-display:swap;unicode-range:U+0020,U+002B-002E,U+0030-003A;src:url("/pitwall/assets/dseg7-classic-bold.woff2") format("woff2")}
@@ -340,7 +344,9 @@ footer{margin-top:28px;color:var(--mut);font-size:13px}
 <div class="ctx hidden" id="ctx"></div>
 <div class="last hidden" id="last"></div>
 <div class="rec hidden" id="rec"></div>
+<div class="recauto hidden" id="recAuto"><label>Record automatically <select id="recAutoMode"><option value="races">Races</option><option value="all">Every session</option><option value="off">Off</option></select></label><label>Keep up to <select id="recKeep"><option value="1">1 GB</option><option value="3">3 GB</option><option value="10">10 GB</option><option value="30">30 GB</option></select></label><span class="rmut" id="recAutoNote"></span></div>
 <div class="rec dck hidden" id="dck"></div>
+<details class="rec hc hidden" id="hc"><summary><b>Ready to go live?</b> <span class="rmut" id="hcSum"></span></summary><div id="hcList"></div></details>
 <div class="share upd hidden" id="upd"></div>
 <div class="apps">
 <a class="app" style="--c:#4b8bf0" href="/analyzer/?view=live" id="liveTile"><div class="ahead"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><h2>Live telemetry</h2><span class="tag ok">Ready</span></div><p>What the car is doing right now: speed, gear, pedals, steering, this lap against your best, temperatures and settings.</p><div class="gl" id="glLive"></div><span class="open">Open →</span></a>
@@ -616,7 +622,7 @@ async function loadLast(){try{const r=await fetch('/api/library/last',{cache:'no
 const st=(k,v)=>'<div class="st"><span>'+k+'</span><b>'+v+'</b></div>',day=S.when?new Date(S.when*1000).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}):'';
 el.innerHTML='<div class="lt"><b>Your last session</b><span>'+esc(S.car)+' at '+esc(S.track)+(S.session?' · '+esc(S.session):'')+(day?' · '+day:'')+'</span></div>'+
 st(S.bestIsClean?'Your best lap':'Best lap',lapClock(S.best))+st('Clean laps',S.clean+' of '+S.timed)+(S.median?st('Median lap',lapClock(S.median)):'')+(S.spreadS!=null?st('Most within','±'+S.spreadS.toFixed(2)+' s'):'')+
-'<div class="go"><a href="/analyzer/?view=coach&open='+encodeURIComponent(S.id)+'">Coach me on it →</a><a href="/analyzer/?open='+encodeURIComponent(S.id)+'">Open in the Lap Analyzer</a></div>';el.classList.remove('hidden')}catch(e){}}
+'<div class="go"><a href="/analyzer/?view=coach&open='+encodeURIComponent(S.id)+'">Coach me on it →</a><a href="/analyzer/?view=coach&report=1&open='+encodeURIComponent(S.id)+'" title="Coaching on this session, saved as a page of its own to keep or send to a coach">Save a session report</a><a href="/analyzer/?open='+encodeURIComponent(S.id)+'">Open in the Lap Analyzer</a></div>';el.classList.remove('hidden')}catch(e){}}
 loadLast();setInterval(loadLast,10*60*1000);lkApply();lkEnter();
 // ---- what iRacing is doing now, and the apps that fit it (built only when that changes: a rebuilt link loses its click)
 function ctxActions(v){const el=$('ctx');if(!el)return;let kind='';if(v){if(v.IsReplayPlaying)kind='replay';else if(v.IsOnTrack)kind='driving';else kind='watching'}
@@ -762,8 +768,9 @@ const mb=b=>b==null?'':(b/1048576).toFixed(b<10485760?1:0)+' MB',clk=s=>{s=s||0;
 function recCard(){const el=$('rec');if(!hasApi()){el.classList.add('hidden');return}el.classList.remove('hidden');const st=rec.state,busy=['waiting','recording','saving'].includes(st);
 el.className='rec '+(st==='recording'?'on':busy?'':'idle');
 // the buttons are built when the state changes; the clock and size are updated in place
-if(el.dataset.st!==st){el.dataset.st=st;let h='<div class="rdot"></div><div id="recTxt"></div><div class="rgo">';
-if(st==='waiting')h+='<button type="button" id="recStop">Cancel</button>';
+const sk=st+(rec.auto?':auto':'');
+if(el.dataset.st!==sk){el.dataset.st=sk;let h='<div class="rdot"></div><div id="recTxt"></div><div class="rgo">';
+if(st==='waiting')h+=rec.auto?'':'<button type="button" id="recStop">Cancel</button>';
 else if(st==='recording')h+='<button type="button" id="recStop">Stop and save</button>';
 else if(st==='saving')h+='';
 else h+=(st==='saved'?'<button type="button" id="recShow">Show the file</button>':'')+'<button type="button" id="recGo" title="Saves everything iRacing sends, 10 times a second, while you drive, spectate or watch a replay in iRacing. Send the file in to have a session looked at.">'+(st==='saved'?'Record another':'Record this session')+'</button>';
@@ -773,17 +780,36 @@ if(go)go.onclick=async()=>{go.disabled=true;go.textContent='Starting…';try{rec
 if(stp)stp.onclick=async()=>{stp.disabled=true;stp.textContent='Saving…';try{rec=await window.pywebview.api.record_stop()}catch(e){}recCard();recPoll()};
 if(sh)sh.onclick=()=>window.pywebview.api.record_show()}
 const t=$('recTxt');let x;
-if(st==='waiting')x='<b>Waiting for iRacing…</b> <span class="rmut">recording starts when you are in a session or watching a replay</span>';
-else if(st==='recording')x='<b>Recording</b> '+clk(rec.seconds)+' <span class="rmut">· '+mb(rec.bytes)+' · Documents\\iRacingSuite\\Recordings</span>';
+if(st==='waiting')x='<b>Waiting for iRacing…</b> <span class="rmut">'+(rec.auto?'recording starts by itself when you are in a session or watching a replay':'recording starts when you are in a session or watching a replay')+'</span>';
+else if(st==='recording')x='<b>Recording'+(rec.auto?' automatically':'')+'</b> '+clk(rec.seconds)+' <span class="rmut">· '+mb(rec.bytes)+' · Documents\\iRacingSuite\\Recordings</span>';
 else if(st==='saving')x='<b>Saving…</b>';
 else if(st==='saved')x='<b>Saved</b> <span class="rmut">'+esc(rec.name)+' · '+mb(rec.bytes)+'</span>';
 else if(st==='error')x='<span style="color:#d6333a">'+esc(rec.error||'Recording stopped.')+'</span>';
 else x='<b>Record this session</b> <span class="rmut">for a race or replay you want looked at later</span>';
 if(t.innerHTML!==x)t.innerHTML=x}
+// Record automatically (suite/recording.AutoRecorder): races by default; the oldest of the recordings it made go when
+// they pass the space kept for them. Built once; its words are set in place.
+function recAuto(){const el=$('recAuto'),a=rec.autoRec;if(!hasApi()||!a){el.classList.add('hidden');return}el.classList.remove('hidden');
+const m=$('recAutoMode'),k=$('recKeep');if(!el.dataset.on){el.dataset.on='1';
+m.onchange=async()=>{try{rec.autoRec=await window.pywebview.api.record_auto(m.value,null)}catch(e){}recAuto();recPoll()};
+k.onchange=async()=>{try{rec.autoRec=await window.pywebview.api.record_auto(null,+k.value)}catch(e){}recAuto()}}
+if(document.activeElement!==m)m.value=a.mode;if(document.activeElement!==k){const g=String(Math.round(a.keepGB));if(![...k.options].some(o=>o.value===g))k.add(new Option(g+' GB',g));k.value=g}
+const L=a.last,x=a.paused?'Stopped by you: the next session will be recorded':a.mode==='off'?'':a.mode==='races'?'every race you drive or watch is recorded; a session with no race in it is not kept'+(L&&!L.kept?' (the last had none)':''):'every session you drive or watch is recorded';
+const n=$('recAutoNote');if(n.textContent!==x)n.textContent=x}
 async function recPoll(){clearTimeout(recTimer);if(!hasApi()){recTimer=setTimeout(recPoll,1500);return}
-try{rec=await window.pywebview.api.record_info()||rec}catch(e){}recCard();
+try{rec=await window.pywebview.api.record_info()||rec}catch(e){}recCard();try{recAuto()}catch(e){}
 recTimer=setTimeout(recPoll,['waiting','recording','saving'].includes(rec.state)?1000:5000)}
 window.addEventListener('pywebviewready',recPoll);setTimeout(recPoll,1500);
+// ---- Ready to go live? (suite/health.py): iRacing, PitWall, OBS's overlay, the producer, the broadcast switch, the
+// last camera check, the share link, recording and the disk, updates. It only looks; each line says what to do.
+let hcTimer=null,hcLast='';
+async function hcPoll(){clearTimeout(hcTimer);const el=$('hc');if(!hasApi()){hcTimer=setTimeout(hcPoll,1500);return}
+let r=null;try{r=await window.pywebview.api.health()}catch(e){}
+if(r&&r.checks&&r.checks.length){el.classList.remove('hidden');const C=r.checks,bad=C.filter(c=>c.state==='bad').length,warn=C.filter(c=>c.state==='warn').length;
+const sum=bad?bad+' will not work':warn?warn+' to look at':'everything is ready';if($('hcSum').textContent!==sum)$('hcSum').textContent=sum;
+const key=JSON.stringify(C);if(key!==hcLast){hcLast=key;$('hcList').innerHTML=C.map(c=>'<div class="hrow '+c.state+'"><span class="hdot"></span><span>'+esc(c.name)+'</span><span>'+esc(c.detail)+'</span>'+(c.fix?'<span class="hfix">'+esc(c.fix)+'</span>':'')+'</div>').join('')}}
+hcTimer=setTimeout(hcPoll,el.open?4000:20000)}
+$('hc').addEventListener('toggle',hcPoll);window.addEventListener('pywebviewready',hcPoll);setTimeout(hcPoll,2000);
 // ---- How did the director do? (suite/director_check.py): a recorded race played through the camera director
 let dck={state:'idle'},dckFiles=null,dckTimer=null;
 const dckWhat={live:'Live',near:'In the picture',late:'Late',missed:'Missed'};

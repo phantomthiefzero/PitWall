@@ -208,6 +208,18 @@ iRacing Suite app (suite/)
   changes, never on every message (a rebuilt button lost the click), and answer a click at once (disabled,
   "Working…"). The app quits as its window starts closing (events.closing); quit_now gives the share
   tunnel a few seconds side by side and no more.
+- Record automatically (`suite/recording.AutoRecorder`, Nov 2026; the home page's "Record automatically": Races by
+  default, Every session, Off; kept in %LOCALAPPDATA%\iRacingSuite\recording.json): the recorder waits for the sim,
+  records while it ticks, and when no tick has come for GONE_S (iRacing opens a new sim for each session) the file is
+  saved and the next one waits. Races keeps a file only if a Race session went green in it (had_race). Only files it
+  made are ever deleted (.auto_recordings.json in the folder lists them): the oldest go when they pass keepGB, never
+  the newest. Stop while one runs saves it and records nothing more until the sim has closed (user_stopped). Started
+  in main() on its own thread (not with --replay); every recording feeds the director's scorecard.
+- Ready to go live? (`suite/health.py`, home page #hc, Api.health): iRacing, PitWall, OBS's overlay and the producer
+  (counted by the relay: each page connects with ?page=, relay PAGES / Relay.page_counts), the broadcast switch, the
+  track map, the last camera check (sim_check.json), the share link, recording and the disk, updates. It only looks;
+  every line that is off says what to do. "Your last session" has "Save a session report" (the analyzer with
+  &report=1 saves Coaching's report once it has the session: WANT_REPORT).
 - Record this session (`suite/recording.py`): the home page's Record button writes the same capture as
   `pitwall record` (10 Hz, every raw variable) into Documents\iRacingSuite\Recordings, on its own thread;
   waits for the sim, stops cleanly (also when the app closes, via _on_quit), and names the file by track

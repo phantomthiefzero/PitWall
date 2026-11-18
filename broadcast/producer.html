@@ -2251,6 +2251,7 @@ header{padding:6px 12px}
     try { url = new URL(relay.replace(/\/+$/, "") + "/view"); } catch (e) { url = null; }
     if (!url || !/^wss?:$/.test(url.protocol)) { showConnect("The relay address must start with ws:// or wss://"); return; }
     url.searchParams.set("token", token);
+    url.searchParams.set("page", "producer");          // counted by the suite's health check (relay PAGES)
     const sock = new WebSocket(url.href); ws = sock;
     sock.onopen = () => { $("dRelay").classList.add("on"); sock.send(JSON.stringify({ type: "resend" })); };
     sock.onclose = ev => {
