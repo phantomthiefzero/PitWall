@@ -747,14 +747,19 @@ function rawMin(o,g,s,e){const v=o&&o.Speed,D=o&&o.D;if(!v||!D||g<0||!(o.n>N))re
 let a=0,b=o.n-1;while(a<b){const m=(a+b)>>1;if(D[m]<lo)a=m+1;else b=m}let j=-1;for(let q=Math.max(1,a);q<o.n-1&&D[q]<=hi;q++)if(D[q]>=D[q-1]&&(j<0||v[q]<v[j]))j=q;if(j<0)return null;
 const y0=v[j-1],y1=v[j],y2=v[j+1],den=y0-2*y1+y2,x=den>1e-9?Math.max(-.5,Math.min(.5,.5*(y0-y2)/den)):0,w=x>=0?D[j+1]-D[j]:D[j]-D[j-1];
 return{g:(D[j]+x*(w>0&&w<.01?w:0))*(N-1),v:y1-.25*(y0-y2)*x}}
+// The lap's length: speed over the time between the grid's points. The sum of the samples' speeds times the time a
+// sample takes is right only for a lap sampled in time; Coaching's average lap is sampled in distance, where it
+// weighs the fast parts more: Indianapolis read 4,246 m for a 3,845 m track, so every distance in Coaching (brake
+// points, "only N m flat out", the straight after a corner) was 10% too long.
+function lapLen(A){let s=0;for(let g=0;g<N-1;g++)s+=(A.Speed[g]+A.Speed[g+1])/2*(A.t[g+1]-A.t[g]);return s}
 function analyze(a,b){const xs=[];if(a.ext&&b.ext)for(const n in a.ext)if(n in b.ext){xs.push('x:'+n);a['x:'+n]=a.ext[n];b['x:'+n]=b.ext[n]}
-const A=rs(a,xs),B=rs(b,xs),len=a.Speed.reduce((s,v)=>s+v,0)*a.lap/(a.n-1),mpg=len/(N-1),dl=new Float64Array(N);
+const A=rs(a,xs),B=rs(b,xs),len=lapLen(A),mpg=len/(N-1),dl=new Float64Array(N);
 for(let g=0;g<N;g++)dl[g]=(A.t[g]-A.t[0])-(B.t[g]-B.t[0]);
 derive(A);derive(B);
 const sm=sma(B.Speed,9),cs=trackCorners(findCorners(B,sm),(b&&b.track)||(a&&a.track)||coTrack());
 cs.forEach((c,i)=>{c.n=i+1;if(c.rs!=null){c.s=Math.min(c.rs,am(sm,Math.max(0,c.ap-80),c.ap));c.e=Math.max(c.re,c.ap+5)}else{c.s=am(sm,Math.max(0,c.ap-80),c.ap);c.e=am(sm,c.ap,Math.min(N-1,c.ap+80))}
 if(i){const p=cs[i-1];p.e=Math.min(p.e,c.ap-1);c.s=Math.max(c.s,p.e)}if(c.s>=c.ap)c.s=c.ap-5;
-c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);{const ma=rawMin(a,c.a.mg,c.s,c.e),mb=rawMin(b,c.b.mg,c.s,c.e);c.a.mgF=ma?ma.g:c.a.mg;c.b.mgF=mb?mb.g:c.b.mg;if(ma&&mb){c.a.ms=ma.v;c.b.ms=mb.v}}c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
+c.a=met(A,c);c.b=met(B,c);c.a.baF=rawCross(a,'Brake',c.a.ba,c.a.baF,.08);c.b.baF=rawCross(b,'Brake',c.b.ba,c.b.baF,.08);c.a.taF=rawCross(a,'Throttle',c.a.ta,c.a.taF,.6);c.b.taF=rawCross(b,'Throttle',c.b.ta,c.b.taF,.6);{const ma=rawMin(a,c.a.mg,c.s,c.e),mb=rawMin(b,c.b.mg,c.s,c.e);c.a.mgF=ma?ma.g:c.a.mg;c.b.mgF=mb?mb.g:c.b.mg;if(ma&&mb){c.a.ms=ma.v*3.6;c.b.ms=mb.v*3.6}}c.dt=c.a.t-c.b.t;c.pos=c.ap*mpg;c.mpg=mpg;
 c.d=(c.a.baF-c.b.baF)*mpg;c.dv=c.a.ms-c.b.ms;c.dm=(c.a.taF-c.b.taF)*mpg;c.dp=(c.a.pb-c.b.pb)*100;c.tin=dl[c.ap]-dl[c.s];c.tout=dl[c.e]-dl[c.ap]});
 return{A,B,len,dl,cs,a,b,X:a.ext&&b.ext?extStats(a,b):null,Sa:lapStats(a),Sb:lapStats(b),total:a.lap-b.lap,pct:a.lap/b.lap*100}}
 //ENDCORE
