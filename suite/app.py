@@ -47,6 +47,8 @@ class Engine:
         self.updater = None          # set by main(); suite.updater.Updater
         from suite.recording import SessionRecorder
         self.recorder = SessionRecorder()   # the home page's Record button
+        from suite.recording import AutoRecorder
+        self.autorec = AutoRecorder(self.recorder, sim_running=lambda: bool(self.hub.connected))
         from suite.director_check import DirectorCheck
         self.dircheck = DirectorCheck()     # the home page's "How did the director do?"
         from suite.second_camera import SecondCamera
@@ -278,15 +280,29 @@ class Api:
         _background(run)
         return u.info()
 
+    # ---- Ready to go live? (suite/health.py): the home page's checklist
+    def health(self):
+        from suite.health import checks
+        try:
+            return {"checks": checks(self._engine), "at": time.time()}
+        except Exception as e:
+            return {"checks": [], "error": str(e)}
+
     # ---- Record this session (suite/recording.py)
     def record_start(self):
         return self._engine.recorder.start()
 
     def record_stop(self):
+        self._engine.autorec.user_stopped()        # your Stop is not overruled by recording automatically
         return self._engine.recorder.stop()
 
+    def record_auto(self, mode=None, keep_gb=None):
+        """Record automatically: races (default) / all / off, and the space kept for those recordings."""
+        a = self._engine.autorec
+        return a.configure(mode, keep_gb) if mode is not None or keep_gb is not None else a.info()
+
     def record_info(self):
-        return self._engine.recorder.info()
+        return dict(self._engine.recorder.info(), autoRec=self._engine.autorec.info())
 
     # ---- How did the director do? (suite/director_check.py, pitwall/director_report.py)
     def dircheck_list(self):
@@ -532,8 +548,17 @@ def close_with_app(engine):
     (cloudflared) is a separate program, so it is stopped and its link revoked first. If the
     app is killed instead of closed, Windows ends the tunnel too (share._KillWithParent)."""
     _on_quit.append(lambda: engine.pitwall.share and engine.pitwall.share.stop())
-    # a recording in progress is closed properly, so the file is readable
-    _on_quit.append(lambda: engine.recorder.stop(wait=2.5))
+    # a recording in progress is closed properly, so the file is readable (one made automatically is listed with the
+    # others it made, so it can be cleared away like them)
+    def _rec_close():
+        engine.autorec.close()
+        auto = engine.recorder.auto
+        engine.recorder.stop(wait=2.5)
+        p = engine.recorder.path
+        if auto and p and os.path.isfile(p):
+            from suite.recording import remember
+            remember(os.path.dirname(p), os.path.basename(p))
+    _on_quit.append(_rec_close)
     # a second camera hands the host back its caption and turns this PC's broadcast switch off
     _on_quit.append(lambda: engine.second.stop(wait=1.5))
 
@@ -589,6 +614,8 @@ def _main():
         threading.Thread(target=auto_check, daemon=True).start()
     # A shared link must never outlive the app.
     close_with_app(engine)
+    if not a.replay:
+        engine.autorec.start()          # Record automatically (suite/recording.AutoRecorder), on its own thread
     print("iRacing Suite %s on %s" % (__version__, engine.url))
     if a.replay:
         engine.replay(a.replay, a.speed)

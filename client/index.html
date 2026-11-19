@@ -1327,6 +1327,7 @@ LK.look = document.documentElement.dataset.look || "basic";
       return;
     }
     full.searchParams.set("token", token);
+    full.searchParams.set("page", "pitwall");          // counted by the suite's health check (relay PAGES)
     let sock;
     try { sock = new WebSocket(full.href); } catch (e) {
       formError("Could not open a connection to that address: " + e.message);

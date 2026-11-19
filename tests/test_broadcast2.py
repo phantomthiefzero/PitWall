@@ -3434,3 +3434,32 @@ def test_the_podium_waits_for_the_whole_field_to_finish():
         assert '"%s"' % name in off, name
     assert "fieldIn() && FINISH_OFF_ALL.includes(name)" in ov and "const fieldIn = () => finishUp() && CTX.all;" in ov
     assert '(name === "card" || name === "onboard") && cardFinished()' in ov, "no card for a car on its cool-down lap"
+
+
+def test_go_live_is_one_press_and_setup_starts_simple():
+    # Nov 2026, the user's pick: going live took the broadcast switch, the director, its replays and Auto graphics
+    # pressed one by one. Go live does them in that order (the bridge takes the commands in order, and the director only
+    # runs with the broadcast on); End show turns the director and the switch off. Each stays a button of its own.
+    from pitwall.director import Director
+    d = Director(lambda *a: {"ok": True}, log=lambda *a: None)
+    d.configure(on=True, replays=True)
+    assert d.owner != "race", "the director does not start with the broadcast off"
+    d.set_live(True)
+    d.configure(on=True, replays=True)
+    assert d.owner == "race" and d.replays_on
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    go = page.split('$("goLive").addEventListener("click", () => {')[1].split("\n  });")[0]
+    a, b, c = (go.index('action: "broadcast", on: true'), go.index('action: "set", on: true, replays: true'),
+               go.index("setGfx({ auto: { on: true } })"))
+    assert a < b < c, "the switch first, then the director with replays, then the graphics"
+    assert 'action: "set", on: false' in go and 'action: "broadcast", on: false' in go
+    assert 'id="goLive"' in page and 'id="bcLive"' in page, "Go live, and the switch on its own"
+    # Setup: Simple shows the settings most shows need; Everything the rest; a ⚙ that leads to a hidden one opens it
+    assert "#setup.simple [data-adv]{display:none !important}" in page
+    for sec in ('id="setPip" data-adv', 'id="setH2h" data-adv', 'id="setSound" data-adv', 'id="setScenes" data-adv',
+                'id="setPositions" data-adv', '<div data-adv><h3>Your cameras</h3>'):
+        assert sec in page, sec
+    for sec in ('<section id="setTower">', '<section id="setCard">', '<section id="setGrid">', '<section id="setDirector">'):
+        assert sec in page, sec
+    assert 'if (el && el.closest("[data-adv]")) suSimple(false);' in page
+    assert 'localStorage.getItem("pitwall.producerSetup") !== "all"' in page, "Simple to start with"

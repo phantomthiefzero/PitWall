@@ -2703,3 +2703,85 @@ console.log(JSON.stringify({ a, b, book: cbLoad(), names: cnLoad() }));
     assert out["book"]["indy"] == [{"p": 0.5, "s": 0.48, "e": 0.52}], "the driver's book wins for his tracks"
     assert out["book"]["mine"] == [{"p": 0.3, "s": 0.28, "e": 0.32}], "the viewer's other tracks are left alone"
     assert out["names"]["indy"][0]["name"] == "Turn 7"
+
+
+# --------------------------------------------------------------------------- #
+# One lap timer: the home page (suite.library, Python) and the Lap Analyzer (the page's script) time laps in two
+# languages and must give the same numbers for the same file (CLAUDE.md, "Your last session"). They were kept in step
+# by hand: each fix (a lap's own time after its last sample, the usual-time band, laps cut out of a session) went into
+# one and then the other. This runs both on every file the tests build, and on the driver's own files when present.
+# --------------------------------------------------------------------------- #
+_BOTH_JS = """
+const ib = ibt(readBytes(ARGS[0])), S = sessionStats(ib);
+console.log(JSON.stringify(S ? {timed: S.rows.filter(r => r.ok && r.time).map(r => [r.lap, +r.time.toFixed(3)]),
+  clean: S.clean.map(r => r.lap), best: S.cbest == null ? null : +S.cbest.toFixed(3), sd: S.sd == null ? null : +S.sd.toFixed(3)} : null));
+"""
+
+
+def _both_timers(path):
+    import sys
+    sys.path.insert(0, ROOT)
+    from suite import library
+    laps = library.session_summary(path)
+    s = library.summarize_laps(laps)
+    py = {"timed": [[x["lap"], x["t"]] for x in laps if x.get("timed", True)], "best": s["best"] if s["bestIsClean"] else None,
+          "clean": s["clean"], "sd": s["spreadS"]}
+    js = run_js(_BOTH_JS, path)
+    return py, js
+
+
+def _late_times_file(path):
+    rows, t, last, due = [], 0.0, 0.0, None
+    true = {1: 61.250, 2: 61.273, 3: 61.262, 4: 61.900, 5: 61.262}
+    for lap in range(1, 7):
+        T = true.get(lap, 30.0)
+        n = int(round(T * HZ))
+        for i in range(n if lap < 6 else 400):
+            if due is not None and t >= due[0]:
+                last, due = due[1], None
+            rows.append({"SessionTime": t, "Lap": lap, "LapDistPct": i / n, "Speed": 50.0, "Throttle": 1.0, "Gear": 4,
+                         "LapCurrentLapTime": i / HZ, "LapLastLapTime": last, "FuelLevel": 40 - 0.01 * len(rows) / 60,
+                         "TrackTempCrew": 30.0})
+            t += 1 / HZ
+        due = (t + 2.5, T)
+    write_ibt(path, SESSION_YAML, CHANNELS, rows)
+
+
+def _same_laps(test, path, why):
+    py, js = _both_timers(path)
+    test.assertIsNotNone(js, why)
+    pt, jt = dict((l, t) for l, t in py["timed"]), dict((l, t) for l, t in js["timed"])
+    test.assertEqual(sorted(pt), sorted(jt), "%s: the same laps are timed" % why)
+    for lap in pt:
+        test.assertAlmostEqual(pt[lap], jt[lap], delta=0.0015, msg="%s: lap %s" % (why, lap))
+    test.assertEqual(py["clean"], len(js["clean"]), "%s: the same number of clean laps" % why)
+    if py["best"] is not None or js["best"] is not None:
+        test.assertAlmostEqual(py["best"], js["best"], delta=0.0015, msg="%s: your best lap" % why)
+    if py["sd"] is not None or js["sd"] is not None:
+        test.assertAlmostEqual(py["sd"], js["sd"], delta=0.0015, msg="%s: consistency" % why)
+
+
+@unittest.skipUnless(NODE, "Node.js is not installed")
+class OneLapTimerTest(unittest.TestCase):
+    def test_the_home_page_and_the_analyzer_time_every_test_file_the_same(self):
+        d = tempfile.mkdtemp()
+        try:
+            for name, build in (("session", lambda p: build_session(p)), ("team", lambda p: build_session(p, team=True)),
+                                ("practice", build_practice), ("one lap", build_one_lap), ("late times", _late_times_file),
+                                ("handling", lambda p: build_handling(p))):
+                p = os.path.join(d, name.replace(" ", "_") + ".ibt")
+                build(p)
+                _same_laps(self, p, name)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_the_drivers_own_files(self):
+        # PITWALL_IBT_DIR: a folder of real .ibt files (the driver's own: every one of them must agree)
+        folder = os.environ.get("PITWALL_IBT_DIR", "/mnt/user-data/uploads/iRacing Telemetry Files/iRacing")
+        files = [REAL_IBT] if os.path.exists(REAL_IBT) else []
+        if os.path.isdir(folder):
+            files += [os.path.join(folder, f) for f in sorted(os.listdir(folder)) if f.endswith(".ibt")]
+        if not files:
+            self.skipTest("no real .ibt files here")
+        for f in files:
+            _same_laps(self, f, os.path.basename(f))

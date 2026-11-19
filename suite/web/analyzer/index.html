@@ -2923,6 +2923,7 @@ return '<div style="border:1px solid var(--ln);border-radius:8px;padding:8px 10p
 return '<div style="margin-top:4px;font-size:13px">'+(then-now>0.02?'<b class="good">Better</b>':now-then>0.02?'<b class="bad">Worse</b>':'<b>Steady</b>')+': '+f(then)+' at the start, '+f(now)+' now <span class="m">('+rs0.length+' laps)</span></div>'})():'')+
 (last?'<div style="margin-top:6px;font-size:13px"><b class="'+(last.ok.time?'good':'bad')+'">'+(last.dct>0?'+':'')+last.dct.toFixed(2)+' s</b> last lap · '+pracWatch(t,last,u,S)+'</div><div style="margin-top:4px" aria-label="last laps, newest first">'+rs0.map(chip).join('')+'</div>':'<div class="m" style="margin-top:6px;font-size:13px">Drive a lap to see how it went.</div>')+'</div>'}).join('')+'</div>';
 return h+'<small class="m">Squares are your last laps, newest first: <span class="good">■</span> as quick as your best through the corner · <span style="color:var(--amb)">■</span> within 0.1 s · <span class="bad">■</span> slower.</small></div>'}
+const WANT_REPORT={on:(()=>{try{return new URLSearchParams(location.search).get('report')==='1'}catch(e){return false}})()};
 /* A session report to keep or send to a coach: what Coaching shows now, as a page of its own (no buttons, every
    fold open, the light theme for printing). Nothing new is worked out: it is the Coaching view's own markup. */
 function coachReportHtml(){const el=$('coach'),X=COACH.last;if(!el||!X)return null;const c=el.cloneNode(true);
@@ -3064,7 +3065,9 @@ el.querySelectorAll('[data-g61rm]').forEach(x=>x.onclick=ev=>{ev.preventDefault(
 if(cl)cl.onclick=()=>{COACH.g61=[];if(COACH.to==='g61best')COACH.to='best';renderCoach()};
 if(d){const inp=d.querySelector('input'),add=async fs=>{for(const f of fs)if(/\.csv$/i.test(f.name))try{const tx=await f.text(),gl=parse(tx,f.name);gl._src={name:f.name,buf:new TextEncoder().encode(tx).buffer};COACH.g61.push(gl)}catch(e){$('err').textContent=f.name+': '+e.message}if(COACH.g61.length>=2&&!COACH.src)COACH.src='g61';renderCoach()};
 inp.onchange=()=>add(Array.from(inp.files));d.ondragover=e=>{e.preventDefault()};d.ondrop=e=>{e.preventDefault();add(Array.from(e.dataTransfer.files))}}
-if(COACH.last){const rb=document.createElement('button');rb.type='button';rb.id='coReport';rb.textContent='Save a session report';rb.title='This page as a file of its own, to keep or send to a coach';rb.onclick=()=>coachReport(rb);if(op&&op.parentNode)op.parentNode.insertBefore(rb,op.nextSibling);else el.appendChild(rb)}
+if(COACH.last){const rb=document.createElement('button');rb.type='button';rb.id='coReport';rb.textContent='Save a session report';rb.title='This page as a file of its own, to keep or send to a coach';rb.onclick=()=>coachReport(rb);if(op&&op.parentNode)op.parentNode.insertBefore(rb,op.nextSibling);else el.appendChild(rb)
+// the home page's "Save a report" (…&report=1): saved once, as soon as Coaching has this session
+if(WANT_REPORT.on){WANT_REPORT.on=false;setTimeout(()=>coachReport(rb),300)}}
 if(op)op.onclick=()=>{const X=COACH.last;if(!X)return;F.a=X.avg;F.b=X.best;SELF=null;try{$('za').querySelector('span').textContent='Your average lap (Coaching) · '+ft(X.avg.lap);$('zb').querySelector('span').textContent='Your best lap · '+ft(X.best.lap)}catch(e){}viewGo('');run();const o=$('out');if(o&&o.scrollIntoView)o.scrollIntoView({behavior:'smooth'})}}
 
 // ---- Build a whole setup for a track ----
