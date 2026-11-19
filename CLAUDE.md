@@ -163,6 +163,17 @@ iRacing Suite app (suite/)
   PitWall and the broadcast read gaps in each class's seconds (normalize class_scale: REF_SPEED_MS 50 m/s over the
   class's average speed, 0.6 to 1.6; battles, closing in, the director's hot / move / hold, PitWall's 'close
   behind' via derived.gapScale) and tyre fall-off against the class's lap (lap_scale, 90 s = 1).
+- Test one change (Setup's live engineer, Nov 2026: setupTestHtml, LIVE.test): TEST_LAPS clean laps on this setup,
+  ONE change in the garage (Setup's first fix for the biggest problem, testSuggest), the same again; then runVerdict
+  (median lap against the lap-to-lap spread), sector by sector (testSecs: each sector's median), what it did to the
+  phase it was meant for, and the track changing under the two runs. More than one setting changed is said plainly.
+- The track notebook (Coaching, Nov 2026: notebookPut / notebookHtml, localStorage suite:trackNotebook by car and
+  track): per corner of the corner book, from the fastest real lap loaded there (a slower one never replaces it):
+  where it brakes and comes off the brake (metres before the slowest point), slowest speed and gear, back on the
+  throttle and flat out (after it), or "flat out through it"; "You" from Coaching's per-lap medians when the reference
+  is that lap. Checked against the Garage 61 lap's own samples (corner 1: 151 m, 2 m, 87 km/h in 2nd). Coaching's
+  distances come from lapLen (speed over the time between grid points): the average lap is sampled in distance and
+  read 10% long before.
 - Setup directions are per car: `CAR_KB` in the analyzer (from iRacing's manuals, docs/CAR_MANUALS.md).
   A suggestion is a meaning ("stiffer", "more TC help"); `kbSign` turns it into a number direction for the
   car. Never assume higher = stiffer: on the Corvette it is softer, on Mercedes TC higher is less help.
