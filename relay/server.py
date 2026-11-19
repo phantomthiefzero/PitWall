@@ -56,6 +56,9 @@ SNAPSHOT_TYPES = ("session", "map", "state", "cars", "hello", "feed", "director"
 VIEWER_QUEUE = 1000
 CLOSE_TOO_SLOW = 4002
 
+# The pages that say what they are when they connect (?page=); anything else is not counted.
+PAGES = ("overlay", "monitor", "producer", "pitwall", "notes")
+
 # Which viewer role may send which command kind on to the bridge.
 # Cars that viewers may follow individually at once (the bridge computes one
 # view per car). Matches pitwall.bridge.MAX_REFS.
@@ -302,6 +305,7 @@ class Relay:
         self.gfx_rev = 0
         self.bridge = None
         self.viewers: dict = {}      # ws -> asyncio.Queue of outgoing frames
+        self.pages: dict = {}        # ws -> which page it is (?page=, PAGES): the suite's health check counts them
         self.snapshot: dict[str, str] = {}
         self.stats = {"in": 0, "out": 0, "dropped_slow": 0, "started": time.time()}
         self.feed: dict | None = None          # the race feed, kept current from the bridge's deltas
@@ -673,6 +677,23 @@ class Relay:
         parsed = urllib.parse.urlparse(path)
         q = urllib.parse.parse_qs(parsed.query)
         token = (q.get("token") or [""])[0]
+        page = (q.get("page") or [""])[0]
+        if page in PAGES:
+            self.pages[ws] = page
+        try:
+            await self._route(ws, parsed, token)
+        finally:
+            self.pages.pop(ws, None)
+
+    def page_counts(self) -> dict:
+        """How many of each page are connected now (an OBS overlay, the producer, PitWall screens, ...)."""
+        out: dict = {}
+        for ws, page in list(self.pages.items()):
+            if ws in self.viewers:
+                out[page] = out.get(page, 0) + 1
+        return out
+
+    async def _route(self, ws, parsed, token):
         if parsed.path == "/bridge" and token_ok(token, self.bridge_token):
             await self.handle_bridge(ws)
         elif parsed.path == "/view" and token_ok(token, self.view_token):

@@ -255,6 +255,11 @@ h2 .ib{margin-left:4px}
 #setup .su-bar .tabs{flex:1;margin:0;max-width:640px}
 #setup .su-bar .tabs button{min-height:32px;padding:3px 8px}
 #setup .su-body{flex:1;overflow:auto;padding:12px 14px}
+/* Simple: the settings most shows need; Everything shows the rest ([data-adv]). Per viewer (pitwall.producerSetup). */
+#setup.simple [data-adv]{display:none !important}
+#setup .su-mode{min-height:32px;padding:3px 10px}
+/* Go live: the broadcast switch, the director with replays and the automatic graphics in one press (and back) */
+#goLive{font-weight:800}#goLive.on{background:transparent;color:var(--mut);border-color:var(--line)}
 #setup [data-pane]{columns:2 440px;column-gap:12px}
 #setup [data-pane]>section{break-inside:avoid;display:inline-block;width:100%}
 #setup section.flash{animation:suFlash 1.2s ease-out}
@@ -318,6 +323,7 @@ header{padding:6px 12px}
 <header>
   <a id="home" class="hide" style="color:var(--mut);text-decoration:none;font-weight:600">&larr; Suite</a>
   <h1>Producer</h1>
+  <button type="button" id="goLive" title="Go live: the broadcast switch on, the auto-director on with replays, and the graphics picked for you. End show turns the switch and the director off. Each stays its own button for when you want one without the others.">Go live</button>
   <button type="button" id="bcLive" title="The broadcast's master switch. Off: no graphics on the overlay, and nothing moves the camera (no director, no grid walk, no battle following, no livery photos, no cuts or replays from this panel). It starts off every time the app starts.">Broadcast off</button>
   <span class="stat"><span class="dot" id="dRelay"></span>Relay</span>
   <span class="stat"><span class="dot" id="dBridge"></span>iRacing</span>
@@ -415,7 +421,7 @@ header{padding:6px 12px}
   </div>
 </main>
 <div id="setup" class="hide" role="dialog" aria-label="Setup">
-  <div class="su-bar"><b>Setup</b><div class="tabs"><button data-tab="show" class="on">Graphics</button><button data-tab="look">Look</button><button data-tab="studio">Studio</button><button data-tab="liveries">Liveries</button><button data-tab="obs">OBS</button><button data-tab="check">Check</button></div><button data-suclose="1" class="su-x" title="Close (Esc)">Close</button></div>
+  <div class="su-bar"><b>Setup</b><div class="tabs"><button data-tab="show" class="on">Graphics</button><button data-tab="look">Look</button><button data-tab="studio">Studio</button><button data-tab="liveries">Liveries</button><button data-tab="obs">OBS</button><button data-tab="check">Check</button></div><button id="suMode" class="su-mode" title="Simple: the settings most shows need. Everything: every setting there is.">Everything</button><button data-suclose="1" class="su-x" title="Close (Esc)">Close</button></div>
   <div class="su-body">
     <div data-pane="show">
       <section id="setTower">
@@ -423,12 +429,12 @@ header{padding:6px 12px}
         <h3>Layout</h3><div class="opts" id="twLayout"></div>
         <div id="twLayoutOpts"></div>
         <h3>Shows</h3><div class="opts" id="twMode"></div>
-        <h3>Take turns (8 s each)</h3><div class="opts" id="twRot"></div>
-        <h3>Cut line after</h3><div class="opts" id="twCut"></div>
+        <div data-adv><h3>Take turns (8 s each)</h3><div class="opts" id="twRot"></div>
+        <h3>Cut line after</h3><div class="opts" id="twCut"></div></div>
       </section>
       <section id="setCard"><h2>Driver card</h2><div class="opts" id="cardFollow"></div><p class="note" id="cardNote"></p><div id="cardFlags"></div></section>
-<section id="setSound"><h2>Announcer <small>Arcade look</small></h2><div id="soundFlags"></div></section>
-      <section id="setPip">
+<section id="setSound" data-adv><h2>Announcer <small>Arcade look</small></h2><div id="soundFlags"></div></section>
+      <section id="setPip" data-adv>
         <h2>Picture in picture</h2>
         <div class="grid2">
           <label for="pipUrl">Video link</label><input type="text" id="pipUrl" placeholder="VDO.Ninja view link: https://vdo.ninja/?view=…">
@@ -441,7 +447,7 @@ header{padding:6px 12px}
           <p>Your co-host spectates the same session in their own iRacing. They open <b>vdo.ninja</b>, choose to share their screen (the iRacing window), and send you the <b>view</b> link it gives; paste it above, then switch Picture in picture on under On air. The video plays inside the overlay, in a framed window you can move and resize under Look, Position.</p>
           <p>If your co-host runs the suite too, they paste your co-host link into <b>Second camera</b> on their home page. Then the caption follows their camera by itself, and picking a car or a shot here moves their camera (only while your broadcast is on).</p></details>
       </section>
-      <section id="setH2h">
+      <section id="setH2h" data-adv>
         <h2>Head to head</h2>
         <div class="opts" id="h2hPick"></div>
         <p class="note" id="h2hNote"></p>
@@ -454,11 +460,11 @@ header{padding:6px 12px}
         <h3>Walk the grid</h3>
         <div id="gwAuto"></div>
         <div class="opts" id="gwBy" style="margin-top:6px"></div>
-        <h3>The grid board first</h3>
+        <div data-adv><h3>The grid board first</h3>
         <div class="opts" id="gwBoard"></div>
         <p class="note">Every car on one screen, with its picture, a light running down the grid while the camera stays wide; then the row cards. Automatic: at a standing start (no pace laps, cars still arriving) and when the pace laps are too short for every car.</p>
-        <p class="note" id="gwNow"></p>
-        <div class="grid2"><label for="gwHold">Seconds per car</label><input type="number" id="gwHold" min="2" max="20" value="5">
+        </div><p class="note" id="gwNow"></p>
+        <div class="grid2" data-adv><label for="gwHold">Seconds per car</label><input type="number" id="gwHold" min="2" max="20" value="5">
           <label for="gwSnap">Take OBS photos</label><span><input type="checkbox" id="gwSnap" checked> <span class="note" id="gwSnapNote"></span></span></div>
         <div class="opts" style="margin-top:8px"><button id="gwStart" class="big">Walk the grid</button><button data-gwgo="hand">Walk by hand</button><button id="gwStop">Stop</button></div>
       </section>
@@ -466,13 +472,13 @@ header{padding:6px 12px}
         <h2>Auto-director</h2>
         <div id="dirOpts"></div>
         <p class="note">With replays on, the director shows the best recent moment again (a contact, a spin, a pass for the top places, a new leader) when nothing big is happening live, or under a caution: with the stinger in and out, from another angle, and straight back to live if something big happens meanwhile. At most one every 75 s.</p>
-      <h3>Your cameras</h3>
+      <div data-adv><h3>Your cameras</h3>
         <p class="note">What the director takes each camera group for, camera packs included. A camera that stands at one place (a corner, the start / finish line) is used only as a car comes past it, so the director has to know where it stands: click where it stands on the track map ("Place them on the map" takes each in turn), or put a car on camera and press "It is here" as it passes that camera. Until then the director leaves that camera alone. Kept for this track.</p>
         <div id="camMapBox">
           <div class="cammaphead"><b id="camMapSay"></b><button id="camMapGo" data-campick="next"></button><button id="camMapSkip" data-campick="skip" class="hide">Skip</button><button id="camMapStop" data-campick="" class="hide">Done</button></div>
           <canvas id="camMap" width="720" height="720"></canvas>
         </div>
-        <div id="camList"></div>
+        <div id="camList"></div></div>
       </section>
       <section id="setTicker"><h2>Race control ticker</h2><div id="tickerOpts"></div></section>
     </div>
@@ -521,7 +527,7 @@ header{padding:6px 12px}
         <p class="note">The camera jumps at the cut point, while the stinger covers the screen: for a built-in one, about half its length; for your own video, the moment it fills the frame (each video keeps its own). Making one: 1920 × 1080, about one second, a WebM with transparency (VP9 with alpha) so the race shows around it, or an MP4 that covers the screen. Every video you upload is listed here.</p>
         <div class="opts" style="margin-top:6px"><button id="sTest">Test the stinger</button></div>
       </section>
-      <section id="setPositions">
+      <section id="setPositions" data-adv>
         <h2>Positions</h2>
         <div class="pos3" id="positions"></div>
         <div class="opts" style="margin-top:8px"><button id="posReset">Reset all positions</button></div>
@@ -531,13 +537,13 @@ header{padding:6px 12px}
         <div class="pos3"><span></span><span class="note">across %</span><span class="note">down %</span><span class="note">zoom</span>
           <span>Photo</span><input type="number" id="lvX" step="1" value="50"><input type="number" id="lvY" step="1" value="58"><input type="number" id="lvZ" step="0.1" value="1.6"></div>
       </section>
-      <section class="assets">
+      <section class="assets" data-adv>
         <h2>Files <small>logos, fonts, stingers</small></h2>
         <input type="file" id="upload" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.webm,.mp4,.mov,.woff2,.woff,.ttf,.otf">
         <div id="assetList"></div>
         <p class="note">Up to 30 MB each. A WebM with transparency makes the best stinger.</p>
       </section>
-      <section>
+      <section data-adv>
         <h2>Save the look</h2>
         <div class="opts"><button id="thExport">Download as a file</button><label class="note" style="align-self:center"><input type="file" id="thImport" accept=".json" style="width:190px"></label><button id="thReset">Back to default</button></div>
       </section>
@@ -545,7 +551,7 @@ header{padding:6px 12px}
 
 
     <div data-pane="studio" class="hide">
-      <section id="setScenes">
+      <section id="setScenes" data-adv>
         <h2>Saved scenes</h2>
         <p class="note" style="margin-top:0">A scene is which graphics are on and how they are set (tower, card, battle, head to head, picture in picture, show screens…). Recall one to put it on air, or into Preview in studio mode. Your look, files and lists are not part of it.</p>
         <div class="row" style="display:flex;gap:6px"><input type="text" id="scnName" placeholder="Name, e.g. Battle focus" style="flex:1"><button data-scnsave="1">Save what is on now</button></div>
@@ -796,7 +802,30 @@ header{padding:6px 12px}
     b.textContent = on ? "Broadcast ON" : "Broadcast off";
     b.disabled = !canCamera();
     b.setAttribute("aria-pressed", on ? "true" : "false");
+    renderGoLive();
   }
+  // Go live: one press for what every show starts with (each part stays a button of its own), End show for the end.
+  // The bridge takes the commands in order, so the director is switched on after the broadcast switch is.
+  function renderGoLive() {
+    const on = !!(S.director && S.director.live), b = $("goLive");
+    if (!b) return;
+    b.classList.toggle("on", on);
+    const t = on ? "End show" : "Go live";
+    if (b.textContent !== t) b.textContent = t;
+    b.disabled = !canCamera();
+  }
+  $("goLive").addEventListener("click", () => {
+    const on = !(S.director && S.director.live);
+    if (on) {
+      if (!send({ type: "cmd", cmd: "director", action: "broadcast", on: true })) return;
+      send({ type: "cmd", cmd: "director", action: "set", on: true, replays: true, holdS: Number(($("dirHold") || {}).value) || 8 });
+      if (!G("auto.on", false)) setGfx({ auto: { on: true } });
+      pending.push("Live: the broadcast, the director with replays, and the graphics picked for you");
+    } else {
+      send({ type: "cmd", cmd: "director", action: "set", on: false });
+      send({ type: "cmd", cmd: "director", action: "broadcast", on: false }) && pending.push("Show ended: the broadcast is off");
+    }
+  });
   $("bcLive").addEventListener("click", () => {
     const on = !(S.director && S.director.live);
     send({ type: "cmd", cmd: "director", action: "broadcast", on }) && pending.push(on ? "Broadcast on" : "Broadcast off");
@@ -1409,9 +1438,19 @@ header{padding:6px 12px}
   });
 
   // ------------------------------------------------------------- Setup drawer and the right-hand tabs
+  // Simple (the settings most shows need) or Everything; Simple to start with, kept per viewer
+  function suSimple(on) {
+    $("setup").classList.toggle("simple", on);
+    const b = $("suMode"), t = on ? "Show everything" : "Show the main settings";
+    if (b.textContent !== t) b.textContent = t;
+    try { localStorage.setItem("pitwall.producerSetup", on ? "simple" : "all"); } catch (e) {}
+  }
+  suSimple((() => { try { return localStorage.getItem("pitwall.producerSetup") !== "all"; } catch (e) { return true; } })());
+  $("suMode").addEventListener("click", () => suSimple(!$("setup").classList.contains("simple")));
   function openSetup(sec) {
     $("setup").classList.remove("hide"); document.body.classList.add("su-open");
     const el = sec && $(sec);
+    if (el && el.closest("[data-adv]")) suSimple(false);       // a ⚙ that leads to a setting Simple hides
     if (el) {
       const pane = el.closest("[data-pane]");
       if (pane && pane.classList.contains("hide")) document.querySelector(`[data-tab="${pane.dataset.pane}"]`)?.click();
@@ -2251,6 +2290,7 @@ header{padding:6px 12px}
     try { url = new URL(relay.replace(/\/+$/, "") + "/view"); } catch (e) { url = null; }
     if (!url || !/^wss?:$/.test(url.protocol)) { showConnect("The relay address must start with ws:// or wss://"); return; }
     url.searchParams.set("token", token);
+    url.searchParams.set("page", "producer");          // counted by the suite's health check (relay PAGES)
     const sock = new WebSocket(url.href); ws = sock;
     sock.onopen = () => { $("dRelay").classList.add("on"); sock.send(JSON.stringify({ type: "resend" })); };
     sock.onclose = ev => {
