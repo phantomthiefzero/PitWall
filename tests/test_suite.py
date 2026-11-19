@@ -366,7 +366,7 @@ class AppWindowApiTest(unittest.TestCase):
                                   "share_start", "share_stop", "share_info",
                                   "update_info", "update_set_key", "update_clear_key", "update_check", "update_install",
                                   "update_open_key_page", "save_report", "save_image",
-                                  "record_start", "record_stop", "record_info", "record_show",
+                                  "record_start", "record_stop", "record_info", "record_show", "record_auto", "health",
                                   "dircheck_list", "dircheck_start", "dircheck_pick", "dircheck_info", "dircheck_stop",
                                   "second_start", "second_stop", "second_info", "open_in_browser", "camera_status"})
         for n in public:
@@ -1743,3 +1743,157 @@ def test_the_corner_book_travels_with_the_session():
     assert sent and sent[-1]["type"] == "corners" and sent[-1]["book"]["indy"][0]["p"] == 0.5
     page = open(os.path.join(os.path.dirname(__file__), "..", "suite", "web", "analyzer", "index.html"), encoding="utf-8").read()
     assert "fetch('/api/corners'" in page and "m.type==='corners'" in page and "if(LIVE.remote){if(cornersTake(m))" in page
+
+
+def _capture(path, race=True, racing=True):
+    import gzip as _gz
+    with _gz.open(path, "wt", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "header"}) + "\n")
+        f.write(json.dumps({"type": "session", "info": {"SessionInfo": {"Sessions": [
+            {"SessionNum": 0, "SessionType": "Practice"}] + ([{"SessionNum": 1, "SessionType": "Race"}] if race else [])}}}) + "\n")
+        for k in range(5):
+            f.write(json.dumps({"type": "tick", "vars": {"SessionNum": 1 if race else 0, "SessionState": 4 if racing else 2}}) + "\n")
+
+
+def test_recording_automatically_keeps_races_and_the_space_it_was_given():
+    # the home page's Record automatically (suite/recording.AutoRecorder): the Record button was easy to forget
+    import tempfile
+    from suite import recording as R
+    d = tempfile.mkdtemp()
+    now = [1000.0]
+
+    class Rec:
+        def __init__(self):
+            self.state, self.auto, self.last_tick, self.path, self.starts = "off", False, None, None, 0
+
+        def start(self, auto=False):
+            self.state, self.auto, self.starts = "waiting", auto, self.starts + 1
+
+        def stop(self, wait=5.0):
+            self.state = "saved"
+
+    rec, sim = Rec(), [True]
+    a = R.AutoRecorder(rec, sim_running=lambda: sim[0], settings_file=os.path.join(d, "s.json"), log=lambda *x: None,
+                       clock=lambda: now[0])
+    assert a.settings == {"mode": "races", "keepGB": 3.0}, "races, by default"
+    a.step()
+    assert rec.state == "waiting" and rec.auto, "it waits for iRacing by itself"
+    # a practice with no race in it: not kept
+    p = os.path.join(d, "Summit-Practice_1.jsonl.gz")
+    _capture(p, race=False)
+    rec.state, rec.path, rec.last_tick = "recording", p, now[0]
+    a.step()
+    assert rec.state == "recording", "ticking: carry on"
+    now[0] += R.GONE_S + 1
+    a.step()
+    assert not os.path.exists(p) and a.last == {"name": os.path.basename(p), "kept": False, "why": "no race in it"}
+    # races are kept, and the oldest go when they pass the space kept for them (never the newest)
+    a.configure(keep_gb=0.5)
+    assert a.settings["keepGB"] == 0.5
+    a.settings["keepGB"] = 1500 / 1024 ** 3                 # 1.5 KB kept here (0.5 GB is the least the page offers)
+    names = []
+    for k in range(3):
+        a.step()                                    # waiting again
+        p = os.path.join(d, "Race_%d.jsonl.gz" % k)
+        _capture(p)
+        with open(p, "ab") as f:
+            f.write(b"\0" * 1000)                   # 1 KB and a bit each: two do not fit
+        rec.state, rec.path, rec.last_tick = "recording", p, now[0]
+        now[0] += R.GONE_S + 1
+        a.step()
+        names.append(os.path.basename(p))
+        assert a.last["kept"]
+    left = sorted(f for f in os.listdir(d) if f.endswith(".jsonl.gz"))
+    assert left == ["Race_2.jsonl.gz"], left
+    # one made by hand is never removed
+    hand = os.path.join(d, "mine.jsonl.gz")
+    _capture(hand)
+    R.prune(d, 0)
+    assert os.path.exists(hand) and os.path.exists(os.path.join(d, "Race_2.jsonl.gz"))
+    # your Stop is not overruled: nothing more until iRacing has closed
+    a.step()
+    rec.state = "recording"
+    a.user_stopped()
+    rec.state = "saved"
+    a.step()
+    assert a.paused and rec.state == "saved"
+    sim[0] = False
+    a.step()
+    a.step()
+    assert not a.paused and rec.state == "waiting"
+    a.configure(mode="off")
+    assert rec.state == "saved", "off: it stops waiting"
+    assert R.AutoRecorder(Rec(), settings_file=os.path.join(d, "s.json")).settings["mode"] == "off", "kept"
+    assert R.had_race(os.path.join(d, "Race_2.jsonl.gz")) and not R.had_race(hand.replace("mine", "nope"))
+
+
+def test_ready_to_go_live_checks_everything_a_broadcast_leans_on():
+    import tempfile
+    from suite import health
+    from relay.server import PAGES
+
+    class Relay:
+        def page_counts(self):
+            return {"overlay": 1, "producer": 1}
+
+    class Dir:
+        live = False
+
+    class Bridge:
+        director, map_msg = Dir(), None
+
+    class Share:
+        def info(self):
+            return {"state": "off"}
+
+    class PW:
+        relay, bridge, share = Relay(), Bridge(), Share()
+
+        def info(self):
+            return {"ok": True}
+
+    class Hub:
+        connected = True
+
+    class Rec:
+        state = "waiting"
+
+    class Auto:
+        settings = {"mode": "races"}
+
+    class Up:
+        def info(self):
+            return {"available": True, "latest": {"build": 512}}
+
+    class Engine:
+        hub, pitwall, recorder, autorec, updater = Hub(), PW(), Rec(), Auto(), Up()
+
+    C = {c["key"]: c for c in health.checks(Engine())}
+    assert C["sim"]["state"] == "ok" and C["obs"]["state"] == "ok" and "1 overlay open" in C["obs"]["detail"]
+    assert C["live"]["state"] == "info" and C["map"]["state"] == "warn" and C["update"]["state"] == "warn"
+    assert "races are recorded automatically" in C["rec"]["detail"]
+    Engine.pitwall.relay.page_counts = lambda: {}
+    assert {c["key"]: c for c in health.checks(Engine())}["obs"]["state"] == "warn"
+    # the last camera check: passed, failed, or never run
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "sim_check.json")
+    assert health.camera_check(p)["state"] == "warn"
+    with open(p, "w") as f:
+        json.dump({"steps": [{"name": "Cut to a car", "state": "passed"}, {"name": "Replay", "state": "failed"}]}, f)
+    c = health.camera_check(p)
+    assert c["state"] == "bad" and "Replay" in c["detail"]
+    with open(p, "w") as f:
+        json.dump({"steps": [{"name": "Cut to a car", "state": "passed"}]}, f)
+    assert health.camera_check(p)["state"] == "ok"
+    # the pages say what they are when they connect, so the relay can count them
+    assert set(PAGES) >= {"overlay", "producer", "pitwall"}
+    root = os.path.join(os.path.dirname(__file__), "..")
+    ov = open(os.path.join(root, "broadcast", "overlay.html"), encoding="utf-8").read()
+    assert 'url.searchParams.set("page", Q.get("monitor") === "1" || Q.get("preview") === "1" ? "monitor" : "overlay");' in ov
+    assert 'searchParams.set("page", "producer")' in open(os.path.join(root, "broadcast", "producer.html"), encoding="utf-8").read()
+    assert 'searchParams.set("page", "pitwall")' in open(os.path.join(root, "client", "index.html"), encoding="utf-8").read()
+    home = open(os.path.join(root, "suite", "web", "index.html"), encoding="utf-8").read()
+    assert "window.pywebview.api.health()" in home and "window.pywebview.api.record_auto(" in home
+    assert "view=coach&report=1&open=" in home, "the last session's report, in one click"
+    an = open(os.path.join(root, "suite", "web", "analyzer", "index.html"), encoding="utf-8").read()
+    assert "if(WANT_REPORT.on){WANT_REPORT.on=false;setTimeout(()=>coachReport(rb),300)}" in an

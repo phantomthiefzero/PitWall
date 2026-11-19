@@ -141,7 +141,7 @@ iRacing Suite app (suite/)
   Don't add "click to open" to a summary: the arrow says it.
 - One-lap files (laps cut out of a session and shared for coaching, e.g. AlxanderSpetz_..._2.01.148_...ibt): no
   LapLastLapTime at all, one sample on the lap before and one on the next. The lap is timed by the clock from line
-  to line with the crossings placed between samples (library._clock_lap and the analyzer's lap parser, the same
+  to line with the crossings placed between samples (library.session_summary and the analyzer's lap parser, the same
   way: 2:01.148 and 1:49.898 as named); under a second of a lap at either end of a file is not a lap. Two laps are
   compared only on the same track and layout (sameWhere: car path or name, track by name, unknown counts as the
   same); a different car is shown with a warning in the Lap Analyzer and never used as Coaching's reference.
@@ -197,6 +197,11 @@ iRacing Suite app (suite/)
   named by what they are (read from the header and last sample, cached). Only the suite's own server serves
   them, by an id from the last listing, never a path from the page; over one WebSocket (/api/library/stream),
   with 96 KB pieces (/api/library/file) as the fallback. The relay never serves them.
+- One lap timer (Nov 2026): `library.session_summary` is a line-for-line port of the analyzer's lap parser and
+  sessionStats (every sample, the same rules for timed and clean), and tests/test_analyzer.py OneLapTimerTest runs both
+  on every file the tests build and on the driver's own files (PITWALL_IBT_DIR). The two had been kept in step by hand:
+  the home page read no laps at all from his 10-16 Indianapolis session (40 timed) and counted an in-lap as timed in
+  the 10-10 one. A change to how laps are timed goes into both, and that test says when they part.
 - Your last session (home page, `library.session_summary`): a lap's time is the first new LapLastLapTime after
   its OWN last sample (iRacing updates it after the line); a lap is timed as the analyzer times it (from the line, no pit
   lane, its clock agreeing with the time it took: "22 of 29", not of every lap), and clean laps are counted as the Lap Analyzer counts
@@ -206,6 +211,18 @@ iRacing Suite app (suite/)
   changes, never on every message (a rebuilt button lost the click), and answer a click at once (disabled,
   "Working…"). The app quits as its window starts closing (events.closing); quit_now gives the share
   tunnel a few seconds side by side and no more.
+- Record automatically (`suite/recording.AutoRecorder`, Nov 2026; the home page's "Record automatically": Races by
+  default, Every session, Off; kept in %LOCALAPPDATA%\iRacingSuite\recording.json): the recorder waits for the sim,
+  records while it ticks, and when no tick has come for GONE_S (iRacing opens a new sim for each session) the file is
+  saved and the next one waits. Races keeps a file only if a Race session went green in it (had_race). Only files it
+  made are ever deleted (.auto_recordings.json in the folder lists them): the oldest go when they pass keepGB, never
+  the newest. Stop while one runs saves it and records nothing more until the sim has closed (user_stopped). Started
+  in main() on its own thread (not with --replay); every recording feeds the director's scorecard.
+- Ready to go live? (`suite/health.py`, home page #hc, Api.health): iRacing, PitWall, OBS's overlay and the producer
+  (counted by the relay: each page connects with ?page=, relay PAGES / Relay.page_counts), the broadcast switch, the
+  track map, the last camera check (sim_check.json), the share link, recording and the disk, updates. It only looks;
+  every line that is off says what to do. "Your last session" has "Save a session report" (the analyzer with
+  &report=1 saves Coaching's report once it has the session: WANT_REPORT).
 - Record this session (`suite/recording.py`): the home page's Record button writes the same capture as
   `pitwall record` (10 Hz, every raw variable) into Documents\iRacingSuite\Recordings, on its own thread;
   waits for the sim, stops cleanly (also when the app closes, via _on_quit), and names the file by track
@@ -280,6 +297,12 @@ Broadcast (broadcast/)
   Log as tabs. Every setting lives in the Setup drawer (Graphics, Look, Studio, Liveries, OBS; Esc closes; data-setup
   opens it at a section). Long notes fold behind (i) (hintTidy). Keep it so: a new setting goes into Setup, not the
   columns, and a new graphic is a tile (TILE_GROUPS, SHORT, GEAR).
+  Setup starts Simple (Nov 2026, the user's pick): only the settings most shows need; "Show everything" adds the rest
+  (anything marked data-adv; #setup.simple hides it; per viewer, localStorage pitwall.producerSetup). A ⚙ that leads to
+  a hidden setting switches to everything. A new setting is data-adv unless most shows need it.
+  Go live (header #goLive): the broadcast switch on, the director on with replays, Auto graphics on, in that order (the
+  bridge takes commands in order; the director only runs with the switch on); End show turns the director and the
+  switch off. The switch and each part stay buttons of their own.
 - Grid walk (director GRID_SHOTS, overlay gwalk + gladder): the pole and each class's first car from in front (rear
   chase) and held GRID_POLE_HOLD times longer, the rest from in front too (one angle: see "The walk on screen"). On air it is a TV
   grid slot (gwalk, bottom left: place, row, livery, name, quali lap, gaps to pole and class pole, the lap it was set
@@ -447,6 +470,12 @@ Broadcast (broadcast/)
   for what is behind a car: the chaser in a battle (on the front car), the pack behind the leader at the start, a
   car on the grid from the front; never a car on its own (Summit Point: it was the most used shot, 21 of 101).
   A new shot is never the camera already on air (_fresh). tests: test_shots_come_in_an_order_and_a_close_fight_is_held.
+- The director's scorecard (Nov 2026): `python scripts/director_scorecard.py [recordings]` plays every recording (the
+  Record button's folder by default) through the director with three seeds each and compares the top-3 numbers (live,
+  in the picture, missed, replayed) with the range kept in docs/director_baseline.json; a race is worse only when it
+  falls outside that range by more than a pass (WORSE_BY: one run of a pack swings by four). Exit 1 when any is worse;
+  --save keeps the new range. Run it before and after every change to the director (or normalize's battles, passes,
+  attacks), and save the new range in the same pull request. pitwall/director_scorecard.py; tests/test_scorecard.py.
 - The director and the action (Nov 2026, measured with `scripts/director_report.py <capture>`: every pass for position
   in a race, live / in the picture / late / missed / replayed; run it before and after a change to the director):
   attacks (normalize `attacks`: the live class gap over the last 6 s against the same car ahead, 0.3-1.5 s and 0.15 s
