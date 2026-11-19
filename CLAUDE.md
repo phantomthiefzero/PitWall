@@ -88,6 +88,15 @@ When adding a derived value, make the fake reproduce the sim's awkward shape
 Replays are their own awkward shape (Talladega, VARIABLES_TO_VERIFY.md): no flags at all,
 CarIdxEstTime 0, CarClassEstLapTime 1.0, the camera on the pace car. `FakeSource(replay_shape=True)`
 reproduces it; anything that reads flags, EstTime or the class lap must still work there.
+Broadcasting a replay (pitwall/replaycast.py, Nov 2026: "it gets confused when I'm watching a replay to record a
+broadcast"): a saved replay file has WeekendInfo SimMode "replay", SessionTime running with the tape, SessionTimeRemain
+604800 and the session's FINAL ResultsPositions (Talladega: "lap 35, 15 to go" from lap 1; a whole race's replay was
+over at the green), and back to live (search to_end) is the end of the tape. The bridge reads the source through
+ReplayCast.view: while a replay is broadcast (auto: a file, or BEHIND_S behind live for BEHIND_HOLD_S; producer Setup >
+Auto-director "Broadcasting a replay", obs.json replayCast) SessionTime / SessionNum are the program (where the show is
+on the tape), ResultsPositions are hidden, to_end becomes a jump back to the program, and a jump we did not ask for
+(a scrub, a fast-forward, judged once back at 1x) starts the derived history again. Commands still go to the real
+source through the gate. test: test_a_replay_is_broadcast_as_the_race_and_back_to_live_is_back_to_the_show.
 
 iRacing Suite app (suite/)
 - The suite hosts PitWall without changing it: `suite/pitwall_host.py` runs

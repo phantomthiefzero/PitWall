@@ -882,7 +882,8 @@ def test_bridge_survives_a_frame_the_normalizer_cannot_handle():
         # Count only this test's source: another bridge running in the same test process (the
         # suite tests keep one going) calls build_state too, and must not use up the bad frame.
         # Pass every argument on: a stand-in with a narrower signature broke them all.
-        if s is not src:
+        # The bridge reads its source through its replay view (pitwall/replaycast.py): that is this test's too.
+        if s is not src and s is not b.view:
             return real(s, d, *more)
         calls["n"] += 1
         if calls["n"] == 3:

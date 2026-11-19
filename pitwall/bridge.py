@@ -68,6 +68,12 @@ class Bridge:
         self._extra: list[dict] = []              # messages made off the event loop
         self._loop = None
         self.director = Director(self._cut, log=log, replay=self._replay)
+        # Broadcasting a replay as the race (pitwall/replaycast.py): the stack reads the source through cast.view,
+        # which gives the tape's program clock and hides the session's final results while a replay is broadcast.
+        # Commands still go to the real source, through the gate.
+        from .replaycast import ReplayCast
+        self.cast = ReplayCast(src)
+        self.view = self.cast.view
         # the camera and replay check (pitwall/simcheck.py): reads the telemetry copied here each frame, never the
         # source from its own thread
         from .simcheck import SimCheck, VARS as SIMCHECK_VARS
@@ -75,6 +81,8 @@ class Bridge:
         self._simvars: dict = {}
         self.simcheck = SimCheck(self.gate, self.src, lambda: self._simvars, self._emit, log=log)
         self.livery_store = LiveryStore(livery_dir)
+        self.cast.set_mode(self.livery_store.cfg.get("replayCast", "auto"))
+        self.director.replay_cast = self.cast.status()
         self.capture = LiveryCapture(self.livery_store, self._cut, self._emit, log=log)
         # iRacing's own picture of every car with its paint (Trading Paints included)
         self.renderer = CarRenderer(self.livery_store.base, self._emit, log=log,
@@ -120,7 +128,7 @@ class Bridge:
         # with the old track (map, drivers, packs). A new attach (epoch) or a new session id also rebuilds it.
         siu = (self.src.session_info_update, getattr(self.src, "epoch", 0), self.src.get("SessionUniqueID"))
         if siu != self._last_siu:
-            self.session_msg = build_session(self.src)
+            self.session_msg = build_session(self.view)
             self._last_siu = siu   # after the build, so a failed parse is retried next frame
             self._render_check = 0.0
             outbox.append(self.session_msg)
@@ -225,6 +233,7 @@ class Bridge:
 
     def _build(self, now: float) -> list[dict]:
         outbox: list[dict] = []
+        self._cast_step()
         self._maybe_session(outbox)
         if now >= self._next_state:
             self._next_state = now + self.state_dt
@@ -235,7 +244,7 @@ class Bridge:
             # over. Both would otherwise carry stop counts, stint length,
             # gap trends, sector bests and fuel samples across the boundary.
             restarts = getattr(self.src, "restarts", 0)
-            session_num = self.src.get("SessionNum")
+            session_num = self.view.get("SessionNum")
             event = self._event_key()
             if event is not None and event != self._event:
                 prev, self._event = self._event, event
@@ -256,7 +265,7 @@ class Bridge:
                 if prev is not None:
                     self._new_deriver()
                     self.log(f"session {prev} -> {session_num}; derived history reset")
-            st = build_state(self.src, self.deriver, self.session_msg)
+            st = build_state(self.view, self.deriver, self.session_msg)
             self._last_state = st
             self._maybe_build_map(st, outbox)
             enc = self.delta.encode(st, now)
@@ -270,13 +279,13 @@ class Bridge:
             edge = ((self._last_state or {}).get("derived") or {}).get("liveEdge") or {}
             held = edge.get("atLive") is False and self._last_live_cars is not None
             if held:
-                results = results_positions(self.src.session_info("SessionInfo"), self.src.get("SessionNum"))
+                results = results_positions(self.view.session_info("SessionInfo"), self.view.get("SessionNum"))
                 cars_msg = hold_cars(self._last_live_cars, results, edge, edge.get("tLive"))
                 # the race's clock and laps keep going while the picture is held (they froze for a whole replay,
                 # then jumped): SessionTimeRemain is the live clock, like SessionTime; the results have the laps
                 race = (cars_msg.get("derived") or {}).get("race")
                 if race:
-                    rem = self.src.get("SessionTimeRemain")
+                    rem = self.view.get("SessionTimeRemain")
                     if isinstance(rem, (int, float)) and 0 <= rem < 7 * 86400:
                         race["timeRemainS"] = rem
                     lead = max([r.get("LapsComplete") for r in results if r.get("Position") == 1
@@ -286,7 +295,7 @@ class Bridge:
                         if race.get("totalLaps"):
                             race["lapsToGo"] = max(0, race["totalLaps"] - lead)
             else:
-                cars_msg = build_cars(self.src, self.session_msg, self.deriver)
+                cars_msg = build_cars(self.view, self.session_msg, self.deriver)
                 self._last_live_cars = cars_msg
             self._last_cars = cars_msg
             self._broadcast_tick(cars_msg, outbox)
@@ -358,6 +367,26 @@ class Bridge:
         ev, tr = m.get("event") or {}, m.get("track") or {}
         return (ev.get("SessionID"), ev.get("SubSessionID"), tr.get("TrackID"), tr.get("TrackConfigName"))
 
+    def _cast_step(self):
+        """Broadcasting a replay: where the tape is. Turning on or off, or the tape jumping by itself (the producer
+        scrubbing in iRacing, fast-forward), starts the derived history again: it belongs to another stretch of the
+        tape, and the director's moments with it."""
+        try:
+            ev = self.cast.update()
+        except Exception as e:  # noqa: BLE001
+            self.log(f"replay broadcast: {type(e).__name__}: {e}")
+            return
+        if ev is None:
+            return
+        self._session_num = self.view.get("SessionNum")
+        self._new_deriver()
+        self.director.new_event()
+        st = self.cast.status()
+        self.log({"start": "broadcasting a replay (%s)" % st.get("why"), "stop": "back to live: replay broadcast off",
+                  "jump": "the replay moved to session %s at %ss: derived history reset" % (st.get("session"), st.get("t"))}[ev])
+        self.director.replay_cast = st
+        self.director.changed = True
+
     def _new_deriver(self):
         self.deriver = Deriver()
         self._last_live_cars = None
@@ -401,7 +430,8 @@ class Bridge:
         seek and its play, so it runs on a thread of its own: the stream never waits for it."""
         if not self.gate.camera:
             return {"ok": False, "error": "camera control is off"}
-        threading.Thread(target=self.gate.execute, args=(self.src, dict(cmd)), daemon=True).start()
+        cmd = self.cast.command(dict(cmd))            # broadcasting a replay: "back to live" is back to the program
+        threading.Thread(target=self.gate.execute, args=(self.src, cmd), daemon=True).start()
         return {"ok": True}
 
     def _simcheck_cmd(self, msg: dict) -> dict:
@@ -513,6 +543,18 @@ class Bridge:
             self.director.set_live(bool(msg.get("on")))
             if not self.director.live:
                 self.capture.stop()                     # a livery photo sweep moves the camera too
+            res.update(ok=True, data=self.director.status())
+            return res
+        if kind == "director" and action == "replaycast":   # broadcasting a replay: auto / on / off (kept)
+            if not self.cast.set_mode(msg.get("mode")):
+                res["error"] = "mode must be auto, on or off"
+                return res
+            self.livery_store.cfg["replayCast"] = self.cast.mode
+            try:
+                self.livery_store.save_cfg()
+            except OSError as e:
+                self.log(f"replay broadcast setting not kept: {e}")
+            self.director.replay_cast = self.cast.status()
             res.update(ok=True, data=self.director.status())
             return res
         if kind == "director" and action == "camera":   # what a camera group is: a setting, it moves nothing
@@ -725,8 +767,9 @@ class Bridge:
                 await ws.send(json.dumps(self.director.status(), separators=(",", ":")))
             # In a worker thread: a replay jump pauses between its seek and
             # its play, and the stream must not stall while it does.
-            res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, msg)
-            self.log(f"cmd {msg} -> {'ok' if res['ok'] else res['error']}")
+            sent = self.cast.command(msg) if msg.get("cmd") == "replay" else msg
+            res = await asyncio.get_running_loop().run_in_executor(None, self.gate.execute, self.src, sent)
+            self.log(f"cmd {sent} -> {'ok' if res['ok'] else res['error']}")
             await ws.send(json.dumps(res))
         elif msg.get("type") == "refs":
             # Which cars viewers follow, each for themselves. Nothing here moves
