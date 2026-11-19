@@ -600,6 +600,7 @@ class Director:
 
     def status(self) -> dict:
         return {"type": "director", "live": self.live, "on": self.on, "mode": self.mode, "owner": self.owner,
+                "replayCast": getattr(self, "replay_cast", None),
                 "resume": self.resume, "style": self.style, "holdS": self.hold_s,
                 "autoGrid": self.auto_grid, "gridHoldS": self.grid_hold_s,
                 "gridLeft": len(self.grid) if self.owner == "grid" else None,

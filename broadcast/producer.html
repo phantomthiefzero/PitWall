@@ -471,6 +471,9 @@ header{padding:6px 12px}
       <section id="setDirector">
         <h2>Auto-director</h2>
         <div id="dirOpts"></div>
+        <h3>Broadcasting a replay</h3>
+        <div class="opts" id="rcMode"></div>
+        <p class="note">To record a show from a replay in iRacing. While one is broadcast, the replay is the race: the laps, the order and the finish come from the moment you are watching, not from iRacing's final results, and the director's instant replays come back to where the show is on the replay, not to its end. Scrubbing or fast-forwarding in iRacing starts the race's history again from where you land (stops, the lap chart, battles). Automatic turns it on for a saved replay file, or when you have been more than 2 minutes behind live for 20 s.</p>
         <p class="note">With replays on, the director shows the best recent moment again (a contact, a spin, a pass for the top places, a new leader) when nothing big is happening live, or under a caution: with the stinger in and out, from another angle, and straight back to live if something big happens meanwhile. At most one every 75 s.</p>
       <div data-adv><h3>Your cameras</h3>
         <p class="note">What the director takes each camera group for, camera packs included. A camera that stands at one place (a corner, the start / finish line) is used only as a car comes past it, so the director has to know where it stands: click where it stands on the track map ("Place them on the map" takes each in turn), or put a car on camera and press "It is here" as it passes that camera. Until then the director leaves that camera alone. Kept for this track.</p>
@@ -843,6 +846,11 @@ header{padding:6px 12px}
   //      for a camera at one place, where it stands. A setting: it works with the broadcast off.
   const CAM_KIND = { far: "Main chase", chase: "Close chase", rear: "Looking back from in front", onboard: "On the car", detail: "Close-up (wheel, gearbox)",
     gyro: "Gyro", trackside: "TV cameras round the lap", spot: "One camera at one place", aerial: "From above", pit: "Pit lane", never: "Never use" };
+  // ---- broadcasting a replay (pitwall/replaycast.py): a setting, it works with the broadcast off
+  function rcSet(mode) {
+    if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return; }
+    if (send({ type: "cmd", cmd: "director", action: "replaycast", mode })) pending.push("Broadcasting a replay: " + ({ auto: "automatic", on: "on", off: "off" }[mode] || mode));
+  }
   function camSet(obj, label) {
     if (!canCamera()) { toast(canProduce() ? "The bridge was not started with camera control" : "This link is view-only", true); return; }
     if (send({ type: "cmd", cmd: "director", action: "camera", ...obj })) pending.push(label);
@@ -1586,6 +1594,8 @@ header{padding:6px 12px}
       if (k !== renderControls.stingKey) { renderControls.stingKey = k; if (send({ type: "cmd", cmd: "director", action: "set", stingerCutMs: cutMs, stinger: on })) pending.push(QUIET); }
     }
     renderCamList(dr);
+    { const rc = dr.replayCast || {}, rm = rc.mode || "auto", rd = canCamera() ? "" : "disabled";
+      $("rcMode").innerHTML = [["auto", "Automatic"], ["on", "On"], ["off", "Off"]].map(([k, l]) => `<button data-rcmode="${k}" class="${rm === k ? "on" : ""}" ${rd}>${l}</button>`).join(""); }
     $("gwAuto").innerHTML = sw("sw-gwauto", dr.autoGrid !== false, 'data-gwauto="1"', "Start it when the pace laps begin");
     { const byRow = dr.gridByRow !== false;
       $("gwBy").innerHTML = `<button data-gwby="1" class="${byRow ? "on" : ""}" ${dis}>A row at a time</button><button data-gwby="0" class="${byRow ? "" : "on"}" ${dis}>One car at a time</button>`; }
@@ -1738,6 +1748,7 @@ header{padding:6px 12px}
       ds.gwgo === "hand" ? "Grid walk by hand: Next, Previous, or click a driver" : "Walking the grid");
     else if (ds.gwby != null) cmd({ cmd: "director", action: "set", gridRows: ds.gwby === "1" }, ds.gwby === "1" ? "Grid walk: a row at a time" : "Grid walk: one car at a time");
     else if (ds.renders) cmd({ cmd: "livery", action: "renders", on: !(S.lv && S.lv.config && S.lv.config.renders !== false) }, "Car pictures from iRacing");
+    else if (ds.rcmode) rcSet(ds.rcmode);
     else if (ds.gwboard) cmd({ cmd: "director", action: "set", gridBoard: ds.gwboard }, "Grid board first: " + ({ auto: "automatic", always: "always", never: "never" }[ds.gwboard] || ds.gwboard));
     else if (ds.campick !== undefined) {
       camPick = ds.campick === "next" ? camPickNext(null) : ds.campick === "skip" ? camPickNext(camPick) : (ds.campick === camPick ? null : ds.campick || null);
@@ -1836,9 +1847,14 @@ header{padding:6px 12px}
     const le = S.state && S.state.derived && S.state.derived.liveEdge;
     $("liveBadge").classList.toggle("hide", !le);
     $("toLive").classList.toggle("hide", !le || le.atLive);
+    // broadcasting a replay: the replay is the race, and an instant replay is measured against where the show is
+    const rc = S.director && S.director.replayCast && S.director.replayCast.on ? S.director.replayCast : null;
     if (le) {
       $("liveBadge").classList.toggle("replay", !le.atLive);
-      $("liveBadge").innerHTML = le.atLive ? "Live" : "Replay" + (le.behindLiveS > 1 ? " · " + D(clock(le.behindLiveS) + " behind") : "");
+      $("liveBadge").innerHTML = rc ? (le.atLive ? "Replay broadcast" : "Instant replay" + (le.behindLiveS > 1 ? " · " + D(clock(le.behindLiveS) + " back") : ""))
+        : le.atLive ? "Live" : "Replay" + (le.behindLiveS > 1 ? " · " + D(clock(le.behindLiveS) + " behind") : "");
+      $("liveBadge").title = rc ? (rc.why === "file" ? "A saved replay is playing: it is broadcast as the race" : "Watching this session's replay: it is broadcast as the race") : "";
+      { const tl = rc ? "Back to the show" : "Back to live"; if ($("toLive").textContent !== tl) $("toLive").textContent = tl; }
     }
   }
   function renderField() {

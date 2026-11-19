@@ -321,6 +321,12 @@ trucks, start, three cautions, green-flag stops), recorded while a replay played
   and drives out: not a stop (no lane entry was watched).
 - A lap behind the pace car took ~137 s against ~52 s green: laps over 1.5x the
   car's best are kept out of pace.
+- **A saved replay file says so:** WeekendInfo `SimMode` is "replay". `SessionTime` equals
+  `ReplaySessionTime` (the sim's clock IS the tape's, so it reads as live), `SessionTimeRemain` is 604800
+  (a week: unknown), `ReplayFrameNumEnd` counts down to the end of the tape, and `SessionInfo`
+  `ResultsPositions` are the session's END (leader LapsComplete 35 from the first lap). Read through
+  pitwall/replaycast.py while broadcast. **Not seen yet:** whether a replay watched behind live in the same
+  sim, after the race, reports `SessionNum` / `SessionState` from the tape or from live.
 
 ### Summit Point (MX-5, spectated, Nov 2026)
 

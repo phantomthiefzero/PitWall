@@ -3463,3 +3463,145 @@ def test_go_live_is_one_press_and_setup_starts_simple():
         assert sec in page, sec
     assert 'if (el && el.closest("[data-adv]")) suSimple(false);' in page
     assert 'localStorage.getItem("pitwall.producerSetup") !== "all"' in page, "Simple to start with"
+
+
+# --------------------------------------------------------------------- broadcasting a replay as the race
+
+class _Tape:
+    """A stand-in for iRacing playing a replay: only what ReplayCast reads, set by the test."""
+    name = "tape"
+    session_info_update = 1
+
+    def __init__(self, sim_mode="replay"):
+        self.v = {"IsReplayPlaying": True, "ReplayPlaySpeed": 1, "ReplayPlaySlowMotion": False,
+                  "SessionNum": 2, "ReplaySessionNum": 2, "SessionTime": 100.0, "ReplaySessionTime": 100.0,
+                  "SessionTimeRemain": 604800.0}
+        self.info = {"WeekendInfo": {"SimMode": sim_mode},
+                     "SessionInfo": {"Sessions": [{"SessionNum": 2, "ResultsPositions": [{"Position": 1, "CarIdx": 3, "LapsComplete": 50}]}]}}
+
+    def get(self, k):
+        return self.v.get(k)
+
+    def session_info(self, k):
+        return self.info.get(k)
+
+
+def test_a_replay_is_broadcast_as_the_race_and_back_to_live_is_back_to_the_show():
+    """Nov 2026, the user's "it gets confused when I'm watching a replay to record a broadcast". A saved replay
+    (Talladega: SimMode "replay", SessionTime running with the tape) gave iRacing's FINAL results as the floor of the
+    leader's laps ("lap 35, 15 to go" from lap 1; a whole race's replay was over at the green), and the director's
+    back-to-live searched to the end of the tape. While a replay is broadcast the tape is the race."""
+    from pitwall.normalize import live_edge, results_positions
+    from pitwall.replaycast import ReplayCast, BEHIND_HOLD_S, BEHIND_S
+    tape, now = _Tape(), [0.0]
+    cast = ReplayCast(tape, clock=lambda: now[0])
+    view = cast.view
+
+    def frame(dt=0.1, adv=0.1):
+        now[0] += dt
+        tape.v["ReplaySessionTime"] += adv
+        if tape.info["WeekendInfo"]["SimMode"] == "replay":
+            tape.v["SessionTime"] = tape.v["ReplaySessionTime"]   # a file: the sim's clock is the tape's
+        else:
+            tape.v["SessionTime"] += dt
+        return cast.update()
+
+    assert frame() == "start" and cast.on and cast.why == "file"
+    assert results_positions(view.session_info("SessionInfo"), 2) == [], "the final results are not the race's"
+    assert results_positions(tape.session_info("SessionInfo"), 2), "the real source is left as it is"
+    for _ in range(100):
+        assert frame() is None
+    t_show = cast.prog[1]
+    assert abs(t_show - tape.v["ReplaySessionTime"]) < 1e-6 and view.get("SessionTime") == t_show
+
+    # the director's instant replay: 40 s back, the program waits, the picture is held
+    jump = {"cmd": "replay", "action": "jump", "session": 2, "timeS": t_show - 40, "preroll": 3}
+    assert cast.command(dict(jump)) == jump and cast.instant
+    tape.v["ReplaySessionTime"] = t_show - 43
+    for _ in range(50):
+        assert frame() is None
+    edge = live_edge(view.get)
+    assert edge["atLive"] is False and 35 < edge["behindLiveS"] < 45, "measured against the show, not the tape's end"
+    # back to live = back to the show, never to the end of the tape
+    back = cast.command({"cmd": "replay", "action": "search", "mode": "to_end"})
+    assert back["action"] == "jump" and back["session"] == 2 and abs(back["timeS"] - t_show) < 0.01 and back["preroll"] == 0
+    assert not cast.instant
+    assert frame() is None, "the seek has a moment to land"
+    tape.v["ReplaySessionTime"] = t_show
+    assert frame() is None and cast._settle_until is None
+    assert live_edge(view.get)["atLive"] is True
+
+    # paused, then fast-forwarded by hand in iRacing: held while it runs fast, one fresh start where it lands
+    tape.v["ReplayPlaySpeed"] = 0
+    assert all(frame(adv=0.0) is None for _ in range(20))
+    assert live_edge(view.get)["atLive"] is False
+    tape.v["ReplayPlaySpeed"] = 16
+    assert all(frame(adv=1.6) is None for _ in range(30)), "no fresh start for every second of a fast-forward"
+    tape.v["ReplayPlaySpeed"] = 1
+    assert frame() == "jump" and abs(cast.prog[1] - tape.v["ReplaySessionTime"]) < 1e-6
+    assert frame() is None
+    # scrubbed back by hand: a fresh start too
+    tape.v["ReplaySessionTime"] -= 300
+    assert frame() == "jump"
+
+    # off: the source as it is
+    cast.set_mode("off")
+    assert frame() == "stop" and not cast.on and view.get("SessionTime") == tape.v["SessionTime"]
+    assert cast.command({"cmd": "replay", "action": "search", "mode": "to_end"})["mode"] == "to_end"
+
+    # this session's replay watched behind live: on after BEHIND_S for BEHIND_HOLD_S, off back at live
+    tape2, now[0] = _Tape(sim_mode="full"), 0.0
+    tape2.v["SessionTime"] = 3000.0
+    cast2 = ReplayCast(tape2, clock=lambda: now[0])
+    tape, cast = tape2, cast2
+    tape.v["ReplaySessionTime"] = 3000.0 - BEHIND_S - 60
+    n = 0
+    while cast.update() is None and n < 1000:
+        now[0] += 0.5
+        tape.v["SessionTime"] += 0.5
+        tape.v["ReplaySessionTime"] += 0.5
+        n += 1
+    assert cast.on and cast.why == "behind" and BEHIND_HOLD_S <= n * 0.5 <= BEHIND_HOLD_S + 1
+    assert cast.view.get("SessionTimeRemain") is None, "the sim's clock is not the replay's"
+    tape.v["ReplaySessionTime"] = tape.v["SessionTime"]
+    assert cast.update() == "stop"
+
+
+def test_a_replay_file_through_the_bridge_reads_the_race_from_the_tape():
+    """The fake in a replay file's shape (SimMode "replay", the final results in the session info): the leader's laps
+    and the finish come from the tape; the director's back to live goes back to the show."""
+    from pitwall.bridge import Bridge
+    src = FakeSource(seed=5, n_cars=8, realtime=False, replay_shape=True)
+    src.connect()
+    info = src._session
+    info["WeekendInfo"]["SimMode"] = "replay"
+    race = next(s for s in info["SessionInfo"]["Sessions"] if s["SessionType"] == "Race")
+    race["ResultsPositions"] = [{"Position": i + 1, "ClassPosition": i, "CarIdx": i, "LapsComplete": race["SessionLaps"],
+                                 "FastestTime": 80.0, "LastTime": 81.0} for i in range(8)]
+    with tempfile.TemporaryDirectory() as d:
+        b = Bridge(src, "ws://127.0.0.1:1", "t", allow_camera=True, render_cars=False, log=lambda m: None, livery_dir=d)
+        for _ in range(400):
+            src.tick()
+            b._build(src.get("SessionTime"))
+        assert b.cast.on and b.cast.why == "file"
+        r = b._last_cars["derived"]["race"]
+        lead = max(c.get("lapCompleted") or 0 for c in b._last_cars["cars"])
+        assert r["leaderLapsDone"] == lead < race["SessionLaps"], "laps from the tape, not iRacing's final results"
+        assert not r.get("finished") and not r.get("checkered")
+        assert b.director.status()["replayCast"]["on"] is True
+        sent = []
+        b.gate.execute = lambda s, c: sent.append(c) or {"ok": True}
+        b._replay({"cmd": "replay", "action": "search", "mode": "to_end"})
+        import time as _t
+        for _ in range(50):
+            if sent:
+                break
+            _t.sleep(0.02)
+        assert sent and sent[0]["action"] == "jump" and sent[0]["session"] == b.cast.prog[0]
+        # the producer's setting: kept, and allowed with the broadcast off
+        res = b._broadcast_cmd({"type": "cmd", "cmd": "director", "action": "replaycast", "mode": "off"})
+        assert res["ok"] and b.cast.mode == "off" and b.livery_store.cfg["replayCast"] == "off"
+        assert not b._broadcast_cmd({"type": "cmd", "cmd": "director", "action": "replaycast", "mode": "x"})["ok"]
+    page = open(os.path.join(os.path.dirname(__file__), "..", "broadcast", "producer.html"), encoding="utf-8").read()
+    assert 'id="rcMode"' in page and "data-rcmode" in page and '"Back to the show"' in page
+    assert 'action: "replaycast"' in page
