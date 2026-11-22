@@ -2245,6 +2245,40 @@ console.log(JSON.stringify(out));
     assert out["stopped"] is None
 
 
+def test_the_driver_picks_how_many_laps_each_run_of_the_test_takes():
+    # Nov 2026, the user's "I can't select the amount of laps for a test run anymore in the setup tab": the test was
+    # fixed at TEST_LAPS. The driver picks the laps each run (kept in this browser, and changeable mid-test), and the
+    # live panel is not rebuilt while one of its menus is open (it closed under the finger at the end of a lap).
+    if not NODE:
+        return
+    out = run_js("""
+LIVE.secs = [0.33, 0.66]; LIVE.vers = [{ n: 1, diff: [] }]; LIVE.laps = []; LIVE.meta = { carPath: 'ferrari296gt3' };
+const lap = (ver, t) => LIVE.laps.push({ ver, valid: true, time: t, sx: [t * 0.3, t * 0.65], lap: LIVE.laps.length + 1, tc: {}, st: [] });
+const say = () => setupTestHtml().replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+const pick = v => setupTestLaps({ target: { matches: q => /sutestlaps/.test(q), value: String(v), blur() {} } });
+const out = { idle: setupTestHtml(), def: testLaps() };
+pick(3); out.kept = testLaps();
+setupTestClick({ target: { closest: () => ({ dataset: { sutest: 'start' } }) } });
+out.laps = LIVE.test.laps; out.s1 = say(); out.s1html = setupTestHtml();
+[85.1, 85.3, 85.0].forEach(t => lap(1, t)); out.s2 = say();
+LIVE.vers.push({ n: 2, diff: [{ lab: 'Rear wing', from: '6', to: '5' }] });
+pick(4); out.mid = LIVE.test.laps; out.s3 = say();
+[84.6, 84.7, 84.5, 84.8].forEach(t => lap(2, t)); out.done = say();
+pick(7); out.bad = LIVE.test.laps;
+console.log(JSON.stringify(out));
+""")
+    assert "data-sutestlaps" in out["idle"] and "laps each run" in out["idle"], "the choice is there before the test"
+    assert out["def"] == 5 and out["kept"] == 3
+    assert out["laps"] == 3 and "3 more clean laps" in out["s1"] and "data-sutestlaps" in out["s1html"]
+    assert "Step 2 of 3" in out["s2"], "3 laps on the first setup are enough when 3 were picked"
+    assert out["mid"] == 4 and "4 more clean laps" in out["s3"], "changed mid-test"
+    assert "Result" in out["done"], out["done"]
+    assert out["bad"] == 4, "only the offered counts"
+    page = open(PAGE, encoding="utf-8").read()
+    assert "if(body&&liveMenuOpen(el)){LIVE.renderLater=true;return}" in page
+    assert "L.blur();" in page, "the engineer's laps per round lets go of focus once picked"
+
+
 def test_the_track_notebook_keeps_how_a_track_is_driven_from_the_fastest_lap_loaded():
     # Nov 2026, the user's pick, checked against the Garage 61 lap's own samples: corner 1 at Indianapolis, the brake
     # 151 m before the slowest point (the CSV: 151 m), back on the throttle 2 m after (2 m), 87 km/h in 2nd.
