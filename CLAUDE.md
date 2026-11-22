@@ -111,6 +111,8 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   `kbSign`): never assume higher = stiffer. Ride heights are suggested last. A wingless car is never offered a wing.
   Balance is read against what fast laps do in each phase, not against the run's own middle.
 - Only redraw a view while it is on screen (renderOwn, renderCoach); Coaching's result is memoised (coachKey).
+- A panel that is redrawn as data comes in is never rebuilt while one of its menus is open (liveRender waits on
+  liveMenuOpen); a menu lets go of focus once picked. Setup's "Test one change": the driver picks the laps each run.
 - Calm look: space and hairlines, not boxes; colour means something is off; long hints fold behind (i).
 
 ## PitWall dashboard (client/)

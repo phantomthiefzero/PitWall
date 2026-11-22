@@ -797,3 +797,11 @@ Broadcast (broadcast/)
 - The relay serves both pages at /broadcast/. The suite runs the bridge with camera control
   on and keeps the view/producer tokens in %LOCALAPPDATA%\iRacingSuite\broadcast.json so the
   OBS source address survives restarts.
+
+- Test one change, laps each run (Nov 2026, the user's "I can't select the amount of laps for a test run anymore in the
+  setup tab"): the test added in #100 sat at the top of Setup's live panel fixed at TEST_LAPS 5, above the engineer
+  whose "laps per round" menu was still there further down. The test now has its own menu (3, 4, 5, 6, 8, 10; kept in
+  localStorage suite:testLaps; LIVE.test.laps, changeable mid-test). And liveRender rebuilt the whole panel's markup
+  when a lap ended, which closed any of its menus in the driver's hand: it now waits while a menu in the panel has
+  focus (liveMenuOpen, LIVE.renderLater, redrawn on focusout), and both menus blur once picked.
+  test: test_the_driver_picks_how_many_laps_each_run_of_the_test_takes.
