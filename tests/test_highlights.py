@@ -973,7 +973,7 @@ def test_the_whole_races_camera_follows_each_moments_own_car(tmp_path, monkeypat
     assert "11" in {j["shots"][0]["car"] for j in p["angles"][1]}       # the passed car's view in the replays
     crash_angles = p["angles"][2]
     assert crash_angles[0]["shots"][0]["car"] == "14"          # from inside the other car caught up in it
-    assert e._video_name().startswith("Race race in review") or "race in review" in e._video_name()
+    assert " - Race in review - " in e._video_name()
 
 
 # ------------------------------------------------------------------------------------------------ the sights
@@ -1115,3 +1115,23 @@ def test_a_replay_without_class_names_names_each_class_by_its_car():
     assert sorted(res["classes"]) == ["MX-5 Cup", "Toyota GR86"]
     assert any(m["kind"] == "fastest" and "in Toyota GR86" in m["label"] for m in res["moments"])
     assert any("Toyota GR86" in m["label"] for m in kinds(res, "pass"))
+
+
+def test_each_video_is_named_for_what_is_in_it_and_never_overwrites_one(tmp_path):
+    from highlights.app import Engine, safe_name, free_path
+    import time as _t
+    day = _t.strftime("%Y-%m-%d")
+    e = Engine(demo=False, base=str(tmp_path / "home"))
+    e.result = {"mode": "race", "track": "Watkins Glen International", "moments": []}
+    assert e._video_name({"key": "full"}) == "Watkins Glen International - Race in review - " + day
+    assert e._video_name({"key": "best"}) == "Watkins Glen International - Best moments (short) - " + day
+    one = {"key": "s1", "label": "Last lap: #12 takes the lead from #10 in BMW M2 Racing (G87)"}
+    assert e._video_name(one) == ("Last lap: #12 takes the lead from #10 in BMW M2 Racing (G87) - "
+                                  "Watkins Glen International (short)").replace(":", "")
+    e.result = {"mode": "car", "track": "Suzuka", "number": "24", "team": "Mail Run Racing", "moments": []}
+    assert e._video_name({"key": "full"}) == "Suzuka - #24 Mail Run Racing - " + day
+    assert safe_name('a/b:c*d?"e<f>g|h') == "a b c d e f g h" and len(safe_name("word " * 60)) <= 100
+    p = tmp_path / "v.mp4"
+    assert free_path(str(p)) == str(p)
+    p.write_bytes(b"x")
+    assert free_path(str(p)) == str(tmp_path / "v (2).mp4")
