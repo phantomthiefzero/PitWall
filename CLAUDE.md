@@ -221,6 +221,11 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   its laps). No packs or busy corners in the first minute, under a caution or RESTART_CALM_S after it. A new sight:
   SPECTACLE_KINDS, LEAD / KEY / AFTER in shots.py, the page's KINDS; new kinds start ticked (kindsKnown).
   Anything on a class's last lap says so and counts LAST_LAP_BONUS more. Check a change against the recordings.
+- The full video is cut by the editor (highlights/edit.py, pick.auto_pick with the result): stories, not moments
+  (a fight is one clip, captioned once; pick.clips joins a story's pieces up to STORY_JOIN_S), shared over the acts
+  (ACT_SHARE; chapters name them), repeats of a car, kind or wording cost (CAR_REPEAT, KIND_REPEAT) and a story under
+  VALUE_FLOOR stays out: a shorter video beats a repeat. Captions never show a battle's length or "back and forth";
+  the whole race's lap is the leader's; nothing after a car's own flag. Shorts: one moment a story, its own caption.
 - A short counts its replays in its length (pick.short_length speeds: SINGLE_SPEEDS for a one-moment short,
   BEST_SPEEDS for the best-of) and cuts its later clips to short_window; the full video's target counts replays, the
   cold open and the cards (Engine.auto searches the budget). The start is START_S (20 s) of racing.

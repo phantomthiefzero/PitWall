@@ -876,7 +876,8 @@ def test_the_full_videos_target_counts_its_replays_and_the_start_is_twenty_secon
     assert st["segs"][0][1] - st["t"] == pytest.approx(START_S, abs=0.01)
     e = Engine(demo=True, base=str(tmp_path / "home"), cam_setup=lambda k: {})
     ms = [_m(0, 10, 100, "start", [[4, 30]], True)] + \
-         [dict(_m(i, 200 * i, 50 + i, "pass", [[200 * i - 10, 200 * i + 5]]), cars=[1]) for i in range(1, 12)] + \
+         [dict(_m(i, 200 * i, 50 + i, "pass", [[200 * i - 10, 200 * i + 5]]), cars=[i],
+               label="#%d passes #%d" % (i, i + 20)) for i in range(1, 12)] + \
          [_m(12, 3000, 100, "finish", [[2980, 3008]], True)]
     e.result = {"moments": ms, "green": 10.0, "finish": 3000.0, "cameraInfo": CAM_INFO, "numbers": {0: "34", 1: "7"},
                 "target": 0, "lapTime": 100.0, "path": []}
@@ -1135,3 +1136,79 @@ def test_each_video_is_named_for_what_is_in_it_and_never_overwrites_one(tmp_path
     assert free_path(str(p)) == str(p)
     p.write_bytes(b"x")
     assert free_path(str(p)) == str(tmp_path / "v (2).mp4")
+# ------------------------------------------------------------------------------------------------ the editor
+def _mm(i, kind, t, score, label, focus, cars=(), **kw):
+    m = {"id": i, "kind": kind, "session": 2, "t": float(t), "segs": [[t - 8.0, t + 4.0]], "score": float(score),
+         "label": label, "focus": focus, "cars": list(cars), "lap": 1 + int(t // 100)}
+    m.update(kw)
+    return m
+
+
+def _race(ms):
+    for i, m in enumerate(ms):
+        m["id"] = i
+    return {"mode": "race", "target": -1, "green": 0.0, "moments": ms}
+
+
+def test_a_fight_is_one_story_told_in_one_clip_with_one_caption():
+    from highlights.edit import storylines
+    from highlights.pick import clips
+    ms = [_mm(0, "start", 0, 100, "The start", 1, mandatory=True, segs=[[-6, 20]]),
+          _mm(0, "battle", 590, 60, "#18 and #22 battle for the lead (2 min)", 3, [6], classPos=1),
+          _mm(0, "sidebyside", 600, 80, "#18 and #22 side by side for the lead for 7 s", 6, [3]),
+          _mm(0, "pass", 612, 140, "#18 takes the lead from #22", 3, [6], classPos=1),
+          _mm(0, "pass", 628, 140, "#22 takes the lead from #18 - back and forth", 6, [3], classPos=1),
+          _mm(0, "pass", 640, 60, "#40 passes #41 for P9", 40, [41]),
+          _mm(0, "finish", 1000, 100, "#22 wins", 6, mandatory=True)]
+    r = _race(ms)
+    st = storylines(ms, r)
+    fight = [s for s in st if s["best"]["t"] == 612][0]
+    assert sorted(fight["ids"]) == [1, 2, 3, 4] and fight["label"] == "#18 and #22 trade the lead"
+    assert ms[5]["story"] != ms[3]["story"]                     # another pair is another story
+    cs = clips(ms, [1, 2, 3, 4])
+    assert len(cs) == 1 and cs[0]["caption"] == "Lap 7  ·  #18 and #22 trade the lead"
+    assert "(2 min)" not in clips(ms, [1])[0]["caption"]
+
+
+def test_the_full_video_tells_the_whole_race_and_does_not_repeat_one_fight():
+    from highlights.edit import plan, storylines
+    from highlights.pick import clips
+    ms = [_mm(0, "start", 0, 100, "The start", 1, mandatory=True, segs=[[-6, 20]])]
+    # the same two cars fight for the lead all race long, scoring highest every time
+    for t in (300, 900, 1500, 2100, 2700):
+        ms.append(_mm(0, "pass", t, 140, "#1 takes the lead from #2", 1, [2], classPos=1))
+    # and one other story in each part of the race
+    ms += [_mm(0, "crash", 700, 90, "Crash - #7 and #8", 7, [8]),
+           _mm(0, "pass", 1700, 80, "#5 passes #6 for P4", 5, [6]),
+           _mm(0, "pack", 2500, 75, "A pack of 9 cars nose to tail", 9, [10], spectacle=True),
+           _mm(0, "finish", 3000, 100, "#1 wins", 1, mandatory=True)]
+    r = _race(ms)
+    r["finish"] = 3000.0
+    ids = plan(ms, r, 110)
+    kinds = [ms[i]["kind"] for i in ids]
+    lead_fights = [i for i in ids if ms[i]["label"].startswith("#1 takes")]
+    assert len(lead_fights) <= 2, [ms[i]["label"] for i in ids]
+    assert "crash" in kinds and "pack" in kinds and any(ms[i]["label"].startswith("#5") for i in ids)
+    ts = [ms[i]["t"] for i in ids if not ms[i].get("mandatory")]
+    assert min(ts) < 1000 and max(ts) > 2000                     # early and late, not one stretch
+    storylines(ms, r)
+    from highlights.story import chapters
+    items = [{"a": c["a"], "b": c["b"], "kind": c["kind"]} for c in clips(ms, ids)]
+    chapters(r, items)
+    names = [it.get("chapter") for it in items if it.get("chapter")]
+    assert names[0] == "Early laps" and names[-1] == "The finish" and "The closing laps" in names
+
+
+def test_nothing_after_a_cars_own_flag_and_the_caption_lap_is_the_races():
+    cars = {0: steady(0.62, 100.0), 1: steady(0.60, 100.0), 2: lambda t: {
+        "dist": 0.1 + t / LAP_S, "surf": 0 if 640 <= t < 650 else 3}}
+    plain = run_field(cars, end=700)
+    assert [m for m in plain["moments"] if m["kind"] == "off" and m["focus"] == 2]
+    laps = 5
+    results = [{"CarIdx": 0, "Position": 1, "ClassPosition": 0, "LapsComplete": laps},
+               {"CarIdx": 1, "Position": 2, "ClassPosition": 1, "LapsComplete": laps},
+               {"CarIdx": 2, "Position": 3, "ClassPosition": 2, "LapsComplete": laps}]
+    res = run_field(cars, results=results, end=700)
+    flag = [m for m in res["moments"] if m["kind"] == "finish"][0]["t"]
+    assert flag < 640
+    assert not [m for m in res["moments"] if m["kind"] == "off" and m["focus"] == 2]   # the cool-down lap
