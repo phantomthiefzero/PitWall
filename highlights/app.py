@@ -21,14 +21,21 @@ from .moments import analyze_capture, capture_field, fmt_lap
 from .pick import auto_pick, best_of, clips as make_clips, hook_first, length, short_length, singles
 from .scan import ScanError, camera_groups, look, scan
 from .stitch import BuildError, build, probe
+from . import shots as shotlib
+from . import story
+from .stingers import STYLES as STINGER_STYLES
 
 DEFAULTS = {
-    "obsUrl": "ws://127.0.0.1:4455", "obsPassword": "", "camera": "auto", "stinger": "", "music": [],
+    "obsUrl": "ws://127.0.0.1:4455", "obsPassword": "", "camera": "auto", "stinger": "builtin:chevrons", "music": [],
     "musicVolume": 0.35, "gameVolume": 0.7, "targetMin": 8, "captions": True, "cards": True,
     "kinds": ["pass", "lost", "battle", "off", "spin", "towed", "drama", "pit", "fastest"],
     # vertical shorts (9:16) for YouTube Shorts, Instagram Reels, TikTok
-    "makeFull": True, "makeBestOf": True, "shortSingles": 3, "shortMaxS": 45, "shortFrame": "fill",
+    "makeFull": True, "makeBestOf": True, "shortSingles": 3, "shortMaxS": 30, "shortFrame": "fill",
     "shortReplay": True,
+    # the story: replays from other cameras for the best moments, the cold open
+    "angleMoments": 3, "anglesEach": 2, "teaser": True,
+    # seconds of building per second of video, measured on this PC by each build (for the estimates)
+    "buildRate": {},
 }
 AUDIO_EXT = (".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac")
 
@@ -48,6 +55,14 @@ def settings_path() -> str:
     return os.path.join(d, "highlights.json")
 
 
+def _producer_cameras(key):
+    try:
+        from pitwall.liveries import LiveryStore
+        return ((LiveryStore().cfg.get("cameras") or {}).get(key)) or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def safe_name(s) -> str:
     s = re.sub(r"[^A-Za-z0-9 _.-]+", "", str(s or "")).strip()
     return re.sub(r"\s+", " ", s)[:60] or "race"
@@ -63,12 +78,15 @@ def clock_str(s) -> str:
 
 
 class Engine:
-    def __init__(self, demo=False, base=None, camera_busy=lambda: None):
+    def __init__(self, demo=False, base=None, camera_busy=lambda: None, cam_setup=None):
         self.demo = demo
         self.base = base or home()
         # The suite's Broadcast also drives iRacing's camera and replay: while its auto-director is on, this says
         # why, and Highlights waits (two owners of one camera would fight over every cut).
         self.camera_busy = camera_busy
+        # The producer's word on this track's cameras ("Your cameras", PitWall's obs.json): track key -> setup
+        self.cam_setup = cam_setup or _producer_cameras
+        self.job_t0 = None
         self.settings = dict(DEFAULTS)
         self._load()
         self.lock = threading.Lock()
@@ -140,6 +158,11 @@ class Engine:
                 r = look(src)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "why": "Cannot read iRacing: %s" % e}
+        if r.get("ok"):
+            from .moments import race_length_guess
+            r["raceS"] = race_length_guess((src.session_info("SessionInfo") or {}))
+            r["scanS"] = story.scan_estimate(r["raceS"])
+            r["scanText"] = story.minutes(r["scanS"]) if r["scanS"] else ""
         self.looked = r
         self.cameras = r.get("cameras") or []
         return r
@@ -150,7 +173,8 @@ class Engine:
             return {"ok": False, "error": "Busy: %s" % self.job}
         self.job, self.error = name, None
         self.stop_flag.clear()
-        self.progress = {"done": 0, "of": 0, "text": ""}
+        self.progress = {"done": 0, "of": 0, "text": "", "eta": None}
+        self.job_t0 = time.monotonic()
 
         def go():
             try:
@@ -200,8 +224,19 @@ class Engine:
                 path = os.path.join(self.base, "Scans", safe_name(name) + ".jsonl.gz")
                 self.progress["text"] = "Jumping to the start of the race..."
 
+                race_s = (self.looked or {}).get("raceS")
+                t_wall, t_first = time.monotonic(), [None]
+
                 def prog(t):
-                    self.progress["text"] = "Scanning: %s of the race read" % clock_str(t)
+                    if t_first[0] is None:
+                        t_first[0] = t
+                    read = t - t_first[0]
+                    eta = None
+                    if race_s and read > 30:
+                        rate = read / max(1e-3, time.monotonic() - t_wall)      # race seconds a second
+                        eta = max(0.0, (race_s + 120 - read) / max(rate, 1.0))
+                    self.progress.update(text="Scanning: %s of the race read" % clock_str(read), eta=eta,
+                                         done=min(read, race_s or read), of=race_s or 0)
                 res = scan(src, self.gate, idx, path, stop=self.stop_flag.is_set, progress=prog, log=self.log)
             self._took(res)
             self.progress["text"] = "Scan done (%s): %d moments found" % (res.get("ended"), len(res["moments"]))
@@ -234,7 +269,7 @@ class Engine:
 
     def _stinger_s(self):
         st = self.settings.get("stinger")
-        if not st or not os.path.exists(st):
+        if not st or str(st).startswith("builtin:") or not os.path.exists(st):
             return 0.0
         try:
             info = probe(st)
@@ -305,6 +340,46 @@ class Engine:
                         "vertical": True, "length": short_length(hook_first(make_clips(ms, ids), replay), st)})
         return out
 
+    def _cams(self):
+        r = self.result or {}
+        info = r.get("cameraInfo") or {}
+        return shotlib.Cameras(info, self.cam_setup(r.get("trackKey")) if r.get("trackKey") else {}, r.get("lapTime"))
+
+    def _number(self, idx):
+        r = self.result or {}
+        n = (r.get("numbers") or {}).get(idx)
+        if n is None and self.target and idx == self.target.get("idx"):
+            n = self.target.get("number")
+        return str(n if n is not None else idx)
+
+    def plan(self):
+        """What will be recorded (each clip with its shots, the angles) for what is ticked now; worked out again
+        only when the picks or the settings change (the page asks twice a second)."""
+        outs = self.outputs()
+        if not self.result or not outs:
+            return {"main": [], "angles": {}, "jobs": []}
+        key = json.dumps([id(self.result), [o["ids"] for o in outs], self.settings], sort_keys=True, default=str)
+        if getattr(self, "_plan_key", None) != key:
+            self._plan = story.camera_plan(self.result, outs, self.settings, self._cams(), self._number)
+            self._plan_key = key
+        return self._plan
+
+    def _replay_s(self, out) -> float:
+        """Seconds the other-angle replays add to an output (a short: its hook's only)."""
+        p = self.plan()
+        cs = make_clips(self.result["moments"], out["ids"])
+        if out["vertical"]:
+            cs = cs and [max(cs, key=lambda c: c["score"])]
+        return sum((j["b"] - j["a"]) / j["speed"] for c in cs for j in p["angles"].get(c["best"], []))
+
+    def estimates(self) -> dict:
+        outs = self.outputs()
+        jobs = self.plan()["jobs"] if outs else []
+        rec = shotlib.record_s(jobs)
+        bld = story.build_estimate(outs, self.settings.get("buildRate") or {})
+        return {"record": rec, "build": bld, "recordText": story.minutes(rec), "buildText": story.minutes(bld),
+                "recordings": len(jobs), "angles": sum(len(v) for v in self.plan()["angles"].values()) if outs else 0}
+
     def record_and_build(self):
         if not self.result:
             return {"ok": False, "error": "Nothing picked."}
@@ -316,29 +391,28 @@ class Engine:
         outs = self.outputs()
         if not outs:
             return {"ok": False, "error": "Nothing to make: tick the full video or a short."}
-        # every clip any of the videos needs, recorded once (overlapping ones as one)
-        union = sorted({i for o in outs for i in o["ids"]})
-        cs = make_clips(self.result["moments"], union)
+        jobs = self.plan()["jobs"]
 
         def job():
             obs = self._obs()
             obs.connect()
+            total = shotlib.record_s(jobs)
             with self.lock:
                 src = self._source()
                 rec = ClipRecorder(src, self.gate, obs, log=self.log, stop=self.stop_flag.is_set)
 
                 def prog(i, n):
-                    self.progress.update(done=i, of=n, text="Recording clip %d of %d" % (min(i + 1, n), n))
-                self.progress.update(done=0, of=len(cs), text="Recording clip 1 of %d" % len(cs))
-                got = rec.record(cs, self.target["number"], self.cameras, self.settings.get("camera"),
+                    left = shotlib.record_s(jobs[i:])
+                    self.progress.update(done=total - left, of=total, eta=left,
+                                         text="Recording %d of %d" % (min(i + 1, n), n))
+                prog(0, len(jobs))
+                got = rec.record(jobs, self.target["number"], self.cameras, self.settings.get("camera"),
                                  stop=self.stop_flag.is_set, progress=prog)
             obs.close()
-            for r, c in zip(got, cs):
-                r["session"] = c["session"]
             self.recorded = got
             bad = [r for r in got if not r.get("ok")]
             if bad:
-                self.log("%d clip(s) could not be recorded and are left out" % len(bad))
+                self.log("%d recording(s) failed and are left out" % len(bad))
             if self.stop_flag.is_set():
                 self.progress["text"] = "Stopped. %d clips recorded." % sum(1 for r in got if r.get("ok"))
                 return
@@ -351,82 +425,80 @@ class Engine:
         return self._run("build", self._build)
 
     def _inputs(self, out) -> list[dict]:
-        """An output's clips, each cut from the recorded clip that covers it."""
-        cs = make_clips(self.result["moments"], out["ids"])
-        if out["vertical"]:
-            cs = hook_first(cs, bool(self.settings.get("shortReplay", True)))
-        good = [x for x in self.recorded if x.get("ok")]
-        res = []
-        for c in cs:
-            r = next((x for x in good if x.get("session", c["session"]) == c["session"]
-                      and x["a"] <= c["a"] + 0.05 and x["b"] >= c["b"] - 0.05), None)
-            if r is None:
-                self.log("%s: no recording covers %s, left out" % (out["name"], c["caption"]))
-                continue
-            item = {"path": r["path"], "recStart": r["recStart"], "a": c["a"], "b": c["b"], "caption": c["caption"],
-                    "kind": c["kind"], "ok": True}
-            rp = c.get("replay") if out["vertical"] else None
-            if rp:
-                item["replay"] = {"a": max(rp["a"], r["a"]), "b": min(rp["b"], r["b"])}
-            res.append(item)
-        return res
+        return story.inputs(out, self.result, self.recorded, self.settings, log=self.log)
 
     def _build(self):
         self.job = "build"
         name = self._video_name()
         r, car = self.result or {}, self.target or {}
-        base = {"stinger": self.settings.get("stinger") or None, "captions": self.settings.get("captions", True),
+        st = self.settings.get("stinger") or None
+        base = {"stinger": st, "captions": self.settings.get("captions", True),
+                "stingerMark": "#%s" % (r.get("number") or car.get("number") or "") if st else None,
+                "stingerSub": r.get("team") or None,
                 "music": [m for m in self.settings.get("music") or [] if os.path.exists(m)],
                 "musicVolume": float(self.settings.get("musicVolume", 0.35)),
                 "gameVolume": float(self.settings.get("gameVolume", 0.7))}
         if not base["music"]:
             base["gameVolume"] = 1.0
         outs = [o for o in self.outputs() if self._inputs(o)] if self.recorded else []
+        est = {o["key"]: story.build_estimate([o], self.settings.get("buildRate") or {}) for o in outs}
+        total_est = sum(est.values()) or 1.0
+        done_est = 0.0
         self.videos = []
+        intro, outro = story.cards(r, car)
         for n, o in enumerate(outs):
             opts = dict(base)
+            inputs = self._inputs(o)
             if o["vertical"]:
-                opts.update(vertical=True, frame=self.settings.get("shortFrame", "fill"), captions=True,
-                            maxS=float(self.settings.get("shortMaxS", 45)),
-                            tag=("#%s  %s" % (car.get("number", ""), r.get("track") or "")).strip().upper())
-            elif self.settings.get("cards"):
-                who = "#%s  %s" % (car.get("number", ""), car.get("team") or car.get("driver") or "")
-                opts["intro"] = {"title": r.get("event") or r.get("track") or "Race highlights",
-                                 "lines": [x for x in [r.get("track") if r.get("event") else "", who.strip(),
-                                                       car.get("cls") or ""] if x]}
-                fin = "Finished P%s in class" % r["classPos"] if r.get("classPos") else "Finished"
-                lines = []
-                if r.get("laps"):
-                    lines.append("%s laps" % r["laps"])
-                best = next((m for m in r.get("moments") or [] if m["kind"] == "fastest"), None)
-                if best and best.get("lapTime"):
-                    lines.append("Best lap %s" % fmt_lap(best["lapTime"]))
-                opts["outro"] = {"title": fin, "lines": lines}
+                opts.update(vertical=True, frame=self.settings.get("shortFrame", "fill"), captions=True, loop=True,
+                            maxS=float(self.settings.get("shortMaxS", 30)))
+            else:
+                if self.settings.get("cards"):
+                    opts["intro"], opts["outro"] = intro, outro
+                if self.settings.get("teaser", True):
+                    opts["teaser"] = story.teaser(r, self.recorded, o["ids"])
             fname = name if o["key"] == "full" else "%s - %s" % (name, safe_name(o["name"]))
             out = os.path.join(self.base, "Videos", fname + ".mp4")
             work = os.path.join(self.base, "Work", fname)
-            inputs = self._inputs(o)
+            t0 = time.monotonic()
 
-            def prog(i, k, o=o, n=n):
-                self.progress.update(done=i, of=k, text="Making %s (video %d of %d, step %d of %d)"
-                                     % (o["name"], n + 1, len(outs), i, k))
-            self.progress.update(done=0, of=len(inputs) + 2, text="Making %s..." % o["name"])
+            def prog(i, k, o=o, n=n, t0=t0, before=done_est):
+                frac = i / max(1, k)
+                spent = time.monotonic() - t0
+                mine = est[o["key"]] if frac < 0.15 else spent / max(frac, 1e-3)
+                left = max(0.0, mine - spent) + (total_est - before - est[o["key"]])
+                self.progress.update(done=before + est[o["key"]] * frac, of=total_est, eta=left,
+                                     text="Making %s (video %d of %d)" % (o["name"], n + 1, len(outs)))
+            prog(0, 1)
             res = build(inputs, out, work, opts, log=self.log, progress=prog)
             res["name"] = o["name"]
             self.videos.append(res)
+            done_est += est[o["key"]]
+            # what building took here, per second of video, for the next estimate
+            took = time.monotonic() - t0
+            rates = dict(self.settings.get("buildRate") or {})
+            kind = "tall" if o["vertical"] else "wide"
+            if res.get("duration"):
+                new = max(0.05, (took - story.BUILD_EACH_S) / res["duration"])
+                rates[kind] = round(new if kind not in rates else 0.5 * rates[kind] + 0.5 * new, 3)
+                self.save_settings({"buildRate": rates})
             try:
                 import shutil
                 shutil.rmtree(work, ignore_errors=True)
             except Exception:  # noqa: BLE001
                 pass
         self.video = self.videos[0] if self.videos else None
-        self.progress["text"] = "%d video%s ready in %s" % (len(self.videos), "" if len(self.videos) == 1 else "s",
-                                                            os.path.join(self.base, "Videos"))
+        self.progress.update(eta=None, text="%d video%s ready in %s" % (
+            len(self.videos), "" if len(self.videos) == 1 else "s", os.path.join(self.base, "Videos")))
 
     # ------------------------------------------------------------------ what the page shows
     def status(self):
         r = self.result
-        out = {"job": self.job, "progress": self.progress, "error": self.error, "logs": self.logs[-12:],
+        prog = dict(self.progress)
+        if self.job and prog.get("eta") is not None:
+            prog["etaText"] = story.minutes(prog["eta"]) + " left"
+        out = {"job": self.job, "progress": prog, "error": self.error, "logs": self.logs[-12:],
+               "stingerStyles": [{"key": "builtin:" + k, "name": v} for k, v in STINGER_STYLES.items()],
                "settings": self.settings, "target": self.target, "video": self.video, "demo": self.demo,
                "videos": [{"name": v.get("name"), "path": v["path"], "duration": v["duration"],
                            "vertical": v.get("vertical")} for v in self.videos],
@@ -448,8 +520,16 @@ class Engine:
                            "length": clock_str(length(r["moments"], self.chosen, st) + cards),
                            "raceLength": clock_str((r.get("finish") or 0) - green) if r.get("finish") else "",
                            "outputs": [{"key": o["key"], "name": o["name"], "vertical": o["vertical"],
-                                        "length": clock_str(o["length"]), "clips": len(make_clips(r["moments"], o["ids"]))}
-                                       for o in self.outputs()]}
+                                        "length": clock_str(min(o["length"] + self._replay_s(o),
+                                                                float(self.settings.get("shortMaxS", 30)))
+                                                            if o["vertical"] else
+                                                            o["length"] + self._replay_s(o) +
+                                                            (3.0 if self.settings.get("teaser", True) else 0)),
+                                        "clips": len(make_clips(r["moments"], o["ids"]))}
+                                       for o in self.outputs()],
+                           "team": r.get("team"), "number": r.get("number"), "drivers": r.get("drivers") or [],
+                           "stints": len(r.get("stints") or []), "startPos": r.get("startPos"),
+                           "estimates": self.estimates()}
         return out
 
 

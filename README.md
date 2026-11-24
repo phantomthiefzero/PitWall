@@ -57,31 +57,28 @@ Anyone with the link opens PitWall in a browser, phone or computer, anywhere.
 
 ## Highlights
 
-The **Highlights** tile on the home screen turns a whole race's replay into a short video of one car's best moments,
-plus vertical shorts, for sharing. (The Broadcast must be off while it works: both move iRacing's camera.)
+The **Highlights** tile on the home screen turns a whole race's replay into a video that tells the race, plus vertical
+shorts, for sharing. (The Broadcast must be off while it works: both move iRacing's camera.)
 
 1. In OBS: **Tools > WebSocket Server Settings > Enable WebSocket server**. Make a scene that shows iRacing (Game
-   Capture), plus your broadcast overlay if you want it in the video. OBS saves the clips to its usual recording folder.
+   Capture), plus your broadcast overlay if you want it in the video.
 2. In iRacing, open the race's replay so it is playing.
-3. In the app: **Check iRacing**, pick your car, **Scan the race**. The replay plays at 16x while the app reads every
-   car (about 4 minutes per hour of racing). The scan is saved in `Documents\iRacingSuite\Highlights\Scans`, so
-   **Open a saved scan** finds the moments again without scanning.
-4. Set a target length and press **Pick the best for me**, or tick the moments yourself. The start and the finish are
-   always in. Passes, battles, spins, off tracks, trouble nearby, pit stops and the best lap are scored; traffic is
-   there to tick if you want it.
-5. Choose a stinger (a .webm, .mov or animated .gif with a transparent background plays over each cut, and pixel art
-   stays sharp; any other video plays between
-   clips; none = a quick fade), captions, title and finish cards, and music (off until you add tracks; they play in
-   order and repeat, under the race sound).
-6. **What to make**: the full video (16:9, the moments you ticked), a best-of short, and one short each for the top
-   moments. Shorts are vertical (1080 x 1920) for YouTube Shorts, Instagram Reels and TikTok: each opens on its best
-   moment with a slow-motion replay, captions sit at the top (clear of the apps' buttons), up to 30 s / 45 s / 60 s /
-   90 s / 3 min. Framing: fill the screen (crop to the middle, where the car is) or the whole picture with a blurred copy
-   behind. (Twitch clips are cut from a live stream on Twitch itself; these files are for uploading.)
-7. **Record the clips and make the videos**: the app jumps to each moment, points the camera at the car, records it
-   with OBS (once, even when several videos use it), and builds every video in `Documents\iRacingSuite\Highlights\Videos`.
-   Leave iRacing and OBS alone until it finishes. **Make the videos again** rebuilds with other music, a stinger or
-   shorts settings without recording again.
+3. **Check iRacing**, pick your car, **Scan the race**. The replay plays at 16x while the app reads every car; it says
+   how long that will take. The scan is kept in `Documents\iRacingSuite\Highlights\Scans` (**Open a saved scan**).
+4. Pick a target length (**Pick the best for me**) or tick moments yourself: passes, battles, spins and offs (with what
+   led up to them), wrecks and near misses around your car, pit stops and driver changes, the best lap. The start
+   and the finish are always in.
+5. Look and sound: a built-in stinger (four styles, with your car number and team) or your own, the small captions,
+   title and result cards, music (off until you add tracks).
+6. What to make: the full video, a best-of short and one short each for the top moments (1080 x 1920 for YouTube
+   Shorts, Instagram Reels and TikTok), replays from other cameras for the best moments, the cold open.
+7. **Record the clips and make the videos**. Each clip is filmed the way the Broadcast director does it (wide, then
+   closer, the key moment held, the car just passed seen from in front), and the best moments again from other
+   cameras. Each step shows the time left. **Make the videos again** rebuilds without recording.
+
+The full video: a few seconds of the best moment, the title card (event, track, car, team, drivers, starting place),
+the race in order with a small chapter line at each new stint, replays of the best moments, the result card. A short
+opens just before its best moment, shows it again from other cameras and plays round.
 
 Music: use tracks you are allowed to use in videos you share, for example the YouTube Audio Library, Pixabay Music,
 or your own. Some free tracks ask for a credit line in the video's description.
@@ -94,7 +91,7 @@ or your own. Some free tracks ask for a credit line in the video's description.
 | `suite/bridge.py` | the Lap Analyzer's bridge: live iRacing or `.ibt` replay, serves the pages and `/ws` (standard library only) |
 | `suite/pitwall_host.py` | runs PitWall's own `relay/server.py` and `pitwall/bridge.py`, unchanged, inside the app |
 | `suite/web/` | home screen and the Lap Analyzer (`analyzer/index.html`); PitWall's dashboard is served from `client/` |
-| `highlights/` | Highlights: replay scan (`scan.py`), moments (`moments.py`), picking (`pick.py`), OBS clips (`capture.py`), the videos (`stitch.py`), what the page calls (`app.py`); the page is `suite/web/highlights/index.html` |
+| `highlights/` | Highlights: replay scan (`scan.py`), moments (`moments.py`), picking (`pick.py`), camera work (`shots.py`), the story (`story.py`), OBS clips (`capture.py`), stingers (`stingers.py`), the videos (`stitch.py`), what the page calls (`app.py`); the page is `suite/web/highlights/index.html` |
 | `tests/test_suite.py` | replays a synthetic `.ibt`, streams PitWall's fake field through the in-app relay, checks pages and streams |
 | `.github/workflows/build.yml` | on every push to master: all tests, then builds `iRacing Suite.exe` on Windows and publishes it as a release |
 

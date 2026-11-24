@@ -1,16 +1,13 @@
-"""Building the highlights video from the recorded clips, with ffmpeg.
+"""Building the highlights videos from the recorded clips, with ffmpeg (build() says the running order).
 
-1. Each clip is trimmed to its moment (its lead-in cut off by the tape time OBS started at), scaled to the first
-   clip's size, given its caption (bottom left, first CAPTION_S seconds) and, with no stinger, a quick dip to black.
-2. Optional title and finish cards (plain cards with text, CARD_S long).
-3. The pieces are joined. A stinger:
-     - with a transparent background (.webm VP9, .mov ProRes 4444 / QuickTime Animation, an animated .gif, ...): laid
-       OVER each cut,
-       so it hides the cut at its middle (STINGER_CUT of its length, the overlay's own built-in stingers cover
-       42-58%). The video is no longer for it.
-     - with no transparency: played BETWEEN clips (each one adds its length).
-4. Music: the chosen tracks one after another (looped if the video is longer), under the race sound, faded out at
-   the end. No music unless tracks are picked.
+Words stay out of the way: a moment's line comes on TEXT_IN_S into its clip for TEXT_S and goes (a small lower third
+in the wide video, the chapter in amber above it; one short line inside the apps' safe zone in a tall one), REPLAY
+small in a corner. Cards (title, result) sit over a blurred, darkened still of the race.
+
+A stinger with transparency (the built-in ones, highlights/stingers.py, or the user's .webm / .mov / .gif) is laid
+OVER each cut with its middle (STINGER_CUT) on the cut; one without plays BETWEEN clips. A clip and its replays run on
+without one. Music: the chosen tracks one after another (looped), under the race sound. A short (loop) ends without a
+fade so it plays round.
 
 ffmpeg: the one in the app (imageio-ffmpeg) or one on the PATH. Text goes to ffmpeg in files (textfile=) and the
 font is copied beside them, so no Windows path ever needs escaping inside a filter.
@@ -23,7 +20,9 @@ import shutil
 import subprocess
 import sys
 
-CAPTION_S = 4.5
+TEXT_IN_S = 0.4            # a moment's words come on this long into its clip ...
+TEXT_S = 2.6               # ... and stay this long, then the picture is the race's again
+SAFE_TOP = 0.16            # tall video: words start this far down (Instagram covers about the top 14%, 270 of 1920)
 CARD_S = 4.0
 DIP_S = 0.3
 STINGER_CUT = 0.5
@@ -181,52 +180,72 @@ def wrap(text, width) -> str:
     return "\n".join(out)
 
 
-def _draw(font, name, size, x, y, alpha=None, color="white", box=True):
-    """Text from a file, on a dark box (readable over any scene)."""
+def _draw(font, name, size, x, y, alpha=None, color="white", box="black@0.5"):
+    """Text from a file; box: a see-through backing (a colour@opacity) or None for a soft shadow only."""
     d = ("drawtext=fontfile=%s:textfile=%s:expansion=none:x=%s:y=%s:fontsize=%d:fontcolor=%s:line_spacing=%d"
          % (font, name, x, y, size, color, size // 5))
     if box:
-        d += ":box=1:boxcolor=black@0.6:boxborderw=%d" % (size // 2)
+        d += ":box=1:boxcolor=%s:boxborderw=%d" % (box, max(4, size // 3))
+    else:
+        d += ":shadowcolor=black@0.7:shadowx=2:shadowy=2"
     if alpha:
         d += ":" + alpha
     return d
 
 
+def _texts(work, stem, W, H, font, vertical, caption, label, chapter, out_dur):
+    """The few words a piece carries, kept out of the way: a small lower third for a moment of the wide video (on
+    from TEXT_IN_S for TEXT_S, then gone), the chapter (a stint and its driver) in amber above it; in a tall video
+    one short line inside the apps' safe zone (SAFE_TOP below the top, clear of the right-hand buttons); REPLAY small
+    in a corner for as long as a replay runs."""
+    out = []
+    if not font:
+        return out
+    on = _fade_alpha(TEXT_IN_S, min(TEXT_IN_S + TEXT_S, out_dur - 0.1), 0.25)
+    if vertical:
+        size = max(22, W // 26)
+        y = int(H * SAFE_TOP)
+        if caption:
+            out.append(_draw(font, _text_file(work, stem + ".txt", wrap(caption.upper(), 26)), size,
+                             "(w-text_w)/2", str(y), on, box="black@0.45"))
+        if label:
+            out.append(_draw(font, _text_file(work, stem + "_l.txt", label), max(18, W // 34), "(w-text_w)/2",
+                             str(y + (int(size * 2.4) if caption else 0)), color="0xFFB23F", box=None))
+        return out
+    size = max(16, H // 38)
+    x, y = W // 24, H - H // 9
+    if caption:
+        out.append(_draw(font, _text_file(work, stem + ".txt", caption.upper()), size, str(x + size // 2),
+                         str(y), on, box="black@0.45"))
+        out.append("drawbox=x=%d:y=%d:w=%d:h=%d:color=0xFFB23F@1:t=fill:enable='between(t,%.2f,%.2f)'"
+                   % (x - size // 4, y - size // 3, max(4, size // 6), int(size * 1.66), TEXT_IN_S + 0.1,
+                      min(TEXT_IN_S + TEXT_S, out_dur - 0.1) - 0.1))
+    if chapter:
+        out.append(_draw(font, _text_file(work, stem + "_c.txt", chapter.upper()), max(14, int(size * 0.75)),
+                         str(x + size // 2), str(y - int(size * 1.7)), on, color="0xFFB23F", box=None))
+    if label:
+        out.append(_draw(font, _text_file(work, stem + "_l.txt", label), max(14, int(size * 0.8)),
+                         "w-text_w-%d" % (W // 24), str(H // 16), color="0xFFB23F", box="black@0.35"))
+    return out
+
+
 def segment(exe, work, src, info, out, trim, dur, W, H, fps, opts, caption=None, font=None, dip=True, game_vol=1.0,
-            frame="pad", speed=1.0, label=None, tag=None, vertical=False, px=False):
+            frame="pad", speed=1.0, label=None, vertical=False, px=False, chapter=None, dip_out=True):
     """One piece of the video: `dur` seconds of `src` from `trim`, played at `speed` (0.5 = half speed: the piece
-    lasts dur / speed). Wide videos caption the bottom left for CAPTION_S; tall ones (vertical) put the caption at
-    the top, in the part no app covers with its buttons, for the whole clip, with an optional tag line above it."""
+    lasts dur / speed), with its few words (_texts)."""
     out_dur = dur / speed
     graph, v = _frame_graph("[0:v]", W, H, fps, frame, speed, px)
-    vf = []
     stem = os.path.splitext(os.path.basename(out))[0]
-    if font and vertical:
-        big = max(24, W // 15)
-        y = int(H * 0.115)
-        if tag:
-            vf.append(_draw(font, _text_file(work, stem + "_tag.txt", tag), max(16, W // 30), "(w-text_w)/2",
-                            str(int(H * 0.065)), color="0xFFD27A"))
-        if caption:
-            vf.append(_draw(font, _text_file(work, stem + ".txt", wrap(caption, 20)), big, "(w-text_w)/2", str(y),
-                            _fade_alpha(0.15, out_dur + 10, 0.25)))
-        if label:
-            vf.append(_draw(font, _text_file(work, stem + "_l.txt", label), big, "(w-text_w)/2", "h*0.62",
-                            color="0xFFB23F"))
-    elif font:
-        size = max(18, H // 24)
-        if caption:
-            vf.append(_draw(font, _text_file(work, stem + ".txt", caption), size, str(W // 32), "h-%d" % (size * 3),
-                            _fade_alpha(0.3, min(CAPTION_S, out_dur - 0.2))))
-        if label:
-            vf.append(_draw(font, _text_file(work, stem + "_l.txt", label), size, "w-text_w-%d" % (W // 32),
-                            str(size * 2), color="0xFFB23F"))
+    vf = _texts(work, stem, W, H, font, vertical, caption, label, chapter, out_dur)
     af = "aresample=48000,aformat=channel_layouts=stereo,volume=%.3f" % (game_vol * (0.35 if speed != 1.0 else 1.0))
     if speed != 1.0:
         af += ",atempo=%.4f" % max(0.5, min(2.0, speed))
     if dip:
-        vf.append("fade=t=in:st=0:d=%s,fade=t=out:st=%.3f:d=%s" % (DIP_S, max(0.0, out_dur - DIP_S), DIP_S))
-        af += ",afade=t=in:st=0:d=%s,afade=t=out:st=%.3f:d=%s" % (DIP_S, max(0.0, out_dur - DIP_S), DIP_S)
+        vf.append("fade=t=in:st=0:d=%s" % DIP_S)
+        af += ",afade=t=in:st=0:d=%s" % DIP_S
+        if dip_out:
+            vf.append("fade=t=out:st=%.3f:d=%s" % (max(0.0, out_dur - DIP_S), DIP_S))
+            af += ",afade=t=out:st=%.3f:d=%s" % (max(0.0, out_dur - DIP_S), DIP_S)
     args = [exe, "-y", "-hide_banner", "-loglevel", "error", "-ss", "%.3f" % trim, "-t", "%.3f" % dur] + \
         _vin(info, src) + ["-f", "lavfi", "-t", "%.3f" % out_dur, "-i", "anullsrc=r=48000:cl=stereo"]
     a_in = "[0:a]" if info.get("audio") else "[1:a]"
@@ -236,32 +255,79 @@ def segment(exe, work, src, info, out, trim, dur, W, H, fps, opts, caption=None,
     return out
 
 
-def card(exe, work, out, title, lines, W, H, fps, opts, font):
-    """A plain card: a title and a few lines, faded in and out."""
+def card(exe, work, out, title, lines, W, H, fps, opts, font, kicker=None, bg=None):
+    """A title or result card: a small amber kicker, the title, a few lines, over a blurred, darkened still of the
+    race (bg: (path, seconds)) or plain dark. Fades in and out."""
     dur = CARD_S
-    vf = "format=yuv420p"
+    stem = os.path.splitext(os.path.basename(out))[0]
+    still = None
+    if bg:
+        still = os.path.join(work, stem + "_bg.png")
+        try:
+            _run([exe, "-y", "-hide_banner", "-loglevel", "error", "-ss", "%.3f" % max(0.0, bg[1]), "-i", bg[0],
+                  "-frames:v", "1", still], cwd=work)
+        except BuildError:
+            still = None
+    if still and os.path.exists(still):
+        src = ["-loop", "1", "-framerate", str(fps), "-t", "%.2f" % dur, "-i", still]
+        base = ("[0:v]scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,boxblur=24:2,"
+                "eq=brightness=-0.32:saturation=0.7,setsar=1,fps=%s,format=yuv420p" % (W, H, W, H, fps))
+    else:
+        src = ["-f", "lavfi", "-i", "color=c=0x0E1116:s=%dx%d:r=%s:d=%.2f" % (W, H, fps, dur)]
+        base = "[0:v]format=yuv420p"
+    vf = [base]
     if font:
-        big, small = max(24, H // 12), max(18, H // 26)
-        y = H // 2 - big
-        t_name = _text_file(work, os.path.splitext(os.path.basename(out))[0] + "_t.txt", title or "")
-        vf += (",drawtext=fontfile=%s:textfile=%s:expansion=none:x=(w-text_w)/2:y=%d:fontsize=%d:fontcolor=white" %
-               (font, t_name, y, big))
+        big, small = max(26, min(W, H) // 13), max(16, min(W, H) // 34)
+        y = int(H * 0.40)
+        if kicker:
+            vf.append(_draw(font, _text_file(work, stem + "_k.txt", kicker.upper()), small, "(w-text_w)/2",
+                            str(y - int(small * 2.2)), color="0xFFB23F", box=None))
+        vf.append(_draw(font, _text_file(work, stem + "_t.txt", wrap(title or "", 28 if W < H else 40)), big,
+                        "(w-text_w)/2", str(y), box=None))
+        n_title = len(wrap(title or "", 28 if W < H else 40).split("\n"))
+        y2 = y + int(big * 1.25 * n_title) + small
+        vf.append("drawbox=x=(iw-%d)/2:y=%d:w=%d:h=%d:color=0xFFB23F@1:t=fill" % (big * 2, y2 - small // 2, big * 2,
+                                                                                 max(3, small // 6)))
         for k, line in enumerate(lines or []):
-            n = _text_file(work, os.path.splitext(os.path.basename(out))[0] + "_%d.txt" % k, line)
-            vf += (",drawtext=fontfile=%s:textfile=%s:expansion=none:x=(w-text_w)/2:y=%d:fontsize=%d:fontcolor=0xC8D0DA" %
-                   (font, n, y + big + small // 2 + k * int(small * 1.6) + small // 2, small))
-    vf += ",fade=t=in:st=0:d=0.4,fade=t=out:st=%.2f:d=0.4" % (dur - 0.4)
-    args = [exe, "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "color=c=0x0E1116:s=%dx%d:r=%s:d=%.2f" % (W, H, fps, dur),
-            "-f", "lavfi", "-t", "%.2f" % dur, "-i", "anullsrc=r=48000:cl=stereo",
-            "-filter_complex", "[0:v]%s[v]" % vf, "-map", "[v]", "-map", "1:a", "-t", "%.2f" % dur] + _enc(opts) + [out]
+            vf.append(_draw(font, _text_file(work, stem + "_%d.txt" % k, wrap(line, 34 if W < H else 70)), small,
+                            "(w-text_w)/2", str(y2 + small // 2 + k * int(small * 1.7)), color="0xD6DCE4", box=None))
+    vf.append("fade=t=in:st=0:d=0.4,fade=t=out:st=%.2f:d=0.4" % (dur - 0.4))
+    args = [exe, "-y", "-hide_banner", "-loglevel", "error"] + src + \
+        ["-f", "lavfi", "-t", "%.2f" % dur, "-i", "anullsrc=r=48000:cl=stereo",
+         "-filter_complex", ",".join(vf) + "[v]", "-map", "[v]", "-map", "1:a", "-t", "%.2f" % dur] + _enc(opts) + [out]
     _run(args, cwd=work, log=opts.get("_log"))
     return out
 
 
+def _piece_of(exe, work, item, info, name, W, H, fps, opts, font, frame, vertical, game_vol, dip, **kw):
+    """A recorded clip's [a, b] (cut from its recording by the tape time OBS started at) as a piece, or None."""
+    trim = max(0.0, float(item["a"]) - float(item.get("recStart") or item["a"]))
+    dur = float(item["b"]) - float(item["a"])
+    if info["duration"]:
+        dur = min(dur, info["duration"] - trim)
+    if dur <= 0.5:
+        return None
+    speed = float(item.get("speed") or 1.0)
+    out = os.path.join(work, name + ".mp4")
+    segment(exe, work, item["path"], info, out, trim, dur, W, H, fps, opts, font=font, frame=frame,
+            vertical=vertical, game_vol=game_vol, dip=dip, speed=speed, **kw)
+    return out, dur / speed
+
+
 def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
-    """clips: [{path, recStart, a, b, caption}] in order (failed ones left out). opts: stinger, captions, intro
-    {title, lines}, outro {title, lines}, music [paths], musicVolume, gameVolume, crf, preset."""
+    """The video, in this order:
+
+        teaser      (wide, optional) the best moment's key seconds, no words: the cold open
+        intro card  (optional) the event, the track, the car, the team and its drivers, where it started
+        clips       in the order given; each may bring a chapter (a new stint), its own slow replay of the same
+                    recording (replay) or replays from other cameras (angles); a clip and its replays run on
+                    without a stinger
+        outro card  (optional) the result
+
+    clips: [{path, recStart, a, b, caption, chapter?, replay?: {a, b}, angles?: [{path, recStart, a, b, speed}]}].
+    opts: vertical, frame, stinger (a path, or "builtin:<style>" from stingers.STYLES), stingerMark, stingerSub,
+    captions, teaser {path, recStart, a, b}, intro / outro {kicker, title, lines}, music [paths], musicVolume,
+    gameVolume, maxS, loop (no fade at the end: a short plays round), crf, preset."""
     opts = dict(opts or {})
     opts["_log"] = log
     exe = ffmpeg_exe()
@@ -269,24 +335,39 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     clips = [c for c in clips if c.get("ok", True) and c.get("path")]
     if not clips:
         raise BuildError("no clips to build from")
-    infos = [probe(c["path"], exe) for c in clips]
+    infos = {}
+
+    def info_of(path):
+        if path not in infos:
+            infos[path] = probe(path, exe)
+        return infos[path]
+    first = info_of(clips[0]["path"])
     vertical = bool(opts.get("vertical"))
     if vertical:
         W, H = opts.get("size") or (1080, 1920)          # 9:16, 1080p: what Shorts, Reels and TikTok take
         frame = opts.get("frame") or "fill"
     else:
-        W = infos[0]["w"] or 1920
-        H = infos[0]["h"] or 1080
+        W = first["w"] or 1920
+        H = first["h"] or 1080
         frame = "pad"
     W, H = W - W % 2, H - H % 2
-    fps = opts.get("fps") or (round(infos[0]["fps"]) if infos[0]["fps"] else 60)
+    fps = opts.get("fps") or (round(first["fps"]) if first["fps"] else 60)
     font = _font(work, exe) if (opts.get("captions", True) or opts.get("intro") or opts.get("outro")) else None
     music = [m for m in (opts.get("music") or []) if os.path.exists(m)]
     game_vol = float(opts.get("gameVolume", 0.7 if music else 1.0))
     st_path = opts.get("stinger")
+    if isinstance(st_path, str) and st_path.startswith("builtin:"):
+        from . import stingers
+        try:
+            st_path = stingers.render(st_path.split(":", 1)[1], W, H, fps, opts.get("stingerMark"),
+                                      opts.get("stingerSub"), exe=exe)
+        except Exception as e:  # noqa: BLE001
+            log("the built-in stinger could not be made (%s): clips fade instead" % e)
+            st_path = None
     st_info = probe(st_path, exe) if st_path and os.path.exists(st_path) else None
     overlay = bool(st_info and st_info["alpha"])
     insert = bool(st_info and not st_info["alpha"])
+    dip = not st_info
     steps = len(clips) + 2
     done = [0]
 
@@ -296,48 +377,61 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
         if progress is not None:
             progress(done[0], steps)
 
-    pieces = []          # (path, duration, is_clip)
-    if opts.get("intro"):
-        pieces.append((card(exe, work, os.path.join(work, "intro.mp4"), opts["intro"].get("title"),
-                            opts["intro"].get("lines"), W, H, fps, opts, font), CARD_S, False))
+    pieces = []          # (path, duration, joins_next): joins_next = no stinger before the next piece
     st_seg = None
     if insert:
         st_seg = os.path.join(work, "stinger.mp4")
         segment(exe, work, st_path, st_info, st_seg, 0.0, st_info["duration"] or 1.0, W, H, fps, opts,
                 dip=False, game_vol=1.0, frame="fill" if vertical else "pad", px=_pixel_art(st_info, W))
-    for i, (c, info) in enumerate(zip(clips, infos)):
-        trim = max(0.0, float(c["a"]) - float(c.get("recStart") or c["a"]))
-        dur = float(c["b"]) - float(c["a"])
-        if info["duration"]:
-            dur = min(dur, info["duration"] - trim)
-        if dur <= 0.5:
+
+    def add(path, dur, joins=False):
+        if insert and pieces and not pieces[-1][2]:
+            pieces.append((st_seg, st_info["duration"] or 1.0, False))
+        pieces.append((path, dur, joins))
+
+    tz = opts.get("teaser")
+    if tz and tz.get("path") and os.path.exists(tz["path"]):
+        got = _piece_of(exe, work, tz, info_of(tz["path"]), "teaser", W, H, fps, opts, None, frame, vertical,
+                        game_vol, dip)
+        if got:
+            add(*got)
+    bg0 = (clips[0]["path"], max(0.0, float(clips[0]["a"]) - float(clips[0].get("recStart") or clips[0]["a"])) + 1.0)
+    if opts.get("intro"):
+        it = opts["intro"]
+        add(card(exe, work, os.path.join(work, "intro.mp4"), it.get("title"), it.get("lines"), W, H, fps, opts, font,
+                 kicker=it.get("kicker"), bg=bg0), CARD_S)
+    for i, c in enumerate(clips):
+        info = info_of(c["path"])
+        cap = c.get("caption") if opts.get("captions", True) else None
+        reps = [x for x in (c.get("angles") or []) if x.get("path") and os.path.exists(x["path"])]
+        last_piece = i == len(clips) - 1 and not reps and not c.get("replay")
+        got = _piece_of(exe, work, c, info, "clip_%03d" % i, W, H, fps, opts, font, frame, vertical, game_vol, dip,
+                        caption=cap, chapter=c.get("chapter") if opts.get("captions", True) else None,
+                        dip_out=not (last_piece and opts.get("loop")))
+        if got is None:
             log("clip %d is too short to use, left out" % (i + 1))
             continue
-        if insert and any(p[2] for p in pieces):
-            pieces.append((st_seg, st_info["duration"] or 1.0, None))
-        out = os.path.join(work, "clip_%03d.mp4" % i)
-        cap = c.get("caption") if opts.get("captions", True) else None
-        segment(exe, work, c["path"], info, out, trim, dur, W, H, fps, opts, caption=cap, font=font,
-                dip=not st_info, game_vol=game_vol, frame=frame, tag=opts.get("tag"), vertical=vertical)
-        pieces.append((out, dur, True))
-        rp = c.get("replay")
-        if rp and rp.get("b", 0) > rp.get("a", 0):
-            # the key seconds again at half speed, straight after the clip (no stinger between: it is one moment)
-            r_trim = max(0.0, float(rp["a"]) - float(c.get("recStart") or c["a"]))
-            r_dur = float(rp["b"]) - float(rp["a"])
-            if info["duration"]:
-                r_dur = min(r_dur, info["duration"] - r_trim)
-            if r_dur > 0.5:
-                rout = os.path.join(work, "replay_%03d.mp4" % i)
-                segment(exe, work, c["path"], info, rout, r_trim, r_dur, W, H, fps, opts, caption=cap, font=font,
-                        dip=not st_info, game_vol=game_vol, frame=frame, speed=REPLAY_SPEED, label="REPLAY",
-                        tag=opts.get("tag"), vertical=vertical)
-                pieces[-1] = (pieces[-1][0], pieces[-1][1], "clip+")
-                pieces.append((rout, r_dur / REPLAY_SPEED, False))
+        add(got[0], got[1], joins=bool(reps or c.get("replay")))
+        if not reps and c.get("replay") and c["replay"].get("b", 0) > c["replay"].get("a", 0):
+            # no other camera: the key seconds again from the same recording, at half speed
+            reps = [{"path": c["path"], "recStart": c.get("recStart"), "a": c["replay"]["a"], "b": c["replay"]["b"],
+                     "speed": REPLAY_SPEED}]
+        for k, r in enumerate(reps):
+            last = k == len(reps) - 1
+            got = _piece_of(exe, work, r, info_of(r["path"]), "clip_%03d_r%d" % (i, k), W, H, fps, opts, font, frame,
+                            vertical, game_vol, dip, label="REPLAY",
+                            dip_out=not (last and i == len(clips) - 1 and opts.get("loop")))
+            if got:
+                pieces.append((got[0], got[1], not last))
+            elif pieces and last:
+                pieces[-1] = (pieces[-1][0], pieces[-1][1], False)
         step("clip %d of %d ready" % (i + 1, len(clips)))
     if opts.get("outro"):
-        pieces.append((card(exe, work, os.path.join(work, "outro.mp4"), opts["outro"].get("title"),
-                            opts["outro"].get("lines"), W, H, fps, opts, font), CARD_S, False))
+        ot = opts["outro"]
+        lc = clips[-1]
+        bg1 = (lc["path"], max(0.0, float(lc["b"]) - float(lc.get("recStart") or lc["a"])) - 0.5)
+        add(card(exe, work, os.path.join(work, "outro.mp4"), ot.get("title"), ot.get("lines"), W, H, fps, opts, font,
+                 kicker=ot.get("kicker"), bg=bg1), CARD_S)
     # join
     lst = os.path.join(work, "list.txt")
     with open(lst, "w", encoding="utf-8") as f:
@@ -351,7 +445,7 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     cuts, acc = [], 0.0
     for k in range(len(pieces) - 1):
         acc += real[k]
-        if pieces[k][2] != "clip+":              # a clip and its own replay run on without a stinger
+        if not pieces[k][2] and not insert:      # a clip and its replays run on without a stinger
             cuts.append(acc)
     step("clips joined")
     if opts.get("maxS") and total > float(opts["maxS"]):
@@ -362,8 +456,7 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
         _run([exe, "-y", "-hide_banner", "-loglevel", "error", "-i", joined, "-t", "%.3f" % total, "-c", "copy",
               "-movflags", "+faststart", out_path], log=log)
         step("done")
-        return {"path": out_path, "duration": round(total, 1), "clips": sum(1 for p in pieces if p[2] in (True, "clip+")),
-            "vertical": vertical}
+        return {"path": out_path, "duration": round(total, 1), "clips": len(clips), "vertical": vertical}
     # final pass: stingers over the cuts, music under the race sound
     args = [exe, "-y", "-hide_banner", "-loglevel", "error", "-i", joined]
     fc, n_in = [], 1
@@ -393,7 +486,7 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
             firsts.append("[m%d]" % len(firsts))
             n_in += 1
         mv = float(opts.get("musicVolume", 0.35))
-        fade = min(4.0, total / 4)
+        fade = min(0.6 if opts.get("loop") else 4.0, total / 4)
         fc.append("%sconcat=n=%d:v=0:a=1,aloop=loop=-1:size=2147483647,atrim=0:%.3f,asetpts=N/SR/TB,"
                   "afade=t=in:st=0:d=1,afade=t=out:st=%.3f:d=%.3f,volume=%.3f[mus]"
                   % ("".join(firsts), len(firsts), total, max(0.0, total - fade), fade, mv))
@@ -409,5 +502,4 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     _run(args, cwd=work, log=log)
     step("done")
-    return {"path": out_path, "duration": round(total, 1), "clips": sum(1 for p in pieces if p[2] in (True, "clip+")),
-            "vertical": vertical}
+    return {"path": out_path, "duration": round(total, 1), "clips": len(clips), "vertical": vertical}

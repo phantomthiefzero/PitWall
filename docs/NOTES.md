@@ -821,3 +821,13 @@ Broadcast (broadcast/)
   Twitch clips are cut from a live stream on Twitch, so they are not made here. A short opens on its best clip with
   a slow-motion replay; the finish's fixed score (100, there so the full video always has it) made it every short's
   hook at first, so shorts score it 30. tests: the four "short" tests in test_highlights.
+- Highlights camera work and story (Nov 2026: "a lot of the same turn angle and nothing else ... use the same methods
+  we did for the broadcast"; "on screen text MUCH less in the way ... the full edited video to tell a story ... team
+  and drivers ... add your own stingers"). Each clip was one group held from start to end, picked from a fixed list
+  where TV1 came first for most kinds. Now the director's own reading of the groups and its shot orders plan each clip
+  (shots.py), cut while OBS records, with other-camera replays of the best moments. Captions were on screen for the
+  whole short at ~11% down, inside Instagram's top band (it covers ~270 of 1920 px); now one line below 16%, 2.6 s.
+  Research: most swipe-aways come in the first 3 s, and a short watched to the end beats a longer one watched half way,
+  so shorts open 3 s before the moment and default to 30 s. The finish's fixed score (100) took the other-angle
+  replays from real moments until it was scored 30 for them. The wipe stinger let the top-left corner show at 58% (its
+  trailing edge leans): tests check every pixel from 42% to 58% now.

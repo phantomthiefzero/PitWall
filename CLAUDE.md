@@ -184,9 +184,24 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   cut when it has transparency; without, it plays between clips.
 - ffmpeg gets text in files (textfile=) and a font copied into the work folder: no Windows path inside a filter.
   The ffmpeg is imageio-ffmpeg's (requirements); a build without drawtext loses captions, not the video.
-- Shorts (pick.best_of / singles / hook_first; stitch vertical=True): 9:16 1080 x 1920, the hook (best clip) first
-  with a half-speed replay of its key seconds (REPLAY_KINDS), the rest in race order cut straight; captions at the top
-  (~11% down) for the whole clip, wrapped (drawtext does not wrap), clear of the apps' buttons at the bottom and right;
-  no start, no cards; held to shortMaxS. The full video uses the user's ticks, the shorts pick from every moment. Every
+- Camera work is the director's (highlights/shots.py): groups read by a pitwall Director (camera_role, the
+  producer's "Your cameras" for the track from obs.json, corner spots via _spot_for); every clip is a story of shots
+  (lead-up from LEAD, the KEY shot from KEY_BEFORE_S to KEY_AFTER_S over the moment, AFTER), cut during the recording
+  (capture CUT_EARLY_S); never the same group twice running, and the shot before the key never takes the key's kind.
+  Battles use BATTLE_SHOTS with back/front swapped at a pass. A wreck nearby: the key shot is on the car in trouble,
+  then Rear Chase on T looking back. The best moments (angleMoments, scored with the finish at 30) are recorded again
+  from anglesEach other cameras (ANGLES) and play after the clip, the last at half speed.
+- Wrecks and spins carry LEAD_UP_S of what led up to them; a car in trouble that T comes upon is followed until T is
+  clear (a near miss within NEAR_MISS_S). Driver changes come from the target car's UserName changing in DriverInfo
+  (stints): chapters on the full video, "Driver change" pit stops, the drivers on the cards.
+- The story (highlights/story.py): full video = cold open (best moment, no words) > title card > clips in race order
+  with chapters and replays > result card. Words: TEXT_S on screen and gone, small; tall videos keep them below
+  SAFE_TOP (Instagram covers the top ~14% and bottom ~35%). Built-in stingers (stingers.py) cover COVER_A..COVER_B
+  (test: covered()) and show the car number and team.
+- Shorts (pick.best_of / singles / hook_first; stitch vertical=True): 9:16 1080 x 1920, opening HOOK_LEAD_S before the
+  best moment, then its other-angle replays (else a half-speed replay of the same recording), the rest in race order;
+  no start, no cards; held to shortMaxS (30 s default: completion beats length); no fade at the end (loop).
+- Every step has an estimate (scan: the replay's own results / 16; record: shots.record_s; build: buildRate, measured
+  by each build on this PC) and a live "left" while it runs. The full video uses the user's ticks, the shorts pick from every moment. Every
   clip any output needs is recorded once (the union, merged), and each output is cut from the recording that covers it.
 - Not yet run against the sim: docs/VARIABLES_TO_VERIFY.md "Replay highlights".

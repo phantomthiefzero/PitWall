@@ -216,6 +216,9 @@ connection's compression, so ~10 KB/s per engineer at 30 a second.
 | the finish | `ResultsPositions` in the saved replay's session info are the FINAL results (seen in the Talladega replay), so `LapsComplete` says which crossing is the car's finish | scripted races | the finish clip shows the car taking the flag, not the cool-down lap |
 | OBS | `StartRecord`, `StopRecord` (returns `outputPath`), `GetRecordStatus`, `GetRecordDirectory` (obs-websocket 5) | a stand-in OBS | Test OBS shows the folder; a clip's file opens |
 | the camera on the car | `cam_switch_num(number, group, 0)` after the seek keeps the car on screen for the clip | a stand-in tape | each clip shows the chosen car |
+| cuts while recording | a `cam_switch_num` while the replay plays at 1x switches within a frame or two (cuts sent CUT_EARLY_S early) | a stand-in tape | the cuts in a clip land on the planned shots (the log lists them) |
+| driver changes in a replay | DriverInfo's UserName for the car changes at the swap while the replay plays at 16x | a scripted session update | a team race's scan names every stint's driver; the pit stop says "Driver change" |
+| a car's place on the lap for corner cameras | `CarIdxLapDistPct` of the target, kept every 0.5 s of the scan, matches the producer's "at" for the camera | the fake field | a "Turn 5" camera is used as the car comes to Turn 5 |
 
 ## Helmets — added Oct 2026, seen working (Nov 2026)
 - `pitwall/carrender.py` asks iRacing's local picture server (127.0.0.1:32034, the one that serves `pk_car.png`)
