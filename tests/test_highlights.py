@@ -260,6 +260,53 @@ def test_a_scan_through_the_command_gate_writes_a_file_that_reads_back_the_same(
     assert res["frames"] > 1000
 
 
+def _scan_src(drop_speeds, never=False):
+    from pitwall.sources import FakeSource
+
+    class Deaf(FakeSource):
+        """Ignores the first replay speeds it is sent (iRacing did, just after a jump), or every one."""
+        dropped = 0
+
+        def simulate_broadcast(self, m, a):
+            if m == "replay_set_play_speed" and a[0] and (never or self.dropped < drop_speeds):
+                self.dropped += 1
+                self.replay_speed = 0
+                return None
+            return super().simulate_broadcast(m, a)
+
+        def tick(self):
+            if self.t > 60 * 12:
+                self.replay_speed = 0
+                return True
+            if not self.replay_speed:
+                return True              # paused: the tape does not move
+            return super().tick()
+    src = Deaf(realtime=False, speed=16, incidents=True, parade_s=40, grid_s=10, replay_shape=True)
+    src.connect()
+    src.replay_speed = 0
+    return src
+
+
+def test_a_scan_asks_for_the_speed_again_when_the_tape_sits_paused_and_never_ends_empty(tmp_path):
+    from pitwall.commands import CommandGate
+    from highlights.scan import scan, ScanError
+    clock = [0.0]
+
+    def tick_clock():
+        clock[0] += 0.5
+        return clock[0]
+    src = _scan_src(drop_speeds=2)
+    res = scan(src, CommandGate(camera=True), 0, str(tmp_path / "a.jsonl.gz"), clock=tick_clock,
+               sleep=lambda s: None, log=lambda *a: None)
+    assert src.dropped == 2 and res["frames"] > 1000
+    src = _scan_src(drop_speeds=0, never=True)
+    out = tmp_path / "b.jsonl.gz"
+    with pytest.raises(ScanError, match="did not play"):
+        scan(src, CommandGate(camera=True), 0, str(out), clock=tick_clock, sleep=lambda s: None,
+             log=lambda *a: None)
+    assert not out.exists()
+
+
 # ------------------------------------------------------------------------------------------------ recording
 class Tape:
     """A stand-in replay: honours seeks, plays at the speed it is given, one frame per tick at 60 fps."""

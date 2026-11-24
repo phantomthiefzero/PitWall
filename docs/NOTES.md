@@ -873,3 +873,9 @@ Broadcast (broadcast/)
   clips jump straight to their frame (replay_set_play_position, commands "frame") and search by time only on the
   second try; and when the scan ends the tape goes back to the race's first frame, paused. The page also says where
   the scan was saved, with a "Where scans are saved" button (the user could not find it).
+- Highlights, a scan that never played (Watkins Glen, Nov 2026: "resetting to lap zero and then says it has 8 seconds
+  in clips"): the jump to the race's start worked (session 2, 0.05 s, the grid), but the 16x speed sent straight
+  after it was dropped; the tape sat paused, the scan took the stall for the end of the tape after one frame, and its
+  empty result replaced the good one. Now the scan waits SETTLE_S after the jump, asks for the speed again (KICKS)
+  while ReplayPlaySpeed is not it, and a scan of fewer than MIN_FRAMES is an error (its file deleted), so the moments
+  already open stay.
