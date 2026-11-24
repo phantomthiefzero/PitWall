@@ -1,4 +1,4 @@
-"""iRacing Highlights (highlights/): finding one car's moments in a replay, picking them, recording them, building
+"""Highlights (highlights/, the suite's Highlights tile): finding one car's moments in a replay, picking them, recording them, building
 the video. The moment finder is fed scripted races shaped like iRacing's variables (laps completed + lap fraction,
 track surface, pit road, lap times, session state), so each kind of moment has a case that makes it and a case
 that must not."""
@@ -486,3 +486,254 @@ def test_each_clip_is_recorded_once_for_the_full_video_and_every_short(tmp_path,
     assert best[0]["replay"] and best[0]["path"] == next(r["path"] for r in e.recorded if r["a"] == 590)
     full = e._inputs(outs[0])
     assert [x["a"] for x in full] == [4, 290, 880, 1980] and all("replay" not in x for x in full)
+
+
+# ------------------------------------------------------------------------------------------------ in the suite
+def test_the_suite_window_exposes_every_call_the_page_makes_without_walking_the_engine():
+    import re
+    import types
+    from suite.app import Api
+    from suite.bridge import resolve
+    page = resolve("/highlights/")
+    assert page and page.replace("\\", "/").endswith("suite/web/highlights/index.html")
+    with open(page, encoding="utf-8") as f:
+        html = f.read()
+    assert "window.pywebview.api.highlights" in html
+    calls = set(re.findall(r"\bapi\.(\w+)\(", html))
+    assert {"status", "look", "start_scan", "record_and_build", "open_scan"} <= calls
+    api = Api(types.SimpleNamespace(highlights=object()))
+    hl = api.highlights
+    missing = [c for c in calls if not callable(getattr(hl, c, None))]
+    assert not missing, missing
+    # pywebview walks every public attribute: only methods, never the engine or the window
+    public = [n for n in dir(hl) if not n.startswith("_")]
+    assert all(callable(getattr(hl, n)) for n in public)
+    with open(resolve("/"), encoding="utf-8") as f:
+        assert 'href="/highlights/"' in f.read()
+
+
+def test_highlights_waits_while_the_broadcast_has_the_camera(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    from highlights.app import Engine
+    why = ["The Broadcast is on air"]
+    e = Engine(demo=False, base=str(tmp_path / "home"), camera_busy=lambda: why[0])
+    e.looked = {"field": [{"idx": 0, "number": "34"}]}
+    r = e.start_scan(0)
+    assert r["ok"] is False and "Broadcast" in r["error"] and e.job is None
+    e.result = {"moments": [_m(0, 100, 60)]}
+    e.chosen = [0]
+    assert "Broadcast" in e.record_and_build()["error"]
+
+
+def test_the_suites_engine_hands_highlights_the_broadcasts_switch():
+    import types
+    from suite.app import Engine
+    eng = Engine.__new__(Engine)
+    eng.pitwall = types.SimpleNamespace(bridge=None)
+    assert eng._broadcast_has_camera() is None
+    eng.pitwall.bridge = types.SimpleNamespace(director=types.SimpleNamespace(live=True))
+    assert "producer panel" in eng._broadcast_has_camera()
+    eng.pitwall.bridge.director.live = False
+    assert eng._broadcast_has_camera() is None
+
+
+# ------------------------------------------------------------------------------------------------ camera work
+CAM_INFO = {"Groups": [
+    {"GroupNum": 1, "GroupName": "Nose", "Cameras": [{"CameraNum": 1, "CameraName": "CamNose"}]},
+    {"GroupNum": 2, "GroupName": "Chase", "Cameras": [{"CameraNum": 1, "CameraName": "CamChase"}]},
+    {"GroupNum": 3, "GroupName": "Far Chase", "Cameras": [{"CameraNum": 1, "CameraName": "CamFarChase"}]},
+    {"GroupNum": 4, "GroupName": "Rear Chase", "Cameras": [{"CameraNum": 1, "CameraName": "CamRearChase"}]},
+    {"GroupNum": 5, "GroupName": "Chopper", "Cameras": [{"CameraNum": 1, "CameraName": "CamChopper"}]},
+    {"GroupNum": 10, "GroupName": "TV1", "Cameras": [{"CameraNum": k, "CameraName": "CamTV1_%02d" % k} for k in range(1, 6)]},
+    {"GroupNum": 11, "GroupName": "TV2", "Cameras": [{"CameraNum": k, "CameraName": "CamTV2_%02d" % k} for k in range(1, 6)]},
+    {"GroupNum": 12, "GroupName": "Turn 5 Cam", "Cameras": [{"CameraNum": 1, "CameraName": "CamT5"}]},
+    {"GroupNum": 13, "GroupName": "Scenic", "IsScenic": True, "Cameras": [{"CameraNum": 1, "CameraName": "Cam"}]},
+    {"GroupNum": 14, "GroupName": "Pit Lane", "Cameras": [{"CameraNum": 1, "CameraName": "CamPit"}]},
+]}
+NUM = {0: "34", 1: "7"}.get
+
+
+def test_cameras_are_read_the_directors_way_with_the_producers_word_and_corner_cameras():
+    from highlights.shots import Cameras
+    cams = Cameras(CAM_INFO, {"turn 5 cam": {"kind": "spot", "at": 0.40}}, lap_s=100.0)
+    assert {g["num"] for g in cams.kinds["trackside"]} == {10, 11}
+    assert cams.kinds["onboard"][0]["num"] == 1 and cams.kinds["aerial"][0]["num"] == 5
+    assert [sp["num"] for sp in cams.spots] == [12]
+    assert all(g["num"] != 13 for k in cams.kinds.values() for g in k)     # never Scenic
+    import random
+    # a trackside shot of a car coming up to Turn 5 is Turn 5's own camera
+    assert cams.pick("trackside", random.Random(1), pct=0.37)["num"] == 12
+    assert cams.pick("trackside", random.Random(1), pct=0.90)["num"] in (10, 11)
+
+
+def test_a_pass_is_shot_as_a_story_from_both_cars():
+    from highlights.shots import Cameras, plan, KEY_BEFORE_S
+    cams = Cameras(CAM_INFO, {}, 100.0)
+    m = {"id": 5, "kind": "pass", "t": 520.0, "cars": [1], "otherAheadBefore": True}
+    clip = {"a": 500.0, "b": 525.0}
+    sh = plan(clip, m, cams, 0, NUM)
+    assert sh[0]["t"] == 500.0 and len(sh) >= 4
+    assert all(x["group"] != y["group"] for x, y in zip(sh, sh[1:]))          # never the same group twice running
+    key = [x for x in sh if x["t"] <= 520.0][-1]
+    assert key["t"] <= 520.0 - KEY_BEFORE_S + 0.01 and key["kind"] == "far" and key["car"] == "34"  # the passer, behind
+    after = [x for x in sh if x["t"] > 520.0]
+    assert after[0]["kind"] == "rear" and after[0]["car"] == "34"   # from in front of the passer, looking back
+    assert len({x["kind"] for x in sh}) >= 3
+
+
+def test_a_near_miss_shows_the_wreck_then_looks_back_at_it_and_its_angles_are_other_cameras():
+    from highlights.shots import Cameras, plan, angles, key_groups
+    cams = Cameras(CAM_INFO, {}, 100.0)
+    m = {"id": 9, "kind": "drama", "t": 300.0, "key": 300.0, "cars": [1], "passT": 306.0, "at": 0.5}
+    clip = {"a": 290.0, "b": 311.0}
+    sh = plan(clip, m, cams, 0, NUM)
+    key = [x for x in sh if x["t"] <= 300.0][-1]
+    assert key["car"] == "7" and key["kind"] == "trackside"
+    assert sh[0]["car"] == "34" and sh[-1]["car"] == "34" and any(x["kind"] == "rear" for x in sh)
+    ang = angles(m, cams, 0, NUM, key_groups(sh, m), n=2)
+    assert len(ang) == 2 and ang[0]["shots"][0]["kind"] == "onboard" and ang[0]["shots"][0]["car"] == "34"
+    assert ang[0]["speed"] == 1.0 and ang[1]["speed"] == 0.5
+    assert all(a["shots"][0]["group"] not in key_groups(sh, m) for a in ang)
+    assert ang[0]["a"] < 300.0 and ang[0]["b"] >= 306.0
+
+
+def test_a_car_spinning_in_front_is_a_near_miss_with_what_led_up_to_it():
+    from highlights.moments import LEAD_UP_S
+    def other(t):
+        if t < 100:
+            return {"dist": 0.5 + 0.004 + t / LAP_S}
+        stop = 0.5 + 0.004 + 100 / LAP_S
+        return {"dist": stop + min(t - 100, 20) * 0.0002, "surf": 0 if t < 108 else 3}
+    res = run({0: steady(0.5), 1: other, 2: steady(0.9)}, end=200)
+    d = kinds(res, "drama")
+    assert len(d) == 1 and d[0]["nearMiss"] and d[0]["label"].startswith("Near miss")
+    assert d[0]["t"] == pytest.approx(100, abs=1.0)
+    assert d[0]["segs"][0][0] == pytest.approx(d[0]["t"] - LEAD_UP_S, abs=0.3)
+    assert d[0]["passT"] and d[0]["passT"] > d[0]["t"] and d[0]["segs"][0][1] >= d[0]["passT"] + 4.5
+
+
+def test_driver_changes_make_stints_chapters_and_name_the_pit_stop():
+    from highlights import story
+    a = Analyzer(0, race_session=2)
+
+    def info(name):
+        return {"DriverInfo": {"Drivers": [{"CarIdx": 0, "CarNumber": "34", "UserName": name, "TeamName": "Team P",
+                                            "CarClassShortName": "GT3"}, {"CarIdx": 1, "CarNumber": "7", "UserName": "X"}]},
+                "SessionInfo": {"Sessions": [{"SessionNum": 2, "SessionType": "Race"}]}}
+    a.session(info("Andrew"))
+
+    def t_car(t):
+        if t < 120:
+            return {"dist": 0.5 + t / LAP_S}
+        if t < 160:
+            return {"dist": 0.5 + 1.2 + (min(t, 130) - 120) * 0.002 + max(0, t - 145) * 0.002,
+                    "pit": True, "surf": 1 if 130 <= t < 145 else 2}
+        return {"dist": 0.5 + 1.2 + 0.05 + (t - 160) / LAP_S}
+    for t, get in Script({0: t_car, 1: steady(0.9)}, end=320).frames():
+        if t == 138.0:
+            a.session(info("Sam"))
+        a.feed(2, t, get)
+    res = a.finish()
+    assert [s["driver"] for s in res["stints"]] == ["Andrew", "Sam"] and res["drivers"] == ["Andrew", "Sam"]
+    assert res["team"] == "Team P" and res["number"] == "34"
+    pit = kinds(res, "pit")[0]
+    assert pit["driverChange"] and "Sam takes over" in pit["label"]
+    items = [{"a": 50.0}, {"a": 100.0}, {"a": 200.0}, {"a": 250.0}]
+    story.chapters(res, items)
+    assert [x.get("chapter") for x in items] == ["Stint 1  ·  Andrew", None, "Stint 2  ·  Sam", None]
+    intro, outro = story.cards(dict(res, event="Six Hours", track="Road Atlanta", classPos=3, startPos=8, laps=212),
+                               {"number": "34"})
+    assert intro["title"] == "#34 Team P" and "Andrew  ·  Sam" in intro["lines"] and "starts P8" in intro["lines"][-1]
+    assert outro["title"] == "Finished P3 in class" and outro["lines"][0] == "Started P8  ·  +5 places"
+
+
+def test_the_built_in_stingers_cover_the_whole_picture_at_their_middle():
+    from highlights import stingers
+    for style in stingers.STYLES:
+        for W, H in ((192, 108), (108, 192)):
+            assert stingers.covered(style, W, H), (style, W, H)
+        assert stingers.coverage(style)[0] > 0.05          # and it comes in: not a flash of black from the first frame
+
+
+def test_the_recorder_cuts_between_the_planned_shots_while_it_records():
+    from pitwall.commands import CommandGate
+    tape = Tape()
+    clock = [0.0]
+
+    def now():
+        clock[0] += 1 / 60.0
+        return clock[0]
+    rec = ClipRecorder(tape, CommandGate(camera=True), FakeOBS(tape), log=lambda *a: None, clock=now,
+                       sleep=lambda s: None)
+    clip = {"n": 0, "session": 2, "a": 500.0, "b": 515.0, "kind": "pass",
+            "shots": [{"t": 500.0, "group": 3, "car": "34"}, {"t": 505.0, "group": 10, "car": "34"},
+                      {"t": 511.0, "group": 4, "car": "7"}]}
+    out = rec.record([clip], "34", [])
+    assert out[0]["ok"]
+    cams = [a for m, a in tape.calls if m == "cam_switch_num"]
+    assert cams[-2:] == [("34", 10, 0), ("7", 4, 0)]
+    assert out[0]["cuts"][0] == pytest.approx(504.9, abs=0.05) and out[0]["cuts"][1] == pytest.approx(510.9, abs=0.05)
+
+
+def test_a_short_opens_just_before_its_best_moment_and_the_full_video_gets_a_cold_open():
+    from highlights import story
+    ms = [_m(0, 10, 100, "start", [[4, 50]], True), _m(1, 300, 60, "pass", [[290, 305]]),
+          _m(2, 600, 80, "spin", [[590, 620]]), _m(3, 2000, 100, "finish", [[1980, 2008]], True)]
+    res = {"moments": ms, "green": 10.0, "finish": 2000.0}
+    rec = [{"ok": True, "role": "main", "path": "c%d.mkv" % i, "recStart": a - 0.4, "a": a, "b": b, "session": 2}
+           for i, (a, b) in enumerate([(4, 50), (290, 305), (590, 620), (1980, 2008)])] + \
+          [{"ok": True, "role": "angle", "moment": 2, "path": "ang.mkv", "recStart": 594.0, "a": 595.0, "b": 603.0,
+            "speed": 1.0, "session": 2}]
+    short = story.inputs({"name": "s", "ids": [1, 2], "vertical": True}, res, rec, {})
+    assert short[0]["best"] == 2 and short[0]["a"] == pytest.approx(600 - story.HOOK_LEAD_S)
+    assert short[0]["angles"][0]["path"] == "ang.mkv" and "angles" not in short[1]
+    full = story.inputs({"name": "f", "ids": [0, 1, 2, 3], "vertical": False}, res, rec, {})
+    assert [x["a"] for x in full] == [4, 290, 590, 1980] and full[2]["angles"]
+    tz = story.teaser(res, rec, [0, 1, 2, 3])
+    assert tz["path"] == "ang.mkv" and tz["a"] < 600 < tz["b"]
+
+
+@pytest.mark.skipif(_ffmpeg() is None, reason="no ffmpeg")
+def test_the_story_video_runs_cold_open_title_clips_with_replays_and_result(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "cache"))
+    from highlights.stitch import build, probe
+    ff = _ffmpeg()
+    paths = []
+    for i in range(3):
+        p = str(tmp_path / ("r%d.mkv" % i))
+        subprocess.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=8", "-f",
+                        "lavfi", "-i", "sine=f=440:d=8", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", p],
+                       check=True)
+        paths.append(p)
+    clips = [{"path": paths[0], "recStart": 100.0, "a": 101.0, "b": 104.0, "caption": "Lap 1 · The start",
+              "chapter": "Stint 1 · Andrew"},
+             {"path": paths[1], "recStart": 100.0, "a": 101.0, "b": 105.0, "caption": "Lap 9 · Pass for P3",
+              "angles": [{"path": paths[2], "recStart": 50.0, "a": 51.0, "b": 53.0, "speed": 1.0},
+                         {"path": paths[2], "recStart": 50.0, "a": 51.0, "b": 53.0, "speed": 0.5}]}]
+    r = build(clips, str(tmp_path / "v.mp4"), str(tmp_path / "w"),
+              {"stinger": "builtin:wipe", "stingerMark": "#34", "teaser": {"path": paths[2], "recStart": 50.0,
+                                                                          "a": 51.0, "b": 53.5},
+               "intro": {"kicker": "Race", "title": "#34 Team P", "lines": ["Andrew  ·  Sam"]},
+               "outro": {"title": "Finished P3 in class", "lines": []}}, log=lambda *a: None)
+    # cold open 2.5 + title 4 + 3 + 4 + replay 2 + slow replay 4 + result 4
+    assert probe(r["path"])["duration"] == pytest.approx(23.5, abs=0.4)
+    assert any(f.endswith(".mov") for f in os.listdir(tmp_path / "cache" / "iRacingSuite" / "stingers"))
+
+
+def test_the_engine_plans_recordings_and_says_how_long_each_step_takes(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    from highlights.app import Engine
+    e = Engine(demo=True, base=str(tmp_path / "home"), cam_setup=lambda k: {})
+    ms = [_m(0, 10, 100, "start", [[4, 50]], True), _m(1, 300, 60, "pass"), _m(2, 600, 70, "spin"),
+          _m(4, 2000, 100, "finish", [[1980, 2008]], True)]
+    ms[1]["cars"] = [1]
+    e.result = {"moments": ms, "green": 10.0, "finish": 2000.0, "track": "Test", "cameraInfo": CAM_INFO,
+                "numbers": {0: "34", 1: "7"}, "target": 0, "lapTime": 100.0, "path": [], "trackKey": "1:"}
+    e.target = {"number": "34", "idx": 0}
+    e.chosen = [0, 1, 2, 4]
+    e.settings.update(makeFull=True, makeBestOf=True, shortSingles=1, angleMoments=2, anglesEach=2, cards=True)
+    p = e.plan()
+    assert len(p["main"]) == 4 and all(len(c["shots"]) >= 2 for c in p["main"])
+    assert set(p["angles"]) == {1, 2} and len(p["jobs"]) == 4 + 4
+    est = e.status()["race"]["estimates"]
+    assert est["recordings"] == 8 and est["angles"] == 4 and est["record"] > 100 and est["recordText"]

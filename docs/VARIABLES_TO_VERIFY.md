@@ -205,7 +205,7 @@ connection's compression, so ~10 KB/s per engineer at 30 a second.
 
 | Live telemetry (analyzer view=live) | your car's own variables: `SteeringWheelPctTorqueSign` (force at its limit = 0.99+), `{LF,RF,LR,RR}brakeLinePress` (bar), `BrakeABSactive`, `{..}shockDefl`, `EngineWarnings`, `SessionFlags`, `PaceMode` (shown only while `SessionState` is parade or a caution flag is out: it holds the start type all race), `PitSvFlags`/`PitSvFuel`/`dp*TireColdPress`, `PlayerTireCompound` (named from `DriverTires`), `TireSetsAvailable`, `FastRepairAvailable`, `ManifoldPress`, `P2P_Count`, `WindDir`/`WindVel`/`YawNorth`, `CarDistAhead`/`CarDistBehind`, and `CarIdxPosition`/`CarIdxEstTime` (now sent to the analyzer) | Seen in the 296 Indy .ibt: brake line pressure 0 at rest, up to ~95 bar; `PaceMode` stays 1 all race; `FuelUsePerHour` swings with every lift (so the page uses fuel used this lap instead). **To check live:** that `WindDir` is where the wind comes FROM (head/tail wind would be reversed otherwise); "shocks at the stop" (a corner at 97% of the deepest travel seen this session, once that has stood 30 s) against a setup known to hit its bump stops; the race-order gaps against PitWall's. |
 
-### Replay highlights (iRacing Highlights, Nov 2026) -- NOT yet run against the sim
+### Replay highlights (the Highlights app, Nov 2026) -- NOT yet run against the sim
 
 | What | Assumed | Tested against | How to check |
 |---|---|---|---|
@@ -216,6 +216,9 @@ connection's compression, so ~10 KB/s per engineer at 30 a second.
 | the finish | `ResultsPositions` in the saved replay's session info are the FINAL results (seen in the Talladega replay), so `LapsComplete` says which crossing is the car's finish | scripted races | the finish clip shows the car taking the flag, not the cool-down lap |
 | OBS | `StartRecord`, `StopRecord` (returns `outputPath`), `GetRecordStatus`, `GetRecordDirectory` (obs-websocket 5) | a stand-in OBS | Test OBS shows the folder; a clip's file opens |
 | the camera on the car | `cam_switch_num(number, group, 0)` after the seek keeps the car on screen for the clip | a stand-in tape | each clip shows the chosen car |
+| cuts while recording | a `cam_switch_num` while the replay plays at 1x switches within a frame or two (cuts sent CUT_EARLY_S early) | a stand-in tape | the cuts in a clip land on the planned shots (the log lists them) |
+| driver changes in a replay | DriverInfo's UserName for the car changes at the swap while the replay plays at 16x | a scripted session update | a team race's scan names every stint's driver; the pit stop says "Driver change" |
+| a car's place on the lap for corner cameras | `CarIdxLapDistPct` of the target, kept every 0.5 s of the scan, matches the producer's "at" for the camera | the fake field | a "Turn 5" camera is used as the car comes to Turn 5 |
 
 ## Helmets — added Oct 2026, seen working (Nov 2026)
 - `pitwall/carrender.py` asks iRacing's local picture server (127.0.0.1:32034, the one that serves `pk_car.png`)

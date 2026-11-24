@@ -806,18 +806,28 @@ Broadcast (broadcast/)
   focus (liveMenuOpen, LIVE.renderLater, redrawn on focusout), and both menus blur once picked.
   test: test_the_driver_picks_how_many_laps_each_run_of_the_test_takes.
 
-- iRacing Highlights (Nov 2026, the user's "trim down an entire endurance race to a much shorter video for easier
+- Highlights (Nov 2026, the user's "trim down an entire endurance race to a much shorter video for easier
   sharing ... only the exciting parts maybe with a stinger separating the clips" and "royalty free music as a
-  background"): a separate app in highlights/, built as its own .exe in the same release. iRacing's .rpy cannot be read,
+  background"): first built as a separate app; the same day the user changed his mind ("just make it an additional app within the
+  main suite"), so it is a home tile whose page talks to the window through Api.highlights. iRacing's .rpy cannot be read,
   so the app plays the replay at 16x and reads the telemetry the sim sends while it plays (scan.py), then records only
   the chosen clips through OBS (capture.py) and joins them with ffmpeg (stitch.py). Measured choices: a pass must
   stand 4 s (side by side flips back and forth); a spin is measured against the car's own class right now, so a
   caution is not a spin; the first race lap is left out of the car's usual lap (a standing start or a join part way
-  round made a 70 s "lap" of a 100 s track and every gap in seconds 30% short). The suite's updater took the first .exe
-  of the newest release: with two apps in it, it could have updated the suite into Highlights; it now picks
-  iRacing.Suite.exe by name. tests: tests/test_highlights.py, test_suite test_parse_release.
+  round made a 70 s "lap" of a 100 s track and every gap in seconds 30% short). Inside the suite it shares iRacing's camera with the
+  Broadcast, so it waits while the director is live. tests: tests/test_highlights.py.
 - Highlights shorts (Nov 2026, "exciting instagram reels and youtube shorts ... Twitch clips"): one vertical file serves
   Shorts (vertical up to 3 min counts as a Short), Reels (up to 3 min is recommended to non-followers) and TikTok.
   Twitch clips are cut from a live stream on Twitch, so they are not made here. A short opens on its best clip with
   a slow-motion replay; the finish's fixed score (100, there so the full video always has it) made it every short's
   hook at first, so shorts score it 30. tests: the four "short" tests in test_highlights.
+- Highlights camera work and story (Nov 2026: "a lot of the same turn angle and nothing else ... use the same methods
+  we did for the broadcast"; "on screen text MUCH less in the way ... the full edited video to tell a story ... team
+  and drivers ... add your own stingers"). Each clip was one group held from start to end, picked from a fixed list
+  where TV1 came first for most kinds. Now the director's own reading of the groups and its shot orders plan each clip
+  (shots.py), cut while OBS records, with other-camera replays of the best moments. Captions were on screen for the
+  whole short at ~11% down, inside Instagram's top band (it covers ~270 of 1920 px); now one line below 16%, 2.6 s.
+  Research: most swipe-aways come in the first 3 s, and a short watched to the end beats a longer one watched half way,
+  so shorts open 3 s before the moment and default to 30 s. The finish's fixed score (100) took the other-angle
+  replays from real moments until it was scored 30 for them. The wipe stinger let the top-left corner show at 58% (its
+  trailing edge leans): tests check every pixel from 42% to 58% now.

@@ -18,7 +18,8 @@ What a moment is, for the chosen car "T":
     off / spin      T off track, or T far slower than its own class is going right now (a spin, contact, a stop:
                     measured against the class, so a caution or the opening lap is not a spin).
     towed           T leaves the world mid-race outside the pits (a reset or a tow).
-    drama           another car near T goes off or nearly stops.
+    drama           another car goes off or nearly stops where T is (or T comes upon it while it is still in trouble):
+                    from what led up to it to T going by; a near miss when T went by within NEAR_MISS_S.
     pit             T's stop: arriving in the box and leaving it.
     fastest         T's best lap (more if it is the class's fastest of the race).
     start / finish  the green flag, and T taking the flag (from the replay's own final results when it has them).
@@ -40,7 +41,12 @@ BATTLE_MIN_S = 20.0       # ... for at least this long
 SLOW_RATIO = 0.45         # slower than this share of the class's speed is a spin / stop
 SLOW_MIN_S = 1.0
 OFF_MIN_S = 0.3
-DRAMA_NEAR_S = 2.5
+DRAMA_NEAR_S = 2.5          # a car in trouble this close to T (either side) is T's story
+DRAMA_NEW_S = 20.0          # ... when its trouble began at most this long before T got there
+NEAR_MISS_S = 0.6           # T went by it this close: a near miss
+LEAD_UP_S = 10.0            # a wreck or a spin: this much of what led up to it comes first
+DRAMA_MAX_S = 40.0
+PATH_EVERY_S = 0.5          # T's place on the lap is kept this often (where the cameras at one place are)
 RATE_TAU_S = 1.5          # smoothing of each car's speed (laps per second)
 LATE_SHARE = 0.10         # the last 10% of the race scores more
 LATE_BONUS = 1.3
@@ -130,6 +136,18 @@ class Analyzer:
         self._other_off: dict[int, float] = {}
         self._other_slow: dict[int, float] = {}
         self._drama_t: dict[int, float] = {}
+        self._dramas: dict[int, dict] = {}
+        self.path: list[tuple[float, float]] = []      # (t, lap fraction) of T, for the cameras
+        self.track_key = None
+        self.session_info = {}
+        self.team = ""
+        self.car_name = ""
+        self.cls_name = ""
+        self.number = ""
+        self.numbers: dict[int, str] = {}      # car index -> number (what a camera command takes)
+        self.camera_info = {}
+        self.stints: list[dict] = []    # [{"driver", "from" (tape seconds)}]: who drove T, in order (team races)
+        self.start_pos = None
         self._last_drama = -1e9
         self._pass_log: list[dict] = []
 
@@ -141,12 +159,34 @@ class Analyzer:
             if r:
                 self.race_session = r[-1]
         wk = (info or {}).get("WeekendInfo") or {}
+        self.session_info = si if isinstance(si, dict) else {}
+        if isinstance(wk, dict) and wk.get("TrackID") is not None:
+            # the key PitWall keeps the producer's camera setup under (pitwall/bridge.py _cam_key)
+            self.track_key = "%s:%s" % (wk.get("TrackID"), wk.get("TrackConfigName") or "")
         if isinstance(wk, dict):
             self.track = wk.get("TrackDisplayName") or self.track
             cfg = wk.get("TrackConfigName")
             if cfg and cfg not in self.track:
                 self.track = "%s - %s" % (self.track, cfg)
             self.event = wk.get("SeriesName") or wk.get("EventType") or self.event
+        if (info or {}).get("CameraInfo"):
+            self.camera_info = info["CameraInfo"]
+        for d in (((info or {}).get("DriverInfo") or {}).get("Drivers") or []):
+            if isinstance(d, dict) and isinstance(d.get("CarIdx"), int) and d.get("CarNumber") is not None:
+                self.numbers[d["CarIdx"]] = str(d["CarNumber"])
+            if isinstance(d, dict) and d.get("CarIdx") == self.target:
+                self.team = d.get("TeamName") or self.team
+                self.car_name = d.get("CarScreenNameShort") or d.get("CarScreenName") or self.car_name
+                self.cls_name = d.get("CarClassShortName") or self.cls_name
+                self.number = str(d.get("CarNumber") or self.number)
+                name = d.get("UserName") or ""
+                # a driver change: the car's driver in the session info changes (iRacing updates it at the swap)
+                if name and (not self.stints or self.stints[-1]["driver"] != name):
+                    at = self.t if self.t is not None else 0.0
+                    if self.stints and self.green is None:
+                        self.stints[-1] = {"driver": name, "from": at}     # still before the green: who starts
+                    else:
+                        self.stints.append({"driver": name, "from": at})
         for s in (si.get("Sessions") or []):
             if isinstance(s, dict) and s.get("SessionNum") == self.race_session:
                 for r in (s.get("ResultsPositions") or []):
@@ -182,16 +222,23 @@ class Analyzer:
         if isinstance(st, int):
             if self.green is None and st == 4 and self.state in (1, 2, 3):
                 self.green = t
+                self.start_pos = None
             if self.checkered is None and st >= 5 and self.state == 4:
                 self.checkered = t
             self.state = st
         self._read_cars(t, dt, get)
+        me = self.cars.get(self.target)
+        if me is not None and me.pct is not None and me.surf != NOT_IN_WORLD and \
+                (not self.path or t - self.path[-1][0] >= PATH_EVERY_S):
+            self.path.append((t, me.pct))
         if self.green is None:
             if self.state is None or self.state == 4:
                 # no green seen (the scan began mid-race or the replay sends no state): from the first frame where
                 # the field is moving at racing speed
                 self._guess_green(t)
             return
+        if self.start_pos is None:
+            self.start_pos = self.class_pos(self.target)
         self._detect(t, dt)
 
     def _read_cars(self, t, dt, get):
@@ -376,7 +423,8 @@ class Analyzer:
                     ("Lapped a car" if p["gain"] else "Lapped")
             if p["offCar"]:
                 score += 6
-            self._add("traffic", t, [(t - 8, t + 4)], score, label, [j], gain=p["gain"])
+            self._add("traffic", t, [(t - 8, t + 4)], score, label, [j], gain=p["gain"], otherAheadBefore=p["gain"],
+                      at=self._pct(self.target))
             return
         now = self.class_pos(self.target)
         if p["gain"]:
@@ -394,7 +442,7 @@ class Analyzer:
         if b is not None:
             score += min(20.0, (t - b["start"]) / 12.0)
         m = self._add("pass" if p["gain"] else "lost", t, [(t - 10, t + 5)], score, label, [j],
-                      classPos=pos, lap=lap)
+                      classPos=pos, lap=lap, otherAheadBefore=p["gain"], at=self._pct(self.target))
         # back and forth with the same car inside 45 s: both count more
         for q in self._pass_log:
             if q["cars"] == [j] and t - q["t"] <= 45:
@@ -421,7 +469,8 @@ class Analyzer:
                 gap = abs(diff) * lap_t
                 if b is None:
                     b = self._battle[j] = {"start": t, "last": t, "min": gap, "minT": t, "passes": [],
-                                           "pos": self.class_pos(self.target), "lap": self.lap_no()}
+                                           "pos": self.class_pos(self.target), "lap": self.lap_no(),
+                                           "ahead": diff > 0}
                 b["last"] = t
                 if gap < b["min"]:
                     b["min"], b["minT"] = gap, t
@@ -449,14 +498,16 @@ class Analyzer:
         mins = dur / 60.0
         what = ("%.0f min" % mins) if mins >= 1.5 else ("%.0f s" % dur)
         lead = " for the class lead" if pos == 1 else (" for %s" % _ord(pos) if pos else "")
-        self._add("battle", seg[0], [seg], score, "Battle%s (%s)" % (lead, what), [j], lap=b["lap"],
-                  duration=round(dur, 1), closest=round(b["min"], 2), classPos=pos)
+        key = b["passes"][-1]["t"] if b["passes"] else b["minT"]
+        m = self._add("battle", seg[0], [seg], score, "Battle%s (%s)" % (lead, what), [j], lap=b["lap"],
+                      duration=round(dur, 1), closest=round(b["min"], 2), classPos=pos, otherAheadBefore=b["ahead"])
+        m["key"] = round(min(max(key, seg[0]), seg[1]), 2)          # the moment in it the cameras build to
 
     def _own_trouble(self, t, me):
         # off track
         if me.surf == OFF_TRACK and not me.pit:
             if self._off is None:
-                self._off = {"t": t, "lap": self.lap_no()}
+                self._off = {"t": t, "lap": self.lap_no(), "at": me.pct}
             self._off["end"] = t
         elif self._off is not None:
             o, self._off = self._off, None
@@ -465,14 +516,16 @@ class Analyzer:
                 spun = self._slow is not None or (self.moments and self.moments[-1]["kind"] == "spin"
                                                   and abs(self.moments[-1]["t"] - o["t"]) < 8)
                 if not spun:
-                    self._add("off", o["t"], [(o["t"] - 7, o["end"] + 6)], 40 + min(25.0, dur * 5),
-                              "Off track" if dur < 3 else "Big trip off track", lap=o["lap"], duration=round(dur, 1))
+                    self._add("off", o["t"], [(o["t"] - LEAD_UP_S, o["end"] + 6)], 40 + min(25.0, dur * 5),
+                              "Off track" if dur < 3 else "Big trip off track", lap=o["lap"], duration=round(dur, 1),
+                              at=o["at"])
         # far slower than its class (a spin, contact, a stop on track)
         ratio = self._ratio(me)
         slow = ratio is not None and ratio < SLOW_RATIO and not me.pit and me.surf in (ON_TRACK, OFF_TRACK)
         if slow:
             if self._slow is None:
-                self._slow = {"t": t, "off": me.surf == OFF_TRACK, "lap": self.lap_no()}
+                self._slow = {"t": t, "off": me.surf == OFF_TRACK, "lap": self.lap_no(), "at": me.pct,
+                              "near": self._nearest(me, 1.0)}
             self._slow["end"] = t
             self._slow["off"] = self._slow["off"] or me.surf == OFF_TRACK
         elif self._slow is not None:
@@ -485,9 +538,11 @@ class Analyzer:
                         self.moments.remove(m)
                         s["off"] = True
                         s["t"] = min(s["t"], m["t"])
-                start = s["t"] - 8
-                self._add("spin", s["t"], [(start, min(s["end"] + 6, start + 30))], 60 + (10 if s["off"] else 0),
-                          "Off and spinning" if s["off"] else "Big moment", lap=s["lap"], duration=round(dur, 1))
+                start = s["t"] - LEAD_UP_S
+                # a car right by T as it began (contact, or the car it had to avoid) is in the story for the cameras
+                self._add("spin", s["t"], [(start, min(s["end"] + 6, start + 34))], 60 + (10 if s["off"] else 0),
+                          "Off and spinning" if s["off"] else "Big moment", [s["near"]] if s["near"] is not None else [],
+                          lap=s["lap"], duration=round(dur, 1), at=s["at"])
         # gone from the world mid-race outside the pits
         if me.surf == NOT_IN_WORLD and self._gone is None and self.checkered is None:
             self._gone = t
@@ -497,29 +552,97 @@ class Analyzer:
             self._gone = None
 
     def _others_trouble(self, t, me, lap_t):
-        if not lap_t or me.surf == NOT_IN_WORLD or me.pit:
+        """Another car's spin, stop or trip off track where T is. Followed from the moment T is within DRAMA_NEAR_S of
+        it (even when T comes upon it a while after it began) until T is clear of it, so the moment runs from what led
+        up to it to T going by, and says whether T went by close (a near miss)."""
+        if not lap_t:
             return
+        gone = me.surf == NOT_IN_WORLD or me.pit
         for j, c in self.cars.items():
-            if j == self.target or c.dist is None or c.pit or c.surf == NOT_IN_WORLD:
-                self._other_off.pop(j, None)
-                self._other_slow.pop(j, None)
+            if j == self.target:
+                continue
+            on = c.dist is not None and not c.pit and c.surf != NOT_IN_WORLD
+            ratio = self._ratio(c) if on else None
+            trouble = on and (c.surf == OFF_TRACK or (ratio is not None and ratio < SLOW_RATIO))
+            if trouble:
+                self._other_off.setdefault(j, {"t": t, "off": c.surf == OFF_TRACK, "at": c.pct})
+                if c.surf == OFF_TRACK:
+                    self._other_off[j]["off"] = True
+            d = self._dramas.get(j)
+            if not on or gone:
+                if d is not None:
+                    self._emit_drama(j)
+                if not trouble:
+                    self._other_off.pop(j, None)
                 continue
             rel = (c.dist - me.dist) - round(c.dist - me.dist)
             near_s = abs(rel) * lap_t
-            ratio = self._ratio(c)
-            trouble = c.surf == OFF_TRACK or (ratio is not None and ratio < SLOW_RATIO)
-            if not trouble:
+            if d is None:
+                since = self._other_off.get(j)
+                if not trouble or since is None or near_s > DRAMA_NEAR_S or t - since["t"] > DRAMA_NEW_S:
+                    if not trouble:
+                        self._other_off.pop(j, None)
+                    continue
+                if t - since["t"] < OFF_MIN_S and c.surf != OFF_TRACK and ratio is not None and ratio >= 0.25:
+                    continue                       # a moment's lift is not trouble yet
+                if t - self._drama_t.get(j, -1e9) < 30:
+                    continue
+                d = self._dramas[j] = {"since": since["t"], "off": since["off"], "at": since["at"], "first": t,
+                                       "last": t, "min": near_s, "minT": t, "ahead": rel > 0, "rel": rel,
+                                       "passT": None, "lap": self.lap_no()}
+            if near_s <= DRAMA_NEAR_S:
+                d["last"] = t
+                if near_s < d["min"]:
+                    d["min"], d["minT"] = near_s, t
+            if d["rel"] > 0 >= rel and d["passT"] is None:
+                d["passT"] = t                     # T went by it
+            d["rel"] = rel
+            d["off"] = d["off"] or c.surf == OFF_TRACK
+            if (near_s > DRAMA_NEAR_S + 1.0 and t - d["last"] > 2.0) or t - d["first"] > DRAMA_MAX_S - LEAD_UP_S:
+                self._emit_drama(j)
+            if not trouble and d is None:
                 self._other_off.pop(j, None)
+
+    def _emit_drama(self, j):
+        d = self._dramas.pop(j, None)
+        if d is None:
+            return
+        t = d["since"]
+        if d["first"] - self._last_drama < 10:
+            return
+        self._drama_t[j] = self._last_drama = d["first"]
+        start = t - LEAD_UP_S                       # what led up to it is never cut: the end is
+        end = min((d["passT"] or d["last"]) + 5.0, start + DRAMA_MAX_S)
+        what = "goes off" if d["off"] else "spins"
+        near = d["min"] <= NEAR_MISS_S
+        if near and (d["ahead"] or d["passT"] is not None):
+            label, score = "Near miss - a car %s right in front" % what, 55
+        elif d["ahead"]:
+            label, score = "A car %s just ahead" % what, 35
+        else:
+            label, score = "A car %s just behind" % what, 22
+        m = self._add("drama", t, [(start, end)], score, label, [j], lap=d["lap"], at=d["at"], nearMiss=near,
+                      passT=round(d["passT"], 2) if d["passT"] is not None else None, closest=round(d["min"], 2),
+                      ahead=d["ahead"])
+        m["key"] = round(t, 2)
+
+    def _pct(self, idx):
+        c = self.cars.get(idx)
+        return c.pct if c is not None else None
+
+    def _nearest(self, me, within_s):
+        """The car closest to T on track within within_s seconds, or None."""
+        lap_t = self.lap_time()
+        if not lap_t or me.dist is None:
+            return None
+        best, best_s = None, within_s
+        for j, c in self.cars.items():
+            if j == self.target or c.dist is None or c.surf == NOT_IN_WORLD or c.pit:
                 continue
-            since = self._other_off.setdefault(j, t)
-            if t - since < OFF_MIN_S or near_s > DRAMA_NEAR_S:
-                continue
-            if t - self._drama_t.get(j, -1e9) < 30 or t - self._last_drama < 10:
-                continue
-            self._drama_t[j] = self._last_drama = t
-            where = "ahead" if rel > 0 else "behind"
-            self._add("drama", t, [(t - 8, t + 6)], 25 + (15 if near_s <= 1.0 and rel > 0 else 0),
-                      "Trouble just %s" % where, [j])
+            rel = (c.dist - me.dist) - round(c.dist - me.dist)
+            if abs(rel) * lap_t <= best_s:
+                best, best_s = j, abs(rel) * lap_t
+        return best
 
     def _pits(self, t, me, lap_t):
         on = me.pit or me.surf in (IN_STALL,)
@@ -545,10 +668,14 @@ class Analyzer:
                 if p["out"] - p["in"] < 4:
                     return                             # a blip of the pit flag, not a stop
                 label = "Pit stop"
+                swap = self.stints and len(self.stints) > 1 and p["in"] - 5 <= self.stints[-1]["from"] <= t + 5
+                if swap:
+                    label = "Driver change - %s takes over" % self.stints[-1]["driver"]
                 if p["pos"] and after:
                     label += " - %s to %s" % (_ord(p["pos"]), _ord(after)) if p["pos"] != after else \
                         " - holds %s" % _ord(after)
-                self._add("pit", p["in"], segs, 20 + (5 if p["pos"] and after and after < p["pos"] else 0), label,
+                self._add("pit", p["in"], segs, 20 + (5 if p["pos"] and after and after < p["pos"] else 0) +
+                          (15 if swap else 0), label, driverChange=bool(swap),
                           lap=p["lap"], stopS=round(p["stallEnd"] - p["stall"], 1) if "stall" in p else None)
 
     # ------------------------------------------------------------------ the end
@@ -559,6 +686,8 @@ class Analyzer:
         for p in list(self._pending):
             self._pending.remove(p)
             self._score_pass(p)
+        for j in list(self._dramas):
+            self._emit_drama(j)
         # T taking the flag
         fin_t = None
         if self.results and self.crossings:
@@ -603,12 +732,51 @@ class Analyzer:
                     m["score"] = round(m["score"] * LATE_BONUS, 1)
                     m["late"] = True
         moments.sort(key=lambda m: m["t"])
+        if len(self.stints) > 1:
+            for m in moments:
+                m["driver"] = driver_at(self.stints, m["t"])
         for n, m in enumerate(moments):
             m["id"] = n
             m.setdefault("mandatory", False)
         return {"target": self.target, "session": self.race_session, "green": self.green, "finish": fin_t,
                 "classPos": cls_pos, "laps": (self.results or {}).get("laps") or (self.crossings[-1][1] if self.crossings else None),
-                "track": self.track, "event": self.event, "lapTime": self.lap_time(), "moments": moments}
+                "track": self.track, "event": self.event, "lapTime": self.lap_time(), "moments": moments,
+                "path": self.path, "trackKey": self.track_key, "team": self.team, "car": self.car_name,
+                "cls": self.cls_name, "number": self.number, "stints": self.stints, "startPos": self.start_pos,
+                "drivers": list(dict.fromkeys(x["driver"] for x in self.stints)), "numbers": self.numbers,
+                "cameraInfo": self.camera_info, "raceS": race_length_guess(self.session_info, self.race_session)}
+
+
+def driver_at(stints, t):
+    """Who drove the car at tape time t (stints in order)."""
+    who = stints[0]["driver"] if stints else None
+    for st in stints or []:
+        if st["from"] <= t:
+            who = st["driver"]
+    return who
+
+
+def race_length_guess(session_info, race_session=None) -> float | None:
+    """How long the race ran, in seconds, from a saved replay's own final results (the winner's laps at a little over
+    its fastest lap), else the session's set length. For the scan's time estimate only; None when nothing says."""
+    for sess in ((session_info or {}).get("Sessions") or []):
+        if not isinstance(sess, dict) or str(sess.get("SessionType", "")).lower() != "race":
+            continue
+        if race_session is not None and sess.get("SessionNum") != race_session:
+            continue
+        res = [r for r in (sess.get("ResultsPositions") or []) if isinstance(r, dict)]
+        lead = min(res, key=lambda r: _num(r.get("Position"), 999), default=None)
+        laps, fast = _num((lead or {}).get("LapsComplete")), _num((lead or {}).get("FastestTime"))
+        if laps and fast and laps > 0 and fast > 0:
+            return float(laps) * fast * 1.04
+        txt = str(sess.get("SessionTime") or "")
+        try:
+            v = float(txt.split()[0])
+        except (ValueError, IndexError):
+            v = None
+        if v and 0 < v < 7 * 86400 and "unlimited" not in txt:
+            return v
+    return None
 
 
 def fmt_lap(s) -> str:

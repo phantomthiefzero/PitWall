@@ -4,3 +4,4 @@ pyyaml>=6
 pywebview>=5.0
 segno>=1.6
 imageio-ffmpeg>=0.5     # iRacing Highlights builds its video with the ffmpeg this ships
+Pillow>=10              # Highlights draws its built-in stingers

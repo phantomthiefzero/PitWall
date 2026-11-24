@@ -368,9 +368,14 @@ class AppWindowApiTest(unittest.TestCase):
                                   "update_open_key_page", "save_report", "save_image",
                                   "record_start", "record_stop", "record_info", "record_show", "record_auto", "health",
                                   "dircheck_list", "dircheck_start", "dircheck_pick", "dircheck_info", "dircheck_stop",
-                                  "second_start", "second_stop", "second_info", "open_in_browser", "camera_status"})
-        for n in public:
+                                  "second_start", "second_stop", "second_info", "open_in_browser", "camera_status",
+                                  "highlights"})
+        for n in public - {"highlights"}:
             self.assertTrue(inspect.ismethod(getattr(api, n)), n)
+        # Highlights' page calls api.highlights.<name>: an object whose public attributes are only its methods
+        hl = api.highlights
+        for n in (n for n in dir(hl) if not n.startswith("_")):
+            self.assertTrue(inspect.ismethod(getattr(hl, n)), "highlights." + n)
 
     def test_the_app_window_grants_a_camera_only_to_the_suites_own_pages(self):
         """The producer's monitor reads OBS Virtual Camera in the app window, which refused it until the app
@@ -920,13 +925,6 @@ class UpdaterTest(unittest.TestCase):
             parse_release({"tag_name": "v1.0", "assets": []})
         with self.assertRaises(UpdateError):
             parse_release({"tag_name": "build-3", "assets": [{"name": "notes.txt"}]})
-        # a release also carries iRacing Highlights.exe: the suite never updates into it, whichever comes first
-        rel = _release(35)
-        other = dict(rel["assets"][0], name="iRacing.Highlights.exe", url="https://api.github.com/x/assets/9")
-        rel["assets"] = [other] + rel["assets"]
-        self.assertEqual(parse_release(rel)["name"], "iRacing.Suite.exe")
-        with self.assertRaises(UpdateError):
-            parse_release({"tag_name": "build-3", "assets": [other]})
 
     def test_check_finds_a_newer_build_and_what_changed(self):
         gh = FakeGitHub(_release(35), b"")

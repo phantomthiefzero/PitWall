@@ -46,7 +46,9 @@ def clips(moments, chosen_ids) -> list[dict]:
         c["caption"] = caption(best)
         c["cars"] = best.get("cars") or []
         c["score"] = best["score"]
-        c["key"] = best["t"]
+        c["key"] = best.get("key", best["t"])
+        c["best"] = best["id"]
+        c["driver"] = best.get("driver")
         c["replay"] = replay_window(best)
     return out
 
@@ -134,7 +136,7 @@ def caption(m) -> str:
         return "The start"
     if m["kind"] == "finish":
         return m["label"].split(" (")[0]
-    return ("Lap %d  -  %s" % (lap, m["label"])) if isinstance(lap, int) else m["label"]
+    return ("Lap %d  ·  %s" % (lap, m["label"])) if isinstance(lap, int) else m["label"]
 
 
 def length(moments, chosen_ids, stinger_s=0.0) -> float:
