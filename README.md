@@ -72,9 +72,15 @@ Turns a whole race's replay into a short video of one car's best moments, for sh
    stays sharp; any other video plays between
    clips; none = a quick fade), captions, title and finish cards, and music (off until you add tracks; they play in
    order and repeat, under the race sound).
-6. **Record the clips and make the video**: the app jumps to each moment, points the camera at the car, records it
-   with OBS, and builds the video in `Documents\iRacingHighlights\Videos`. Leave iRacing and OBS alone until it
-   finishes. **Make the video again** rebuilds with other music or a stinger without recording again.
+6. **What to make**: the full video (16:9, the moments you ticked), a best-of short, and one short each for the top
+   moments. Shorts are vertical (1080 x 1920) for YouTube Shorts, Instagram Reels and TikTok: each opens on its best
+   moment with a slow-motion replay, captions sit at the top (clear of the apps' buttons), up to 30 s / 45 s / 60 s /
+   90 s / 3 min. Framing: fill the screen (crop to the middle, where the car is) or the whole picture with a blurred copy
+   behind. (Twitch clips are cut from a live stream on Twitch itself; these files are for uploading.)
+7. **Record the clips and make the videos**: the app jumps to each moment, points the camera at the car, records it
+   with OBS (once, even when several videos use it), and builds every video in `Documents\iRacingHighlights\Videos`.
+   Leave iRacing and OBS alone until it finishes. **Make the videos again** rebuilds with other music, a stinger or
+   shorts settings without recording again.
 
 Music: use tracks you are allowed to use in videos you share, for example the YouTube Audio Library, Pixabay Music,
 or your own. Some free tracks ask for a credit line in the video's description.

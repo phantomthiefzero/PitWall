@@ -122,15 +122,38 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 </section>
 
 <section id="s4" hidden>
-  <h2><span class="n">4</span> Make the video</h2>
-  <p class="hint">The app takes over the replay: it jumps to each clip, points the camera at your car and records it with OBS. Leave iRacing and OBS alone until it finishes (about as long as the video, plus a few seconds a clip).</p>
+  <h2><span class="n">4</span> What to make</h2>
+  <div class="grid">
+    <span>Full video</span>
+    <label><input type="checkbox" id="makeFull"> The moments ticked above, wide (16:9) for YouTube</label>
+    <span>Shorts</span>
+    <div>
+      <label><input type="checkbox" id="makeBestOf"> A best-of short</label>
+      &nbsp;&nbsp;and one short each for the top <select id="shortSingles" style="min-width:0"><option value="0">0</option><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option></select> moments
+    </div>
+    <span></span>
+    <p class="hint" style="margin:0">Vertical (9:16, 1080 x 1920) for YouTube Shorts, Instagram Reels and TikTok. Each opens on its best moment with a slow-motion replay, and the caption sits at the top where the apps' buttons don't cover it. Twitch clips are cut from a live stream on Twitch itself, so they can't be made here; these files are for uploading.</p>
+    <span>Short length</span>
+    <div><select id="shortMaxS" style="min-width:0"><option value="30">up to 30 s</option><option value="45">up to 45 s</option><option value="60">up to 60 s</option><option value="90">up to 90 s</option><option value="180">up to 3 min</option></select>
+      <span class="mut">&nbsp;Shorts and Reels can be up to 3 minutes; 30 to 60 seconds is the usual sweet spot.</span></div>
+    <span>Framing</span>
+    <div><select id="shortFrame" style="min-width:0"><option value="fill">Fill the screen (crop to the middle, where the car is)</option><option value="blur">Whole picture, blurred copy behind it</option></select></div>
+    <span>Replay</span>
+    <label><input type="checkbox" id="shortReplay"> Slow-motion replay of the key moment</label>
+  </div>
+  <div id="plan" class="mut" style="margin:10px 0 0"></div>
+</section>
+
+<section id="s5" hidden>
+  <h2><span class="n">5</span> Make the videos</h2>
+  <p class="hint">The app takes over the replay: it jumps to each clip, points the camera at your car and records it with OBS. A clip used by more than one video is recorded once. Leave iRacing and OBS alone until it finishes (about as long as the clips, plus a few seconds each).</p>
   <div class="row">
-    <button class="go" id="make">Record the clips and make the video</button>
-    <button id="rebuild" hidden>Make the video again with these settings</button>
+    <button class="go" id="make">Record the clips and make the videos</button>
+    <button id="rebuild" hidden>Make the videos again with these settings</button>
     <button id="stopMake" hidden>Stop</button>
   </div>
   <div id="makeProg" hidden><div class="bar"><i id="makeBar"></i></div><span class="mut" id="makeText"></span></div>
-  <div class="row" id="done" hidden><span class="good" id="doneText"></span><button id="play">Play it</button><button id="folder">Open the folder</button></div>
+  <div id="done" hidden><div id="doneList"></div><div class="row"><button id="folder">Open the folder</button></div></div>
   <div class="err" id="err"></div>
   <div class="log" id="log"></div>
 </section>
@@ -221,6 +244,9 @@ function renderSettings(s) {
   $("captions").checked = !!s.captions; $("cards").checked = !!s.cards;
   $("musicVolume").value = s.musicVolume; $("gameVolume").value = s.gameVolume;
   $("target").value = s.targetMin;
+  $("makeFull").checked = s.makeFull !== false; $("makeBestOf").checked = s.makeBestOf !== false;
+  $("shortSingles").value = String(s.shortSingles); $("shortMaxS").value = String(s.shortMaxS);
+  $("shortFrame").value = s.shortFrame || "fill"; $("shortReplay").checked = s.shortReplay !== false;
   vols();
   renderMusic(s.music || []);
   stingerInfo();
@@ -245,6 +271,20 @@ async function stingerInfo() {
   setText($("stingerText"), r.name + " (" + (r.duration ? r.duration.toFixed(1) + " s, " : "") + (r.alpha ? "transparent: plays over each cut)" : "not transparent: plays between clips)"));
 }
 
+let planKey = "", doneKey = "";
+function renderPlan(outs) {
+  const html = outs.length ? "Will make: " + outs.map((o) => "<b>" + esc(o.name) + "</b> " + esc(o.length) + (o.vertical ? " (vertical)" : "")).join(" &nbsp;-&nbsp; ") : "Nothing ticked to make.";
+  if (html !== planKey) { planKey = html; $("plan").innerHTML = html; }
+}
+
+function renderDone(vs) {
+  const key = JSON.stringify(vs.map((v) => v.path));
+  if (key === doneKey) return;
+  doneKey = key;
+  $("doneList").innerHTML = vs.map((v, i) => '<div class="row"><span class="good">' + esc(v.name) + "</span><span class=\"mut\">" + Math.round(v.duration) + " s" + (v.vertical ? ", vertical" : "") + '</span><button data-i="' + i + '">Play</button></div>').join("");
+  $("doneList").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => api.open_folder("video", +b.dataset.i)));
+}
+
 function vols() {
   setText($("musicVolumeT"), Math.round($("musicVolume").value * 100) + "%");
   setText($("gameVolumeT"), Math.round($("gameVolume").value * 100) + "%");
@@ -253,7 +293,9 @@ function vols() {
 function saveFields() {
   api.save_settings({obsUrl: $("obsUrl").value.trim(), obsPassword: $("obsPassword").value, camera: $("camera").value,
     captions: $("captions").checked, cards: $("cards").checked, musicVolume: +$("musicVolume").value, gameVolume: +$("gameVolume").value,
-    targetMin: +$("target").value || 8}).then(refresh);
+    targetMin: +$("target").value || 8, makeFull: $("makeFull").checked, makeBestOf: $("makeBestOf").checked,
+    shortSingles: +$("shortSingles").value, shortMaxS: +$("shortMaxS").value, shortFrame: $("shortFrame").value,
+    shortReplay: $("shortReplay").checked}).then(refresh);
 }
 
 async function refresh() {
@@ -268,8 +310,9 @@ async function refresh() {
   setText($("scanText"), st.progress.text || "");
   if (st.error && !st.race && !st.job) setText($("lookText"), st.error);
   if (st.race && !scanning) {
-    show($("s2"), true); show($("s3"), true); show($("s4"), true);
+    show($("s2"), true); show($("s3"), true); show($("s4"), true); show($("s5"), true);
     const r = st.race;
+    renderPlan(r.outputs || []);
     setText($("raceTag"), [r.track, r.raceLength ? "race " + r.raceLength : "", r.classPos ? "finished P" + r.classPos + " in class" : "", r.lapTime ? "usual lap " + r.lapTime : ""].filter(Boolean).join("  -  "));
     renderMoments(r);
   }
@@ -282,8 +325,8 @@ async function refresh() {
     setText($("makeText"), st.progress.text);
     $("makeBar").style.width = st.progress.of ? Math.round(100 * st.progress.done / st.progress.of) + "%" : "0%";
   }
-  show($("done"), !!st.video && !st.job);
-  if (st.video) setText($("doneText"), "Done: " + st.video.path.split(/[\\/]/).pop() + " (" + Math.round(st.video.duration) + " s, " + st.video.clips + " clips)");
+  show($("done"), (st.videos || []).length > 0 && !st.job);
+  renderDone(st.videos || []);
   setText($("err"), st.error ? st.error : "");
   setText($("log"), (st.logs || []).join("\n"));
 }
@@ -296,7 +339,8 @@ function wire() {
   $("stopMake").onclick = () => api.stop();
   $("autoPick").onclick = async () => { await api.save_settings({targetMin: +$("target").value || 8}); await api.auto_pick($("target").value || 8); refresh(); };
   $("target").onchange = async () => { await api.auto_pick($("target").value || 8); saveFields(); };
-  ["obsUrl", "obsPassword", "camera", "captions", "cards"].forEach((id) => $(id).addEventListener("change", saveFields));
+  ["obsUrl", "obsPassword", "camera", "captions", "cards", "makeFull", "makeBestOf", "shortSingles", "shortMaxS",
+    "shortFrame", "shortReplay"].forEach((id) => $(id).addEventListener("change", saveFields));
   ["musicVolume", "gameVolume"].forEach((id) => { $(id).addEventListener("input", vols); $(id).addEventListener("change", saveFields); });
   $("testObs").onclick = async () => { saveFields(); setText($("obsText"), "Connecting..."); const r = await api.test_obs(); $("obsText").className = r.ok ? "good" : "bad"; setText($("obsText"), r.text); };
   $("stingerPick").onclick = async () => { const r = await api.pick_stinger(); if (r.error) setText($("stingerText"), r.error); stingerInfo(); refresh(); };
@@ -304,7 +348,6 @@ function wire() {
   $("musicAdd").onclick = async () => { const r = await api.add_music(); renderMusic(r.music || []); };
   $("make").onclick = async () => { saveFields(); const r = await api.record_and_build(); if (!r.ok) setText($("err"), r.error || ""); refresh(); };
   $("rebuild").onclick = async () => { saveFields(); const r = await api.rebuild(); if (!r.ok) setText($("err"), r.error || ""); refresh(); };
-  $("play").onclick = () => api.open_folder("video");
   $("folder").onclick = () => api.open_folder("videos");
 }
 

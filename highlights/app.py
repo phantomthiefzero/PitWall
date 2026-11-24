@@ -22,7 +22,7 @@ import traceback
 from . import __version__
 from .capture import ClipRecorder
 from .moments import analyze_capture, capture_field, fmt_lap
-from .pick import auto_pick, clips as make_clips, length
+from .pick import auto_pick, best_of, clips as make_clips, hook_first, length, short_length, singles
 from .scan import ScanError, camera_groups, look, scan
 from .stitch import BuildError, build, probe
 
@@ -30,6 +30,9 @@ DEFAULTS = {
     "obsUrl": "ws://127.0.0.1:4455", "obsPassword": "", "camera": "auto", "stinger": "", "music": [],
     "musicVolume": 0.35, "gameVolume": 0.7, "targetMin": 8, "captions": True, "cards": True,
     "kinds": ["pass", "lost", "battle", "off", "spin", "towed", "drama", "pit", "fastest"],
+    # vertical shorts (9:16) for YouTube Shorts, Instagram Reels, TikTok
+    "makeFull": True, "makeBestOf": True, "shortSingles": 3, "shortMaxS": 45, "shortFrame": "fill",
+    "shortReplay": True,
 }
 AUDIO_EXT = (".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac")
 
@@ -82,6 +85,7 @@ class Engine:
         self.target = None           # {idx, number, driver, ...}
         self.recorded: list[dict] = []
         self.video = None
+        self.videos: list[dict] = []
         self.cameras: list[dict] = []
 
     # ------------------------------------------------------------------ settings, log
@@ -210,7 +214,7 @@ class Engine:
 
     def _took(self, res):
         self.result = res
-        self.recorded, self.video = [], None
+        self.recorded, self.video, self.videos = [], None, []
         self.auto(self.settings.get("targetMin", 8))
 
     def _stinger_s(self):
@@ -259,12 +263,44 @@ class Engine:
         r, car = self.result or {}, self.target or {}
         return safe_name("%s #%s %s" % (r.get("track") or "Race", car.get("number", ""), time.strftime("%Y-%m-%d %H%M")))
 
+    # ------------------------------------------------------------------ what gets made
+    def outputs(self) -> list[dict]:
+        """The videos to make: the full video (16:9, your picks), a best-of short and one short per top moment
+        (9:16, picked here from every moment, hook first)."""
+        r = self.result
+        if not r:
+            return []
+        ms, s = r["moments"], self.settings
+        kinds = set(s.get("kinds") or DEFAULTS["kinds"])
+        st = self._stinger_s()
+        replay = bool(s.get("shortReplay", True))
+        max_s = float(s.get("shortMaxS", 45))
+        out = []
+        if s.get("makeFull", True) and self.chosen:
+            out.append({"key": "full", "name": "Highlights", "ids": list(self.chosen), "vertical": False,
+                        "length": length(ms, self.chosen, st) + (8.0 if s.get("cards") else 0.0)})
+        if s.get("makeBestOf", True):
+            ids = best_of(ms, max_s, st, kinds, replay)
+            if ids:
+                out.append({"key": "best", "name": "Short - best of", "ids": ids, "vertical": True,
+                            "length": short_length(hook_first(make_clips(ms, ids), replay), st)})
+        for k, ids in enumerate(singles(ms, int(s.get("shortSingles", 3) or 0), max_s, kinds, replay)):
+            m = next(x for x in ms if x["id"] == ids[0])
+            out.append({"key": "s%d" % (k + 1), "name": "Short %d - %s" % (k + 1, m["label"]), "ids": ids,
+                        "vertical": True, "length": short_length(hook_first(make_clips(ms, ids), replay), st)})
+        return out
+
     def record_and_build(self):
-        if not self.result or not self.chosen:
+        if not self.result:
             return {"ok": False, "error": "Nothing picked."}
         if self.demo:
             return {"ok": False, "error": "The demo field cannot be recorded (no iRacing, no OBS)."}
-        cs = make_clips(self.result["moments"], self.chosen)
+        outs = self.outputs()
+        if not outs:
+            return {"ok": False, "error": "Nothing to make: tick the full video or a short."}
+        # every clip any of the videos needs, recorded once (overlapping ones as one)
+        union = sorted({i for o in outs for i in o["ids"]})
+        cs = make_clips(self.result["moments"], union)
 
         def job():
             obs = self._obs()
@@ -276,14 +312,17 @@ class Engine:
                 def prog(i, n):
                     self.progress.update(done=i, of=n, text="Recording clip %d of %d" % (min(i + 1, n), n))
                 self.progress.update(done=0, of=len(cs), text="Recording clip 1 of %d" % len(cs))
-                self.recorded = rec.record(cs, self.target["number"], self.cameras, self.settings.get("camera"),
-                                           stop=self.stop_flag.is_set, progress=prog)
+                got = rec.record(cs, self.target["number"], self.cameras, self.settings.get("camera"),
+                                 stop=self.stop_flag.is_set, progress=prog)
             obs.close()
-            bad = [r for r in self.recorded if not r.get("ok")]
+            for r, c in zip(got, cs):
+                r["session"] = c["session"]
+            self.recorded = got
+            bad = [r for r in got if not r.get("ok")]
             if bad:
                 self.log("%d clip(s) could not be recorded and are left out" % len(bad))
             if self.stop_flag.is_set():
-                self.progress["text"] = "Stopped. %d clips recorded." % sum(1 for r in self.recorded if r.get("ok"))
+                self.progress["text"] = "Stopped. %d clips recorded." % sum(1 for r in got if r.get("ok"))
                 return
             self._build()
         return self._run("record", job)
@@ -293,50 +332,86 @@ class Engine:
             return {"ok": False, "error": "Record the clips first."}
         return self._run("build", self._build)
 
+    def _inputs(self, out) -> list[dict]:
+        """An output's clips, each cut from the recorded clip that covers it."""
+        cs = make_clips(self.result["moments"], out["ids"])
+        if out["vertical"]:
+            cs = hook_first(cs, bool(self.settings.get("shortReplay", True)))
+        good = [x for x in self.recorded if x.get("ok")]
+        res = []
+        for c in cs:
+            r = next((x for x in good if x.get("session", c["session"]) == c["session"]
+                      and x["a"] <= c["a"] + 0.05 and x["b"] >= c["b"] - 0.05), None)
+            if r is None:
+                self.log("%s: no recording covers %s, left out" % (out["name"], c["caption"]))
+                continue
+            item = {"path": r["path"], "recStart": r["recStart"], "a": c["a"], "b": c["b"], "caption": c["caption"],
+                    "kind": c["kind"], "ok": True}
+            rp = c.get("replay") if out["vertical"] else None
+            if rp:
+                item["replay"] = {"a": max(rp["a"], r["a"]), "b": min(rp["b"], r["b"])}
+            res.append(item)
+        return res
+
     def _build(self):
         self.job = "build"
         name = self._video_name()
-        out = os.path.join(self.base, "Videos", name + ".mp4")
-        work = os.path.join(self.base, "Work", name)
         r, car = self.result or {}, self.target or {}
-        opts = {"stinger": self.settings.get("stinger") or None, "captions": self.settings.get("captions", True),
+        base = {"stinger": self.settings.get("stinger") or None, "captions": self.settings.get("captions", True),
                 "music": [m for m in self.settings.get("music") or [] if os.path.exists(m)],
                 "musicVolume": float(self.settings.get("musicVolume", 0.35)),
                 "gameVolume": float(self.settings.get("gameVolume", 0.7))}
-        if not opts["music"]:
-            opts["gameVolume"] = 1.0
-        if self.settings.get("cards"):
-            who = "#%s  %s" % (car.get("number", ""), car.get("team") or car.get("driver") or "")
-            opts["intro"] = {"title": r.get("event") or r.get("track") or "Race highlights",
-                             "lines": [x for x in [r.get("track") if r.get("event") else "", who.strip(),
-                                                   car.get("cls") or ""] if x]}
-            fin = "Finished P%s in class" % r["classPos"] if r.get("classPos") else "Finished"
-            lines = []
-            if r.get("laps"):
-                lines.append("%s laps" % r["laps"])
-            best = next((m for m in r.get("moments") or [] if m["kind"] == "fastest"), None)
-            if best and best.get("lapTime"):
-                lines.append("Best lap %s" % fmt_lap(best["lapTime"]))
-            opts["outro"] = {"title": fin, "lines": lines}
-        good = [x for x in self.recorded if x.get("ok")]
-        self.progress.update(done=0, of=len(good) + 2, text="Building the video...")
+        if not base["music"]:
+            base["gameVolume"] = 1.0
+        outs = [o for o in self.outputs() if self._inputs(o)] if self.recorded else []
+        self.videos = []
+        for n, o in enumerate(outs):
+            opts = dict(base)
+            if o["vertical"]:
+                opts.update(vertical=True, frame=self.settings.get("shortFrame", "fill"), captions=True,
+                            maxS=float(self.settings.get("shortMaxS", 45)),
+                            tag=("#%s  %s" % (car.get("number", ""), r.get("track") or "")).strip().upper())
+            elif self.settings.get("cards"):
+                who = "#%s  %s" % (car.get("number", ""), car.get("team") or car.get("driver") or "")
+                opts["intro"] = {"title": r.get("event") or r.get("track") or "Race highlights",
+                                 "lines": [x for x in [r.get("track") if r.get("event") else "", who.strip(),
+                                                       car.get("cls") or ""] if x]}
+                fin = "Finished P%s in class" % r["classPos"] if r.get("classPos") else "Finished"
+                lines = []
+                if r.get("laps"):
+                    lines.append("%s laps" % r["laps"])
+                best = next((m for m in r.get("moments") or [] if m["kind"] == "fastest"), None)
+                if best and best.get("lapTime"):
+                    lines.append("Best lap %s" % fmt_lap(best["lapTime"]))
+                opts["outro"] = {"title": fin, "lines": lines}
+            fname = name if o["key"] == "full" else "%s - %s" % (name, safe_name(o["name"]))
+            out = os.path.join(self.base, "Videos", fname + ".mp4")
+            work = os.path.join(self.base, "Work", fname)
+            inputs = self._inputs(o)
 
-        def prog(i, n):
-            self.progress.update(done=i, of=n, text="Building the video (%d of %d)" % (i, n))
-        res = build(good, out, work, opts, log=self.log, progress=prog)
-        self.video = res
-        self.progress["text"] = "Video ready: %s (%s)" % (os.path.basename(out), clock_str(res["duration"]))
-        try:
-            import shutil
-            shutil.rmtree(work, ignore_errors=True)
-        except Exception:  # noqa: BLE001
-            pass
+            def prog(i, k, o=o, n=n):
+                self.progress.update(done=i, of=k, text="Making %s (video %d of %d, step %d of %d)"
+                                     % (o["name"], n + 1, len(outs), i, k))
+            self.progress.update(done=0, of=len(inputs) + 2, text="Making %s..." % o["name"])
+            res = build(inputs, out, work, opts, log=self.log, progress=prog)
+            res["name"] = o["name"]
+            self.videos.append(res)
+            try:
+                import shutil
+                shutil.rmtree(work, ignore_errors=True)
+            except Exception:  # noqa: BLE001
+                pass
+        self.video = self.videos[0] if self.videos else None
+        self.progress["text"] = "%d video%s ready in %s" % (len(self.videos), "" if len(self.videos) == 1 else "s",
+                                                            os.path.join(self.base, "Videos"))
 
     # ------------------------------------------------------------------ what the page shows
     def status(self):
         r = self.result
         out = {"job": self.job, "progress": self.progress, "error": self.error, "logs": self.logs[-12:],
                "settings": self.settings, "target": self.target, "video": self.video, "demo": self.demo,
+               "videos": [{"name": v.get("name"), "path": v["path"], "duration": v["duration"],
+                           "vertical": v.get("vertical")} for v in self.videos],
                "cameras": self.cameras, "recorded": [{"n": x["n"], "ok": x.get("ok"), "error": x.get("error"),
                                                       "caption": x.get("caption")} for x in self.recorded]}
         if r:
@@ -353,7 +428,10 @@ class Engine:
                            "laps": r.get("laps"), "lapTime": fmt_lap(r.get("lapTime")), "scanFile": r.get("scanFile"),
                            "moments": ms, "chosen": self.chosen, "clips": len(cs),
                            "length": clock_str(length(r["moments"], self.chosen, st) + cards),
-                           "raceLength": clock_str((r.get("finish") or 0) - green) if r.get("finish") else ""}
+                           "raceLength": clock_str((r.get("finish") or 0) - green) if r.get("finish") else "",
+                           "outputs": [{"key": o["key"], "name": o["name"], "vertical": o["vertical"],
+                                        "length": clock_str(o["length"]), "clips": len(make_clips(r["moments"], o["ids"]))}
+                                       for o in self.outputs()]}
         return out
 
 
@@ -463,11 +541,11 @@ class Api:
         self._engine.save_settings({"music": music})
         return {"ok": True, "music": music}
 
-    def open_folder(self, what="videos"):
+    def open_folder(self, what="videos", i=0):
         path = os.path.join(self._engine.base, "Videos")
-        v = self._engine.video
-        if what == "video" and v:
-            path = v["path"]
+        vs = self._engine.videos
+        if what == "video" and vs and 0 <= int(i) < len(vs):
+            path = vs[int(i)]["path"]
         os.makedirs(os.path.join(self._engine.base, "Videos"), exist_ok=True)
         try:
             if sys.platform == "win32":

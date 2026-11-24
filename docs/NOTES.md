@@ -816,3 +816,8 @@ Broadcast (broadcast/)
   round made a 70 s "lap" of a 100 s track and every gap in seconds 30% short). The suite's updater took the first .exe
   of the newest release: with two apps in it, it could have updated the suite into Highlights; it now picks
   iRacing.Suite.exe by name. tests: tests/test_highlights.py, test_suite test_parse_release.
+- Highlights shorts (Nov 2026, "exciting instagram reels and youtube shorts ... Twitch clips"): one vertical file serves
+  Shorts (vertical up to 3 min counts as a Short), Reels (up to 3 min is recommended to non-followers) and TikTok.
+  Twitch clips are cut from a live stream on Twitch, so they are not made here. A short opens on its best clip with
+  a slow-motion replay; the finish's fixed score (100, there so the full video always has it) made it every short's
+  hook at first, so shorts score it 30. tests: the four "short" tests in test_highlights.

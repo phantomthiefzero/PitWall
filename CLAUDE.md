@@ -181,4 +181,9 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
 - ffmpeg gets text in files (textfile=) and a font copied into the work folder: no Windows path inside a filter.
   The ffmpeg is imageio-ffmpeg's (requirements); a build without drawtext loses captions, not the video.
 - Each release carries both apps: the suite's updater picks iRacing.Suite.exe by name, never the first .exe.
+- Shorts (pick.best_of / singles / hook_first; stitch vertical=True): 9:16 1080 x 1920, the hook (best clip) first
+  with a half-speed replay of its key seconds (REPLAY_KINDS), the rest in race order cut straight; captions at the top
+  (~11% down) for the whole clip, wrapped (drawtext does not wrap), clear of the apps' buttons at the bottom and right;
+  no start, no cards; held to shortMaxS. The full video uses the user's ticks, the shorts pick from every moment. Every
+  clip any output needs is recorded once (the union, merged), and each output is cut from the recording that covers it.
 - Not yet run against the sim: docs/VARIABLES_TO_VERIFY.md "Replay highlights".

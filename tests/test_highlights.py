@@ -418,3 +418,71 @@ def test_the_app_scans_the_demo_field_and_picks_to_the_target(tmp_path, monkeypa
     m, sec = (int(x) for x in e.status()["race"]["length"].split(":"))
     assert 60 < m * 60 + sec <= 180
     assert e.record_and_build()["ok"] is False        # the demo cannot record
+
+
+# ------------------------------------------------------------------------------------------------ vertical shorts
+def test_a_short_opens_on_its_best_moment_with_a_slow_replay_and_fits_its_length():
+    ms = [_m(0, 100, 60, "pass"), _m(1, 400, 70, "spin"), _m(2, 800, 40, "battle", [[780, 810]]),
+          _m(3, 900, 10, "traffic"), _m(4, 2000, 100, "finish", [[1980, 2008]], True),
+          _m(5, 10, 100, "start", [[4, 50]], True)]
+    ids = pick.best_of(ms, 45)
+    assert 5 not in ids and 3 not in ids               # a short starts in the action; traffic is not a highlight
+    cs = pick.hook_first(pick.clips(ms, ids))
+    assert cs[0]["kind"] == "spin" and cs[0]["replay"] == {"a": 398.5, "b": 403.0}
+    assert all(c["replay"] is None for c in cs[1:])
+    assert [c["a"] for c in cs[1:]] == sorted(c["a"] for c in cs[1:])
+    assert pick.short_length(cs) <= 45
+    # the finish's fixed score does not make it the hook
+    cs = pick.hook_first(pick.clips(ms, [0, 4]))
+    assert cs[0]["kind"] == "pass"
+
+
+def test_one_short_per_top_moment_skips_overlaps_and_the_start():
+    ms = [_m(0, 100, 60, "pass"), _m(1, 104, 55, "lost"), _m(2, 400, 70, "spin"), _m(3, 10, 100, "start", [[4, 50]], True)]
+    assert pick.singles(ms, 3, 60) == [[2], [0]]
+    assert pick.singles(ms, 1, 60) == [[2]]
+    assert pick.singles(ms, 3, 10) == []                 # none fits in 10 s
+
+
+@pytest.mark.skipif(_ffmpeg() is None, reason="no ffmpeg")
+def test_a_vertical_short_is_1080_by_1920_and_its_replay_runs_at_half_speed(tmp_path):
+    from highlights.stitch import build, probe
+    ff = _ffmpeg()
+    p = str(tmp_path / "rec.mkv")
+    subprocess.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=8", "-f", "lavfi",
+                    "-i", "sine=f=440:d=8", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", p], check=True)
+    clip = {"path": p, "recStart": 100.0, "a": 101.0, "b": 105.0, "caption": "Lap 12  -  Takes the class lead",
+            "replay": {"a": 102.0, "b": 103.5}, "ok": True}
+    for frame in ("fill", "blur"):
+        r = build([clip], str(tmp_path / ("%s.mp4" % frame)), str(tmp_path / ("w" + frame)),
+                  {"vertical": True, "frame": frame, "tag": "#34  TEST"}, log=lambda *a: None)
+        info = probe(r["path"])
+        assert (info["w"], info["h"]) == (1080, 1920)
+        assert info["duration"] == pytest.approx(4 + 3, abs=0.3)       # the clip, then 1.5 s at half speed
+    r = build([clip, dict(clip, replay=None)], str(tmp_path / "cap.mp4"), str(tmp_path / "wcap"),
+              {"vertical": True, "maxS": 6}, log=lambda *a: None)
+    assert probe(r["path"])["duration"] == pytest.approx(6, abs=0.3)   # held to the short's limit
+
+
+def test_each_clip_is_recorded_once_for_the_full_video_and_every_short(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    from highlights.app import Engine
+    e = Engine(demo=True, base=str(tmp_path / "home"))
+    ms = [_m(0, 10, 100, "start", [[4, 50]], True), _m(1, 300, 60, "pass"), _m(2, 600, 70, "spin"),
+          _m(3, 900, 45, "battle", [[880, 910]]), _m(4, 2000, 100, "finish", [[1980, 2008]], True)]
+    e.result = {"moments": ms, "green": 10.0, "finish": 2000.0, "track": "Test"}
+    e.target = {"number": "34", "idx": 0}
+    e.chosen = [0, 1, 3, 4]
+    e.settings.update(makeFull=True, makeBestOf=True, shortSingles=2, shortMaxS=45, cards=False)
+    outs = e.outputs()
+    assert [o["key"] for o in outs] == ["full", "best", "s1", "s2"]
+    assert all(o["vertical"] for o in outs[1:]) and not outs[0]["vertical"]
+    union = sorted({i for o in outs for i in o["ids"]})
+    cs = pick.clips(ms, union)
+    e.recorded = [{"n": c["n"], "ok": True, "path": "clip%d.mkv" % c["n"], "recStart": c["a"] - 0.4, "a": c["a"],
+                   "b": c["b"], "session": c["session"]} for c in cs]
+    assert len(e.recorded) == len(union)              # nothing overlaps here, so one recording a moment
+    best = e._inputs(outs[1])
+    assert best[0]["replay"] and best[0]["path"] == next(r["path"] for r in e.recorded if r["a"] == 590)
+    full = e._inputs(outs[0])
+    assert [x["a"] for x in full] == [4, 290, 880, 1980] and all("replay" not in x for x in full)

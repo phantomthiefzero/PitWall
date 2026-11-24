@@ -45,6 +45,86 @@ def clips(moments, chosen_ids) -> list[dict]:
         c["lap"] = best.get("lap")
         c["caption"] = caption(best)
         c["cars"] = best.get("cars") or []
+        c["score"] = best["score"]
+        c["key"] = best["t"]
+        c["replay"] = replay_window(best)
+    return out
+
+
+REPLAY_KINDS = {"pass": (-2.5, 1.0), "lost": (-2.5, 1.0), "spin": (-1.5, 3.0), "off": (-1.0, 2.5),
+                "drama": (-1.5, 2.5)}
+REPLAY_SPEED = 0.5
+
+
+def replay_window(m):
+    """The key seconds of a moment, for a slow-motion replay: around the swap of a pass, the start of a spin."""
+    w = REPLAY_KINDS.get(m["kind"])
+    if w is None:
+        return None
+    return {"a": round(m["t"] + w[0], 2), "b": round(m["t"] + w[1], 2)}
+
+
+def replay_s(clip) -> float:
+    r = clip.get("replay")
+    return (r["b"] - r["a"]) / REPLAY_SPEED if r else 0.0
+
+
+# ---------------------------------------------------------------------------- vertical shorts
+SHORT_KINDS = {"pass", "lost", "battle", "spin", "off", "drama", "towed", "fastest", "finish"}
+
+
+def hook_first(cs, replay=True) -> list[dict]:
+    """A short opens on its best clip (the hook), with its slow-motion replay; the rest follow in race order, cut
+    straight (a replay only on the hook)."""
+    if not cs:
+        return []
+    best = max(cs, key=lambda c: 30.0 if c["kind"] == "finish" else c["score"])
+    rest = [dict(c, replay=None) for c in cs if c is not best]
+    return [dict(best, replay=best.get("replay") if replay else None)] + rest
+
+
+def short_length(cs, stinger_s=0.0) -> float:
+    return sum(c["b"] - c["a"] + replay_s(c) for c in cs) + max(0, len(cs) - 1) * stinger_s
+
+
+def best_of(moments, max_s, stinger_s=0.0, kinds=None, replay=True) -> list[int]:
+    """The moments for one best-of short: the highest scores that fit in max_s, hook first. The start is left out
+    (a short starts in the action); the finish only if it scores among the best (its score is not mandatory here)."""
+    allowed = [m for m in moments if m["kind"] in SHORT_KINDS and (kinds is None or m["kind"] in kinds
+                                                                     or m["kind"] == "finish")]
+    pool = sorted(allowed, key=lambda m: _short_score(m), reverse=True)
+    chosen = []
+    for m in pool:
+        ids = chosen + [m["id"]]
+        cs = hook_first(clips(moments, ids), replay)
+        if short_length(cs, stinger_s) <= max_s:
+            chosen = ids
+    return sorted(chosen)
+
+
+def _short_score(m):
+    # the finish counts in a short only when it was a fight or a podium; the flag alone is not a highlight
+    if m["kind"] == "finish":
+        return 30.0
+    return m["score"]
+
+
+def singles(moments, n, max_s, kinds=None, replay=True) -> list[list[int]]:
+    """One short per moment, for the n best moments (each with its replay), skipping ones that overlap one already
+    taken."""
+    pool = sorted([m for m in moments if m["kind"] in SHORT_KINDS - {"finish"} and not m.get("mandatory")
+                   and (kinds is None or m["kind"] in kinds)], key=lambda m: m["score"], reverse=True)
+    out, used = [], []
+    for m in pool:
+        if len(out) >= n:
+            break
+        a, b = m["segs"][0][0], m["segs"][-1][1]
+        if any(a < ub and b > ua for ua, ub in used):
+            continue
+        if short_length(hook_first(clips(moments, [m["id"]]), replay)) > max_s:
+            continue
+        out.append([m["id"]])
+        used.append((a, b))
     return out
 
 

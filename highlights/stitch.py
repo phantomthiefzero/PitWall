@@ -27,6 +27,7 @@ CAPTION_S = 4.5
 CARD_S = 4.0
 DIP_S = 0.3
 STINGER_CUT = 0.5
+REPLAY_SPEED = 0.5
 FONT_CANDIDATES = [
     r"C:\Windows\Fonts\segoeuib.ttf", r"C:\Windows\Fonts\arialbd.ttf", r"C:\Windows\Fonts\bahnschrift.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
@@ -108,6 +109,11 @@ def has_filter(exe, name) -> bool:
     return any(line.split()[1:2] == [name] for line in (p.stdout or "").splitlines() if line.strip())
 
 
+def _pixel_art(info, W) -> bool:
+    """A GIF, or a stinger under half the video's width: pixel art, scaled up with hard pixel edges."""
+    return bool(info) and (info.get("codec") == "gif" or (info.get("w") or W) * 2 <= W)
+
+
 def _font(work, exe=None):
     if exe is not None and not has_filter(exe, "drawtext"):
         return None                                  # this ffmpeg cannot draw text: no captions, no card text
@@ -137,33 +143,95 @@ def _enc(opts):
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2"]
 
 
-def _norm_v(W, H, fps):
-    return ("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black,"
-            "setsar=1,fps=%s,format=yuv420p" % (W, H, W, H, fps))
-
-
 def _fade_alpha(t0, t1, f=0.3):
     return ("alpha='if(lt(t,{a}),0,if(lt(t,{b}),(t-{a})/{f},if(lt(t,{c}),1,if(lt(t,{d}),({d}-t)/{f},0))))'"
             .format(a=t0, b=t0 + f, c=t1 - f, d=t1, f=f))
 
 
-def segment(exe, work, src, info, out, trim, dur, W, H, fps, opts, caption=None, font=None, dip=True, game_vol=1.0):
-    vf = _norm_v(W, H, fps)
-    if caption and font:
-        name = _text_file(work, os.path.splitext(os.path.basename(out))[0] + ".txt", caption)
+def _frame_graph(src_label, W, H, fps, frame, speed=1.0, px=False):
+    """The picture fitted to W x H. frame: "pad" (letterbox), "fill" (crop the middle, for a tall video from a wide
+    one: the car is in the middle of iRacing's chase and TV shots) or "blur" (the whole picture, a blurred
+    enlargement of it behind). Returns (graph, output label)."""
+    flags = ":flags=neighbor" if px else ""
+    slow = "setpts=%.4f*PTS," % (1.0 / speed) if speed != 1.0 else ""
+    tail = "setsar=1,fps=%s,format=yuv420p" % fps
+    if frame == "fill":
+        return ("%s%sscale=%d:%d:force_original_aspect_ratio=increase%s,crop=%d:%d,%s[base]"
+                % (src_label, slow, W, H, flags, W, H, tail)), "[base]"
+    if frame == "blur":
+        return ("%s%ssplit[fa][fb];[fa]scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,boxblur=28:3,"
+                "eq=brightness=-0.12[bg];[fb]scale=%d:%d:force_original_aspect_ratio=decrease%s[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2,%s[base]"
+                % (src_label, slow, W, H, W, H, W, H, flags, tail)), "[base]"
+    return ("%s%sscale=%d:%d:force_original_aspect_ratio=decrease%s,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black,%s[base]"
+            % (src_label, slow, W, H, flags, W, H, tail)), "[base]"
+
+
+def wrap(text, width) -> str:
+    """Lines of at most `width` characters, broken at spaces (drawtext does not wrap)."""
+    out, line = [], ""
+    for w in str(text or "").split():
+        if line and len(line) + 1 + len(w) > width:
+            out.append(line)
+            line = w
+        else:
+            line = (line + " " + w).strip()
+    if line:
+        out.append(line)
+    return "\n".join(out)
+
+
+def _draw(font, name, size, x, y, alpha=None, color="white", box=True):
+    """Text from a file, on a dark box (readable over any scene)."""
+    d = ("drawtext=fontfile=%s:textfile=%s:expansion=none:x=%s:y=%s:fontsize=%d:fontcolor=%s:line_spacing=%d"
+         % (font, name, x, y, size, color, size // 5))
+    if box:
+        d += ":box=1:boxcolor=black@0.6:boxborderw=%d" % (size // 2)
+    if alpha:
+        d += ":" + alpha
+    return d
+
+
+def segment(exe, work, src, info, out, trim, dur, W, H, fps, opts, caption=None, font=None, dip=True, game_vol=1.0,
+            frame="pad", speed=1.0, label=None, tag=None, vertical=False, px=False):
+    """One piece of the video: `dur` seconds of `src` from `trim`, played at `speed` (0.5 = half speed: the piece
+    lasts dur / speed). Wide videos caption the bottom left for CAPTION_S; tall ones (vertical) put the caption at
+    the top, in the part no app covers with its buttons, for the whole clip, with an optional tag line above it."""
+    out_dur = dur / speed
+    graph, v = _frame_graph("[0:v]", W, H, fps, frame, speed, px)
+    vf = []
+    stem = os.path.splitext(os.path.basename(out))[0]
+    if font and vertical:
+        big = max(24, W // 15)
+        y = int(H * 0.115)
+        if tag:
+            vf.append(_draw(font, _text_file(work, stem + "_tag.txt", tag), max(16, W // 30), "(w-text_w)/2",
+                            str(int(H * 0.065)), color="0xFFD27A"))
+        if caption:
+            vf.append(_draw(font, _text_file(work, stem + ".txt", wrap(caption, 20)), big, "(w-text_w)/2", str(y),
+                            _fade_alpha(0.15, out_dur + 10, 0.25)))
+        if label:
+            vf.append(_draw(font, _text_file(work, stem + "_l.txt", label), big, "(w-text_w)/2", "h*0.62",
+                            color="0xFFB23F"))
+    elif font:
         size = max(18, H // 24)
-        vf += (",drawtext=fontfile=%s:textfile=%s:expansion=none:x=%d:y=h-%d:fontsize=%d:fontcolor=white:box=1:"
-               "boxcolor=black@0.6:boxborderw=%d:%s" % (font, name, W // 32, size * 3, size, size // 2,
-                                                         _fade_alpha(0.3, min(CAPTION_S, dur - 0.2))))
-    af = "aresample=48000,aformat=channel_layouts=stereo,volume=%.3f" % game_vol
+        if caption:
+            vf.append(_draw(font, _text_file(work, stem + ".txt", caption), size, str(W // 32), "h-%d" % (size * 3),
+                            _fade_alpha(0.3, min(CAPTION_S, out_dur - 0.2))))
+        if label:
+            vf.append(_draw(font, _text_file(work, stem + "_l.txt", label), size, "w-text_w-%d" % (W // 32),
+                            str(size * 2), color="0xFFB23F"))
+    af = "aresample=48000,aformat=channel_layouts=stereo,volume=%.3f" % (game_vol * (0.35 if speed != 1.0 else 1.0))
+    if speed != 1.0:
+        af += ",atempo=%.4f" % max(0.5, min(2.0, speed))
     if dip:
-        vf += ",fade=t=in:st=0:d=%s,fade=t=out:st=%.3f:d=%s" % (DIP_S, max(0.0, dur - DIP_S), DIP_S)
-        af += ",afade=t=in:st=0:d=%s,afade=t=out:st=%.3f:d=%s" % (DIP_S, max(0.0, dur - DIP_S), DIP_S)
+        vf.append("fade=t=in:st=0:d=%s,fade=t=out:st=%.3f:d=%s" % (DIP_S, max(0.0, out_dur - DIP_S), DIP_S))
+        af += ",afade=t=in:st=0:d=%s,afade=t=out:st=%.3f:d=%s" % (DIP_S, max(0.0, out_dur - DIP_S), DIP_S)
     args = [exe, "-y", "-hide_banner", "-loglevel", "error", "-ss", "%.3f" % trim, "-t", "%.3f" % dur] + \
-        _vin(info, src) + ["-f", "lavfi", "-t", "%.3f" % dur, "-i", "anullsrc=r=48000:cl=stereo"]
+        _vin(info, src) + ["-f", "lavfi", "-t", "%.3f" % out_dur, "-i", "anullsrc=r=48000:cl=stereo"]
     a_in = "[0:a]" if info.get("audio") else "[1:a]"
-    fc = "[0:v]%s[v];%s%s,apad,atrim=0:%.3f[a]" % (vf, a_in, af, dur)
-    args += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", "%.3f" % dur] + _enc(opts) + [out]
+    fc = "%s;%s%s[v];%s%s,apad,atrim=0:%.3f[a]" % (graph, v, ",".join(vf) or "null", a_in, af, out_dur)
+    args += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", "%.3f" % out_dur] + _enc(opts) + [out]
     _run(args, cwd=work, log=opts.get("_log"))
     return out
 
@@ -202,8 +270,14 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     if not clips:
         raise BuildError("no clips to build from")
     infos = [probe(c["path"], exe) for c in clips]
-    W = infos[0]["w"] or 1920
-    H = infos[0]["h"] or 1080
+    vertical = bool(opts.get("vertical"))
+    if vertical:
+        W, H = opts.get("size") or (1080, 1920)          # 9:16, 1080p: what Shorts, Reels and TikTok take
+        frame = opts.get("frame") or "fill"
+    else:
+        W = infos[0]["w"] or 1920
+        H = infos[0]["h"] or 1080
+        frame = "pad"
     W, H = W - W % 2, H - H % 2
     fps = opts.get("fps") or (round(infos[0]["fps"]) if infos[0]["fps"] else 60)
     font = _font(work, exe) if (opts.get("captions", True) or opts.get("intro") or opts.get("outro")) else None
@@ -230,7 +304,7 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     if insert:
         st_seg = os.path.join(work, "stinger.mp4")
         segment(exe, work, st_path, st_info, st_seg, 0.0, st_info["duration"] or 1.0, W, H, fps, opts,
-                dip=False, game_vol=1.0)
+                dip=False, game_vol=1.0, frame="fill" if vertical else "pad", px=_pixel_art(st_info, W))
     for i, (c, info) in enumerate(zip(clips, infos)):
         trim = max(0.0, float(c["a"]) - float(c.get("recStart") or c["a"]))
         dur = float(c["b"]) - float(c["a"])
@@ -240,12 +314,26 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
             log("clip %d is too short to use, left out" % (i + 1))
             continue
         if insert and any(p[2] for p in pieces):
-            pieces.append((st_seg, st_info["duration"] or 1.0, False))
+            pieces.append((st_seg, st_info["duration"] or 1.0, None))
         out = os.path.join(work, "clip_%03d.mp4" % i)
-        segment(exe, work, c["path"], info, out, trim, dur, W, H, fps, opts,
-                caption=c.get("caption") if opts.get("captions", True) else None, font=font,
-                dip=not st_info, game_vol=game_vol)
+        cap = c.get("caption") if opts.get("captions", True) else None
+        segment(exe, work, c["path"], info, out, trim, dur, W, H, fps, opts, caption=cap, font=font,
+                dip=not st_info, game_vol=game_vol, frame=frame, tag=opts.get("tag"), vertical=vertical)
         pieces.append((out, dur, True))
+        rp = c.get("replay")
+        if rp and rp.get("b", 0) > rp.get("a", 0):
+            # the key seconds again at half speed, straight after the clip (no stinger between: it is one moment)
+            r_trim = max(0.0, float(rp["a"]) - float(c.get("recStart") or c["a"]))
+            r_dur = float(rp["b"]) - float(rp["a"])
+            if info["duration"]:
+                r_dur = min(r_dur, info["duration"] - r_trim)
+            if r_dur > 0.5:
+                rout = os.path.join(work, "replay_%03d.mp4" % i)
+                segment(exe, work, c["path"], info, rout, r_trim, r_dur, W, H, fps, opts, caption=cap, font=font,
+                        dip=not st_info, game_vol=game_vol, frame=frame, speed=REPLAY_SPEED, label="REPLAY",
+                        tag=opts.get("tag"), vertical=vertical)
+                pieces[-1] = (pieces[-1][0], pieces[-1][1], "clip+")
+                pieces.append((rout, r_dur / REPLAY_SPEED, False))
         step("clip %d of %d ready" % (i + 1, len(clips)))
     if opts.get("outro"):
         pieces.append((card(exe, work, os.path.join(work, "outro.mp4"), opts["outro"].get("title"),
@@ -263,14 +351,19 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     cuts, acc = [], 0.0
     for k in range(len(pieces) - 1):
         acc += real[k]
-        cuts.append(acc)
+        if pieces[k][2] != "clip+":              # a clip and its own replay run on without a stinger
+            cuts.append(acc)
     step("clips joined")
+    if opts.get("maxS") and total > float(opts["maxS"]):
+        log("the video is %.0f s, over its %.0f s limit: the end is cut" % (total, float(opts["maxS"])))
+        total = float(opts["maxS"])
     if not overlay and not music:
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-        _run([exe, "-y", "-hide_banner", "-loglevel", "error", "-i", joined, "-c", "copy", "-movflags", "+faststart",
-              out_path], log=log)
+        _run([exe, "-y", "-hide_banner", "-loglevel", "error", "-i", joined, "-t", "%.3f" % total, "-c", "copy",
+              "-movflags", "+faststart", out_path], log=log)
         step("done")
-        return {"path": out_path, "duration": round(total, 1), "clips": sum(1 for p in pieces if p[2])}
+        return {"path": out_path, "duration": round(total, 1), "clips": sum(1 for p in pieces if p[2] in (True, "clip+")),
+            "vertical": vertical}
     # final pass: stingers over the cuts, music under the race sound
     args = [exe, "-y", "-hide_banner", "-loglevel", "error", "-i", joined]
     fc, n_in = [], 1
@@ -279,12 +372,12 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     if overlay:
         sl = st_info["duration"] or 1.0
         cut_at = float(opts.get("stingerCut", STINGER_CUT))
-        # pixel art (a GIF, or a stinger under half the video's size) keeps hard pixel edges when scaled up
-        px = ":flags=neighbor" if st_info.get("codec") == "gif" or (st_info.get("w") or W) * 2 <= W else ""
+        px = ":flags=neighbor" if _pixel_art(st_info, W) else ""
+        fit = (":force_original_aspect_ratio=increase%s,crop=%d:%d" % (px, W, H)) if vertical else px
         for k, ct in enumerate(cuts):
             off = max(0.0, ct - cut_at * sl)
             args += _vin(st_info, st_path)
-            fc.append("[%d:v]scale=%d:%d%s,format=yuva420p,setpts=PTS-STARTPTS+%.3f/TB[s%d]" % (n_in, W, H, px, off, k))
+            fc.append("[%d:v]scale=%d:%d%s,format=yuva420p,setpts=PTS-STARTPTS+%.3f/TB[s%d]" % (n_in, W, H, fit, off, k))
             fc.append("%s[s%d]overlay=eof_action=pass:format=auto[v%d]" % (v, k, k))
             v = "[v%d]" % k
             if st_info["audio"]:
@@ -316,4 +409,5 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     _run(args, cwd=work, log=log)
     step("done")
-    return {"path": out_path, "duration": round(total, 1), "clips": sum(1 for p in pieces if p[2])}
+    return {"path": out_path, "duration": round(total, 1), "clips": sum(1 for p in pieces if p[2] in (True, "clip+")),
+            "vertical": vertical}
