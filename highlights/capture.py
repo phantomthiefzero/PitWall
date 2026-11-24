@@ -53,9 +53,10 @@ def pick_group(groups, kind, pref="auto") -> int:
 
 
 class ClipRecorder:
-    def __init__(self, src, gate, obs, log=print, clock=time.monotonic, sleep=time.sleep):
+    def __init__(self, src, gate, obs, log=print, clock=time.monotonic, sleep=time.sleep, stop=None):
         self.src, self.gate, self.obs, self.log = src, gate, obs, log
         self.clock, self.sleep = clock, sleep
+        self.stop = stop            # true: give up the clip in hand at once (OBS is still stopped, the tape paused)
 
     def _send(self, cmd):
         r = self.gate.execute(self.src, cmd)
@@ -74,6 +75,8 @@ class ClipRecorder:
         end = self.clock() + limit
         last_t, moved = None, self.clock()
         while True:
+            if self.stop is not None and self.stop():
+                raise CaptureError("stopped")
             p = self._tape()
             if p is not None:
                 if cond(*p):

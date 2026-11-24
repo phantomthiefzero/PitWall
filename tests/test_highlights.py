@@ -1,4 +1,4 @@
-"""iRacing Highlights (highlights/): finding one car's moments in a replay, picking them, recording them, building
+"""Highlights (highlights/, the suite's Highlights tile): finding one car's moments in a replay, picking them, recording them, building
 the video. The moment finder is fed scripted races shaped like iRacing's variables (laps completed + lap fraction,
 track surface, pit road, lap times, session state), so each kind of moment has a case that makes it and a case
 that must not."""
@@ -486,3 +486,52 @@ def test_each_clip_is_recorded_once_for_the_full_video_and_every_short(tmp_path,
     assert best[0]["replay"] and best[0]["path"] == next(r["path"] for r in e.recorded if r["a"] == 590)
     full = e._inputs(outs[0])
     assert [x["a"] for x in full] == [4, 290, 880, 1980] and all("replay" not in x for x in full)
+
+
+# ------------------------------------------------------------------------------------------------ in the suite
+def test_the_suite_window_exposes_every_call_the_page_makes_without_walking_the_engine():
+    import re
+    import types
+    from suite.app import Api
+    from suite.bridge import resolve
+    page = resolve("/highlights/")
+    assert page and page.replace("\\", "/").endswith("suite/web/highlights/index.html")
+    with open(page, encoding="utf-8") as f:
+        html = f.read()
+    assert "window.pywebview.api.highlights" in html
+    calls = set(re.findall(r"\bapi\.(\w+)\(", html))
+    assert {"status", "look", "start_scan", "record_and_build", "open_scan"} <= calls
+    api = Api(types.SimpleNamespace(highlights=object()))
+    hl = api.highlights
+    missing = [c for c in calls if not callable(getattr(hl, c, None))]
+    assert not missing, missing
+    # pywebview walks every public attribute: only methods, never the engine or the window
+    public = [n for n in dir(hl) if not n.startswith("_")]
+    assert all(callable(getattr(hl, n)) for n in public)
+    with open(resolve("/"), encoding="utf-8") as f:
+        assert 'href="/highlights/"' in f.read()
+
+
+def test_highlights_waits_while_the_broadcast_has_the_camera(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    from highlights.app import Engine
+    why = ["The Broadcast is on air"]
+    e = Engine(demo=False, base=str(tmp_path / "home"), camera_busy=lambda: why[0])
+    e.looked = {"field": [{"idx": 0, "number": "34"}]}
+    r = e.start_scan(0)
+    assert r["ok"] is False and "Broadcast" in r["error"] and e.job is None
+    e.result = {"moments": [_m(0, 100, 60)]}
+    e.chosen = [0]
+    assert "Broadcast" in e.record_and_build()["error"]
+
+
+def test_the_suites_engine_hands_highlights_the_broadcasts_switch():
+    import types
+    from suite.app import Engine
+    eng = Engine.__new__(Engine)
+    eng.pitwall = types.SimpleNamespace(bridge=None)
+    assert eng._broadcast_has_camera() is None
+    eng.pitwall.bridge = types.SimpleNamespace(director=types.SimpleNamespace(live=True))
+    assert "producer panel" in eng._broadcast_has_camera()
+    eng.pitwall.bridge.director.live = False
+    assert eng._broadcast_has_camera() is None

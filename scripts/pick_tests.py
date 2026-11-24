@@ -19,9 +19,11 @@ PITWALL = ["tests/test_pipeline.py", "tests/test_broadcast.py", "tests/test_broa
 # first match wins
 RULES = [
     ("docs/", []),
-    ("suite/web/analyzer/", [ANALYZER, SUITE]),      # the suite serves it and checks its size
+    ("suite/web/analyzer/", [ANALYZER, SUITE]),
+    ("suite/web/highlights/", [SUITE, "tests/test_highlights.py"]),      # the suite serves it and checks its size
     ("suite/web/", [SUITE]),
     ("suite/second_camera.py", [SUITE, "tests/test_second_camera.py"]),
+    ("suite/app.py", [SUITE, ANALYZER, "tests/test_highlights.py"]),
     ("suite/", [SUITE, ANALYZER]),                    # bridge, share, updater, page splitting
     ("broadcast/", PITWALL[1:] + [SUITE]),
     ("pitwall/director_scorecard.py", ["tests/test_scorecard.py"]),
@@ -37,8 +39,7 @@ RULES = [
     ("pitwall/", PITWALL + [SUITE]),
     ("tests/analyzer_harness.js", [ANALYZER]),
     ("scripts/pick_tests.py", [SUITE]),
-    ("highlights/", ["tests/test_highlights.py"]),
-    ("run_highlights.py", ["tests/test_highlights.py"]),
+    ("highlights/", ["tests/test_highlights.py", SUITE]),          # the suite hosts it (suite/app.py)
 ]
 
 

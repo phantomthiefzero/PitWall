@@ -164,9 +164,13 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
 - The camera and replay check (producer Setup > Check, pitwall/simcheck.py) sends each command once and reads what
   happened; it reads the bridge's copy of the telemetry (_simvars), never the source from its own thread.
 
-## iRacing Highlights (highlights/)
-- Its own app (`python -m highlights`, `iRacing Highlights.exe` from the same release; `--demo` runs on the fake
-  field). It imports pitwall (sources, commands, obs, recorder); pitwall and the suite never import it.
+## Highlights (highlights/, page suite/web/highlights/)
+- One of the suite's apps (a home tile), not a separate program. The suite's Engine makes highlights.app.Engine
+  (demo with `--pitwall-source fake`) and its Api is window.pywebview.api.highlights (Api.highlights): public
+  attributes there are methods only (pywebview walks them). The page works only in the app window (dialogs, OBS).
+  highlights imports pitwall (sources, commands, obs, recorder); pitwall never imports it.
+- It never moves the camera while the Broadcast's director is live (Engine._broadcast_has_camera): one camera, one
+  owner. Quitting the suite stops a job in hand (OBS stopped, the replay paused).
 - It scans a race's replay at 16x (scan.py), finds one car's moments from raw variables only (moments.py: race
   distance from CarIdxLapCompleted + CarIdxLapDistPct unwrapped at the line, CarIdxTrackSurface, CarIdxOnPitRoad,
   CarIdxLastLapTime, CarIdxClass, SessionState), picks them to a target length (pick.py), records only those clips with
@@ -180,7 +184,6 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   cut when it has transparency; without, it plays between clips.
 - ffmpeg gets text in files (textfile=) and a font copied into the work folder: no Windows path inside a filter.
   The ffmpeg is imageio-ffmpeg's (requirements); a build without drawtext loses captions, not the video.
-- Each release carries both apps: the suite's updater picks iRacing.Suite.exe by name, never the first .exe.
 - Shorts (pick.best_of / singles / hook_first; stitch vertical=True): 9:16 1080 x 1920, the hook (best clip) first
   with a half-speed replay of its key seconds (REPLAY_KINDS), the rest in race order cut straight; captions at the top
   (~11% down) for the whole clip, wrapped (drawtext does not wrap), clear of the apps' buttons at the bottom and right;

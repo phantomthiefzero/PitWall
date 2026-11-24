@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>iRacing Highlights</title>
+<title>Highlights - iRacing Suite</title>
 <style>
-@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:url("../../client/assets/barlow-condensed-latin-600-normal.woff2") format("woff2")}
-@font-face{font-family:"Barlow Semi Condensed";font-weight:400;font-display:swap;src:url("../../client/assets/barlow-semi-condensed-latin-400-normal.woff2") format("woff2")}
-@font-face{font-family:"Barlow Semi Condensed";font-weight:600 700;font-display:swap;src:url("../../client/assets/barlow-semi-condensed-latin-600-normal.woff2") format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:url("/pitwall/assets/barlow-condensed-latin-600-normal.woff2") format("woff2")}
+@font-face{font-family:"Barlow Semi Condensed";font-weight:400;font-display:swap;src:url("/pitwall/assets/barlow-semi-condensed-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Barlow Semi Condensed";font-weight:600 700;font-display:swap;src:url("/pitwall/assets/barlow-semi-condensed-latin-600-normal.woff2") format("woff2")}
 :root{color-scheme:dark;--bg:#0b0d10;--card:#111419;--fg:#e6e9ee;--mut:#8e98a4;--ln:#232831;--acc:#ffb23f;--good:#2fd46b;--bad:#ff5a5a;
   --title:"Barlow Condensed","Segoe UI",system-ui,sans-serif;--ui:"Barlow Semi Condensed","Segoe UI",system-ui,sans-serif}
 *{box-sizing:border-box}
@@ -14,6 +14,8 @@
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 var(--ui)}
 main{max-width:1080px;margin:0 auto;padding:22px 26px 60px}
 h1{font:600 34px/1 var(--title);margin:0 0 4px;letter-spacing:.01em}
+.home{display:inline-block;margin:0 0 14px;color:var(--mut);text-decoration:none;font-weight:600}
+.home:hover{color:var(--fg)}
 h1 span{color:var(--acc)}
 .sub{color:var(--mut);margin:0 0 22px}
 section{border-top:1px solid var(--ln);padding:18px 0 20px}
@@ -60,7 +62,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 </head>
 <body>
 <main>
-<h1>iRacing <span>Highlights</span></h1>
+<a class="home" href="/">&larr; Suite home</a>
+<h1>Race <span>Highlights</span></h1>
 <p class="sub">Turns a whole race's replay into a short video of one car's best moments.</p>
 
 <section id="s1">
@@ -351,12 +354,19 @@ function wire() {
   $("folder").onclick = () => api.open_folder("videos");
 }
 
-window.addEventListener("pywebviewready", () => {
-  api = window.pywebview.api;
+let started = false;
+function start() {
+  if (started || !(window.pywebview && window.pywebview.api && window.pywebview.api.highlights)) return;
+  started = true;
+  api = window.pywebview.api.highlights;
   wire();
   refresh();
   setInterval(refresh, 600);
-});
+}
+window.addEventListener("pywebviewready", start);
+start();
+// in a web browser there is no app window to drive iRacing, OBS and file pickers from
+setTimeout(() => { if (!started) setText($("lookText"), "Highlights works in the iRacing Suite app window, not in a web browser."); }, 2500);
 </script>
 </body>
 </html>

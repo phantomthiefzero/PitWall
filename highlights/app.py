@@ -1,16 +1,13 @@
-"""iRacing Highlights: its own app window. Scan a race's replay for one car, pick the moments, record them with OBS,
-build one shareable video (stingers, captions, music).
+"""Highlights, one of the suite's apps: scan a race's replay for one car, pick the moments, record them with OBS,
+build the videos (the full video and vertical shorts, with stingers, captions, music).
 
-The page (highlights/web/index.html) calls Api through window.pywebview.api and polls status(). One job at a time
-runs on a worker thread (scan, record, build); the iRacing source is only touched by that thread, or by look()
-while nothing runs.
-
-    python -m highlights            the app
-    python -m highlights --demo     the fake field in place of iRacing (scan and pick only: no OBS)
+The suite's window exposes Api as window.pywebview.api.highlights (suite/app.py); its page is
+suite/web/highlights/index.html, which polls status(). One job at a time runs on a worker thread (scan, record,
+build); the iRacing source is only touched by that thread, or by look() while nothing runs. With the suite's
+--pitwall-source fake it runs on the fake field (demo: scan and pick only, no OBS).
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
@@ -19,7 +16,6 @@ import threading
 import time
 import traceback
 
-from . import __version__
 from .capture import ClipRecorder
 from .moments import analyze_capture, capture_field, fmt_lap
 from .pick import auto_pick, best_of, clips as make_clips, hook_first, length, short_length, singles
@@ -38,17 +34,18 @@ AUDIO_EXT = (".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac")
 
 
 def home() -> str:
+    """Documents\\iRacingSuite\\Highlights: Scans, Videos and the build's Work folder."""
     docs = os.path.join(os.path.expanduser("~"), "Documents")
-    base = os.path.join(docs if os.path.isdir(docs) else os.path.expanduser("~"), "iRacingHighlights")
+    base = os.path.join(docs if os.path.isdir(docs) else os.path.expanduser("~"), "iRacingSuite", "Highlights")
     os.makedirs(base, exist_ok=True)
     return base
 
 
 def settings_path() -> str:
     root = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), ".config")
-    d = os.path.join(root, "iRacingHighlights")
+    d = os.path.join(root, "iRacingSuite")
     os.makedirs(d, exist_ok=True)
-    return os.path.join(d, "settings.json")
+    return os.path.join(d, "highlights.json")
 
 
 def safe_name(s) -> str:
@@ -66,9 +63,12 @@ def clock_str(s) -> str:
 
 
 class Engine:
-    def __init__(self, demo=False, base=None):
+    def __init__(self, demo=False, base=None, camera_busy=lambda: None):
         self.demo = demo
         self.base = base or home()
+        # The suite's Broadcast also drives iRacing's camera and replay: while its auto-director is on, this says
+        # why, and Highlights waits (two owners of one camera would fight over every cut).
+        self.camera_busy = camera_busy
         self.settings = dict(DEFAULTS)
         self._load()
         self.lock = threading.Lock()
@@ -166,11 +166,26 @@ class Engine:
         threading.Thread(target=go, daemon=True).start()
         return {"ok": True}
 
-    def stop(self):
+    def stop(self, wait=0.0):
+        """Stop the job in hand; wait: seconds to wait for it to let go (the suite quitting)."""
         self.stop_flag.set()
+        end = time.monotonic() + float(wait or 0)
+        while self.job and time.monotonic() < end:
+            time.sleep(0.05)
         return {"ok": True}
 
+    def _camera_free(self):
+        why = None
+        try:
+            why = self.camera_busy()
+        except Exception:  # noqa: BLE001
+            pass
+        return why
+
     def start_scan(self, idx):
+        why = self._camera_free()
+        if why:
+            return {"ok": False, "error": why}
         car = next((c for c in (self.looked or {}).get("field") or [] if c["idx"] == idx), None)
         if car is None:
             return {"ok": False, "error": "Pick a car first (Check iRacing)."}
@@ -295,6 +310,9 @@ class Engine:
             return {"ok": False, "error": "Nothing picked."}
         if self.demo:
             return {"ok": False, "error": "The demo field cannot be recorded (no iRacing, no OBS)."}
+        why = self._camera_free()
+        if why:
+            return {"ok": False, "error": why}
         outs = self.outputs()
         if not outs:
             return {"ok": False, "error": "Nothing to make: tick the full video or a short."}
@@ -307,7 +325,7 @@ class Engine:
             obs.connect()
             with self.lock:
                 src = self._source()
-                rec = ClipRecorder(src, self.gate, obs, log=self.log)
+                rec = ClipRecorder(src, self.gate, obs, log=self.log, stop=self.stop_flag.is_set)
 
                 def prog(i, n):
                     self.progress.update(done=i, of=n, text="Recording clip %d of %d" % (min(i + 1, n), n))
@@ -436,15 +454,17 @@ class Engine:
 
 
 class Api:
-    """What the page can call (window.pywebview.api). The engine and window stay private: pywebview walks public
-    attributes."""
+    """What the page can call: window.pywebview.api.highlights.<name>. The engine and the window stay private
+    (pywebview walks public attributes). engine: the Engine, or a function giving it (the suite makes its window's
+    Api before anything is called); window: a function giving the suite's window (it is made after this)."""
 
-    def __init__(self, engine):
-        self._engine = engine
-        self._window = None
+    def __init__(self, engine, window=lambda: None):
+        self._get = engine if callable(engine) and not isinstance(engine, Engine) else (lambda: engine)
+        self._win = window
 
-    def version(self):
-        return __version__
+    @property
+    def _engine(self):
+        return self._get()
 
     def status(self):
         return self._engine.status()
@@ -483,7 +503,7 @@ class Api:
         kw = {"allow_multiple": multiple}
         if types:
             kw["file_types"] = types
-        picked = self._window.create_file_dialog(k, **kw)
+        picked = self._win().create_file_dialog(k, **kw)
         if not picked:
             return []
         return list(picked) if isinstance(picked, (list, tuple)) else [picked]
@@ -556,26 +576,3 @@ class Api:
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e)}
         return {"ok": True}
-
-
-def web_page() -> str:
-    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    return os.path.join(base, "highlights", "web", "index.html")
-
-
-def main():
-    ap = argparse.ArgumentParser(description="iRacing Highlights")
-    ap.add_argument("--demo", action="store_true", help="the fake field in place of iRacing")
-    a = ap.parse_args()
-    engine = Engine(demo=a.demo)
-    import webview
-    api = Api(engine)
-    window = webview.create_window("iRacing Highlights", web_page(), js_api=api, width=1180, height=900,
-                                   min_size=(860, 600))
-    api._window = window
-    webview.start()
-    os._exit(0)
-
-
-if __name__ == "__main__":
-    main()

@@ -54,6 +54,9 @@ class Engine:
         from suite.second_camera import SecondCamera
         # the co-host's side of the broadcast's picture-in-picture (suite/second_camera.py)
         self.second = SecondCamera(self.pitwall.local_producer)
+        # Highlights (highlights/, its page suite/web/highlights/): a race's replay cut down to one car's moments
+        from highlights.app import Engine as HighlightsEngine
+        self.highlights = HighlightsEngine(demo=(pitwall_source == "fake"), camera_busy=self._broadcast_has_camera)
         self.port = None
         self.error = None
         self._ready = threading.Event()
@@ -88,6 +91,15 @@ class Engine:
                 await server.serve_forever()
 
         self.loop.run_until_complete(boot())
+
+    def _broadcast_has_camera(self):
+        """Why Highlights may not move iRacing's camera now, or None."""
+        b = getattr(self.pitwall, "bridge", None)
+        d = getattr(b, "director", None)
+        if d is not None and getattr(d, "live", False):
+            return ("The Broadcast is on air and its auto-director moves iRacing's camera. Turn the broadcast off in "
+                    "the producer panel first.")
+        return None
 
     def _maps_from_library(self):
         from suite.bridge import track_maps_soon
@@ -129,6 +141,9 @@ class Api:
     def __init__(self, engine):
         self._engine = engine
         self._window = None
+        # Highlights' page calls window.pywebview.api.highlights.<name> (pywebview exposes nested objects)
+        from highlights.app import Api as HighlightsApi
+        self.highlights = HighlightsApi(lambda: engine.highlights, lambda: self._window)
 
     def version(self):
         return __version__
@@ -559,6 +574,8 @@ def close_with_app(engine):
             from suite.recording import remember
             remember(os.path.dirname(p), os.path.basename(p))
     _on_quit.append(_rec_close)
+    # Highlights: a scan or recording in hand stops (the replay is left paused, OBS's recording stopped)
+    _on_quit.append(lambda: engine.highlights.stop(wait=2.0))
     # a second camera hands the host back its caption and turns this PC's broadcast switch off
     _on_quit.append(lambda: engine.second.stop(wait=1.5))
 
