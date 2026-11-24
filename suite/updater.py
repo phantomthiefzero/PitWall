@@ -257,7 +257,12 @@ class Updater:
             raise UpdateError("Already on the newest build.")
         folder = os.path.dirname(os.path.abspath(self.exe))
         part = os.path.join(folder, ".iRacing Suite.update.part")
-        new = os.path.join(folder, ".iRacing Suite.update.exe")
+        self.state = "checking"
+        new = self._download_path(folder, rel)
+        if new is None:
+            raise UpdateError(self.error)
+        if self.state == "ready":
+            return self.info()                         # already downloaded and checked
         self.state, self.error, self.progress = "downloading", None, 0.0
         h = hashlib.sha256()
         try:
@@ -281,9 +286,8 @@ class Updater:
                 if f.read(2) != b"MZ":
                     raise UpdateError("The download was not a Windows program.")
             os.replace(part, new)
-        except PermissionError:
-            self.state, self.error = "error", ("Cannot write next to the app in %s. Move iRacing Suite.exe to a "
-                                               "folder you own (Desktop or Documents) and try again." % folder)
+        except PermissionError as e:
+            self.state, self.error = "error", _cannot_write(folder, e)
             raise UpdateError(self.error)
         except UpdateError as e:
             self.state, self.error = "error", str(e)
@@ -301,21 +305,45 @@ class Updater:
         self.state = "ready"
         return self.info()
 
+    def _download_path(self, folder, rel):
+        """Where to put the download: beside the app, never the running file itself (the app may have been started
+        from a download left over from an earlier update). A leftover that is already this build, checked, is used as
+        it is; one that cannot be removed (antivirus holding it) is stepped round."""
+        running = os.path.normcase(os.path.abspath(self.exe))
+        for name in (".iRacing Suite.update.exe", ".iRacing Suite.update-%s.exe" % rel["build"],
+                     ".iRacing Suite.update-%s-%d.exe" % (rel["build"], os.getpid())):
+            path = os.path.join(folder, name)
+            if os.path.normcase(os.path.abspath(path)) == running:
+                continue
+            if not os.path.exists(path):
+                return path
+            if _matches(path, rel):
+                self._new_path, self.state, self.error = path, "ready", None
+                return path
+            try:
+                os.remove(path)
+                return path
+            except OSError:
+                continue
+        self.state, self.error = "error", _cannot_write(folder, None)
+        return None
+
     # ---- swap and restart
     def apply(self, quit_fn, popen=subprocess.Popen):
         if self.state != "ready" or not self._new_path or not os.path.isfile(self._new_path):
             raise UpdateError("Download the update first.")
-        exe = os.path.abspath(self.exe)
+        running = os.path.abspath(self.exe)
+        exe = app_path(running)                        # always back to "iRacing Suite.exe"
         old = old_path(exe)
         self.state = "applying"
         try:
             if os.path.exists(old):
                 _retry(os.remove, old)
-            _retry(os.replace, exe, old)               # a running program can be renamed, not overwritten
+            _retry(os.replace, running, old)           # a running program can be renamed, not overwritten
             try:
                 _retry(os.replace, self._new_path, exe)
             except OSError:
-                _retry(os.replace, old, exe)           # put it back; nothing changed
+                _retry(os.replace, old, running)       # put it back; nothing changed
                 raise
         except OSError as e:
             self.state, self.error = "error", "Could not swap in the new version: %s" % e
@@ -347,6 +375,47 @@ def _retry(fn, *args, tries=10, wait=0.5):
 
 def old_path(exe):
     return os.path.join(os.path.dirname(exe), ".iRacing Suite.old.exe")
+
+
+APP_NAME = "iRacing Suite.exe"
+
+
+def app_path(exe):
+    """The app's own name in its folder: a copy started from a leftover update file (".iRacing Suite.update.exe")
+    updates back to "iRacing Suite.exe"; any other name the user gave it is kept."""
+    if os.path.basename(exe).lower().startswith(".iracing suite."):
+        return os.path.join(os.path.dirname(exe), APP_NAME)
+    return exe
+
+
+def _matches(path, rel) -> bool:
+    """A file already on disk that is exactly this release (size and SHA-256)."""
+    try:
+        if not rel.get("sha256") or (rel.get("size") and os.path.getsize(path) != rel["size"]):
+            return False
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(block)
+        return h.hexdigest() == rel["sha256"]
+    except OSError:
+        return False
+
+
+def _cannot_write(folder, err) -> str:
+    """Why the download could not be saved: the folder refuses new files, or one file is held (antivirus)."""
+    probe = os.path.join(folder, ".iRacing Suite.write-test")
+    try:
+        with open(probe, "wb") as f:
+            f.write(b"x")
+        os.remove(probe)
+    except OSError:
+        return ("Windows will not let the app save files in %s. Move iRacing Suite.exe to a folder of your own "
+                "and try again. If Windows Security's Controlled folder access is on, Desktop and Documents are "
+                "blocked too: allow iRacing Suite there, or use a folder such as C:\\Games." % folder)
+    what = (" (%s)" % getattr(err, "filename", "")) if err is not None and getattr(err, "filename", None) else ""
+    return ("Another program is holding the update file%s, usually antivirus checking it. Wait a minute and "
+            "press Update again." % what)
 
 
 def _our_pids():
@@ -405,6 +474,18 @@ def tidy_after_update(exe=None):
     exe = exe or (sys.executable if getattr(sys, "frozen", False) else None)
     if not exe:
         return False
+    folder = os.path.dirname(os.path.abspath(exe))
+    try:
+        for name in os.listdir(folder):          # downloads left by an update that never finished
+            low = name.lower()
+            if low.startswith(".iracing suite.update") and low.endswith(".exe") and \
+                    os.path.normcase(os.path.join(folder, name)) != os.path.normcase(os.path.abspath(exe)):
+                try:
+                    os.remove(os.path.join(folder, name))
+                except OSError:
+                    pass
+    except OSError:
+        pass
     for _ in range(30):
         try:
             os.remove(old_path(os.path.abspath(exe)))

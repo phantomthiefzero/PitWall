@@ -93,7 +93,9 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
 - Ready to go live? (`suite/health.py`) only looks; every line that is off says what to do.
 - Asking iRacing for things beyond telemetry (car and helmet pictures, camera, replay, pit) is spaced out, never while
   you drive, and logged to sim_log.txt (pitwall.simlog); logging never raises.
-- Updates (`suite/updater.py`): BUILD = run number + BUILD_OFFSET 100; verify size + SHA-256; the repo is public.
+- Updates (`suite/updater.py`): BUILD = run number + BUILD_OFFSET 100; verify size + SHA-256; the repo is public. The
+  download never goes onto the running file (the app may run from a leftover ".iRacing Suite.update.exe"); the swap
+  puts it back as "iRacing Suite.exe" (app_path). NOTES: "Updater".
 
 ## Lap Analyzer (suite/web/analyzer/index.html)
 - Tested in Node (`tests/analyzer_harness.js` runs the page's own script). Synthetic .ibt files in test_analyzer are
