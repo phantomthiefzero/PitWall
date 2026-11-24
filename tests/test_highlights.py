@@ -985,3 +985,16 @@ def test_the_sights_are_shot_their_own_way_and_a_charge_cuts_to_each_pass():
     sh = plan({"a": 94.0, "b": 103.0}, m, cams, 0, NUM)
     key = [x for x in sh if x["t"] <= 100.0][-1]
     assert key["kind"] == "far" and key["t"] <= 100.0
+
+
+def test_a_replay_without_class_names_names_each_class_by_its_car():
+    # Watkins Glen, Nov 2026: CarClassShortName None for every car, and the whole race stopped on "TypeError"
+    cars = {0: steady(0.62, 100.0, cls=4012), 1: steady(0.60, 100.4, cls=4012), 2: steady(0.58, 98.0, cls=4012),
+            3: steady(0.1, 120.0, cls=74), 4: steady(0.3, 121.0, cls=74)}
+    drivers = [{"CarIdx": i, "CarNumber": str(10 + i), "CarClassID": 4012 if i < 3 else 74,
+                "CarClassShortName": None, "CarScreenNameShort": "Toyota GR86" if i < 3 else "MX-5 Cup",
+                "UserName": "D%d" % i} for i in cars]
+    res = run_field(cars, drivers=drivers, end=600)
+    assert sorted(res["classes"]) == ["MX-5 Cup", "Toyota GR86"]
+    assert any(m["kind"] == "fastest" and "in Toyota GR86" in m["label"] for m in res["moments"])
+    assert any("Toyota GR86" in m["label"] for m in kinds(res, "pass"))

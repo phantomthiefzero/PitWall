@@ -88,6 +88,16 @@ def field(driver_info) -> list[dict]:
     return out
 
 
+def class_name(d) -> str:
+    """A class's name from a DriverInfo entry. A saved replay can carry no CarClassShortName (Watkins Glen, Nov 2026:
+    None for every car): a one-make class is then named by its car."""
+    for k in ("CarClassShortName", "CarScreenNameShort", "CarScreenName"):
+        v = d.get(k)
+        if v not in (None, ""):
+            return str(v)
+    return "Class %s" % d["CarClassID"] if d.get("CarClassID") is not None else ""
+
+
 def _ord(n) -> str:
     return "P%d" % n
 
@@ -184,7 +194,7 @@ class Analyzer(Spectacle):
             if isinstance(d, dict) and d.get("CarIdx") == self.target:
                 self.team = d.get("TeamName") or self.team
                 self.car_name = d.get("CarScreenNameShort") or d.get("CarScreenName") or self.car_name
-                self.cls_name = d.get("CarClassShortName") or self.cls_name
+                self.cls_name = class_name(d) or self.cls_name
                 self.number = str(d.get("CarNumber") or self.number)
                 name = d.get("UserName") or ""
                 # a driver change: the car's driver in the session info changes (iRacing updates it at the swap)

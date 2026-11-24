@@ -20,7 +20,7 @@ Traffic (another class, a lap apart) is not a story of the whole race and is lef
 """
 from __future__ import annotations
 
-from .moments import (Analyzer, HOLD_S, NEAR_LAP, BATTLE_GAP_S, BATTLE_END_S, BATTLE_MIN_S, SLOW_RATIO,
+from .moments import (Analyzer, class_name, HOLD_S, NEAR_LAP, BATTLE_GAP_S, BATTLE_END_S, BATTLE_MIN_S, SLOW_RATIO,
                       OFF_MIN_S, SLOW_MIN_S, LEAD_UP_S, LATE_SHARE, LATE_BONUS, AFTER_FINISH_S, START_S,
                       NOT_IN_WORLD, OFF_TRACK, IN_STALL, APPROACHING_PITS, _num, fmt_lap, race_length_guess)
 
@@ -60,7 +60,7 @@ class FieldAnalyzer(Analyzer):
             self.names = getattr(self, "names", {})
             for d in real:
                 if d.get("CarClassID") is not None:
-                    self.cls_names[d["CarClassID"]] = d.get("CarClassShortName") or d.get("CarClassID")
+                    self.cls_names[d["CarClassID"]] = class_name(d)
                 self.names[d["CarIdx"]] = d.get("TeamName") or d.get("UserName") or ""
         for s in (((info or {}).get("SessionInfo") or {}).get("Sessions") or []):
             if isinstance(s, dict) and s.get("SessionNum") == self.race_session and s.get("ResultsPositions"):
@@ -354,7 +354,7 @@ class FieldAnalyzer(Analyzer):
         last_finish = None
         for w in self._winners():
             got = next((tt for tt, lc in self.cross_all.get(w["idx"], []) if lc >= w["laps"]), None)
-            cls = self.cls_names.get(w["cls"], "")
+            cls = str(self.cls_names.get(w["cls"], "") or "")
             winners.append({"idx": w["idx"], "number": self.numbers.get(w["idx"], ""), "cls": cls,
                             "name": getattr(self, "names", {}).get(w["idx"], "")})
             if got is None:
@@ -380,7 +380,7 @@ class FieldAnalyzer(Analyzer):
             if last_finish is not None and tb > last_finish + 5:
                 continue
             lead = min(25.0, 0.3 * lt)
-            name = self.cls_names.get(cls, "")
+            name = str(self.cls_names.get(cls, "") or "")
             moments.append({"kind": "fastest", "session": self.race_session, "t": round(tb, 2),
                             "segs": [[round(tb - lead, 2), round(tb + 3, 2)]], "score": 22.0,
                             "label": "%s sets the fastest lap%s - %s" % (self.num(i), (" in " + name) if name and
