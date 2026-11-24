@@ -68,7 +68,8 @@ Turns a whole race's replay into a short video of one car's best moments, for sh
 4. Set a target length and press **Pick the best for me**, or tick the moments yourself. The start and the finish are
    always in. Passes, battles, spins, off tracks, trouble nearby, pit stops and the best lap are scored; traffic is
    there to tick if you want it.
-5. Choose a stinger (a .webm or .mov with a transparent background plays over each cut; any other video plays between
+5. Choose a stinger (a .webm, .mov or animated .gif with a transparent background plays over each cut, and pixel art
+   stays sharp; any other video plays between
    clips; none = a quick fade), captions, title and finish cards, and music (off until you add tracks; they play in
    order and repeat, under the race sound).
 6. **Record the clips and make the video**: the app jumps to each moment, points the camera at the car, records it

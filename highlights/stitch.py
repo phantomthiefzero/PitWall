@@ -4,7 +4,8 @@
    clip's size, given its caption (bottom left, first CAPTION_S seconds) and, with no stinger, a quick dip to black.
 2. Optional title and finish cards (plain cards with text, CARD_S long).
 3. The pieces are joined. A stinger:
-     - with a transparent background (.webm VP9, .mov ProRes 4444 / QuickTime Animation, ...): laid OVER each cut,
+     - with a transparent background (.webm VP9, .mov ProRes 4444 / QuickTime Animation, an animated .gif, ...): laid
+       OVER each cut,
        so it hides the cut at its middle (STINGER_CUT of its length, the overlay's own built-in stingers cover
        42-58%). The video is no longer for it.
      - with no transparency: played BETWEEN clips (each one adds its length).
@@ -278,10 +279,12 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     if overlay:
         sl = st_info["duration"] or 1.0
         cut_at = float(opts.get("stingerCut", STINGER_CUT))
+        # pixel art (a GIF, or a stinger under half the video's size) keeps hard pixel edges when scaled up
+        px = ":flags=neighbor" if st_info.get("codec") == "gif" or (st_info.get("w") or W) * 2 <= W else ""
         for k, ct in enumerate(cuts):
             off = max(0.0, ct - cut_at * sl)
             args += _vin(st_info, st_path)
-            fc.append("[%d:v]scale=%d:%d,format=yuva420p,setpts=PTS-STARTPTS+%.3f/TB[s%d]" % (n_in, W, H, off, k))
+            fc.append("[%d:v]scale=%d:%d%s,format=yuva420p,setpts=PTS-STARTPTS+%.3f/TB[s%d]" % (n_in, W, H, px, off, k))
             fc.append("%s[s%d]overlay=eof_action=pass:format=auto[v%d]" % (v, k, k))
             v = "[v%d]" % k
             if st_info["audio"]:

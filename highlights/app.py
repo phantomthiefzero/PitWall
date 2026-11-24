@@ -422,7 +422,7 @@ class Api:
             return {"ok": False, "error": "Could not read that file: %s" % e}
 
     def pick_stinger(self):
-        got = self._dialog("OPEN", ("Videos (*.webm;*.mov;*.mp4;*.mkv;*.avi)", "All files (*.*)"))
+        got = self._dialog("OPEN", ("Videos and animated GIFs (*.webm;*.mov;*.gif;*.mp4;*.mkv;*.avi)", "All files (*.*)"))
         if not got:
             return {"ok": False}
         try:
