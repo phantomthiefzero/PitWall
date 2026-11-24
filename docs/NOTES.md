@@ -864,3 +864,12 @@ Broadcast (broadcast/)
   hung. The replay's DriverInfo had CarClassShortName None for every car, and the class's name fell back to its id (an
   int). Classes are now named by moments.class_name (short name, else the car's name), and a failed job's progress
   line says "Stopped: ..." instead of the last thing it was doing.
+- Highlights getting back to the start (Nov 2026: "can't seem to adjust the replay back to the start when it's
+  finished. It just stutters"): every jump was a search by session time (irsdk ReplaySearchSessionTime), which scrubs
+  through the tape and, from the end of a long replay, stutters for a long time. A scan file already carries
+  ReplayFrameNum; on the Watkins Glen scan it is the race's first frame + 60 a second to within 2 frames over 7630
+  frames. Now: the scan goes to the race by jumps (search to_start, then next_session until the race) with the time
+  search only as the fallback; the analyzers keep a (tape time, frame) anchor every FRAME_EVERY_S ("frameMap");
+  clips jump straight to their frame (replay_set_play_position, commands "frame") and search by time only on the
+  second try; and when the scan ends the tape goes back to the race's first frame, paused. The page also says where
+  the scan was saved, with a "Where scans are saved" button (the user could not find it).

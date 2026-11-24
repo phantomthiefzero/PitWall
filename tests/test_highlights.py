@@ -253,8 +253,8 @@ def test_a_scan_through_the_command_gate_writes_a_file_that_reads_back_the_same(
     out = str(tmp_path / "scan.jsonl.gz")
     res = scan(src, gate, 0, out, clock=tick_clock, sleep=lambda s: None, log=lambda *a: None)
     assert ("replay_set_play_speed", (16, False)) in sent
-    assert sent[-1] == ("replay_set_play_speed", (0, False))        # left paused
-    assert any(m == "replay_search_session_time" for m, _ in sent)
+    assert ("replay_set_play_speed", (0, False)) in sent[-2:]       # left paused
+    assert ("replay_search", ("to_start",)) in sent                 # to the start the quick way first
     again = analyze_capture(out, 0)
     assert [(m["kind"], m["t"]) for m in again["moments"]] == [(m["kind"], m["t"]) for m in res["moments"]]
     assert res["frames"] > 1000
@@ -274,8 +274,14 @@ class Tape:
         self.t += self.speed / 60.0
         return True
 
+    BASE = {0: 0, 1: 40000, 2: 90000}           # the frame each session starts at (60 a second)
+
+    def frame(self):
+        return int(round(self.BASE[self.s] + 60 * self.t))
+
     def get(self, k):
-        return {"IsReplayPlaying": True, "ReplaySessionNum": self.s, "ReplaySessionTime": self.t}.get(k)
+        return {"IsReplayPlaying": True, "ReplaySessionNum": self.s, "ReplaySessionTime": self.t,
+                "ReplayFrameNum": self.frame()}.get(k)
 
     def simulate_broadcast(self, m, a):
         self.calls.append((m, a))
@@ -283,6 +289,15 @@ class Tape:
             self.speed = a[0]
         elif m == "replay_search_session_time" and self.land:
             self.s, self.t = a[0], a[1] / 1000.0
+        elif m == "replay_set_play_position" and self.land:
+            f = a[1]
+            self.s = max(k for k, v in self.BASE.items() if v <= f)
+            self.t = (f - self.BASE[self.s]) / 60.0
+        elif m == "replay_search" and self.land:
+            if a[0] == "to_start":
+                self.s, self.t = 0, 0.0
+            elif a[0] == "next_session" and self.s + 1 in self.BASE:
+                self.s, self.t = self.s + 1, 0.0
 
 
 class FakeOBS:
@@ -323,6 +338,56 @@ def test_each_clip_is_jumped_to_with_the_camera_on_the_car_and_recorded_from_jus
     assert 499.3 <= starts[0] <= 500.0 and stops[0] >= 515.0
     assert out[0]["recStart"] <= 500.0 and out[0]["path"].endswith(".mkv")
     assert tape.speed == 0
+
+
+def test_a_clip_is_jumped_to_by_its_frame_from_the_scan_not_searched_for_by_time():
+    """Searching by session time scrubs through the tape (it stuttered from the end of a replay); the scan's frame
+    numbers go straight there."""
+    from pitwall.commands import CommandGate
+    from highlights.moments import frame_at
+    tape = Tape()
+    tape.s, tape.t = 2, 1900.0                    # at the end of the race
+    clock = [0.0]
+
+    def now():
+        clock[0] += 1 / 60.0
+        return clock[0]
+    fmap = [(0.33, 90020), (30.5, 91830), (60.6, 93636)]
+    assert frame_at(fmap, 45.0) == 91830 + 870 and frame_at(fmap, 0.0) == 90000
+    rec = ClipRecorder(tape, CommandGate(camera=True), FakeOBS(tape), log=lambda *a: None, clock=now,
+                       sleep=lambda s: None, frame_map=fmap)
+    out = rec.record([{"n": 0, "session": 2, "a": 20.0, "b": 30.0, "kind": "start"}], "34", [])
+    assert out[0]["ok"]
+    assert any(m == "replay_set_play_position" for m, _ in tape.calls)
+    assert not any(m == "replay_search_session_time" for m, _ in tape.calls)
+
+
+def test_the_scan_reaches_the_race_by_jumps_and_rewinds_to_its_start_when_done(tmp_path):
+    from pitwall.commands import CommandGate
+    from highlights.scan import to_race_start
+    tape = Tape()
+    tape.s, tape.t = 2, 2000.0
+    sent = []
+
+    def send(cmd):
+        sent.append(cmd)
+        return CommandGate(camera=True).execute(tape, cmd)
+    clock = [0.0]
+
+    def now():
+        clock[0] += 0.05
+        return clock[0]
+    assert to_race_start(tape, send, 2, clock=now, sleep=lambda s: None, log=lambda *a: None)
+    assert (tape.s, tape.t) == (2, 0.0)
+    assert [c.get("mode") for c in sent if c.get("action") == "search"] == ["to_start", "next_session",
+                                                                           "next_session"]
+    assert not any(m == "replay_search_session_time" for m, _ in tape.calls)
+    # a tape that ignores the quick jumps falls back to the search by time
+    stuck = Tape(land=False)
+    stuck.s, stuck.t = 2, 2000.0
+    to_race_start(stuck, lambda c: CommandGate(camera=True).execute(stuck, c), 2, clock=now, sleep=lambda s: None,
+                  log=lambda *a: None)
+    assert any(m == "replay_search_session_time" for m, _ in stuck.calls)
 
 
 def test_a_jump_that_never_lands_fails_that_clip_and_goes_on():

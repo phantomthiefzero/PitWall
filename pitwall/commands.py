@@ -137,7 +137,14 @@ def plan_jump(cmd: dict) -> list[tuple[str, tuple]]:
     if cmd.get("car") not in (None, ""):
         group = _int(cmd.get("group", 0), 0, 255, "group")
         steps.append(("cam_switch_num", (_car_number(cmd.get("car")), group, 0)))
-    steps.append(("replay_search_session_time", (session, int(max(0.0, t - pre) * 1000))))
+    frame = cmd.get("frame")
+    if frame is not None:
+        # the tape's own frame number (60 a second, ReplayFrameNum): iRacing jumps straight there, where a search by
+        # session time can scrub through the tape for seconds (it stutters, from the end of a long replay)
+        frame = _int(frame, 0, 2_000_000_000, "frame")
+        steps.append(("replay_set_play_position", ("begin", max(0, frame - int(round(pre * 60))))))
+    else:
+        steps.append(("replay_search_session_time", (session, int(max(0.0, t - pre) * 1000))))
     steps.append(("sleep", (SEEK_SETTLE_S,)))
     steps.append(("replay_set_play_speed", (1, False)))
     return steps
@@ -145,7 +152,8 @@ def plan_jump(cmd: dict) -> list[tuple[str, tuple]]:
 
 def plan_replay(cmd: dict) -> tuple[str, tuple]:
     """{"cmd":"replay","action":"speed","speed":1,"slow":false}   speed 0 pauses
-       {"cmd":"replay","action":"search","mode":"to_end"}          to_end = back to live"""
+       {"cmd":"replay","action":"search","mode":"to_end"}          to_end = back to live
+       {"cmd":"replay","action":"frame","frame":32513}             straight to a frame of the tape (ReplayFrameNum)"""
     action = cmd.get("action")
     if action == "speed":
         speed = _int(cmd.get("speed", 1), -16, 16, "speed")
@@ -155,6 +163,8 @@ def plan_replay(cmd: dict) -> tuple[str, tuple]:
         if mode not in REPLAY_SEARCH:
             raise ValueError(f"search mode must be one of {list(REPLAY_SEARCH)}")
         return "replay_search", (mode,)
+    if action == "frame":
+        return "replay_set_play_position", ("begin", _int(cmd.get("frame"), 0, 2_000_000_000, "frame"))
     raise ValueError(f"unknown replay action {action!r}")
 
 
@@ -214,6 +224,8 @@ class CommandGate:
                 simlog.note("%s %s" % (method, args))
                 if method == "replay_search":
                     args = (getattr(irsdk.RpySrchMode, args[0]),)
+                elif method == "replay_set_play_position":
+                    args = (getattr(irsdk.RpyPosMode, args[0]), args[1])
                 getattr(ir, method)(*args)
             result["ok"] = True
         except Exception as e:  # noqa: BLE001
