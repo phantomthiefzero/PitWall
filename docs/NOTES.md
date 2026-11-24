@@ -859,3 +859,8 @@ Broadcast (broadcast/)
   read as "the folder is not yours"). The download now never goes onto the running file, a leftover that already is
   the release (size + SHA-256) is used as it is, a held one is stepped round, the swap puts the app back as
   "iRacing Suite.exe", and the message says whether the folder refuses files or one file is held.
+- Highlights, first whole-race scan of a real replay (Watkins Glen, Nov 2026): the scan finished, then the whole race
+  stopped on "TypeError: can only concatenate str (not int)" and the page kept showing "Scanning: 33:36", so it looked
+  hung. The replay's DriverInfo had CarClassShortName None for every car, and the class's name fell back to its id (an
+  int). Classes are now named by moments.class_name (short name, else the car's name), and a failed job's progress
+  line says "Stopped: ..." instead of the last thing it was doing.

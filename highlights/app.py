@@ -199,6 +199,9 @@ class Engine:
                 self.error = "%s: %s" % (type(e).__name__, e)
                 self.log(traceback.format_exc())
             finally:
+                if self.error:
+                    # the bar and its words stop with the job (they looked like a scan still running)
+                    self.progress = {"done": 0, "of": 0, "text": "Stopped: " + self.error, "eta": None}
                 self.job = None
         threading.Thread(target=go, daemon=True).start()
         return {"ok": True}
