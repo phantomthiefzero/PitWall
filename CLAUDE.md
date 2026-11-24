@@ -186,7 +186,8 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
 - A spin is a car far slower than its own class right now (a caution or the opening lap is not a spin); a pass must
   stand HOLD_S (side by side is not a pass); a car of another class or a lap apart is traffic. The start and the finish
   are always in the video; the finish comes from the replay's own final ResultsPositions when it has them.
-- Music only when tracks are picked (off by default); no sound effects. The stinger's middle (STINGER_CUT) hides the
+- Music only when tracks are picked (off by default); no sound effects. A track ffmpeg cannot play (stitch.playable)
+  is refused when added and left out of a build, never the end of one. The stinger's middle (STINGER_CUT) hides the
   cut when it has transparency; without, it plays between clips.
 - ffmpeg gets text in files (textfile=) and a font copied into the work folder: no Windows path inside a filter.
   The ffmpeg is imageio-ffmpeg's (requirements); a build without drawtext loses captions, not the video.

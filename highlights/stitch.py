@@ -98,6 +98,30 @@ def probe(path, exe=None) -> dict:
     return out
 
 
+_PLAYABLE: dict = {}
+
+
+def playable(path, exe=None) -> bool:
+    """ffmpeg can decode the start of this audio file. A file named .mp3 can be anything (a web page saved as .mp3, a
+    download cut short): the user's "storyteller.mp3", Nov 2026, failed the whole build ("Failed to find two
+    consecutive MPEG audio frames"). Checked once per file version."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    key = (os.path.abspath(path), st.st_size, int(st.st_mtime))
+    if key not in _PLAYABLE:
+        exe = exe or ffmpeg_exe()
+        kw = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+        try:
+            p = subprocess.run([exe, "-hide_banner", "-v", "error", "-i", path, "-t", "2", "-vn", "-f", "null", "-"],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, **kw)
+            _PLAYABLE[key] = p.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            _PLAYABLE[key] = False
+    return _PLAYABLE[key]
+
+
 def has_filter(exe, name) -> bool:
     kw = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
     try:
@@ -353,7 +377,11 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     W, H = W - W % 2, H - H % 2
     fps = opts.get("fps") or (round(first["fps"]) if first["fps"] else 60)
     font = _font(work, exe) if (opts.get("captions", True) or opts.get("intro") or opts.get("outro")) else None
-    music = [m for m in (opts.get("music") or []) if os.path.exists(m)]
+    music, skipped = [], []
+    for m in opts.get("music") or []:
+        (music if os.path.exists(m) and playable(m, exe) else skipped).append(m)
+    for m in skipped:
+        log("music: left out %s (it is not a sound file ffmpeg can play)" % os.path.basename(m))
     game_vol = float(opts.get("gameVolume", 0.7 if music else 1.0))
     st_path = opts.get("stinger")
     if isinstance(st_path, str) and st_path.startswith("builtin:"):
@@ -456,7 +484,8 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
         _run([exe, "-y", "-hide_banner", "-loglevel", "error", "-i", joined, "-t", "%.3f" % total, "-c", "copy",
               "-movflags", "+faststart", out_path], log=log)
         step("done")
-        return {"path": out_path, "duration": round(total, 1), "clips": len(clips), "vertical": vertical}
+        return {"path": out_path, "duration": round(total, 1), "clips": len(clips), "vertical": vertical,
+                "skippedMusic": [os.path.basename(m) for m in skipped]}
     # final pass: stingers over the cuts, music under the race sound
     args = [exe, "-y", "-hide_banner", "-loglevel", "error", "-i", joined]
     fc, n_in = [], 1
@@ -502,4 +531,5 @@ def build(clips, out_path, work, opts=None, log=print, progress=None) -> dict:
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     _run(args, cwd=work, log=log)
     step("done")
-    return {"path": out_path, "duration": round(total, 1), "clips": len(clips), "vertical": vertical}
+    return {"path": out_path, "duration": round(total, 1), "clips": len(clips), "vertical": vertical,
+                "skippedMusic": [os.path.basename(m) for m in skipped]}

@@ -879,3 +879,7 @@ Broadcast (broadcast/)
   empty result replaced the good one. Now the scan waits SETTLE_S after the jump, asks for the speed again (KICKS)
   while ReplayPlaySpeed is not it, and a scan of fewer than MIN_FRAMES is an error (its file deleted), so the moments
   already open stay.
+- Highlights music that is not music (Nov 2026: "ffmpeg failed: Failed to find two consecutive MPEG audio frames ...
+  storyteller.mp3"): a file named .mp3 that ffmpeg cannot decode (a web page saved as .mp3, a download cut short)
+  stopped the whole build after the clips were recorded. stitch.playable decodes the first 2 s once per file version:
+  Add music refuses such a file and says why, and a build leaves one out (logged, skippedMusic) instead of failing.

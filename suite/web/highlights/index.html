@@ -118,7 +118,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     <span>Title and finish cards</span>
     <label><input type="checkbox" id="cards"> A title card (team, drivers, where it started) and the result at the end</label>
     <span>Music</span>
-    <div><div class="music" id="music"></div><button id="musicAdd">Add music...</button> <span class="mut">Off until you add tracks. They play in order and repeat.</span></div>
+    <div><div class="music" id="music"></div><button id="musicAdd">Add music...</button> <span class="mut" id="musicNote">Off until you add tracks. They play in order and repeat.</span></div>
     <span>Music volume</span>
     <div class="row" style="margin:0"><input type="range" id="musicVolume" min="0" max="1" step="0.05"> <span id="musicVolumeT" class="mut"></span></div>
     <span>Race sound</span>
@@ -375,7 +375,11 @@ function wire() {
   $("testObs").onclick = async () => { saveFields(); setText($("obsText"), "Connecting..."); const r = await api.test_obs(); $("obsText").className = r.ok ? "good" : "bad"; setText($("obsText"), r.text); };
   $("stingerPick").onclick = async () => { const r = await api.pick_stinger(); if (r.error) setText($("stingerText"), r.error); stingerInfo(); refresh(); };
   $("stingerSel").onchange = async () => { await api.save_settings({stinger: $("stingerSel").value}); st = await api.status(); stingerInfo(); refresh(); };
-  $("musicAdd").onclick = async () => { const r = await api.add_music(); renderMusic(r.music || []); };
+  $("musicAdd").onclick = async () => {
+    const r = await api.add_music(); renderMusic(r.music || []);
+    setText($("musicNote"), r.error || "Off until you add tracks. They play in order and repeat.");
+    $("musicNote").classList.toggle("bad", !!r.error);
+  };
   $("make").onclick = async () => { saveFields(); const r = await api.record_and_build(); if (!r.ok) setText($("err"), r.error || ""); refresh(); };
   $("rebuild").onclick = async () => { saveFields(); const r = await api.rebuild(); if (!r.ok) setText($("err"), r.error || ""); refresh(); };
   $("folder").onclick = () => api.open_folder("videos");
