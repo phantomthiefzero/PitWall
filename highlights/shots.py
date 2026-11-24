@@ -35,7 +35,7 @@ ANGLE_AFTER_S = 3.0
 ANGLE_BEFORE_S = {"spin": 5.0, "off": 4.0, "drama": 5.0, "towed": 6.0, "finish": 5.0}
 ANGLE_BEFORE_DEFAULT = 4.0
 ANGLE_SPEEDS = (1.0, 0.5, 0.5)          # replay 1 at full speed, the next ones slowed down
-ANGLE_KINDS = ("pass", "lost", "battle", "spin", "off", "towed", "drama", "finish")
+ANGLE_KINDS = ("pass", "lost", "battle", "spin", "off", "towed", "drama", "crash", "finish")
 OVERHEAD_S = 7.0            # per recording: the seek, the camera settling, OBS starting and stopping
 
 # a kind the track has no camera for: the nearest kind it has
@@ -52,6 +52,7 @@ LEAD = {
     "off": [("far", "T"), ("chase", "T"), ("trackside", "T")],
     "towed": [("far", "T"), ("trackside", "T")],
     "drama": [("far", "T"), ("aerial", "T"), ("chase", "T")],
+    "crash": [("far", "T"), ("aerial", "T"), ("chase", "T")],
     "pit": [("far", "T"), ("trackside", "T")],
     "start": [(k, "T") for k in STORY_SEQ["start"]],
     "finish": [(k, "T") for k in STORY_SEQ["finish"]],
@@ -61,6 +62,7 @@ KEY = {
     "battle": ("far", "back"), "pass": ("far", "back"), "lost": ("far", "back"), "traffic": ("far", "back"),
     "spin": ("trackside", "T"), "off": ("trackside", "T"), "towed": ("trackside", "T"),
     "drama": ("trackside", "other"),            # the wreck itself, on the car it happened to
+    "crash": ("trackside", "T"),                # whole race: the car that began it, by the track
     "pit": ("pit", "T"), "start": ("aerial", "T"), "finish": ("trackside", "T"), "fastest": ("trackside", "T"),
 }
 AFTER = {
@@ -72,6 +74,7 @@ AFTER = {
     "off": [("aerial", "T"), ("far", "T")],
     "towed": [("aerial", "T")],
     "drama": [("rear", "T"), ("far", "T")],      # looking back from in front of T: the wreck just missed
+    "crash": [("aerial", "T"), ("trackside", "other"), ("far", "T")],
     "pit": [("pit", "T"), ("far", "T")],
     "start": [(k, "T") for k in ("far", "rear", "trackside", "aerial")],
     "finish": [(k, "T") for k in STORY_SEQ["after"]],
@@ -85,6 +88,7 @@ ANGLES = {
     "off": [("onboard", "T"), ("aerial", "T"), ("trackside", "T")],
     "towed": [("aerial", "T"), ("trackside", "T")],
     "drama": [("onboard", "T"), ("trackside", "other"), ("aerial", "other")],   # T's view of the near miss first
+    "crash": [("onboard", "other"), ("aerial", "T"), ("trackside", "T")],       # from inside a car caught up in it
     "finish": [("onboard", "T"), ("aerial", "T")],
 }
 

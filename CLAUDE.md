@@ -201,6 +201,12 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
 - Shorts (pick.best_of / singles / hook_first; stitch vertical=True): 9:16 1080 x 1920, opening HOOK_LEAD_S before the
   best moment, then its other-angle replays (else a half-speed replay of the same recording), the rest in race order;
   no start, no cards; held to shortMaxS (30 s default: completion beats length); no fade at the end (loop).
+- Whole race (highlights/field.py FieldAnalyzer, the page's "The whole race", Engine WHOLE_RACE / target None): the
+  same scan, every car. Passes between NEIGHBOURS on track only (sorted by lap fraction each frame; a frame where two
+  cars are level is skipped, in both analyzers), one class and one lap only (no traffic), scored by the place;
+  battles per pair; crashes join cars in trouble within CRASH_JOIN_S and CRASH_NEAR; each class's winner and fastest
+  lap; class names only in a multi-class race. Every moment names its "focus" car: the camera plan and the angles
+  follow it (story.camera_plan), "other" is its cars[0]. Cards: race_cards (field, classes, winners).
 - A short counts its replays in its length (pick.short_length speeds: SINGLE_SPEEDS for a one-moment short,
   BEST_SPEEDS for the best-of) and cuts its later clips to short_window; the full video's target counts replays, the
   cold open and the cards (Engine.auto searches the budget). The start is START_S (20 s) of racing.

@@ -837,4 +837,11 @@ Broadcast (broadcast/)
   with the speeds it plays them at: a single short both, a best-of only the slow one), its later clips are cut to the
   seconds around their moment (short_window), the start is START_S, and Engine.auto searches for the most moments whose
   whole video fits the target.
+- Highlights "whole race" (Nov 2026: "instead of just having it focus on only one car ... the entire race as a whole,
+  clips of the most exciting action as well as a race in review"): FieldAnalyzer reuses the one-car Analyzer's car
+  tracking and finds moments for every car in the same scan (40 min of the fake field at 16x reads in 2.5 s: passes
+  are looked for between neighbours on track only). Its first scripted test lost a lead change: two cars exactly level
+  for one frame (rel 0) wiped the sign both analyzers compared against; a level frame is now skipped. Without the
+  replay's own results (the fake field never finishes) each class's winner is its first car over the line after the
+  checkered flag.
 

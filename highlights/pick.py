@@ -54,7 +54,7 @@ def clips(moments, chosen_ids) -> list[dict]:
 
 
 REPLAY_KINDS = {"pass": (-2.5, 1.0), "lost": (-2.5, 1.0), "spin": (-1.5, 3.0), "off": (-1.0, 2.5),
-                "drama": (-1.5, 2.5)}
+                "drama": (-1.5, 2.5), "crash": (-1.5, 3.5)}
 REPLAY_SPEED = 0.5
 
 
@@ -89,7 +89,7 @@ def short_window(c, k):
 
 
 # ---------------------------------------------------------------------------- vertical shorts
-SHORT_KINDS = {"pass", "lost", "battle", "spin", "off", "drama", "towed", "fastest", "finish"}
+SHORT_KINDS = {"pass", "lost", "battle", "spin", "off", "drama", "crash", "towed", "fastest", "finish"}
 
 
 def hook_first(cs, replay=True) -> list[dict]:

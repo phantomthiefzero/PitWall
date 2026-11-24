@@ -14,7 +14,7 @@ import json
 import math
 import time
 
-from .moments import Analyzer, field, race_sessions, tape_time
+from .moments import field, make_analyzer, race_sessions, tape_time
 
 SPEED = 16
 SCAN_VARS = ("SessionNum", "SessionTime", "SessionState", "IsReplayPlaying", "ReplaySessionNum", "ReplaySessionTime",
@@ -108,7 +108,7 @@ def scan(src, gate, target, out_path, race_session=None, speed=SPEED, stop=None,
         if not races:
             raise ScanError("This replay has no race session.")
         race_session = races[-1]
-    a = Analyzer(target, race_session)
+    a = make_analyzer(target, race_session)
     a.session(info)
 
     def send(cmd):
@@ -166,9 +166,8 @@ def scan(src, gate, target, out_path, race_session=None, speed=SPEED, stop=None,
             a.feed(s, t, src.get)
             if progress is not None and w.n % 60 == 0:
                 progress(t)
-            if a.results and a.crossings and a.crossings[-1][1] >= a.results["laps"] \
-                    and t > a.crossings[-1][0] + AFTER_FINISH_S:
-                why = "the car took the flag"
+            if a.scan_done(t):
+                why = "the finish is in"
                 break
     finally:
         w.close()

@@ -772,3 +772,88 @@ def test_the_full_videos_target_counts_its_replays_and_the_start_is_twenty_secon
     e.auto(4)
     four, n4 = total(), len(e.chosen)
     assert two <= 121 and four <= 241 and four > 200 and n4 > n2 + 2   # replays and the cold open counted
+
+
+# ------------------------------------------------------------------------------------------------ the whole race
+def run_field(cars, results=None, drivers=None, **kw):
+    from highlights.moments import make_analyzer
+    a = make_analyzer(None, race_session=2)
+    info = {"SessionInfo": {"Sessions": [{"SessionNum": 2, "SessionType": "Race", "ResultsPositions": results or []}]},
+            "DriverInfo": {"Drivers": drivers or [{"CarIdx": i, "CarNumber": str(10 + i), "CarClassID": 1,
+                                                   "CarClassShortName": "GT3", "UserName": "D%d" % i}
+                                                  for i in cars]}}
+    a.session(info)
+    for t, get in Script(cars, **kw).frames():
+        a.feed(2, t, get)
+    return a.finish()
+
+
+def test_the_whole_race_finds_a_lead_change_anywhere_and_names_the_cars():
+    # car 2 (#12) runs third, passes #11 for P2, then #10 for the lead; car 3 (#13) is a lap down, never a pass
+    cars = {0: steady(0.62, 100.0), 1: steady(0.60, 100.4), 2: steady(0.58, 98.0), 3: steady(-0.5, 99.0)}
+    res = run_field(cars, end=600)
+    ps = [m for m in res["moments"] if m["kind"] == "pass"]
+    assert [m["focus"] for m in ps] == [2, 2]
+    assert ps[0]["label"] == "#12 passes #11 for P2" and ps[0]["cars"] == [1]
+    assert ps[1]["label"] == "#12 takes the lead from #10" and ps[1]["classPos"] == 1
+    assert ps[1]["score"] > ps[0]["score"]
+    assert res["mode"] == "race" and res["target"] is None
+
+
+def test_the_whole_race_joins_cars_in_trouble_at_one_place_into_one_crash():
+    def wreck(start, at_t):
+        def f(t):
+            if t < at_t:
+                return {"dist": start + t / LAP_S}
+            d = start + at_t / LAP_S + min(t - at_t, 15) * 0.0003 + max(0, t - at_t - 15) / LAP_S
+            return {"dist": d, "surf": 0 if at_t <= t < at_t + 4 else 3}
+        return f
+    cars = {0: wreck(0.50, 120), 1: wreck(0.505, 121.5), 2: steady(0.2), 3: steady(0.8), 4: steady(0.35)}
+    res = run_field(cars, end=260)
+    cr = [m for m in res["moments"] if m["kind"] == "crash"]
+    assert len(cr) == 1 and cr[0]["carsInvolved"] == 2 and cr[0]["focus"] == 0 and cr[0]["cars"] == [1]
+    assert cr[0]["label"] == "Crash - #10 and #11 (the leader)" or cr[0]["label"].startswith("Crash - #10 and #11")
+    assert cr[0]["segs"][0][0] == pytest.approx(120 - 10.0, abs=0.3)
+
+
+def test_the_whole_race_ends_on_each_class_winner_and_a_close_finish_scores_more():
+    drivers = [{"CarIdx": 0, "CarNumber": "10", "CarClassID": 1, "CarClassShortName": "GTP", "TeamName": "Red"},
+               {"CarIdx": 1, "CarNumber": "11", "CarClassID": 1, "CarClassShortName": "GTP", "TeamName": "Blue"},
+               {"CarIdx": 2, "CarNumber": "20", "CarClassID": 2, "CarClassShortName": "GT3", "TeamName": "Gold"}]
+    results = [{"CarIdx": 0, "ClassPosition": 0, "Position": 1, "LapsComplete": 3, "CarClassID": 1},
+               {"CarIdx": 1, "ClassPosition": 1, "Position": 2, "LapsComplete": 3, "CarClassID": 1},
+               {"CarIdx": 2, "ClassPosition": 0, "Position": 3, "LapsComplete": 2, "CarClassID": 2}]
+    cars = {0: steady(0.95, 100.0), 1: steady(0.945, 100.0), 2: dict(steady(0.5, 130.0, cls=2).__call__(0)) and
+            (lambda t: {"dist": 0.5 + t / 130.0, "cls": 2})}
+    res = run_field(cars, results=results, drivers=drivers, end=400)
+    fins = [m for m in res["moments"] if m["kind"] == "finish"]
+    assert sorted(m["focus"] for m in fins) == [0, 2] and all(m["mandatory"] for m in fins)
+    gtp = next(m for m in fins if m["focus"] == 0)
+    assert gtp["label"] == "#10 wins GTP by 0.5 s" and gtp["cars"] == [1] and gtp["score"] > 100
+    from highlights import story
+    intro, outro = story.cards(dict(res, event="Petit", track="Road Atlanta"), None)
+    assert intro["title"] == "Race in review" and outro["title"] == "Winners"
+    assert outro["lines"] == ["GTP  #10 Red", "GT3  #20 Gold"]
+    assert res["finish"] == pytest.approx(max(m["t"] for m in fins))
+
+
+def test_the_whole_races_camera_follows_each_moments_own_car(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    from highlights.app import Engine
+    e = Engine(demo=True, base=str(tmp_path / "home"), cam_setup=lambda k: {})
+    ms = [dict(_m(0, 10, 100, "start", [[4, 30]], True), focus=5),
+          dict(_m(1, 300, 90, "pass"), focus=2, cars=[1], otherAheadBefore=True),
+          dict(_m(2, 600, 70, "crash", [[590, 620]]), focus=3, cars=[4], key=600.0),
+          dict(_m(3, 2000, 100, "finish", [[1980, 2008]], True), focus=2)]
+    e.result = {"mode": "race", "moments": ms, "green": 10.0, "finish": 2000.0, "cameraInfo": CAM_INFO,
+                "numbers": {1: "11", 2: "12", 3: "13", 4: "14", 5: "15"}, "target": None, "path": []}
+    e.target = {"idx": None, "number": ""}
+    e.chosen = [0, 1, 2, 3]
+    e.settings.update(makeBestOf=False, shortSingles=0, angleMoments=2, anglesEach=2)
+    p = e.plan()
+    cars = {c["kind"]: {s["car"] for s in c["shots"]} for c in p["main"]}
+    assert cars["start"] == {"15"} and cars["pass"] == {"12"} and "13" in cars["crash"]   # the passer, all through
+    assert "11" in {j["shots"][0]["car"] for j in p["angles"][1]}       # the passed car's view in the replays
+    crash_angles = p["angles"][2]
+    assert crash_angles[0]["shots"][0]["car"] == "14"          # from inside the other car caught up in it
+    assert e._video_name().startswith("Race race in review") or "race in review" in e._video_name()

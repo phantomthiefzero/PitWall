@@ -63,7 +63,8 @@ shorts, for sharing. (The Broadcast must be off while it works: both move iRacin
 1. In OBS: **Tools > WebSocket Server Settings > Enable WebSocket server**. Make a scene that shows iRacing (Game
    Capture), plus your broadcast overlay if you want it in the video.
 2. In iRacing, open the race's replay so it is playing.
-3. **Check iRacing**, pick your car, **Scan the race**. The replay plays at 16x while the app reads every car; it says
+3. **Check iRacing**, pick **The whole race** (the best action from every car: lead changes, battles, crashes, each
+   class's winner) or one car, then **Scan the race**. The replay plays at 16x while the app reads every car; it says
    how long that will take. The scan is kept in `Documents\iRacingSuite\Highlights\Scans` (**Open a saved scan**).
 4. Pick a target length (**Pick the best for me**) or tick moments yourself: passes, battles, spins and offs (with what
    led up to them), wrecks and near misses around your car, pit stops and driver changes, the best lap. The start

@@ -45,7 +45,9 @@ def camera_plan(result, outputs, settings, cams, number) -> dict:
     pref = settings.get("camera", "auto")
     for c in main:
         m = by_id[c["best"]]
-        c["shots"] = shotlib.plan(c, m, cams, target, number, pct_at, pref=pref)
+        focus = m.get("focus", target)          # whole race: the car this moment is about
+        c["shots"] = shotlib.plan(c, m, cams, focus, number, pct_at if focus == target else (lambda t: None),
+                                  pref=pref)
         c["role"] = "main"
     n_top = int(settings.get("angleMoments", 3) or 0)
     each = int(settings.get("anglesEach", 2) or 0)
@@ -55,7 +57,7 @@ def camera_plan(result, outputs, settings, cams, number) -> dict:
                       key=lambda m: 30.0 if m["kind"] == "finish" else m["score"], reverse=True)
         for m in best[:n_top]:
             c = next(x for x in main if x["best"] == m["id"])
-            js = shotlib.angles(m, cams, target, number, shotlib.key_groups(c["shots"], m), each)
+            js = shotlib.angles(m, cams, m.get("focus", target), number, shotlib.key_groups(c["shots"], m), each)
             for k, j in enumerate(js):
                 j.update(role="angle", moment=m["id"], session=c["session"], n="a%d_%d" % (m["id"], k),
                          kind=m["kind"], caption="%s (another angle)" % m["label"])
@@ -146,8 +148,27 @@ def teaser(result, recorded, ids):
     return None
 
 
+def race_cards(result) -> tuple[dict, dict]:
+    """The whole race's title card (event, track, the field) and result card (each class's winner)."""
+    kicker = "  ·  ".join(x for x in (result.get("event"), result.get("track")) if x)
+    classes = result.get("classes") or []
+    field = "%d cars" % result["fieldSize"] if result.get("fieldSize") else ""
+    lines = ["  ·  ".join(x for x in (field, " / ".join(classes) if len(classes) > 1 else "",
+                                      "%s laps" % result["laps"] if result.get("laps") else "") if x)]
+    intro = {"kicker": kicker or "Race highlights", "title": "Race in review", "lines": [x for x in lines if x]}
+    wins = result.get("winners") or []
+    out_lines = []
+    for w in wins:
+        out_lines.append(("%s  " % w["cls"] if w.get("cls") and len(wins) > 1 else "") +
+                         ("#%s %s" % (w.get("number", ""), w.get("name") or "")).strip())
+    title = "Winners" if len(wins) > 1 else ("#%s wins" % wins[0]["number"] if wins else "The finish")
+    return intro, {"kicker": "Result", "title": title, "lines": out_lines[:5]}
+
+
 def cards(result, target) -> tuple[dict, dict]:
     """The title card and the result card."""
+    if result.get("mode") == "race":
+        return race_cards(result)
     car = target or {}
     number = result.get("number") or car.get("number") or ""
     team = result.get("team") or car.get("team") or ""
