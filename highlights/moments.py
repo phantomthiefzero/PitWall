@@ -31,6 +31,8 @@ from __future__ import annotations
 import math
 import statistics
 
+from .spectacle import Spectacle, track_metres
+
 NOT_IN_WORLD, OFF_TRACK, IN_STALL, APPROACHING_PITS, ON_TRACK = -1, 0, 1, 2, 3
 
 HOLD_S = 4.0              # a swap of places must stand this long to be a pass (side by side flips back and forth)
@@ -107,7 +109,7 @@ class _Car:
         self.seen = False
 
 
-class Analyzer:
+class Analyzer(Spectacle):
     def __init__(self, target: int, race_session: int | None = None):
         self.target = target
         self.race_session = race_session
@@ -152,6 +154,7 @@ class Analyzer:
         self.start_pos = None
         self._last_drama = -1e9
         self._pass_log: list[dict] = []
+        self._spec_init()
 
     # ------------------------------------------------------------------ session info
     def session(self, info: dict):
@@ -165,6 +168,8 @@ class Analyzer:
         if isinstance(wk, dict) and wk.get("TrackID") is not None:
             # the key PitWall keeps the producer's camera setup under (pitwall/bridge.py _cam_key)
             self.track_key = "%s:%s" % (wk.get("TrackID"), wk.get("TrackConfigName") or "")
+        if isinstance(wk, dict) and wk.get("TrackLength"):
+            self.track_m = track_metres(wk) or self.track_m
         if isinstance(wk, dict):
             self.track = wk.get("TrackDisplayName") or self.track
             cfg = wk.get("TrackConfigName")
@@ -286,6 +291,7 @@ class Analyzer:
                         b = self.cls_best.get(c.cls)
                         self.cls_best[c.cls] = lt if b is None else min(b, lt)
                     if self.green is not None:
+                        self._note_lap(c.cls, lt)
                         self._lapped(i, t, lt, int(lc))
                 c.last_lap = lt
             c.seen = True
@@ -384,6 +390,7 @@ class Analyzer:
         self._own_trouble(t, me)
         self._others_trouble(t, me, lap_t)
         self._pits(t, me, lap_t)
+        self._spectacle(t)
 
     def _passes(self, t, me):
         if me.surf in (NOT_IN_WORLD,) or me.pit or me.dist is None:
@@ -442,12 +449,15 @@ class Analyzer:
                     ("Lapped a car" if p["gain"] else "Lapped")
             if p["offCar"]:
                 score += 6
+            if p["gain"]:
+                self._note_traffic(self.target, j, t)
             self._add("traffic", t, [(t - 8, t + 4)], score, label, [j], gain=p["gain"], otherAheadBefore=p["gain"],
                       at=self._pct(self.target))
             return
         now = self.class_pos(self.target)
         if p["gain"]:
             score, pos = 50, now
+            self._note_pass(self.target, now, t)
             bonus = 45 if pos == 1 else 25 if pos and pos <= 3 else 10 if pos and pos <= 10 else 0
             label = "Takes the class lead" if pos == 1 else "Pass for %s" % _ord(pos) if pos else "Pass"
         else:
@@ -467,7 +477,8 @@ class Analyzer:
             if q["cars"] == [j] and t - q["t"] <= 45:
                 q["score"] = round(q["score"] + 15, 1)
                 m["score"] = round(m["score"] + 15, 1)
-                m["label"] += " - back and forth"
+                if not m["label"].endswith(" - back and forth"):
+                    m["label"] += " - back and forth"
         self._pass_log.append(m)
         if b is not None:
             b["passes"].append(m)
@@ -707,6 +718,7 @@ class Analyzer:
             self._score_pass(p)
         for j in list(self._dramas):
             self._emit_drama(j)
+        self._spec_finish(t_end or 0.0)
         # T taking the flag
         fin_t = None
         if self.results and self.crossings:
@@ -743,6 +755,11 @@ class Analyzer:
                             "score": 40.0 if fastest_cls else 18.0,
                             "label": ("Fastest lap of the race in class" if fastest_cls else "Best lap") +
                                      " - %s" % fmt_lap(lt), "lap": lap, "cars": [], "lapTime": lt})
+        # T's last lap: from its line crossing before the flag to the flag
+        if fin_t is not None and not guessed_finish:
+            before = [t for t, lc in self.crossings if t < fin_t - 1]
+            if before:
+                self.last_lap(moments, [(before[-1], fin_t + 1, None)])
         # the last part of the race counts more
         if self.green is not None and fin_t is not None and fin_t > self.green:
             cut = fin_t - LATE_SHARE * (fin_t - self.green)

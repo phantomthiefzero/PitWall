@@ -68,7 +68,10 @@ shorts, for sharing. (The Broadcast must be off while it works: both move iRacin
    how long that will take. The scan is kept in `Documents\iRacingSuite\Highlights\Scans` (**Open a saved scan**).
 4. Pick a target length (**Pick the best for me**) or tick moments yourself: passes, battles, spins and offs (with what
    led up to them), wrecks and near misses around your car, pit stops and driver changes, the best lap. The start
-   and the finish are always in.
+   and the finish are always in. Also the sights: a big pack, classes mixing in one corner, side by side and three
+   wide, a car slicing through traffic, a car on a charge (a montage of its passes), restarts, a pit lane rush, the
+   lead changing in the pits, a front-runner out. Anything on the last lap says so and counts more; the whole race's
+   result card names the biggest climber.
 5. Look and sound: a built-in stinger (four styles, with your car number and team) or your own, the small captions,
    title and result cards, music (off until you add tracks).
 6. What to make: the full video, a best-of short and one short each for the top moments (1080 x 1920 for YouTube

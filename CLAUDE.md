@@ -206,7 +206,14 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   cars are level is skipped, in both analyzers), one class and one lap only (no traffic), scored by the place;
   battles per pair; crashes join cars in trouble within CRASH_JOIN_S and CRASH_NEAR; each class's winner and fastest
   lap; class names only in a multi-class race. Every moment names its "focus" car: the camera plan and the angles
-  follow it (story.camera_plan), "other" is its cars[0]. Cards: race_cards (field, classes, winners).
+  follow it (story.camera_plan), "other" is its cars[0]. Cards: race_cards (field, classes, winners, biggest climber).
+- The sights (highlights/spectacle.py, a mixin both analyzers share; one car's video keeps those its car is in): pack,
+  multiclass, sidebyside (SIDE_M centre to centre; three wide = all within it), train, charge (net places gained; a
+  montage, plan cuts each clip to its own pass via "keys"), restart (from each class's race pace by lap times),
+  pitrush, pitlead (a leader seen driving down the pit lane, never a tow), out (gone OUT_MIN_S; never a car that did
+  its laps). No packs or busy corners in the first minute, under a caution or RESTART_CALM_S after it. A new sight:
+  SPECTACLE_KINDS, LEAD / KEY / AFTER in shots.py, the page's KINDS; new kinds start ticked (kindsKnown).
+  Anything on a class's last lap says so and counts LAST_LAP_BONUS more. Check a change against the recordings.
 - A short counts its replays in its length (pick.short_length speeds: SINGLE_SPEEDS for a one-moment short,
   BEST_SPEEDS for the best-of) and cuts its later clips to short_window; the full video's target counts replays, the
   cold open and the cards (Engine.auto searches the budget). The start is START_S (20 s) of racing.

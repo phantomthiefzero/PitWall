@@ -857,3 +857,131 @@ def test_the_whole_races_camera_follows_each_moments_own_car(tmp_path, monkeypat
     crash_angles = p["angles"][2]
     assert crash_angles[0]["shots"][0]["car"] == "14"          # from inside the other car caught up in it
     assert e._video_name().startswith("Race race in review") or "race in review" in e._video_name()
+
+
+# ------------------------------------------------------------------------------------------------ the sights
+def test_a_big_pack_is_one_moment_on_its_front_car_and_one_cars_video_keeps_it_only_when_in_it():
+    def packed(k):                     # seven cars 0.4 s apart until 200 s, then the field strings out
+        return lambda t: {"dist": 0.5 - 0.004 * k + t / LAP_S - (max(0.0, t - 200) * 0.0004 * k)}
+    cars = {k: packed(k) for k in range(7)}
+    cars[7] = steady(0.0, 100.0)
+    res = run_field(cars, end=320)
+    packs = kinds(res, "pack")
+    assert len(packs) == 1, [m["label"] for m in res["moments"]]
+    assert packs[0]["label"] == "A pack of 7 cars nose to tail" and packs[0]["focus"] == 0
+    assert packs[0]["spectacle"] and 60 <= packs[0]["t"] <= 205
+    assert kinds(run(cars, target=3, end=320), "pack")[0]["focus"] == 3
+    assert not kinds(run(cars, target=7, end=320), "pack")
+
+
+def test_three_classes_in_one_corner_is_a_multiclass_moment():
+    cars = {0: steady(0.50, cls=1), 1: steady(0.494, cls=2), 2: steady(0.488, cls=3), 3: steady(0.482, cls=1),
+            4: steady(0.1, cls=2), 5: steady(0.8, cls=3)}
+    m = kinds(run_field(cars, end=200), "multiclass")
+    assert len(m) == 1 and m[0]["label"] == "3 classes, 4 cars in one corner" and m[0]["focus"] == 0
+    # two of a class and one of another is not a busy corner
+    few = {0: steady(0.50, cls=1), 1: steady(0.494, cls=2), 2: steady(0.488, cls=1), 3: steady(0.1, cls=2)}
+    assert not kinds(run_field(few, end=200), "multiclass")
+
+
+def test_side_by_side_and_three_wide_for_a_place():
+    def beside(start, gap_from, gap_to):
+        return lambda t: {"dist": start + t / LAP_S - (0.0003 if gap_from <= t < gap_to else 0.03)}
+    cars = {0: steady(0.5), 1: beside(0.5, 100, 108), 2: steady(0.2)}
+    sb = kinds(run_field(cars, end=200), "sidebyside")
+    assert len(sb) == 1 and "#10 and #11 side by side for the lead" in sb[0]["label"] and sb[0]["wide"] == 2
+    assert 6 <= sb[0]["duration"] <= 9 and sb[0]["segs"][0][0] < sb[0]["key"] < sb[0]["segs"][0][1]
+    cars = {0: steady(0.5), 1: lambda t: {"dist": 0.5 + t / LAP_S - (0.0002 if 100 <= t < 108 else 0.03)},
+            2: lambda t: {"dist": 0.5 + t / LAP_S - (0.0004 if 100 <= t < 108 else 0.06)}, 3: steady(0.2)}
+    sb = kinds(run_field(cars, end=200), "sidebyside")
+    assert len(sb) == 1 and sb[0]["label"].startswith("Three wide") and sb[0]["wide"] == 3
+    # a fast class going by a slow one is traffic, not side by side
+    cars = {0: steady(0.5, 80.0, cls=2), 1: steady(0.52, 120.0), 2: steady(0.2)}
+    assert not kinds(run_field(cars, end=200), "sidebyside")
+
+
+def test_slicing_through_traffic_is_a_train_in_both_modes():
+    cars = {0: steady(0.45, 80.0, cls=2)}
+    for k in range(4):
+        cars[k + 1] = steady(0.47 + 0.025 * k, 120.0)
+    cars[5] = steady(0.0, 120.0, cls=2)
+    tr = kinds(run_field(cars, end=200), "train")
+    assert len(tr) == 1 and tr[0]["focus"] == 0 and tr[0]["carsN"] >= 3
+    assert tr[0]["label"].startswith("#10 slices through traffic")
+    assert kinds(run(cars, target=0, end=200), "train")
+
+
+def test_a_run_of_passes_is_a_charge_montage_and_the_biggest_climber_is_on_the_result_card():
+    cars = {0: steady(0.50, 95.0), 1: steady(0.52), 2: steady(0.54), 3: steady(0.56), 4: steady(0.1, 95.0, cls=2)}
+    results = [{"CarIdx": 0, "Position": 1, "ClassPosition": 0, "LapsComplete": 4},
+               {"CarIdx": 3, "Position": 2, "ClassPosition": 1, "LapsComplete": 4},
+               {"CarIdx": 2, "Position": 3, "ClassPosition": 2, "LapsComplete": 4},
+               {"CarIdx": 1, "Position": 4, "ClassPosition": 3, "LapsComplete": 4}]
+    res = run_field(cars, results=results, end=420)
+    ch = kinds(res, "charge")
+    assert len(ch) == 1 and ch[0]["label"] == "#10 on a charge - P4 to P1" and ch[0]["gained"] == 3
+    assert len(ch[0]["segs"]) == 3 and len(ch[0]["keys"]) == 3
+    assert res["climber"]["idx"] == 0 and res["climber"]["from"] == 4 and res["climber"]["to"] == 1
+    from highlights.story import race_cards
+    intro, outro = race_cards(res)
+    assert any("#10" in x and "4" in x for x in outro["lines"] if "places" in x)
+
+
+def test_a_restart_after_a_caution_is_found_from_the_race_pace():
+    def caution(start):
+        def f(t):
+            x = t if t < 450 else 450 + (min(t, 520) - 450) * 0.3 + max(0, t - 520)
+            return {"dist": start + x / LAP_S}
+        return f
+    cars = {k: caution(0.1 * k) for k in range(5)}
+    rs = kinds(run_field(cars, end=640), "restart")
+    assert len(rs) == 1 and 515 <= rs[0]["t"] <= 545 and rs[0]["label"] == "Restart after the caution"
+    assert not kinds(run_field({k: steady(0.1 * k) for k in range(5)}, end=640), "restart")
+
+
+def test_a_pit_lane_rush_the_lead_changing_in_the_pits_and_a_leader_out():
+    def stop(start, t0, t1):
+        return lambda t: {"dist": start + (t if t < t0 else t0 + (min(t, t1) - t0) * 0.3 + max(0, t - t1)) / LAP_S,
+                          "pit": t0 <= t < t1}
+    cars = {k: stop(0.5 - 0.05 * k, 200, 240) for k in range(5)}
+    cars[5] = steady(0.9)
+    res = run_field(cars, end=320)
+    assert len(kinds(res, "pitrush")) == 1 and kinds(res, "pitrush")[0]["label"] == "Pit lane rush - 5 cars in"
+    # the leader (#10) pits, #11 goes by in the pits and stays in front
+    cars = {0: stop(0.60, 200, 240), 1: steady(0.55), 2: steady(0.1)}
+    pl = kinds(run_field(cars, end=320), "pitlead")
+    assert len(pl) == 1 and pl[0]["label"] == "#11 takes the lead as #10 pits" and pl[0]["focus"] == 1
+    # the leader is taken out of the world from the track
+    cars = {0: lambda t: {"dist": 0.6 + t / LAP_S, "surf": -1 if t >= 200 else 3}, 1: steady(0.5), 2: steady(0.1)}
+    out = kinds(run_field(cars, end=300), "out")
+    assert len(out) == 1 and out[0]["label"] == "#10 is out from the lead"
+
+
+def test_a_moment_on_the_last_lap_says_so_and_counts_more():
+    cars = {0: steady(0.62, 100.0), 1: steady(0.60, 100.4), 2: steady(0.58, 98.0)}
+    plain = run_field(cars, end=600)
+    lead = [m for m in kinds(plain, "pass") if m["classPos"] == 1][0]
+    laps = int(lead["lap"])
+    results = [{"CarIdx": 2, "Position": 1, "ClassPosition": 0, "LapsComplete": laps},
+               {"CarIdx": 0, "Position": 2, "ClassPosition": 1, "LapsComplete": laps}]
+    res = run_field(cars, results=results, end=600)
+    last = [m for m in kinds(res, "pass") if m["classPos"] == 1][0]
+    assert last["lastLap"] and last["label"].startswith("Last lap: #12 takes the lead")
+    assert last["score"] > lead["score"]
+
+
+def test_the_sights_are_shot_their_own_way_and_a_charge_cuts_to_each_pass():
+    from highlights.shots import Cameras, plan, KEY, LEAD, AFTER
+    from highlights.spectacle import SPECTACLE_KINDS
+    assert all(k in KEY and k in LEAD and k in AFTER for k in SPECTACLE_KINDS)
+    cams = Cameras(CAM_INFO, {}, 100.0)
+    # a pack: Rear Chase on its front car over the moment (the pack behind it)
+    m = {"id": 3, "kind": "pack", "t": 200.0, "key": 200.0, "cars": [1], "spectacle": True}
+    sh = plan({"a": 192.0, "b": 210.0}, m, cams, 0, NUM)
+    key = [x for x in sh if x["t"] <= 200.0][-1]
+    assert key["kind"] == "rear" and key["car"] == "34"
+    # a charge: each of its clips builds to its own pass
+    m = {"id": 4, "kind": "charge", "t": 100.0, "key": 300.0, "keys": [100.0, 200.0, 300.0], "cars": []}
+    sh = plan({"a": 94.0, "b": 103.0}, m, cams, 0, NUM)
+    key = [x for x in sh if x["t"] <= 100.0][-1]
+    assert key["kind"] == "far" and key["t"] <= 100.0

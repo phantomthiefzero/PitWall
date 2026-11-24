@@ -154,6 +154,7 @@ class FieldAnalyzer(Analyzer):
         self._confirm_pairs(t)
         self._battles_all(t, close)
         self._troubles(t)
+        self._spectacle(t)
 
     def _pair(self, t, key):
         i, j = key
@@ -171,7 +172,8 @@ class FieldAnalyzer(Analyzer):
             return
         passer, passed = (i, j) if rel < 0 else (j, i)
         if ci.cls != cj.cls or round(d) != 0:
-            return                            # another class or a lap apart: traffic
+            self._note_traffic(passer, passed, t)
+            return                            # another class or a lap apart: traffic (only slicing through counts)
         r = self._ratio(self.cars[passed])
         if r is not None and r < 0.6:
             return                            # going by a car that has stopped is not a pass
@@ -206,9 +208,11 @@ class FieldAnalyzer(Analyzer):
                 if q["pair"] == key and p["t"] - q["t"] <= 45:
                     q["score"] = round(q["score"] + 15, 1)
                     m["score"] = round(m["score"] + 15, 1)
-                    m["label"] += " - back and forth"
+                    if not m["label"].endswith(" - back and forth"):
+                        m["label"] += " - back and forth"
             m["pair"] = key
             self._pair_passes.append(m)
+            self._note_pass(p["passer"], pos, p["t"])
             if b is not None:
                 b["passes"].append(m)
 
@@ -339,6 +343,7 @@ class FieldAnalyzer(Analyzer):
         for cr in list(self._crashes):
             self._emit_crash(cr)
         self._crashes = []
+        self._spec_finish(t_end)
         moments = list(self.moments)
         winners = []
         if self.green is not None:
@@ -383,6 +388,16 @@ class FieldAnalyzer(Analyzer):
                                                                          fmt_lap(lt)),
                             "lap": lap, "cars": [], "focus": i, "lapTime": lt})
         moments = [m for m in moments if last_finish is None or m["t"] <= last_finish + 5]
+        # each class's last lap: from its winner's line crossing before the flag to the flag
+        windows = []
+        for w in self._winners():
+            cr = self.cross_all.get(w["idx"], [])
+            got = next((tt for tt, lc in cr if lc >= w["laps"]), None)
+            before = next((tt for tt, lc in cr if lc >= w["laps"] - 1), None)
+            if got is not None and before is not None and before < got:
+                c = self.cars.get(w["idx"])
+                windows.append((before, got + 1, c.cls if c is not None else None))
+        self.last_lap(moments, windows)
         if self.green is not None and last_finish is not None and last_finish > self.green:
             cut = last_finish - LATE_SHARE * (last_finish - self.green)
             for m in moments:
@@ -395,9 +410,14 @@ class FieldAnalyzer(Analyzer):
             m.setdefault("mandatory", False)
             m.pop("pair", None)
         classes = sorted({str(v) for v in self.cls_names.values() if v})
+        climb = self.climber()
+        if climb is not None:
+            climb.update(number=self.numbers.get(climb["idx"], ""), name=getattr(self, "names", {}).get(climb["idx"], ""),
+                         cls=self.class_label(climb["idx"]))
         return {"mode": "race", "target": None, "session": self.race_session, "green": self.green,
                 "finish": last_finish, "laps": max([w_["laps"] for w_ in self._winners()] or [0]) or None,
                 "track": self.track, "event": self.event, "lapTime": None, "moments": moments, "path": [],
                 "trackKey": self.track_key, "numbers": self.numbers, "cameraInfo": self.camera_info,
                 "raceS": race_length_guess(self.session_info, self.race_session), "winners": winners, "classes": classes, "fieldSize": self.field_n,
-                "stints": [], "drivers": [], "team": "", "number": "", "startPos": None, "classPos": None}
+                "stints": [], "drivers": [], "team": "", "number": "", "startPos": None, "classPos": None,
+                "climber": climb}

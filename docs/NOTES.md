@@ -844,4 +844,13 @@ Broadcast (broadcast/)
   for one frame (rel 0) wiped the sign both analyzers compared against; a level frame is now skipped. Without the
   replay's own results (the fake field never finishes) each class's winner is its first car over the line after the
   checkered flag.
+- Highlights sights (Nov 2026: "find cool and interesting moments as well as exciting ones? Like a busy turn with many
+  classes in it or a huge bunch of cars"): highlights/spectacle.py, a mixin both analyzers share (one car's video keeps
+  those its car is in). Run over the user's four recordings, the first version showed: "three wide" of six cars at
+  Le Mans (a line of overlapping pairs, and 4.5 m centre to centre is nose to tail in a draft): now SIDE_M 3 m and
+  three wide means all three within it; 64 "out" at Suzuka (cars blinking out of a spectator's data for a frame):
+  now gone OUT_MIN_S, never a car that has done its laps; "on a charge - P6 to P6" (passes back and forth): now net
+  places gained; "takes the lead as #1 pits" on Talladega's last lap (a wrecked leader towed to its stall): now only
+  a leader seen driving down the pit lane; a pack of 18 the instant every caution ended: packs wait RESTART_CALM_S.
+  Talladega has ~240 side by sides (scored by the place, so back markers fall away in the pick).
 

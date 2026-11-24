@@ -29,7 +29,9 @@ from .stingers import STYLES as STINGER_STYLES
 DEFAULTS = {
     "obsUrl": "ws://127.0.0.1:4455", "obsPassword": "", "camera": "auto", "stinger": "builtin:chevrons", "music": [],
     "musicVolume": 0.35, "gameVolume": 0.7, "targetMin": 8, "captions": True, "cards": True,
-    "kinds": ["pass", "lost", "battle", "off", "spin", "crash", "towed", "drama", "pit", "fastest"],
+    "kinds": ["pass", "lost", "battle", "off", "spin", "crash", "towed", "drama", "pit", "fastest",
+              "pack", "multiclass", "sidebyside", "train", "charge", "restart", "pitrush", "pitlead", "out"],
+    "kindsKnown": [],           # the kinds there were when the settings were saved: a newer kind starts ticked
     # vertical shorts (9:16) for YouTube Shorts, Instagram Reels, TikTok
     "makeFull": True, "makeBestOf": True, "shortSingles": 3, "shortMaxS": 30, "shortFrame": "fill",
     "shortReplay": True,
@@ -119,8 +121,14 @@ class Engine:
             for k in DEFAULTS:
                 if k in saved:
                     self.settings[k] = saved[k]
+            known = set(saved.get("kindsKnown") or ["pass", "lost", "battle", "off", "spin", "crash", "towed",
+                                                     "drama", "pit", "fastest", "traffic"])
+            new = [k for k in DEFAULTS["kinds"] if k not in known]
+            if new and isinstance(self.settings.get("kinds"), list):
+                self.settings["kinds"] = list(self.settings["kinds"]) + new
         except (OSError, ValueError):
             pass
+        self.settings["kindsKnown"] = list(dict.fromkeys(DEFAULTS["kinds"] + ["traffic"]))
 
     def save_settings(self, s: dict):
         for k in DEFAULTS:

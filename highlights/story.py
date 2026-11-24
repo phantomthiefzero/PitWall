@@ -162,7 +162,13 @@ def race_cards(result) -> tuple[dict, dict]:
         out_lines.append(("%s  " % w["cls"] if w.get("cls") and len(wins) > 1 else "") +
                          ("#%s %s" % (w.get("number", ""), w.get("name") or "")).strip())
     title = "Winners" if len(wins) > 1 else ("#%s wins" % wins[0]["number"] if wins else "The finish")
-    return intro, {"kicker": "Result", "title": title, "lines": out_lines[:5]}
+    out_lines = out_lines[:4]
+    cl = result.get("climber")
+    if cl:
+        out_lines.append("Biggest climber  #%s  %s to %s  (+%d places)" % (
+            cl.get("number", ""), _ordinal_pos(cl["from"]), _ordinal_pos(cl["to"]), cl["gained"]) +
+            (" in %s" % cl["cls"] if cl.get("cls") else ""))
+    return intro, {"kicker": "Result", "title": title, "lines": out_lines}
 
 
 def cards(result, target) -> tuple[dict, dict]:
