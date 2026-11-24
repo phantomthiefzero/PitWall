@@ -258,7 +258,9 @@ class Engine:
                                          done=min(read, race_s or read), of=race_s or 0)
                 res = scan(src, self.gate, car["idx"], path, stop=self.stop_flag.is_set, progress=prog, log=self.log)
             self._took(res)
-            self.progress["text"] = "Scan done (%s): %d moments found" % (res.get("ended"), len(res["moments"]))
+            self.progress["text"] = "Scan done (%s): %d moments found. Saved as Documents\\iRacingSuite\\Highlights\\" \
+                "Scans\\%s.%s" % (res.get("ended"), len(res["moments"]), os.path.basename(path),
+                                    " The replay is back at the start of the race." if res.get("frameMap") else "")
         return self._run("scan", job)
 
     def open_scan(self, path, idx=None):
@@ -438,7 +440,8 @@ class Engine:
             total = shotlib.record_s(jobs)
             with self.lock:
                 src = self._source()
-                rec = ClipRecorder(src, self.gate, obs, log=self.log, stop=self.stop_flag.is_set)
+                rec = ClipRecorder(src, self.gate, obs, log=self.log, stop=self.stop_flag.is_set,
+                                   frame_map=(self.result or {}).get("frameMap"))
 
                 def prog(i, n):
                     left = shotlib.record_s(jobs[i:])
@@ -687,6 +690,9 @@ class Api:
 
     def open_folder(self, what="videos", i=0):
         path = os.path.join(self._engine.base, "Videos")
+        if what == "scans":
+            path = os.path.join(self._engine.base, "Scans")
+            os.makedirs(path, exist_ok=True)
         vs = self._engine.videos
         if what == "video" and vs and 0 <= int(i) < len(vs):
             path = vs[int(i)]["path"]

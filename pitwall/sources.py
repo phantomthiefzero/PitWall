@@ -1079,6 +1079,8 @@ class FakeSource(TelemetrySource):
             # which is what the live-edge logic reads.
             session, ms = args
             self.replay_behind = max(0.0, self.t - ms / 1000.0)
+        elif method == "replay_set_play_position":
+            pass                     # the fake has no frames to jump to; the playhead stays
         else:
             raise ValueError(f"fake source cannot simulate {method}")
 

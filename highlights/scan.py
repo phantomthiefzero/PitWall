@@ -25,6 +25,7 @@ INFO_KEYS = ("WeekendInfo", "DriverInfo", "SessionInfo", "CameraInfo")
 STALL_S = 6.0               # the tape not moving this long (wall time) at speed: the end of the tape
 AFTER_FINISH_S = 30.0       # tape seconds read after the car takes the flag
 LAND_WAIT_S = 10.0
+STEP_WAIT_S = 3.0           # a jump (to the tape's start, to the next session) shows in the telemetry within this
 
 
 class ScanError(RuntimeError):
@@ -94,6 +95,53 @@ class ScanWriter:
         self.f.close()
 
 
+def _wait_moved(src, before, clock, sleep, limit=STEP_WAIT_S):
+    """Ticks until the tape's (session, time) differs from `before`; returns where it is (or None)."""
+    end, now = clock() + limit, None
+    while clock() < end:
+        if src.tick():
+            now = tape_time(src.get)
+            if now != before:
+                return now
+        sleep(0.05)
+    return now
+
+
+def to_race_start(src, send, race_session, clock=time.monotonic, sleep=time.sleep, log=print) -> bool:
+    """Puts the paused tape at the start of the race session the quick way: to the tape's start, then on a session at
+    a time (both are jumps in iRacing, however long the replay). A search by session time scrubs through the tape and,
+    from the end of a long replay, stutters for a long time; it is only the fallback. Returns True when there."""
+    where = tape_time(src.get) if src.tick() else None
+    send({"cmd": "replay", "action": "search", "mode": "to_start"})
+    moved = _wait_moved(src, where, clock, sleep)
+    if (moved is None or moved == where) and where is not None and (where[1] or 0) > 5:
+        where = None                           # it did not move and it is not at a start: the quick way is not working
+    else:
+        where = moved or where
+    for _ in range(12):
+        if where is None or where[0] is None:
+            break
+        if where[0] == race_session:
+            log("scan: at the start of the race session (t %.1f)" % (where[1] or 0))
+            return True
+        if where[0] > race_session:
+            break
+        send({"cmd": "replay", "action": "search", "mode": "next_session"})
+        moved = _wait_moved(src, where, clock, sleep)
+        if moved is None or moved == where:
+            break
+        where = moved
+    log("scan: the quick way did not reach session %s: searching by time" % race_session)
+    send({"cmd": "replay", "action": "jump", "session": race_session, "timeS": 0, "preroll": 0})
+    send({"cmd": "replay", "action": "speed", "speed": 0})
+    end = clock() + LAND_WAIT_S
+    while clock() < end:
+        if src.tick() and tape_time(src.get)[0] == race_session:
+            return True
+        sleep(0.05)
+    return False
+
+
 def scan(src, gate, target, out_path, race_session=None, speed=SPEED, stop=None, progress=None, log=print,
          clock=time.monotonic, sleep=time.sleep) -> dict:
     """Plays the race session of the open replay at `speed` and finds `target`'s moments. Returns the Analyzer's
@@ -117,17 +165,9 @@ def scan(src, gate, target, out_path, race_session=None, speed=SPEED, stop=None,
             raise ScanError("iRacing did not take the replay command: %s" % r.get("error"))
         return r
 
-    log("scan: jumping to the start of session %s" % race_session)
+    log("scan: going to the start of session %s" % race_session)
     send({"cmd": "replay", "action": "speed", "speed": 0})
-    send({"cmd": "replay", "action": "jump", "session": race_session, "timeS": 0, "preroll": 0})
-    # wait until the tape is in the race session
-    t_end = clock() + LAND_WAIT_S
-    while clock() < t_end:
-        if src.tick():
-            s, t = tape_time(src.get)
-            if s == race_session:
-                break
-        sleep(0.05)
+    to_race_start(src, send, race_session, clock=clock, sleep=sleep, log=log)
     send({"cmd": "replay", "action": "speed", "speed": int(speed)})
     w = ScanWriter(out_path, src.var_headers())
     w.session(src.session_info_update, info)
@@ -173,6 +213,9 @@ def scan(src, gate, target, out_path, race_session=None, speed=SPEED, stop=None,
         w.close()
         try:
             gate.execute(src, {"cmd": "replay", "action": "speed", "speed": 0})
+            if a.frame_map and src.is_connected:
+                # back to the start of the race, paused, by its frame (instant; no scrubbing back through the tape)
+                gate.execute(src, {"cmd": "replay", "action": "frame", "frame": a.frame_map[0][1]})
         except Exception:  # noqa: BLE001
             pass
     log("scan: done (%s), %d frames" % (why, w.n))

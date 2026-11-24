@@ -78,7 +78,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     <button class="go" id="scan">Scan the race</button>
     <button id="stopScan" hidden>Stop</button>
   </div>
-  <div class="row"><button class="link" id="openScan">Open a saved scan instead...</button></div>
+  <div class="row"><button class="link" id="openScan">Open a saved scan instead...</button>
+    <button class="link" id="scanFolder" title="Documents\iRacingSuite\Highlights\Scans">Where scans are saved</button></div>
   <div id="scanProg" hidden><div class="bar busy"><i></i></div><span class="mut" id="scanText"></span></div>
 </section>
 
@@ -363,6 +364,7 @@ function wire() {
   $("look").onclick = look;
   $("scan").onclick = scanNow;
   $("openScan").onclick = openScan;
+  $("scanFolder").onclick = () => api.open_folder("scans");
   $("stopScan").onclick = () => api.stop();
   $("stopMake").onclick = () => api.stop();
   $("autoPick").onclick = async () => { await api.save_settings({targetMin: +$("target").value || 8}); await api.auto_pick($("target").value || 8); refresh(); };

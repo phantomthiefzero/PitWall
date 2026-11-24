@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import time
 
+from .moments import frame_at
+
 from .moments import tape_time
 
 LEAD_S = 3.0            # start playing this long before the clip (the seek and the camera settle)
@@ -54,8 +56,9 @@ def pick_group(groups, kind, pref="auto") -> int:
 
 
 class ClipRecorder:
-    def __init__(self, src, gate, obs, log=print, clock=time.monotonic, sleep=time.sleep, stop=None):
+    def __init__(self, src, gate, obs, log=print, clock=time.monotonic, sleep=time.sleep, stop=None, frame_map=None):
         self.src, self.gate, self.obs, self.log = src, gate, obs, log
+        self.frame_map = frame_map or []    # (tape seconds, frame) from the scan: jumps go straight to the frame
         self.clock, self.sleep = clock, sleep
         self.stop = stop            # true: give up the clip in hand at once (OBS is still stopped, the tape paused)
 
@@ -105,9 +108,13 @@ class ClipRecorder:
         def landed(ss, t):
             return ss == s and abs(t - target) <= LAND_S
 
+        frame = frame_at(self.frame_map, a)
         for attempt in (1, 2):
-            self._send({"cmd": "replay", "action": "jump", "session": s, "timeS": a, "preroll": LEAD_S,
-                        "car": first["car"], "group": first["group"]})
+            jump = {"cmd": "replay", "action": "jump", "session": s, "timeS": a, "preroll": LEAD_S,
+                    "car": first["car"], "group": first["group"]}
+            if frame is not None and attempt == 1:
+                jump["frame"] = frame               # straight there; a search by time is the second try
+            self._send(jump)
             try:
                 self._wait(landed, LAND_WAIT_S, "jump to %.0f s" % a)
                 break

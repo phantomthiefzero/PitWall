@@ -178,7 +178,9 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   CarIdxLastLapTime, CarIdxClass, SessionState), picks them to a target length (pick.py), records only those clips with
   OBS (capture.py) and joins them with ffmpeg (stitch.py). Times are the tape's (session, seconds).
 - Every replay and camera move goes through pitwall.commands.CommandGate (camera gate on). The race is never
-  recorded whole.
+  recorded whole. Jumps go by the tape's frame (frameMap from the scan's ReplayFrameNum; replay_set_play_position)
+  and to the race by search to_start / next_session: a search by session time scrubs (stutters on a long replay) and
+  is only the fallback. A finished scan leaves the tape paused at the race's first frame. NOTES: "getting back".
 - A spin is a car far slower than its own class right now (a caution or the opening lap is not a spin); a pass must
   stand HOLD_S (side by side is not a pass); a car of another class or a lap apart is traffic. The start and the finish
   are always in the video; the finish comes from the replay's own final ResultsPositions when it has them.

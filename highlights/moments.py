@@ -48,6 +48,7 @@ DRAMA_NEW_S = 20.0          # ... when its trouble began at most this long befor
 NEAR_MISS_S = 0.6           # T went by it this close: a near miss
 LEAD_UP_S = 10.0            # a wreck or a spin: this much of what led up to it comes first
 DRAMA_MAX_S = 40.0
+FRAME_EVERY_S = 30.0      # a (tape time, frame) anchor this often: the tape runs at 60 frames a second between them
 PATH_EVERY_S = 0.5
 AFTER_FINISH_S = 30.0       # a scan reads this long past the finish it needs          # T's place on the lap is kept this often (where the cameras at one place are)
 RATE_TAU_S = 1.5          # smoothing of each car's speed (laps per second)
@@ -165,6 +166,7 @@ class Analyzer(Spectacle):
         self._last_drama = -1e9
         self._pass_log: list[dict] = []
         self._spec_init()
+        self.frame_map: list[tuple[float, int]] = []   # (tape seconds, ReplayFrameNum): jumps go straight to a frame
 
     # ------------------------------------------------------------------ session info
     def session(self, info: dict):
@@ -235,6 +237,9 @@ class Analyzer(Spectacle):
         self.t = t
         if self.t_first is None:
             self.t_first = t
+        fr = get("ReplayFrameNum")
+        if isinstance(fr, int) and fr > 0 and (not self.frame_map or t - self.frame_map[-1][0] >= FRAME_EVERY_S):
+            self.frame_map.append((round(t, 3), fr))
         st = get("SessionState")
         if isinstance(st, int):
             if self.green is None and st == 4 and self.state in (1, 2, 3):
@@ -790,7 +795,21 @@ class Analyzer(Spectacle):
                 "path": self.path, "trackKey": self.track_key, "team": self.team, "car": self.car_name,
                 "cls": self.cls_name, "number": self.number, "stints": self.stints, "startPos": self.start_pos,
                 "drivers": list(dict.fromkeys(x["driver"] for x in self.stints)), "numbers": self.numbers,
-                "cameraInfo": self.camera_info, "raceS": race_length_guess(self.session_info, self.race_session)}
+                "cameraInfo": self.camera_info, "raceS": race_length_guess(self.session_info, self.race_session),
+                "frameMap": self.frame_map}
+
+
+def frame_at(frame_map, t) -> int | None:
+    """The tape's frame for tape time t (60 frames a second from the nearest anchor at or before it)."""
+    if not frame_map:
+        return None
+    best = frame_map[0]
+    for a in frame_map:
+        if a[0] <= t:
+            best = a
+        else:
+            break
+    return max(0, int(round(best[1] + 60.0 * (t - best[0]))))
 
 
 def driver_at(stints, t):

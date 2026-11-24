@@ -420,4 +420,5 @@ class FieldAnalyzer(Analyzer):
                 "trackKey": self.track_key, "numbers": self.numbers, "cameraInfo": self.camera_info,
                 "raceS": race_length_guess(self.session_info, self.race_session), "winners": winners, "classes": classes, "fieldSize": self.field_n,
                 "stints": [], "drivers": [], "team": "", "number": "", "startPos": None, "classPos": None,
+                "frameMap": self.frame_map,
                 "climber": climb}

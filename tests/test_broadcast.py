@@ -695,6 +695,8 @@ def test_replay_jump_cuts_seeks_settles_then_plays():
     assert steps == [("cam_switch_num", ("34", 11, 0)), ("replay_search_session_time", (2, 807400)),
                      ("sleep", (0.4,)), ("replay_set_play_speed", (1, False))]
     assert plan_jump({"session": 0, "timeS": 3, "preroll": 5})[0] == ("replay_search_session_time", (0, 0))
+    assert plan_jump({"session": 2, "timeS": 50, "preroll": 3, "frame": 93000})[0] == \
+        ("replay_set_play_position", ("begin", 93000 - 180))
     for bad in ({"session": 0}, {"session": 0, "timeS": "x"}, {"session": 0, "timeS": 5, "preroll": 99},
                 {"session": 99, "timeS": 5}, {"session": 0, "timeS": 5, "car": "abc"}):
         with pytest.raises(ValueError):
