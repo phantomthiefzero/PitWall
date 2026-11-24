@@ -12,6 +12,7 @@ from __future__ import annotations
 import gzip
 import json
 import math
+import os
 import time
 
 from .moments import field, make_analyzer, race_sessions, tape_time
@@ -25,6 +26,10 @@ INFO_KEYS = ("WeekendInfo", "DriverInfo", "SessionInfo", "CameraInfo")
 STALL_S = 6.0               # the tape not moving this long (wall time) at speed: the end of the tape
 AFTER_FINISH_S = 30.0       # tape seconds read after the car takes the flag
 LAND_WAIT_S = 10.0
+KICK_S = 1.5               # the tape not moving this long: ask for the speed again (iRacing can drop a speed sent just
+KICKS = 4                  # after a jump: Watkins Glen, Nov 2026, the scan sat paused at the start and ended empty)
+SETTLE_S = 0.5             # after a jump, before asking for the speed
+MIN_FRAMES = 300           # a scan that read fewer frames than this did not really play: an error, not a result
 STEP_WAIT_S = 3.0           # a jump (to the tape's start, to the next session) shows in the telemetry within this
 
 
@@ -168,7 +173,9 @@ def scan(src, gate, target, out_path, race_session=None, speed=SPEED, stop=None,
     log("scan: going to the start of session %s" % race_session)
     send({"cmd": "replay", "action": "speed", "speed": 0})
     to_race_start(src, send, race_session, clock=clock, sleep=sleep, log=log)
+    sleep(SETTLE_S)
     send({"cmd": "replay", "action": "speed", "speed": int(speed)})
+    kicks = 0
     w = ScanWriter(out_path, src.var_headers())
     w.session(src.session_info_update, info)
     last_siu = src.session_info_update
@@ -197,6 +204,13 @@ def scan(src, gate, target, out_path, race_session=None, speed=SPEED, stop=None,
                 a.session(info)
                 w.session(last_siu, info)
             if not isinstance(t, (int, float)) or (last_t is not None and t <= last_t):
+                playing = src.get("ReplayPlaySpeed")
+                if clock() - last_move > KICK_S and kicks < KICKS and playing != int(speed):
+                    kicks += 1
+                    log("scan: the tape is not playing (speed %s): asking again (%d)" % (playing, kicks))
+                    send({"cmd": "replay", "action": "speed", "speed": int(speed)})
+                    last_move = clock()
+                    continue
                 if clock() - last_move > STALL_S:
                     break
                 sleep(0.005)
@@ -219,6 +233,13 @@ def scan(src, gate, target, out_path, race_session=None, speed=SPEED, stop=None,
         except Exception:  # noqa: BLE001
             pass
     log("scan: done (%s), %d frames" % (why, w.n))
+    if w.n < MIN_FRAMES and why != "stopped":
+        try:
+            os.remove(out_path)                # not a scan anyone can use: not left among the saved ones
+        except OSError:
+            pass
+        raise ScanError("The replay did not play in iRacing (the scan read %d frames). Press play in the replay "
+                        "once, then Scan the race again." % w.n)
     out = a.finish()
     out["scanFile"] = out_path
     out["frames"] = w.n

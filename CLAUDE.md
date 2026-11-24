@@ -181,6 +181,8 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   recorded whole. Jumps go by the tape's frame (frameMap from the scan's ReplayFrameNum; replay_set_play_position)
   and to the race by search to_start / next_session: a search by session time scrubs (stutters on a long replay) and
   is only the fallback. A finished scan leaves the tape paused at the race's first frame. NOTES: "getting back".
+  iRacing can drop a speed sent just after a jump: the scan asks again while ReplayPlaySpeed is not it (KICKS), and a
+  scan that read under MIN_FRAMES is an error, never a result that replaces the one open.
 - A spin is a car far slower than its own class right now (a caution or the opening lap is not a spin); a pass must
   stand HOLD_S (side by side is not a pass); a car of another class or a lap apart is traffic. The start and the finish
   are always in the video; the finish comes from the replay's own final ResultsPositions when it has them.
