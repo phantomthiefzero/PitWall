@@ -805,3 +805,19 @@ Broadcast (broadcast/)
   when a lap ended, which closed any of its menus in the driver's hand: it now waits while a menu in the panel has
   focus (liveMenuOpen, LIVE.renderLater, redrawn on focusout), and both menus blur once picked.
   test: test_the_driver_picks_how_many_laps_each_run_of_the_test_takes.
+
+- iRacing Highlights (Nov 2026, the user's "trim down an entire endurance race to a much shorter video for easier
+  sharing ... only the exciting parts maybe with a stinger separating the clips" and "royalty free music as a
+  background"): a separate app in highlights/, built as its own .exe in the same release. iRacing's .rpy cannot be read,
+  so the app plays the replay at 16x and reads the telemetry the sim sends while it plays (scan.py), then records only
+  the chosen clips through OBS (capture.py) and joins them with ffmpeg (stitch.py). Measured choices: a pass must
+  stand 4 s (side by side flips back and forth); a spin is measured against the car's own class right now, so a
+  caution is not a spin; the first race lap is left out of the car's usual lap (a standing start or a join part way
+  round made a 70 s "lap" of a 100 s track and every gap in seconds 30% short). The suite's updater took the first .exe
+  of the newest release: with two apps in it, it could have updated the suite into Highlights; it now picks
+  iRacing.Suite.exe by name. tests: tests/test_highlights.py, test_suite test_parse_release.
+- Highlights shorts (Nov 2026, "exciting instagram reels and youtube shorts ... Twitch clips"): one vertical file serves
+  Shorts (vertical up to 3 min counts as a Short), Reels (up to 3 min is recommended to non-followers) and TikTok.
+  Twitch clips are cut from a live stream on Twitch, so they are not made here. A short opens on its best clip with
+  a slow-motion replay; the finish's fixed score (100, there so the full video always has it) made it every short's
+  hook at first, so shorts score it 30. tests: the four "short" tests in test_highlights.

@@ -205,6 +205,18 @@ connection's compression, so ~10 KB/s per engineer at 30 a second.
 
 | Live telemetry (analyzer view=live) | your car's own variables: `SteeringWheelPctTorqueSign` (force at its limit = 0.99+), `{LF,RF,LR,RR}brakeLinePress` (bar), `BrakeABSactive`, `{..}shockDefl`, `EngineWarnings`, `SessionFlags`, `PaceMode` (shown only while `SessionState` is parade or a caution flag is out: it holds the start type all race), `PitSvFlags`/`PitSvFuel`/`dp*TireColdPress`, `PlayerTireCompound` (named from `DriverTires`), `TireSetsAvailable`, `FastRepairAvailable`, `ManifoldPress`, `P2P_Count`, `WindDir`/`WindVel`/`YawNorth`, `CarDistAhead`/`CarDistBehind`, and `CarIdxPosition`/`CarIdxEstTime` (now sent to the analyzer) | Seen in the 296 Indy .ibt: brake line pressure 0 at rest, up to ~95 bar; `PaceMode` stays 1 all race; `FuelUsePerHour` swings with every lift (so the page uses fuel used this lap instead). **To check live:** that `WindDir` is where the wind comes FROM (head/tail wind would be reversed otherwise); "shocks at the stop" (a corner at 97% of the deepest travel seen this session, once that has stood 30 s) against a setup known to hit its bump stops; the race-order gaps against PitWall's. |
 
+### Replay highlights (iRacing Highlights, Nov 2026) -- NOT yet run against the sim
+
+| What | Assumed | Tested against | How to check |
+|---|---|---|---|
+| a 16x replay sends every car | `CarIdxLapCompleted`, `CarIdxLapDistPct`, `CarIdxTrackSurface`, `CarIdxOnPitRoad`, `CarIdxLastLapTime` move for every car at `ReplayPlaySpeed` 16, a frame about every 0.27 s of race | the fake field at speed 16; scripted races at 4 frames a second | scan a race; the scan file's frames should be ~3.75 per race second and every car's LapDistPct should move |
+| jump to the race's start | `replay_search_session_time(race, 0)` lands in the race session | a stand-in tape | "Scan the race" starts at the race's grid, not practice |
+| landing a clip | the seek lands within 3 s of the asked time (`ReplaySessionTime`) inside 10 s | a stand-in tape that lands, and one that never does (that clip fails, the rest go on) | every clip in the log says recorded; none "did not get there" |
+| `SessionState` in a saved replay | 3 -> 4 at the green, 5 at the checkered | scripted races; without it the green is found by pace ("found by pace" in the label) | the start clip opens on the green |
+| the finish | `ResultsPositions` in the saved replay's session info are the FINAL results (seen in the Talladega replay), so `LapsComplete` says which crossing is the car's finish | scripted races | the finish clip shows the car taking the flag, not the cool-down lap |
+| OBS | `StartRecord`, `StopRecord` (returns `outputPath`), `GetRecordStatus`, `GetRecordDirectory` (obs-websocket 5) | a stand-in OBS | Test OBS shows the folder; a clip's file opens |
+| the camera on the car | `cam_switch_num(number, group, 0)` after the seek keeps the car on screen for the clip | a stand-in tape | each clip shows the chosen car |
+
 ## Helmets — added Oct 2026, seen working (Nov 2026)
 - `pitwall/carrender.py` asks iRacing's local picture server (127.0.0.1:32034, the one that serves `pk_car.png`)
   for `pk_helmet.png?size=2&hlmtPat=..&hlmtCol=..&hlmtCustPaint=<Documents\iRacing\paint\helmet_<UserID>.tga>`.

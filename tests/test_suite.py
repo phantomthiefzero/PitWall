@@ -920,6 +920,13 @@ class UpdaterTest(unittest.TestCase):
             parse_release({"tag_name": "v1.0", "assets": []})
         with self.assertRaises(UpdateError):
             parse_release({"tag_name": "build-3", "assets": [{"name": "notes.txt"}]})
+        # a release also carries iRacing Highlights.exe: the suite never updates into it, whichever comes first
+        rel = _release(35)
+        other = dict(rel["assets"][0], name="iRacing.Highlights.exe", url="https://api.github.com/x/assets/9")
+        rel["assets"] = [other] + rel["assets"]
+        self.assertEqual(parse_release(rel)["name"], "iRacing.Suite.exe")
+        with self.assertRaises(UpdateError):
+            parse_release({"tag_name": "build-3", "assets": [other]})
 
     def test_check_finds_a_newer_build_and_what_changed(self):
         gh = FakeGitHub(_release(35), b"")
