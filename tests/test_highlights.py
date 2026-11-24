@@ -485,9 +485,14 @@ def test_the_video_is_trimmed_joined_with_a_stinger_over_each_cut_and_music_unde
                                "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", st], check=True)
     mus = str(tmp_path / "m.wav")
     subprocess.run([ff] + q + ["-f", "lavfi", "-i", "sine=f=200:d=2", mus], check=True)
+    bad = tmp_path / "storyteller.mp3"              # a web page saved as .mp3: left out, not the end of the build
+    bad.write_text("<!DOCTYPE html><html><body>Download</body></html>", encoding="utf-8")
+    from highlights.stitch import playable
+    assert playable(mus) and not playable(str(bad))
     out = str(tmp_path / "out" / "video.mp4")
-    r = build(clips, out, str(tmp_path / "work"), {"stinger": st, "music": [mus], "intro": {"title": "T", "lines": ["a"]}},
-              log=lambda *a: None)
+    r = build(clips, out, str(tmp_path / "work"), {"stinger": st, "music": [str(bad), mus],
+                                                   "intro": {"title": "T", "lines": ["a"]}}, log=lambda *a: None)
+    assert r["skippedMusic"] == ["storyteller.mp3"]
     info = probe(out)
     assert info["audio"] and (info["w"], info["h"]) == (320, 180)
     assert info["duration"] == pytest.approx(4 + 3 + 3, abs=0.3)          # the card and two 3 s clips

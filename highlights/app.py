@@ -21,7 +21,7 @@ from .moments import analyze_capture, capture_field, fmt_lap
 from .pick import (BEST_SPEEDS, SINGLE_SPEEDS, auto_pick, best_of, clips as make_clips, hook_first, length,
                    short_length, singles)
 from .scan import ScanError, camera_groups, look, scan
-from .stitch import BuildError, build, probe
+from .stitch import playable, BuildError, build, probe
 from . import shots as shotlib
 from . import story
 from .stingers import STYLES as STINGER_STYLES
@@ -675,11 +675,20 @@ class Api:
     def add_music(self):
         got = self._dialog("OPEN", ("Music (*.mp3;*.wav;*.ogg;*.flac;*.m4a;*.aac)", "All files (*.*)"), multiple=True)
         music = list(self._engine.settings.get("music") or [])
+        bad = []
         for g in got:
             if g.lower().endswith(AUDIO_EXT) and g not in music:
-                music.append(g)
+                if playable(g):
+                    music.append(g)
+                else:
+                    bad.append(os.path.basename(g))
         self._engine.save_settings({"music": music})
-        return {"ok": True, "music": music}
+        out = {"ok": True, "music": music}
+        if bad:
+            out["error"] = ("Not added: %s. It is not a sound file that can be played (it may be a web page saved "
+                            "with a sound name, or a download that did not finish). Download it again." %
+                            ", ".join(bad))
+        return out
 
     def remove_music(self, i):
         music = list(self._engine.settings.get("music") or [])
