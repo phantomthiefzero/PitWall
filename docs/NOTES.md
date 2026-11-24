@@ -901,3 +901,7 @@ Broadcast (broadcast/)
   green and captions the race's lap (the overall leader's). Shorts take one moment a story and caption the moment.
   Watkins Glen at 5 min: the start, the BMW lead fight, the GR86 lead fight, three classes in one corner, a spin, the
   GR86 lead changing again, a side by side for P6, then each class's finish.
+- Highlights switched off (Nov 2026: "disable the highlight feature for now. Keep it out until I decide to include
+  it"): suite/features.py HIGHLIGHTS (False; IRACING_SUITE_HIGHLIGHTS=1 for a development run). Off, the home page
+  is served without its tile and words (bridge.home_page), /highlights/ is a 404, the suite makes no Highlights
+  engine and its api has no "highlights". Nothing else moved: highlights/, its page, its tests and the build stay.
