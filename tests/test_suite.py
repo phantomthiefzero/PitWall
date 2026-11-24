@@ -1022,6 +1022,45 @@ class UpdaterTest(unittest.TestCase):
         with open(self.exe, "rb") as f:
             self.assertEqual(f.read(), b"MZ-old-version")     # the app is untouched
 
+    def test_an_app_started_from_a_leftover_download_updates_back_to_its_own_name(self):
+        """Seen Nov 2026: the app in E:\\iRacingSuite was ".iRacing Suite.update.exe" (a leftover of an earlier
+        update) and every update wrote the download onto that running file: PermissionError, "Cannot write next to
+        the app". The download goes beside it, and the swap puts the app back as "iRacing Suite.exe"."""
+        from suite import updater
+        os.remove(self.exe)
+        self.exe = os.path.join(self.dir, ".iRacing Suite.update.exe")
+        with open(self.exe, "wb") as f:
+            f.write(b"MZ-old-version")
+        good = b"MZ-new-version" + os.urandom(100)
+        up = self._up(FakeGitHub(_release(35, good), good))
+        up.download()
+        self.assertNotEqual(os.path.abspath(up._new_path), os.path.abspath(self.exe))
+        started = []
+        up.apply(lambda: None, popen=lambda args, **kw: started.append(args))
+        app = os.path.join(self.dir, "iRacing Suite.exe")
+        with open(app, "rb") as f:
+            self.assertEqual(f.read(), good)
+        self.assertEqual(started[0][0], app)
+        self.assertTrue(updater.tidy_after_update(app))
+        self.assertEqual(sorted(os.listdir(self.dir)), ["iRacing Suite.exe"])
+
+    def test_a_finished_download_left_beside_the_app_is_used_and_a_wrong_one_replaced(self):
+        good = b"MZ-new-version" + os.urandom(100)
+        left = os.path.join(self.dir, ".iRacing Suite.update.exe")
+        with open(left, "wb") as f:
+            f.write(good)
+        gh = FakeGitHub(_release(35, good), b"never fetched")
+        up = self._up(gh)
+        up.download()
+        self.assertEqual(up.state, "ready")
+        self.assertFalse(any("/releases/assets/" in r.full_url for r in gh.reqs))
+        with open(left, "wb") as f:
+            f.write(b"MZ-some-other-build")
+        up = self._up(FakeGitHub(_release(35, good), good))
+        up.download()
+        with open(up._new_path, "rb") as f:
+            self.assertEqual(f.read(), good)
+
     def test_from_source_cannot_update(self):
         from suite.updater import Updater, UpdateError
         up = Updater(keys=_MemKeys("github_pat_" + "a" * 40), opener=FakeGitHub(_release(35), b""),

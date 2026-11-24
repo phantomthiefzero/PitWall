@@ -853,4 +853,9 @@ Broadcast (broadcast/)
   places gained; "takes the lead as #1 pits" on Talladega's last lap (a wrecked leader towed to its stall): now only
   a leader seen driving down the pit lane; a pack of 18 the instant every caution ended: packs wait RESTART_CALM_S.
   Talladega has ~240 side by sides (scored by the place, so back markers fall away in the pick).
-
+- Updater (Nov 2026: "Cannot write next to the app in E:\iRacingSuite", and the same on the Desktop): the folder held
+  only ".iRacing Suite.update.exe", the size of build 351's download, and the app was build 351: it was running from
+  a download left by an earlier update, so the next download was written onto the running file (PermissionError,
+  read as "the folder is not yours"). The download now never goes onto the running file, a leftover that already is
+  the release (size + SHA-256) is used as it is, a held one is stepped round, the swap puts the app back as
+  "iRacing Suite.exe", and the message says whether the folder refuses files or one file is held.
