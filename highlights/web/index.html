@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iRacing Highlights</title>
+<style>
+@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:url("../../client/assets/barlow-condensed-latin-600-normal.woff2") format("woff2")}
+@font-face{font-family:"Barlow Semi Condensed";font-weight:400;font-display:swap;src:url("../../client/assets/barlow-semi-condensed-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Barlow Semi Condensed";font-weight:600 700;font-display:swap;src:url("../../client/assets/barlow-semi-condensed-latin-600-normal.woff2") format("woff2")}
+:root{color-scheme:dark;--bg:#0b0d10;--card:#111419;--fg:#e6e9ee;--mut:#8e98a4;--ln:#232831;--acc:#ffb23f;--good:#2fd46b;--bad:#ff5a5a;
+  --title:"Barlow Condensed","Segoe UI",system-ui,sans-serif;--ui:"Barlow Semi Condensed","Segoe UI",system-ui,sans-serif}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 var(--ui)}
+main{max-width:1080px;margin:0 auto;padding:22px 26px 60px}
+h1{font:600 34px/1 var(--title);margin:0 0 4px;letter-spacing:.01em}
+h1 span{color:var(--acc)}
+.sub{color:var(--mut);margin:0 0 22px}
+section{border-top:1px solid var(--ln);padding:18px 0 20px}
+h2{font:600 24px/1.1 var(--title);margin:0 0 12px;display:flex;gap:10px;align-items:baseline}
+h2 .n{color:var(--acc)}
+h2 .tag{margin-left:auto;font:400 15px var(--ui);color:var(--mut)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.mut{color:var(--mut)}
+.bad{color:var(--bad)}
+.good{color:var(--good)}
+button{font:600 16px var(--ui);background:#1b2028;color:var(--fg);border:1px solid #333b47;border-radius:7px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:#56616f}
+button.go{background:var(--acc);color:#141414;border-color:var(--acc)}
+button.go:hover{filter:brightness(1.08)}
+button:disabled{opacity:.45;cursor:default}
+button.link{background:none;border:none;color:var(--acc);padding:4px 0;font-weight:600}
+select,input[type=text],input[type=password],input[type=number]{font:16px var(--ui);background:#0e1116;color:var(--fg);border:1px solid #333b47;border-radius:7px;padding:7px 9px}
+select{min-width:340px}
+input[type=range]{accent-color:var(--acc);width:160px}
+input[type=checkbox]{accent-color:var(--acc);width:17px;height:17px;vertical-align:-3px}
+label{cursor:pointer}
+.bar{height:6px;background:#1b2028;border-radius:4px;overflow:hidden;margin:10px 0 4px;max-width:520px}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
+.bar.busy i{width:30%;animation:slide 1.4s ease-in-out infinite}
+@keyframes slide{0%{margin-left:-30%}100%{margin-left:100%}}
+.chips label{border:1px solid var(--ln);border-radius:20px;padding:4px 11px;color:var(--mut)}
+.chips label:has(input:checked){color:#141414;background:var(--acc);border-color:var(--acc);font-weight:600}
+.chips input{display:none}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th{font:600 14px var(--ui);color:var(--mut);text-align:left;padding:4px 8px;border-bottom:1px solid var(--ln)}
+td{padding:6px 8px;border-bottom:1px solid #191d23;vertical-align:middle}
+tr.off td{color:var(--mut)}
+td.k{font:600 13px var(--ui);text-transform:uppercase;letter-spacing:.05em;color:var(--mut);white-space:nowrap}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.score{display:inline-block;height:6px;background:var(--acc);border-radius:3px;opacity:.75;vertical-align:middle}
+.list{max-height:460px;overflow:auto;border:1px solid var(--ln);border-radius:8px;padding:0 6px}
+.total{font:600 22px var(--title)}
+.music div{display:flex;gap:10px;align-items:center;padding:3px 0}
+.log{font:13px/1.4 Consolas,monospace;color:var(--mut);white-space:pre-wrap;max-height:150px;overflow:auto;margin-top:8px}
+.hint{color:var(--mut);font-size:14px;max-width:760px}
+.err{color:var(--bad);margin:6px 0}
+.grid{display:grid;grid-template-columns:170px 1fr;gap:10px 16px;align-items:center}
+</style>
+</head>
+<body>
+<main>
+<h1>iRacing <span>Highlights</span></h1>
+<p class="sub">Turns a whole race's replay into a short video of one car's best moments.</p>
+
+<section id="s1">
+  <h2><span class="n">1</span> The race <span class="tag" id="demoTag"></span></h2>
+  <p class="hint">Open the race's replay in iRacing (it should be playing), then press Check iRacing.</p>
+  <div class="row">
+    <button id="look">Check iRacing</button>
+    <span id="lookText" class="mut"></span>
+  </div>
+  <div class="row" id="pickRow" hidden>
+    <select id="car"></select>
+    <button class="go" id="scan">Scan the race</button>
+    <button id="stopScan" hidden>Stop</button>
+  </div>
+  <div class="row"><button class="link" id="openScan">Open a saved scan instead...</button></div>
+  <div id="scanProg" hidden><div class="bar busy"><i></i></div><span class="mut" id="scanText"></span></div>
+</section>
+
+<section id="s2" hidden>
+  <h2><span class="n">2</span> The moments <span class="tag" id="raceTag"></span></h2>
+  <div class="row">
+    <span>Target length</span>
+    <input type="number" id="target" min="1" max="60" step="1" style="width:76px"> <span class="mut">minutes</span>
+    <button id="autoPick">Pick the best for me</button>
+    <span class="total" id="total"></span>
+  </div>
+  <div class="row chips" id="kinds"></div>
+  <p class="hint">Ticked moments go in the video. The start and the finish are always in. Moments close together become one clip.</p>
+  <div class="list"><table><thead><tr><th></th><th>Race time</th><th>Lap</th><th>What</th><th></th><th class="num">Length</th><th>Score</th></tr></thead><tbody id="moments"></tbody></table></div>
+</section>
+
+<section id="s3" hidden>
+  <h2><span class="n">3</span> Look and sound</h2>
+  <div class="grid">
+    <span>OBS</span>
+    <div class="row" style="margin:0">
+      <input type="text" id="obsUrl" style="width:220px"> <input type="password" id="obsPassword" placeholder="password" style="width:170px">
+      <button id="testObs">Test OBS</button> <span id="obsText" class="mut"></span>
+    </div>
+    <span></span>
+    <p class="hint" style="margin:0">In OBS: Tools &gt; WebSocket Server Settings &gt; Enable WebSocket server (Show Connect Info gives the password). Your OBS scene should show iRacing (Game Capture), plus your broadcast overlay if you want it in the video.</p>
+    <span>Camera</span>
+    <div><select id="camera" style="min-width:220px"></select></div>
+    <span>Stinger</span>
+    <div class="row" style="margin:0"><button id="stingerPick">Choose a stinger video...</button><span id="stingerText" class="mut">None: a quick fade to black between clips</span><button class="link" id="stingerClear" hidden>Remove</button></div>
+    <span></span>
+    <p class="hint" style="margin:0">A stinger with a transparent background (.webm or .mov with alpha) plays over each cut and hides it at its middle. One without transparency plays between the clips.</p>
+    <span>Captions</span>
+    <label><input type="checkbox" id="captions"> Say what happens at the start of each clip (lap and moment)</label>
+    <span>Title and finish cards</span>
+    <label><input type="checkbox" id="cards"> A title card first and the result at the end</label>
+    <span>Music</span>
+    <div><div class="music" id="music"></div><button id="musicAdd">Add music...</button> <span class="mut">Off until you add tracks. They play in order and repeat.</span></div>
+    <span>Music volume</span>
+    <div class="row" style="margin:0"><input type="range" id="musicVolume" min="0" max="1" step="0.05"> <span id="musicVolumeT" class="mut"></span></div>
+    <span>Race sound</span>
+    <div class="row" style="margin:0"><input type="range" id="gameVolume" min="0" max="1" step="0.05"> <span id="gameVolumeT" class="mut"></span><span class="mut">(under music; full volume when there is none)</span></div>
+  </div>
+</section>
+
+<section id="s4" hidden>
+  <h2><span class="n">4</span> Make the video</h2>
+  <p class="hint">The app takes over the replay: it jumps to each clip, points the camera at your car and records it with OBS. Leave iRacing and OBS alone until it finishes (about as long as the video, plus a few seconds a clip).</p>
+  <div class="row">
+    <button class="go" id="make">Record the clips and make the video</button>
+    <button id="rebuild" hidden>Make the video again with these settings</button>
+    <button id="stopMake" hidden>Stop</button>
+  </div>
+  <div id="makeProg" hidden><div class="bar"><i id="makeBar"></i></div><span class="mut" id="makeText"></span></div>
+  <div class="row" id="done" hidden><span class="good" id="doneText"></span><button id="play">Play it</button><button id="folder">Open the folder</button></div>
+  <div class="err" id="err"></div>
+  <div class="log" id="log"></div>
+</section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const KINDS = [["pass", "Passes"], ["lost", "Lost places"], ["battle", "Battles"], ["off", "Off tracks"], ["spin", "Spins"],
+  ["towed", "Towed"], ["drama", "Drama nearby"], ["pit", "Pit stops"], ["fastest", "Best lap"], ["traffic", "Traffic"]];
+const KIND_NAME = {start: "Start", finish: "Finish", pass: "Pass", lost: "Lost", traffic: "Traffic", battle: "Battle",
+  off: "Off", spin: "Spin", towed: "Towed", drama: "Drama", pit: "Pit", fastest: "Best lap"};
+let api = null, st = null, scanBlocked = false, field = [], openPath = null, momentsKey = "", settingsShown = false;
+
+function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
+function show(el, on) { el.hidden = !on; }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c])); }
+
+function carLabel(c) { return "#" + c.number + "  " + (c.team && c.team !== c.driver ? c.team + " (" + c.driver + ")" : c.driver) + (c.cls ? "  -  " + c.cls : ""); }
+
+function fillCars(list, pre) {
+  field = list;
+  $("car").innerHTML = list.map((c) => '<option value="' + c.idx + '">' + esc(carLabel(c)) + "</option>").join("");
+  if (pre != null && list.some((c) => c.idx === pre)) $("car").value = String(pre);
+  show($("pickRow"), list.length > 0);
+}
+
+async function look() {
+  openPath = null;
+  setText($("lookText"), "Looking...");
+  const r = await api.look();
+  if (!r.ok) { setText($("lookText"), r.why || "Not found"); show($("pickRow"), false); return; }
+  const pre = r.camCar != null && r.camCar >= 0 && r.camCar < 63 ? r.camCar : r.player;
+  fillCars(r.field, pre);
+  scanBlocked = !!r.why;
+  $("scan").disabled = scanBlocked;
+  setText($("lookText"), r.why ? r.why : (r.track ? r.track + ": " : "") + r.field.length + " cars. Pick yours and scan (the replay plays at 16x: about 4 minutes an hour of race).");
+}
+
+async function scanNow() {
+  const idx = parseInt($("car").value, 10);
+  const r = openPath ? await api.open_scan(idx, openPath) : await api.start_scan(idx);
+  if (!r.ok) setText($("lookText"), r.error || "Could not start");
+}
+
+async function openScan() {
+  const r = await api.open_scan(null, null);
+  if (!r.ok) { if (r.error) setText($("lookText"), r.error); return; }
+  openPath = r.path;
+  scanBlocked = false;
+  fillCars(r.field, null);
+  $("scan").disabled = false;
+  setText($("lookText"), r.path.split(/[\\/]/).pop() + ": pick the car and press Scan (reads the file, no iRacing needed).");
+}
+
+function kindsChips() {
+  const on = new Set(st.settings.kinds || []);
+  $("kinds").innerHTML = KINDS.map(([k, n]) => '<label><input type="checkbox" data-k="' + k + '"' + (on.has(k) ? " checked" : "") + "> " + n + "</label>").join("");
+  $("kinds").querySelectorAll("input").forEach((i) => i.addEventListener("change", async () => {
+    const ks = [...$("kinds").querySelectorAll("input:checked")].map((x) => x.dataset.k);
+    await api.save_settings({kinds: ks});
+    await api.auto_pick($("target").value || 8);
+    refresh();
+  }));
+}
+
+function renderMoments(race) {
+  const key = JSON.stringify([race.moments.length, race.chosen, race.scanFile]);
+  setText($("total"), race.length + " in " + race.clips + " clip" + (race.clips === 1 ? "" : "s"));
+  if (key === momentsKey) return;
+  momentsKey = key;
+  const ch = new Set(race.chosen);
+  const top = Math.max(1, ...race.moments.map((m) => m.score));
+  $("moments").innerHTML = race.moments.map((m) =>
+    '<tr class="' + (ch.has(m.id) ? "" : "off") + '"><td><input type="checkbox" data-id="' + m.id + '"' + (ch.has(m.id) ? " checked" : "") + (m.mandatory ? " disabled" : "") + "></td>" +
+    '<td class="num">' + esc(m.at) + '</td><td class="num">' + esc(m.lap == null ? "" : m.lap) + '</td><td class="k">' + esc(KIND_NAME[m.kind] || m.kind) +
+    "</td><td>" + esc(m.label) + '</td><td class="num">' + Math.round(m.len) + ' s</td><td><span class="score" style="width:' + Math.round(60 * m.score / top) + 'px"></span></td></tr>').join("");
+  $("moments").querySelectorAll("input").forEach((i) => i.addEventListener("change", async () => {
+    const ids = [...$("moments").querySelectorAll("input:checked")].map((x) => +x.dataset.id);
+    await api.set_chosen(ids);
+    refresh();
+  }));
+}
+
+function renderSettings(s) {
+  if (settingsShown) return;
+  settingsShown = true;
+  $("obsUrl").value = s.obsUrl; $("obsPassword").value = s.obsPassword;
+  $("captions").checked = !!s.captions; $("cards").checked = !!s.cards;
+  $("musicVolume").value = s.musicVolume; $("gameVolume").value = s.gameVolume;
+  $("target").value = s.targetMin;
+  vols();
+  renderMusic(s.music || []);
+  stingerInfo();
+  kindsChips();
+}
+
+function renderCameras(cams, pref) {
+  const opts = ['<option value="auto">Automatic (the right shot for each moment)</option>'].concat(cams.map((c) => '<option value="' + esc(c.name) + '">' + esc(c.name) + "</option>"));
+  const html = opts.join("");
+  if ($("camera").dataset.h !== html) { $("camera").innerHTML = html; $("camera").dataset.h = html; $("camera").value = pref || "auto"; }
+}
+
+function renderMusic(list) {
+  $("music").innerHTML = list.map((m, i) => "<div><span>" + esc(m.split(/[\\/]/).pop()) + '</span><button class="link" data-i="' + i + '">Remove</button></div>').join("");
+  $("music").querySelectorAll("button").forEach((b) => b.addEventListener("click", async () => { const r = await api.remove_music(+b.dataset.i); renderMusic(r.music); }));
+}
+
+async function stingerInfo() {
+  const r = await api.stinger_info();
+  show($("stingerClear"), !!r.ok);
+  if (!r.ok) { setText($("stingerText"), r.error || "None: a quick fade to black between clips"); return; }
+  setText($("stingerText"), r.name + " (" + (r.duration ? r.duration.toFixed(1) + " s, " : "") + (r.alpha ? "transparent: plays over each cut)" : "not transparent: plays between clips)"));
+}
+
+function vols() {
+  setText($("musicVolumeT"), Math.round($("musicVolume").value * 100) + "%");
+  setText($("gameVolumeT"), Math.round($("gameVolume").value * 100) + "%");
+}
+
+function saveFields() {
+  api.save_settings({obsUrl: $("obsUrl").value.trim(), obsPassword: $("obsPassword").value, camera: $("camera").value,
+    captions: $("captions").checked, cards: $("cards").checked, musicVolume: +$("musicVolume").value, gameVolume: +$("gameVolume").value,
+    targetMin: +$("target").value || 8}).then(refresh);
+}
+
+async function refresh() {
+  st = await api.status();
+  setText($("demoTag"), st.demo ? "Demo: the fake field, not iRacing" : "");
+  renderSettings(st.settings);
+  renderCameras(st.cameras || [], st.settings.camera);
+  const scanning = st.job === "scan";
+  show($("scanProg"), scanning || (!!st.progress.text && !st.race && !st.job));
+  show($("stopScan"), scanning);
+  $("scan").disabled = !!st.job || scanBlocked;
+  setText($("scanText"), st.progress.text || "");
+  if (st.error && !st.race && !st.job) setText($("lookText"), st.error);
+  if (st.race && !scanning) {
+    show($("s2"), true); show($("s3"), true); show($("s4"), true);
+    const r = st.race;
+    setText($("raceTag"), [r.track, r.raceLength ? "race " + r.raceLength : "", r.classPos ? "finished P" + r.classPos + " in class" : "", r.lapTime ? "usual lap " + r.lapTime : ""].filter(Boolean).join("  -  "));
+    renderMoments(r);
+  }
+  const making = st.job === "record" || st.job === "build";
+  show($("makeProg"), making);
+  show($("stopMake"), st.job === "record");
+  $("make").disabled = !!st.job || st.demo;
+  show($("rebuild"), !st.job && st.recorded.some((x) => x.ok));
+  if (making) {
+    setText($("makeText"), st.progress.text);
+    $("makeBar").style.width = st.progress.of ? Math.round(100 * st.progress.done / st.progress.of) + "%" : "0%";
+  }
+  show($("done"), !!st.video && !st.job);
+  if (st.video) setText($("doneText"), "Done: " + st.video.path.split(/[\\/]/).pop() + " (" + Math.round(st.video.duration) + " s, " + st.video.clips + " clips)");
+  setText($("err"), st.error ? st.error : "");
+  setText($("log"), (st.logs || []).join("\n"));
+}
+
+function wire() {
+  $("look").onclick = look;
+  $("scan").onclick = scanNow;
+  $("openScan").onclick = openScan;
+  $("stopScan").onclick = () => api.stop();
+  $("stopMake").onclick = () => api.stop();
+  $("autoPick").onclick = async () => { await api.save_settings({targetMin: +$("target").value || 8}); await api.auto_pick($("target").value || 8); refresh(); };
+  $("target").onchange = async () => { await api.auto_pick($("target").value || 8); saveFields(); };
+  ["obsUrl", "obsPassword", "camera", "captions", "cards"].forEach((id) => $(id).addEventListener("change", saveFields));
+  ["musicVolume", "gameVolume"].forEach((id) => { $(id).addEventListener("input", vols); $(id).addEventListener("change", saveFields); });
+  $("testObs").onclick = async () => { saveFields(); setText($("obsText"), "Connecting..."); const r = await api.test_obs(); $("obsText").className = r.ok ? "good" : "bad"; setText($("obsText"), r.text); };
+  $("stingerPick").onclick = async () => { const r = await api.pick_stinger(); if (r.error) setText($("stingerText"), r.error); stingerInfo(); refresh(); };
+  $("stingerClear").onclick = async () => { await api.clear_stinger(); stingerInfo(); refresh(); };
+  $("musicAdd").onclick = async () => { const r = await api.add_music(); renderMusic(r.music || []); };
+  $("make").onclick = async () => { saveFields(); const r = await api.record_and_build(); if (!r.ok) setText($("err"), r.error || ""); refresh(); };
+  $("rebuild").onclick = async () => { saveFields(); const r = await api.rebuild(); if (!r.ok) setText($("err"), r.error || ""); refresh(); };
+  $("play").onclick = () => api.open_folder("video");
+  $("folder").onclick = () => api.open_folder("videos");
+}
+
+window.addEventListener("pywebviewready", () => {
+  api = window.pywebview.api;
+  wire();
+  refresh();
+  setInterval(refresh, 600);
+});
+</script>
+</body>
+</html>

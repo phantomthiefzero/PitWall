@@ -148,7 +148,14 @@ def parse_release(rel):
     exes = [a for a in rel.get("assets") or [] if str(a.get("name", "")).lower().endswith(".exe")]
     if not exes:
         raise UpdateError("The newest release has no .exe attached yet. Try again in a few minutes.")
-    a = exes[0]
+    # Each release carries more than one app (iRacing Highlights.exe beside it): the suite updates only to itself.
+    # GitHub spells spaces in asset names as dots ("iRacing.Suite.exe").
+    key = lambda a: re.sub(r"[^a-z0-9]", "", str(a.get("name", "")).lower())
+    suite = [a for a in exes if "iracingsuite" in key(a)]
+    others = [a for a in exes if "highlights" not in key(a)]
+    if not (suite or others):
+        raise UpdateError("The newest release has no iRacing Suite.exe attached yet. Try again in a few minutes.")
+    a = (suite or others)[0]
     digest = a.get("digest") or ""
     return {"build": int(m.group(1)), "tag": rel["tag_name"], "commit": rel.get("target_commitish"),
             "published": rel.get("published_at"), "size": int(a.get("size") or 0),

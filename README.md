@@ -54,6 +54,30 @@ Anyone with the link opens PitWall in a browser, phone or computer, anywhere.
   whose new client registrations are paused by iRacing (2026); the old password login was
   retired in December 2025.
 
+## iRacing Highlights (a separate app)
+
+Turns a whole race's replay into a short video of one car's best moments, for sharing. Download
+**iRacing Highlights.exe** from the same Releases page as the suite.
+
+1. In OBS: **Tools > WebSocket Server Settings > Enable WebSocket server**. Make a scene that shows iRacing (Game
+   Capture), plus your broadcast overlay if you want it in the video. OBS saves the clips to its usual recording folder.
+2. In iRacing, open the race's replay so it is playing.
+3. In the app: **Check iRacing**, pick your car, **Scan the race**. The replay plays at 16x while the app reads every
+   car (about 4 minutes per hour of racing). The scan is saved in `Documents\iRacingHighlights\Scans`, so
+   **Open a saved scan** finds the moments again without scanning.
+4. Set a target length and press **Pick the best for me**, or tick the moments yourself. The start and the finish are
+   always in. Passes, battles, spins, off tracks, trouble nearby, pit stops and the best lap are scored; traffic is
+   there to tick if you want it.
+5. Choose a stinger (a .webm or .mov with a transparent background plays over each cut; any other video plays between
+   clips; none = a quick fade), captions, title and finish cards, and music (off until you add tracks; they play in
+   order and repeat, under the race sound).
+6. **Record the clips and make the video**: the app jumps to each moment, points the camera at the car, records it
+   with OBS, and builds the video in `Documents\iRacingHighlights\Videos`. Leave iRacing and OBS alone until it
+   finishes. **Make the video again** rebuilds with other music or a stinger without recording again.
+
+Music: use tracks you are allowed to use in videos you share, for example the YouTube Audio Library, Pixabay Music,
+or your own. Some free tracks ask for a credit line in the video's description.
+
 ## How the app is put together
 
 | Path | Purpose |
@@ -62,6 +86,7 @@ Anyone with the link opens PitWall in a browser, phone or computer, anywhere.
 | `suite/bridge.py` | the Lap Analyzer's bridge: live iRacing or `.ibt` replay, serves the pages and `/ws` (standard library only) |
 | `suite/pitwall_host.py` | runs PitWall's own `relay/server.py` and `pitwall/bridge.py`, unchanged, inside the app |
 | `suite/web/` | home screen and the Lap Analyzer (`analyzer/index.html`); PitWall's dashboard is served from `client/` |
+| `highlights/` | iRacing Highlights, its own app: replay scan (`scan.py`), moments (`moments.py`), picking (`pick.py`), OBS clips (`capture.py`), the video (`stitch.py`), window (`app.py`, `web/index.html`) |
 | `tests/test_suite.py` | replays a synthetic `.ibt`, streams PitWall's fake field through the in-app relay, checks pages and streams |
 | `.github/workflows/build.yml` | on every push to master: all tests, then builds `iRacing Suite.exe` on Windows and publishes it as a release |
 

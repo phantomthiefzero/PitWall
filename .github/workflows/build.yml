@@ -84,12 +84,26 @@ jobs:
           --hidden-import websockets.sync.client
           run_suite.py
 
+      - name: Build iRacing Highlights (its own app, from the same code)
+        run: >
+          pyinstaller --noconfirm --onefile --windowed
+          --name "iRacing Highlights"
+          --icon assets/icon.ico
+          --add-data "highlights/web;highlights/web"
+          --add-data "client/assets;client/assets"
+          --collect-submodules pitwall
+          --collect-submodules highlights
+          --collect-all imageio_ffmpeg
+          --hidden-import websockets.sync.client
+          run_highlights.py
+
       - name: Check the build
         shell: pwsh
         run: |
-          $exe = "dist/iRacing Suite.exe"
-          if (!(Test-Path $exe)) { throw "Build output missing" }
-          "{0:N1} MB" -f ((Get-Item $exe).Length / 1MB)
+          foreach ($exe in @("dist/iRacing Suite.exe", "dist/iRacing Highlights.exe")) {
+            if (!(Test-Path $exe)) { throw "Build output missing: $exe" }
+            "{0}: {1:N1} MB" -f $exe, ((Get-Item $exe).Length / 1MB)
+          }
 
       - name: Check the running app can swap itself (how an update installs)
         shell: pwsh
@@ -108,6 +122,11 @@ jobs:
           name: iRacing-Suite
           path: dist/iRacing Suite.exe
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iRacing-Highlights
+          path: dist/iRacing Highlights.exe
+
       - name: Publish a release (pushes to master only)
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
@@ -117,5 +136,8 @@ jobs:
           target_commitish: ${{ github.sha }}
           body: |
             Download **iRacing Suite.exe** below and double-click it.
-            First run: if Windows says "Windows protected your PC", click More info, then Run anyway (the app is not code-signed).
-          files: dist/iRacing Suite.exe
+            **iRacing Highlights.exe** is a separate app: it turns a race's replay into a short video of one car's best moments.
+            First run: if Windows says "Windows protected your PC", click More info, then Run anyway (the apps are not code-signed).
+          files: |
+            dist/iRacing Suite.exe
+            dist/iRacing Highlights.exe

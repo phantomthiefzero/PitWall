@@ -30,9 +30,15 @@ RULES = [
     ("pitwall/bridge.py", PITWALL + [SUITE, "tests/test_second_camera.py"]),
     ("relay/", PITWALL + [SUITE, "tests/test_second_camera.py"]),
     ("client/", ["tests/test_pipeline.py", "tests/test_client.py", SUITE]),
+    ("pitwall/commands.py", PITWALL + [SUITE, "tests/test_highlights.py"]),
+    ("pitwall/obs.py", PITWALL + [SUITE, "tests/test_highlights.py"]),
+    ("pitwall/sources.py", PITWALL + [SUITE, "tests/test_highlights.py"]),
+    ("pitwall/recorder.py", PITWALL + [SUITE, "tests/test_highlights.py"]),
     ("pitwall/", PITWALL + [SUITE]),
     ("tests/analyzer_harness.js", [ANALYZER]),
     ("scripts/pick_tests.py", [SUITE]),
+    ("highlights/", ["tests/test_highlights.py"]),
+    ("run_highlights.py", ["tests/test_highlights.py"]),
 ]
 
 

@@ -163,3 +163,22 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   live on 300 passes. `scripts/director_report.py <capture>` lists every pass.
 - The camera and replay check (producer Setup > Check, pitwall/simcheck.py) sends each command once and reads what
   happened; it reads the bridge's copy of the telemetry (_simvars), never the source from its own thread.
+
+## iRacing Highlights (highlights/)
+- Its own app (`python -m highlights`, `iRacing Highlights.exe` from the same release; `--demo` runs on the fake
+  field). It imports pitwall (sources, commands, obs, recorder); pitwall and the suite never import it.
+- It scans a race's replay at 16x (scan.py), finds one car's moments from raw variables only (moments.py: race
+  distance from CarIdxLapCompleted + CarIdxLapDistPct unwrapped at the line, CarIdxTrackSurface, CarIdxOnPitRoad,
+  CarIdxLastLapTime, CarIdxClass, SessionState), picks them to a target length (pick.py), records only those clips with
+  OBS (capture.py) and joins them with ffmpeg (stitch.py). Times are the tape's (session, seconds).
+- Every replay and camera move goes through pitwall.commands.CommandGate (camera gate on). The race is never
+  recorded whole.
+- A spin is a car far slower than its own class right now (a caution or the opening lap is not a spin); a pass must
+  stand HOLD_S (side by side is not a pass); a car of another class or a lap apart is traffic. The start and the finish
+  are always in the video; the finish comes from the replay's own final ResultsPositions when it has them.
+- Music only when tracks are picked (off by default); no sound effects. The stinger's middle (STINGER_CUT) hides the
+  cut when it has transparency; without, it plays between clips.
+- ffmpeg gets text in files (textfile=) and a font copied into the work folder: no Windows path inside a filter.
+  The ffmpeg is imageio-ffmpeg's (requirements); a build without drawtext loses captions, not the video.
+- Each release carries both apps: the suite's updater picks iRacing.Suite.exe by name, never the first .exe.
+- Not yet run against the sim: docs/VARIABLES_TO_VERIFY.md "Replay highlights".
