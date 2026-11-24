@@ -888,3 +888,16 @@ Broadcast (broadcast/)
   names each for what is in it (the track and "Race in review" or the car and team; "Best moments (short)"; a single
   short by its moment first, "#12 takes the lead from #10 - Watkins Glen (short)"); safe_name keeps everything
   Windows allows, and free_path adds " (2)" rather than overwrite a video already made.
+- Highlights editor (Nov 2026, the first whole-race video, Watkins Glen: "a bunch of random clips put together",
+  "the highlights were basically all just one battle"): the pick took moments one at a time, so one fight came back
+  as its battle, its side by side, its pass and its pass back, each a clip with a stinger between, captioned
+  "back and forth" and "(2 min)"; the start was captioned by a battle merged into it; a crash after the GR86 flag
+  and a battle on the grid before the green were in; captions said "Lap 17" then "Lap 12" (each car's own lap). Now
+  highlights/edit.py cuts it like a TV package: moments that share a car within STORY_GAP_S are one story, played
+  as one clip and captioned once ("#18 and #22 trade the BMW M2 Racing (G87) lead"); the opening lap is the start's
+  story; the time is shared over the acts (early, mid-race, the closing laps: ACT_SHARE) with the finish last;
+  repeats of a car, a kind or the same words count less, and a story under VALUE_FLOOR is left out rather than
+  shown again. Chapters name the acts on screen. FieldAnalyzer drops anything after a car's own flag or before the
+  green and captions the race's lap (the overall leader's). Shorts take one moment a story and caption the moment.
+  Watkins Glen at 5 min: the start, the BMW lead fight, the GR86 lead fight, three classes in one corner, a spin, the
+  GR86 lead changing again, a side by side for P6, then each class's finish.

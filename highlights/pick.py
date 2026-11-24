@@ -9,13 +9,17 @@ the middle of a fight). Each clip is captioned by its best moment.
 """
 from __future__ import annotations
 
+import re
+
 SPREAD_S = 180.0
 SPREAD_FACTOR = 0.75
 MERGE_GAP_S = 4.0
 MIN_SCORE = 8.0
+STORY_JOIN_S = 25.0         # pieces of one story (edit.storylines) this close play as one clip, no stinger between
 
 
-def clips(moments, chosen_ids) -> list[dict]:
+def clips(moments, chosen_ids, own_labels=False) -> list[dict]:
+    """own_labels: caption each clip by its moment, not its story (a short shows the moment, not the whole fight)."""
     chosen = [m for m in moments if m["id"] in set(chosen_ids)]
     pieces = []
     for m in chosen:
@@ -26,7 +30,11 @@ def clips(moments, chosen_ids) -> list[dict]:
     out = []
     for s, a, b, m in pieces:
         last = out[-1] if out else None
-        if last is not None and last["session"] == s and a - last["b"] <= MERGE_GAP_S:
+        same_story = last is not None and m.get("story") is not None and \
+            m.get("story") in {x.get("story") for x in last["_ms"]}
+        if last is not None and last["session"] == s and (a - last["b"] <= MERGE_GAP_S or
+                                                          (same_story and a - last["b"] <= STORY_JOIN_S)):
+            last["_ms"].append(m)
             last["b"] = max(last["b"], b)
             if m["id"] not in last["moments"]:
                 last["moments"].append(m["id"])
@@ -35,15 +43,16 @@ def clips(moments, chosen_ids) -> list[dict]:
             if m.get("mandatory") and not last["_best"].get("mandatory"):
                 last["_best"] = m
             continue
-        out.append({"session": s, "a": a, "b": b, "moments": [m["id"]], "_best": m})
+        out.append({"session": s, "a": a, "b": b, "moments": [m["id"]], "_best": m, "_ms": [m]})
     for n, c in enumerate(out):
         best = c.pop("_best")
+        c.pop("_ms", None)
         c["n"] = n
         c["a"], c["b"] = round(c["a"], 2), round(c["b"], 2)
         c["kind"] = best["kind"]
         c["label"] = best["label"]
         c["lap"] = best.get("lap")
-        c["caption"] = caption(best)
+        c["caption"] = caption(best, own_labels)
         c["cars"] = best.get("cars") or []
         c["score"] = best["score"]
         c["key"] = best.get("key", best["t"])
@@ -119,12 +128,15 @@ def best_of(moments, max_s, stinger_s=0.0, kinds=None, replay=True) -> list[int]
     allowed = [m for m in moments if m["kind"] in SHORT_KINDS and (kinds is None or m["kind"] in kinds
                                                                      or m["kind"] == "finish")]
     pool = sorted(allowed, key=lambda m: _short_score(m), reverse=True)
-    chosen = []
+    chosen, stories = [], set()
     for m in pool:
+        if m.get("story") is not None and m["story"] in stories:
+            continue                    # one moment a story: a best-of is many stories, not one fight
         ids = chosen + [m["id"]]
         cs = hook_first(clips(moments, ids), replay)
         if short_length(cs, stinger_s) <= max_s:
             chosen = ids
+            stories.add(m.get("story"))
     return sorted(chosen)
 
 
@@ -140,13 +152,16 @@ def singles(moments, n, max_s, kinds=None, replay=True) -> list[list[int]]:
     taken."""
     pool = sorted([m for m in moments if m["kind"] in SHORT_KINDS - {"finish"} and not m.get("mandatory")
                    and (kinds is None or m["kind"] in kinds)], key=lambda m: m["score"], reverse=True)
-    out, used = [], []
+    out, used, stories = [], [], set()
     for m in pool:
         if len(out) >= n:
             break
         a, b = m["segs"][0][0], m["segs"][-1][1]
         if any(a < ub and b > ua for ua, ub in used):
             continue
+        if m.get("story") is not None and m["story"] in stories:
+            continue                    # one short a story: not the same fight's pass and its pass back
+        stories.add(m.get("story"))
         if short_length(hook_first(clips(moments, [m["id"]]), replay), speeds=SINGLE_SPEEDS) > max_s:
             continue
         out.append([m["id"]])
@@ -154,13 +169,17 @@ def singles(moments, n, max_s, kinds=None, replay=True) -> list[list[int]]:
     return out
 
 
-def caption(m) -> str:
+def caption(m, own=False) -> str:
+    """What a viewer reads: the story when the editor has named one (a fight, not its single pass), with the lap;
+    never a battle's length ("(2 min)": the clip does not show two minutes)."""
     lap = m.get("lap")
-    if m["kind"] == "start":
+    if m["kind"] == "start" or (not own and m.get("storyLabel") == "The start"):
         return "The start"
     if m["kind"] == "finish":
-        return m["label"].split(" (")[0]
-    return ("Lap %d  ·  %s" % (lap, m["label"])) if isinstance(lap, int) else m["label"]
+        return m["label"]
+    from .edit import clean
+    label = clean(m["label"] if own else (m.get("storyLabel") or m["label"]))
+    return ("Lap %d  ·  %s" % (lap, label)) if isinstance(lap, int) else label
 
 
 def length(moments, chosen_ids, stinger_s=0.0) -> float:
@@ -168,8 +187,12 @@ def length(moments, chosen_ids, stinger_s=0.0) -> float:
     return sum(c["b"] - c["a"] for c in cs) + max(0, len(cs) - 1) * stinger_s
 
 
-def auto_pick(moments, target_s, stinger_s=0.0, kinds=None) -> list[int]:
-    """Ids of the moments to use. kinds: the kinds allowed (None = all)."""
+def auto_pick(moments, target_s, stinger_s=0.0, kinds=None, result=None) -> list[int]:
+    """Ids of the moments to use. kinds: the kinds allowed (None = all). With the race's result, the editor
+    (edit.plan) picks whole stories shared over the race's acts; without, the best moments that fit."""
+    if result is not None:
+        from .edit import plan
+        return plan(moments, result, target_s, stinger_s, kinds)
     allowed = [m for m in moments if kinds is None or m["kind"] in kinds or m.get("mandatory")]
     chosen = [m["id"] for m in allowed if m.get("mandatory")]
     pool = [m for m in allowed if not m.get("mandatory") and m["score"] >= MIN_SCORE]

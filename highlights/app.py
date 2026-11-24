@@ -18,6 +18,7 @@ import traceback
 
 from .capture import ClipRecorder
 from .moments import analyze_capture, capture_field, fmt_lap
+from .edit import storylines
 from .pick import (BEST_SPEEDS, SINGLE_SPEEDS, auto_pick, best_of, clips as make_clips, hook_first, length,
                    short_length, singles)
 from .scan import ScanError, camera_groups, look, scan
@@ -299,6 +300,7 @@ class Engine:
         return self._run("scan", job)
 
     def _took(self, res):
+        storylines(res.get("moments") or [], res)     # each moment's story and the caption it is shown with
         self.result = res
         self.recorded, self.video, self.videos = [], None, []
         self.auto(self.settings.get("targetMin", 8))
@@ -323,7 +325,8 @@ class Engine:
         target = float(minutes) * 60
 
         def total(budget):
-            self.chosen = auto_pick(self.result["moments"], budget, self._stinger_s(), kinds=kinds)
+            self.chosen = auto_pick(self.result["moments"], budget, self._stinger_s(), kinds=kinds,
+                                    result=self.result)
             full = next((o for o in self.outputs() if o["key"] == "full"), None)
             return (full["length"] + self._replay_s(full) + cards - 8.0 * bool(self.settings.get("cards"))) \
                 if full else 0.0

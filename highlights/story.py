@@ -71,8 +71,24 @@ def camera_plan(result, outputs, settings, cams, number) -> dict:
 
 
 def chapters(result, items):
-    """A chapter on the first clip of each new stint (team races) or, one driver in a long race, each new hour."""
+    """A chapter on the first clip of each new stint (team races); otherwise of each act of the race (edit.acts:
+    early laps, mid-race, the closing laps, the finish), so the video reads as a race told in order; one driver in a
+    long race, each new hour until the closing laps."""
+    from .edit import ACT_NAMES, act_of, acts
     stints = result.get("stints") or []
+    spans = acts(result, result.get("moments") or [])
+    if len(stints) <= 1 and spans:
+        green = result.get("green") or 0.0
+        long_race = (result.get("finish") or 0) - green >= HOUR_CHAPTERS_FROM_S
+        last = None
+        for it in items:
+            act = "finish" if it.get("kind") == "finish" else act_of(spans, it["a"] + 1)
+            if act in ("early", "middle") and long_race:
+                act = "Hour %d" % (int(max(0.0, it["a"] - green) // 3600) + 1)
+            if act != last and act not in (None, "start"):
+                it["chapter"] = ACT_NAMES.get(act, act)
+            last = act
+        return
     green = result.get("green") or 0.0
     long_race = (result.get("finish") or 0) - green >= HOUR_CHAPTERS_FROM_S
     last = None
@@ -92,7 +108,7 @@ def chapters(result, items):
 def inputs(out, result, recorded, settings, log=print) -> list[dict]:
     """An output's pieces, each cut from the recording that covers it, with its replays and chapter."""
     ms = {m["id"]: m for m in result["moments"]}
-    cs = make_clips(result["moments"], out["ids"])
+    cs = make_clips(result["moments"], out["ids"], own_labels=bool(out["vertical"]))
     if out["vertical"]:
         cs = hook_first(cs, bool(settings.get("shortReplay", True)))
     good = [x for x in recorded if x.get("ok")]

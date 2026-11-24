@@ -354,7 +354,8 @@ class FieldAnalyzer(Analyzer):
         last_finish = None
         for w in self._winners():
             got = next((tt for tt, lc in self.cross_all.get(w["idx"], []) if lc >= w["laps"]), None)
-            cls = str(self.cls_names.get(w["cls"], "") or "")
+            wc = self.cars.get(w["idx"])
+            cls = str(self.cls_names.get(w["cls"], "") or (self.cls_names.get(wc.cls, "") if wc else "") or "")
             winners.append({"idx": w["idx"], "number": self.numbers.get(w["idx"], ""), "cls": cls,
                             "name": getattr(self, "names", {}).get(w["idx"], "")})
             if got is None:
@@ -388,6 +389,36 @@ class FieldAnalyzer(Analyzer):
                                                                          fmt_lap(lt)),
                             "lap": lap, "cars": [], "focus": i, "lapTime": lt})
         moments = [m for m in moments if last_finish is None or m["t"] <= last_finish + 5]
+        # a car's race is over once it takes the flag (its class winner's finish, then its own next crossing): a spin
+        # or a crash on the cool-down lap is not racing (Watkins Glen: "Crash - #14 and #24" after their flag)
+        flag_at = {}
+        for w in self._winners():
+            got = next((tt for tt, lc in self.cross_all.get(w["idx"], []) if lc >= w["laps"]), None)
+            wc = self.cars.get(w["idx"])
+            if got is not None and wc is not None:
+                flag_at[wc.cls] = got
+        done = {}
+        for i, c in self.cars.items():
+            ft = flag_at.get(c.cls)
+            if ft is not None:
+                got = next((tt for tt, lc in self.cross_all.get(i, []) if tt >= ft - 0.01), None)
+                if got is not None:
+                    done[i] = got
+        moments = [m for m in moments if m.get("mandatory") or (
+            (self.green is None or m["t"] >= self.green) and
+            not (m.get("focus") in done and m["t"] > done[m["focus"]] + 2))]
+        for m in moments:
+            if m.get("focus") is not None and m.get("cls") is None:
+                m["cls"] = self.class_label(m["focus"]) or None
+        # a caption's lap is the race's (the overall leader's), so the video counts up: "Lap 17" then "Lap 12"
+        # (another class's own lap) read as going back in time
+        lead = max(self._winners(), key=lambda w: w["laps"], default=None)
+        if lead is not None:
+            cr = [tt for tt, lc in self.cross_all.get(lead["idx"], [])]
+            for m in moments:
+                if m["kind"] not in ("finish",) and isinstance(m.get("lap"), int):
+                    m["lap"] = max(1, min(lead["laps"], 1 + sum(1 for tt in cr if tt <= m["t"]) -
+                                          (1 if cr and self.green is not None and cr[0] < self.green + 1 else 0)))
         # each class's last lap: from its winner's line crossing before the flag to the flag
         windows = []
         for w in self._winners():
