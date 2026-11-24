@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from . import shots as shotlib
 from .moments import driver_at, fmt_lap
-from .pick import clips as make_clips, hook_first
+from .pick import BEST_SPEEDS, SINGLE_SPEEDS, clips as make_clips, hook_first, short_window
 
 HOOK_LEAD_S = 3.0           # a short starts this long before its best moment
 TEASER_BEFORE_S = 2.5
@@ -45,7 +45,9 @@ def camera_plan(result, outputs, settings, cams, number) -> dict:
     pref = settings.get("camera", "auto")
     for c in main:
         m = by_id[c["best"]]
-        c["shots"] = shotlib.plan(c, m, cams, target, number, pct_at, pref=pref)
+        focus = m.get("focus", target)          # whole race: the car this moment is about
+        c["shots"] = shotlib.plan(c, m, cams, focus, number, pct_at if focus == target else (lambda t: None),
+                                  pref=pref)
         c["role"] = "main"
     n_top = int(settings.get("angleMoments", 3) or 0)
     each = int(settings.get("anglesEach", 2) or 0)
@@ -55,7 +57,7 @@ def camera_plan(result, outputs, settings, cams, number) -> dict:
                       key=lambda m: 30.0 if m["kind"] == "finish" else m["score"], reverse=True)
         for m in best[:n_top]:
             c = next(x for x in main if x["best"] == m["id"])
-            js = shotlib.angles(m, cams, target, number, shotlib.key_groups(c["shots"], m), each)
+            js = shotlib.angles(m, cams, m.get("focus", target), number, shotlib.key_groups(c["shots"], m), each)
             for k, j in enumerate(js):
                 j.update(role="angle", moment=m["id"], session=c["session"], n="a%d_%d" % (m["id"], k),
                          kind=m["kind"], caption="%s (another angle)" % m["label"])
@@ -102,15 +104,21 @@ def inputs(out, result, recorded, settings, log=print) -> list[dict]:
         if r is None:
             log("%s: no recording covers %s, left out" % (out["name"], c["caption"]))
             continue
-        a = c["a"]
-        if out["vertical"] and k == 0:
-            a = max(c["a"], float(c.get("key", c["a"])) - HOOK_LEAD_S)     # straight into the action
-        item = {"path": r["path"], "recStart": r["recStart"], "a": a, "b": c["b"], "caption": c["caption"],
+        a, b = c["a"], c["b"]
+        if out["vertical"]:
+            a, b = short_window(c, k)       # the hook straight into the action, the rest cut to their moment
+        item = {"path": r["path"], "recStart": r["recStart"], "a": a, "b": b, "caption": c["caption"],
                 "kind": c["kind"], "best": c.get("best"), "ok": True}
         angle_recs = [x for x in good if x.get("role") == "angle" and x.get("moment") == c.get("best")]
-        if angle_recs and (not out["vertical"] or k == 0):
+        if angle_recs and not out["vertical"]:
             item["angles"] = [{"path": x["path"], "recStart": x["recStart"], "a": x["a"], "b": x["b"],
                                "speed": x.get("speed", 1.0)} for x in angle_recs]
+        elif angle_recs and k == 0 and c.get("replay"):
+            # a short: the key seconds only (pick's replay window), one camera for each speed it was measured with
+            w = c["replay"]
+            speeds = SINGLE_SPEEDS if out.get("key", "").startswith("s") else BEST_SPEEDS
+            item["angles"] = [{"path": x["path"], "recStart": x["recStart"], "a": max(w["a"], x["a"]),
+                               "b": min(w["b"], x["b"]), "speed": sp} for x, sp in zip(angle_recs, speeds)]
         elif out["vertical"] and k == 0 and c.get("replay"):
             item["replay"] = {"a": max(c["replay"]["a"], r["a"]), "b": min(c["replay"]["b"], r["b"])}
         if ms.get(c.get("best"), {}).get("kind") == "start" and out["vertical"]:
@@ -140,8 +148,33 @@ def teaser(result, recorded, ids):
     return None
 
 
+def race_cards(result) -> tuple[dict, dict]:
+    """The whole race's title card (event, track, the field) and result card (each class's winner)."""
+    kicker = "  ·  ".join(x for x in (result.get("event"), result.get("track")) if x)
+    classes = result.get("classes") or []
+    field = "%d cars" % result["fieldSize"] if result.get("fieldSize") else ""
+    lines = ["  ·  ".join(x for x in (field, " / ".join(classes) if len(classes) > 1 else "",
+                                      "%s laps" % result["laps"] if result.get("laps") else "") if x)]
+    intro = {"kicker": kicker or "Race highlights", "title": "Race in review", "lines": [x for x in lines if x]}
+    wins = result.get("winners") or []
+    out_lines = []
+    for w in wins:
+        out_lines.append(("%s  " % w["cls"] if w.get("cls") and len(wins) > 1 else "") +
+                         ("#%s %s" % (w.get("number", ""), w.get("name") or "")).strip())
+    title = "Winners" if len(wins) > 1 else ("#%s wins" % wins[0]["number"] if wins else "The finish")
+    out_lines = out_lines[:4]
+    cl = result.get("climber")
+    if cl:
+        out_lines.append("Biggest climber  #%s  %s to %s  (+%d places)" % (
+            cl.get("number", ""), _ordinal_pos(cl["from"]), _ordinal_pos(cl["to"]), cl["gained"]) +
+            (" in %s" % cl["cls"] if cl.get("cls") else ""))
+    return intro, {"kicker": "Result", "title": title, "lines": out_lines}
+
+
 def cards(result, target) -> tuple[dict, dict]:
     """The title card and the result card."""
+    if result.get("mode") == "race":
+        return race_cards(result)
     car = target or {}
     number = result.get("number") or car.get("number") or ""
     team = result.get("team") or car.get("team") or ""

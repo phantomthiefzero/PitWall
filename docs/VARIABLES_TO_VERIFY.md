@@ -219,6 +219,8 @@ connection's compression, so ~10 KB/s per engineer at 30 a second.
 | cuts while recording | a `cam_switch_num` while the replay plays at 1x switches within a frame or two (cuts sent CUT_EARLY_S early) | a stand-in tape | the cuts in a clip land on the planned shots (the log lists them) |
 | driver changes in a replay | DriverInfo's UserName for the car changes at the swap while the replay plays at 16x | a scripted session update | a team race's scan names every stint's driver; the pit stop says "Driver change" |
 | a car's place on the lap for corner cameras | `CarIdxLapDistPct` of the target, kept every 0.5 s of the scan, matches the producer's "at" for the camera | the fake field | a "Turn 5" camera is used as the car comes to Turn 5 |
+| a towed car (sights: "out") | a car towed from the track goes `CarIdxTrackSurface` -1 for the tow (OUT_MIN_S or more), then reappears in its stall; a retired car stays -1 | spectator recordings (blinks of a frame are left out) | a front-runner's tow in a replay scan says "is towed from" |
+| side by side from LapDistPct | `CarIdxLapDistPct` is the car's centre, so two cars under SIDE_M (3 m) apart overlap; `WeekendInfo.TrackLength` gives the metres | the user's four recordings | a "side by side" clip shows the cars overlapping, a "three wide" three abreast |
 
 ## Helmets — added Oct 2026, seen working (Nov 2026)
 - `pitwall/carrender.py` asks iRacing's local picture server (127.0.0.1:32034, the one that serves `pk_car.png`)

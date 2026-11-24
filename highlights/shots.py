@@ -35,7 +35,8 @@ ANGLE_AFTER_S = 3.0
 ANGLE_BEFORE_S = {"spin": 5.0, "off": 4.0, "drama": 5.0, "towed": 6.0, "finish": 5.0}
 ANGLE_BEFORE_DEFAULT = 4.0
 ANGLE_SPEEDS = (1.0, 0.5, 0.5)          # replay 1 at full speed, the next ones slowed down
-ANGLE_KINDS = ("pass", "lost", "battle", "spin", "off", "towed", "drama", "finish")
+ANGLE_KINDS = ("pass", "lost", "battle", "spin", "off", "towed", "drama", "crash", "finish",
+               "pack", "multiclass", "sidebyside", "train", "restart")
 OVERHEAD_S = 7.0            # per recording: the seek, the camera settling, OBS starting and stopping
 
 # a kind the track has no camera for: the nearest kind it has
@@ -52,16 +53,31 @@ LEAD = {
     "off": [("far", "T"), ("chase", "T"), ("trackside", "T")],
     "towed": [("far", "T"), ("trackside", "T")],
     "drama": [("far", "T"), ("aerial", "T"), ("chase", "T")],
+    "crash": [("far", "T"), ("aerial", "T"), ("chase", "T")],
     "pit": [("far", "T"), ("trackside", "T")],
     "start": [(k, "T") for k in STORY_SEQ["start"]],
     "finish": [(k, "T") for k in STORY_SEQ["finish"]],
     "fastest": [(k, "T") for k in STORY_SEQ["fastlap"] + ["onboard"]],
+    # the sights (spectacle.py). T: the moment's own car (the front of a pack, the car slicing through)
+    "pack": [("aerial", "T"), ("far", "other")],         # from above, then from behind the pack looking up it
+    "multiclass": [("aerial", "T"), ("far", "other")],
+    "sidebyside": [("far", "other"), ("chase", "T")],
+    "train": [("far", "T"), ("chase", "T")],
+    "charge": BATTLE_SHOTS,
+    "restart": [(k, "T") for k in STORY_SEQ["start"]],
+    "pitrush": [("aerial", "T"), ("far", "T")],
+    "pitlead": [("far", "other"), ("chase", "T")],       # the leader turning in, the car that inherits it
+    "out": [("far", "T"), ("aerial", "T")],
 }
 KEY = {
     "battle": ("far", "back"), "pass": ("far", "back"), "lost": ("far", "back"), "traffic": ("far", "back"),
     "spin": ("trackside", "T"), "off": ("trackside", "T"), "towed": ("trackside", "T"),
     "drama": ("trackside", "other"),            # the wreck itself, on the car it happened to
+    "crash": ("trackside", "T"),                # whole race: the car that began it, by the track
     "pit": ("pit", "T"), "start": ("aerial", "T"), "finish": ("trackside", "T"), "fastest": ("trackside", "T"),
+    "pack": ("rear", "T"),                      # Rear Chase on the front car: the whole pack behind it
+    "multiclass": ("trackside", "T"), "sidebyside": ("aerial", "T"), "train": ("far", "T"), "charge": ("far", "T"),
+    "restart": ("aerial", "T"), "pitrush": ("pit", "T"), "pitlead": ("pit", "other"), "out": ("trackside", "T"),
 }
 AFTER = {
     "battle": [("rear", "front"), ("chase", "back"), ("aerial", "front")],
@@ -72,10 +88,20 @@ AFTER = {
     "off": [("aerial", "T"), ("far", "T")],
     "towed": [("aerial", "T")],
     "drama": [("rear", "T"), ("far", "T")],      # looking back from in front of T: the wreck just missed
+    "crash": [("aerial", "T"), ("trackside", "other"), ("far", "T")],
     "pit": [("pit", "T"), ("far", "T")],
     "start": [(k, "T") for k in ("far", "rear", "trackside", "aerial")],
     "finish": [(k, "T") for k in STORY_SEQ["after"]],
     "fastest": [("far", "T"), ("aerial", "T")],
+    "pack": [("aerial", "T"), ("trackside", "T")],
+    "multiclass": [("rear", "T"), ("aerial", "T")],
+    "sidebyside": [("rear", "T"), ("far", "T")],
+    "train": [("rear", "T"), ("aerial", "T")],          # looking back at the cars just gone by
+    "charge": [("rear", "T"), ("aerial", "T")],
+    "restart": [("rear", "T"), ("trackside", "T"), ("far", "T")],
+    "pitrush": [("pit", "other"), ("far", "T")],
+    "pitlead": [("far", "T"), ("aerial", "T")],
+    "out": [("aerial", "T")],
 }
 ANGLES = {
     "pass": [("onboard", "back"), ("rear", "front"), ("aerial", "back"), ("trackside", "back")],
@@ -85,7 +111,13 @@ ANGLES = {
     "off": [("onboard", "T"), ("aerial", "T"), ("trackside", "T")],
     "towed": [("aerial", "T"), ("trackside", "T")],
     "drama": [("onboard", "T"), ("trackside", "other"), ("aerial", "other")],   # T's view of the near miss first
+    "crash": [("onboard", "other"), ("aerial", "T"), ("trackside", "T")],       # from inside a car caught up in it
     "finish": [("onboard", "T"), ("aerial", "T")],
+    "pack": [("onboard", "other"), ("aerial", "T"), ("rear", "T")],     # from inside the pack
+    "multiclass": [("onboard", "T"), ("aerial", "T"), ("trackside", "T")],
+    "sidebyside": [("onboard", "T"), ("onboard", "other"), ("aerial", "T")],
+    "train": [("onboard", "T"), ("rear", "T"), ("aerial", "T")],
+    "restart": [("onboard", "T"), ("aerial", "T")],
 }
 
 
@@ -172,7 +204,10 @@ def plan(clip, m, cams, target, number, pct_at=lambda t: None, rng=None, pref="a
         if g is not None:
             return [{"t": a, "group": g["num"], "groupName": g["name"], "kind": "set", "car": number(target)}]
     kind = m["kind"] if m["kind"] in KEY else "battle" if m.get("cars") else "fastest"
-    key = min(max(key_time(m), a), b)
+    key = key_time(m)
+    if m.get("keys"):                           # a montage (a charge): each clip builds to its own pass
+        key = min(m["keys"], key=lambda k: abs(float(k) - (a + b) / 2))
+    key = min(max(key, a), b)
     k0, k1 = max(a, key - KEY_BEFORE_S), min(b, key + KEY_AFTER_S)
     if k0 - a < SHOT_MIN_S:
         k0 = a

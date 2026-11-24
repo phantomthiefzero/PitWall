@@ -201,6 +201,22 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
 - Shorts (pick.best_of / singles / hook_first; stitch vertical=True): 9:16 1080 x 1920, opening HOOK_LEAD_S before the
   best moment, then its other-angle replays (else a half-speed replay of the same recording), the rest in race order;
   no start, no cards; held to shortMaxS (30 s default: completion beats length); no fade at the end (loop).
+- Whole race (highlights/field.py FieldAnalyzer, the page's "The whole race", Engine WHOLE_RACE / target None): the
+  same scan, every car. Passes between NEIGHBOURS on track only (sorted by lap fraction each frame; a frame where two
+  cars are level is skipped, in both analyzers), one class and one lap only (no traffic), scored by the place;
+  battles per pair; crashes join cars in trouble within CRASH_JOIN_S and CRASH_NEAR; each class's winner and fastest
+  lap; class names only in a multi-class race. Every moment names its "focus" car: the camera plan and the angles
+  follow it (story.camera_plan), "other" is its cars[0]. Cards: race_cards (field, classes, winners, biggest climber).
+- The sights (highlights/spectacle.py, a mixin both analyzers share; one car's video keeps those its car is in): pack,
+  multiclass, sidebyside (SIDE_M centre to centre; three wide = all within it), train, charge (net places gained; a
+  montage, plan cuts each clip to its own pass via "keys"), restart (from each class's race pace by lap times),
+  pitrush, pitlead (a leader seen driving down the pit lane, never a tow), out (gone OUT_MIN_S; never a car that did
+  its laps). No packs or busy corners in the first minute, under a caution or RESTART_CALM_S after it. A new sight:
+  SPECTACLE_KINDS, LEAD / KEY / AFTER in shots.py, the page's KINDS; new kinds start ticked (kindsKnown).
+  Anything on a class's last lap says so and counts LAST_LAP_BONUS more. Check a change against the recordings.
+- A short counts its replays in its length (pick.short_length speeds: SINGLE_SPEEDS for a one-moment short,
+  BEST_SPEEDS for the best-of) and cuts its later clips to short_window; the full video's target counts replays, the
+  cold open and the cards (Engine.auto searches the budget). The start is START_S (20 s) of racing.
 - Every step has an estimate (scan: the replay's own results / 16; record: shots.record_s; build: buildRate, measured
   by each build on this PC) and a live "left" while it runs. The full video uses the user's ticks, the shorts pick from every moment. Every
   clip any output needs is recorded once (the union, merged), and each output is cut from the recording that covers it.

@@ -831,3 +831,26 @@ Broadcast (broadcast/)
   so shorts open 3 s before the moment and default to 30 s. The finish's fixed score (100) took the other-angle
   replays from real moments until it was scored 30 for them. The wipe stinger let the top-left corner show at 58% (its
   trailing edge leans): tests check every pixel from 42% to 58% now.
+- Highlights, first full run on the fake field (Nov 2026): the best-of short was the same video as "Short 1" (its
+  other-angle replays, ~24 s, filled the 30 s and the end was cut off), the start took 46 s of a 4 min video, and a
+  3 min target made 4:10 (replays and the cold open were not counted). Now: a short counts its replays (pick.short_length
+  with the speeds it plays them at: a single short both, a best-of only the slow one), its later clips are cut to the
+  seconds around their moment (short_window), the start is START_S, and Engine.auto searches for the most moments whose
+  whole video fits the target.
+- Highlights "whole race" (Nov 2026: "instead of just having it focus on only one car ... the entire race as a whole,
+  clips of the most exciting action as well as a race in review"): FieldAnalyzer reuses the one-car Analyzer's car
+  tracking and finds moments for every car in the same scan (40 min of the fake field at 16x reads in 2.5 s: passes
+  are looked for between neighbours on track only). Its first scripted test lost a lead change: two cars exactly level
+  for one frame (rel 0) wiped the sign both analyzers compared against; a level frame is now skipped. Without the
+  replay's own results (the fake field never finishes) each class's winner is its first car over the line after the
+  checkered flag.
+- Highlights sights (Nov 2026: "find cool and interesting moments as well as exciting ones? Like a busy turn with many
+  classes in it or a huge bunch of cars"): highlights/spectacle.py, a mixin both analyzers share (one car's video keeps
+  those its car is in). Run over the user's four recordings, the first version showed: "three wide" of six cars at
+  Le Mans (a line of overlapping pairs, and 4.5 m centre to centre is nose to tail in a draft): now SIDE_M 3 m and
+  three wide means all three within it; 64 "out" at Suzuka (cars blinking out of a spectator's data for a frame):
+  now gone OUT_MIN_S, never a car that has done its laps; "on a charge - P6 to P6" (passes back and forth): now net
+  places gained; "takes the lead as #1 pits" on Talladega's last lap (a wrecked leader towed to its stall): now only
+  a leader seen driving down the pit lane; a pack of 18 the instant every caution ended: packs wait RESTART_CALM_S.
+  Talladega has ~240 side by sides (scored by the place, so back markers fall away in the pick).
+

@@ -31,6 +31,8 @@ from __future__ import annotations
 import math
 import statistics
 
+from .spectacle import Spectacle, track_metres
+
 NOT_IN_WORLD, OFF_TRACK, IN_STALL, APPROACHING_PITS, ON_TRACK = -1, 0, 1, 2, 3
 
 HOLD_S = 4.0              # a swap of places must stand this long to be a pass (side by side flips back and forth)
@@ -46,15 +48,17 @@ DRAMA_NEW_S = 20.0          # ... when its trouble began at most this long befor
 NEAR_MISS_S = 0.6           # T went by it this close: a near miss
 LEAD_UP_S = 10.0            # a wreck or a spin: this much of what led up to it comes first
 DRAMA_MAX_S = 40.0
-PATH_EVERY_S = 0.5          # T's place on the lap is kept this often (where the cameras at one place are)
+PATH_EVERY_S = 0.5
+AFTER_FINISH_S = 30.0       # a scan reads this long past the finish it needs          # T's place on the lap is kept this often (where the cameras at one place are)
 RATE_TAU_S = 1.5          # smoothing of each car's speed (laps per second)
+START_S = 20.0            # the start: from just before the green to this far into the race
 LATE_SHARE = 0.10         # the last 10% of the race scores more
 LATE_BONUS = 1.3
 
 KIND_LABEL = {
     "start": "The start", "finish": "The finish", "pass": "Pass", "lost": "Lost a place", "traffic": "Traffic",
     "battle": "Battle", "off": "Off track", "spin": "Big moment", "towed": "Out on track", "drama": "Drama nearby",
-    "pit": "Pit stop", "fastest": "Fastest lap",
+    "pit": "Pit stop", "fastest": "Fastest lap", "crash": "Crash",
 }
 
 
@@ -105,7 +109,7 @@ class _Car:
         self.seen = False
 
 
-class Analyzer:
+class Analyzer(Spectacle):
     def __init__(self, target: int, race_session: int | None = None):
         self.target = target
         self.race_session = race_session
@@ -150,6 +154,7 @@ class Analyzer:
         self.start_pos = None
         self._last_drama = -1e9
         self._pass_log: list[dict] = []
+        self._spec_init()
 
     # ------------------------------------------------------------------ session info
     def session(self, info: dict):
@@ -163,6 +168,8 @@ class Analyzer:
         if isinstance(wk, dict) and wk.get("TrackID") is not None:
             # the key PitWall keeps the producer's camera setup under (pitwall/bridge.py _cam_key)
             self.track_key = "%s:%s" % (wk.get("TrackID"), wk.get("TrackConfigName") or "")
+        if isinstance(wk, dict) and wk.get("TrackLength"):
+            self.track_m = track_metres(wk) or self.track_m
         if isinstance(wk, dict):
             self.track = wk.get("TrackDisplayName") or self.track
             cfg = wk.get("TrackConfigName")
@@ -273,8 +280,8 @@ class Analyzer:
                     c.rate = r if c.rate is None else c.rate + alpha * (r - c.rate)
                 c.dist = d
             c.pct, c.t = pct, t
-            if c.lc is not None and lc > c.lc and i == self.target:
-                self.crossings.append((t, int(lc)))
+            if c.lc is not None and lc > c.lc:
+                self._crossed(i, t, int(lc))
             c.lc = lc
             lt = _num(last_a[i]) if i < len(last_a) else None
             if lt is not None and lt > 0 and lt != c.last_lap:
@@ -283,8 +290,9 @@ class Analyzer:
                     if c.cls is not None and self.green is not None:
                         b = self.cls_best.get(c.cls)
                         self.cls_best[c.cls] = lt if b is None else min(b, lt)
-                    if i == self.target and self.green is not None:
-                        self.t_laps.append((t, lt, int(lc)))
+                    if self.green is not None:
+                        self._note_lap(c.cls, lt)
+                        self._lapped(i, t, lt, int(lc))
                 c.last_lap = lt
             c.seen = True
         # each class's speed right now, and its usual race speed
@@ -299,6 +307,21 @@ class Analyzer:
                 self.cls_rate[k] = m
                 if self.green is not None:
                     self.cls_typ[k] = m if k not in self.cls_typ else self.cls_typ[k] + a_slow * (m - self.cls_typ[k])
+
+    def _crossed(self, i, t, lc):
+        """Car i crossed the line (lc laps completed)."""
+        if i == self.target:
+            self.crossings.append((t, lc))
+
+    def _lapped(self, i, t, lt, lc):
+        """Car i posted a lap time lt (after the green)."""
+        if i == self.target:
+            self.t_laps.append((t, lt, lc))
+
+    def scan_done(self, t) -> bool:
+        """The scan can stop: the car took the flag (by the replay's own results) and AFTER_FINISH_S went by."""
+        return bool(self.results and self.crossings and self.crossings[-1][1] >= self.results["laps"]
+                    and t > self.crossings[-1][0] + AFTER_FINISH_S)
 
     def _guess_green(self, t):
         me = self.cars.get(self.target)
@@ -367,6 +390,7 @@ class Analyzer:
         self._own_trouble(t, me)
         self._others_trouble(t, me, lap_t)
         self._pits(t, me, lap_t)
+        self._spectacle(t)
 
     def _passes(self, t, me):
         if me.surf in (NOT_IN_WORLD,) or me.pit or me.dist is None:
@@ -380,11 +404,13 @@ class Analyzer:
                 continue
             diff = c.dist - me.dist
             rel = diff - round(diff)                 # where it is on track: + ahead of T, - behind
+            if rel == 0:
+                continue                             # level this frame: the frames either side decide
             prev = self._rel.get(j)
             self._rel[j] = rel
             if prev is None or abs(rel) > NEAR_LAP or abs(prev) > NEAR_LAP:
                 continue
-            if (prev > 0) == (rel > 0) or rel == 0 or prev == 0:
+            if (prev > 0) == (rel > 0):
                 continue
             gain = rel < 0                           # it was ahead and is now behind: T went by
             # a flip back within HOLD_S cancels the one waiting (side by side)
@@ -423,12 +449,15 @@ class Analyzer:
                     ("Lapped a car" if p["gain"] else "Lapped")
             if p["offCar"]:
                 score += 6
+            if p["gain"]:
+                self._note_traffic(self.target, j, t)
             self._add("traffic", t, [(t - 8, t + 4)], score, label, [j], gain=p["gain"], otherAheadBefore=p["gain"],
                       at=self._pct(self.target))
             return
         now = self.class_pos(self.target)
         if p["gain"]:
             score, pos = 50, now
+            self._note_pass(self.target, now, t)
             bonus = 45 if pos == 1 else 25 if pos and pos <= 3 else 10 if pos and pos <= 10 else 0
             label = "Takes the class lead" if pos == 1 else "Pass for %s" % _ord(pos) if pos else "Pass"
         else:
@@ -448,7 +477,8 @@ class Analyzer:
             if q["cars"] == [j] and t - q["t"] <= 45:
                 q["score"] = round(q["score"] + 15, 1)
                 m["score"] = round(m["score"] + 15, 1)
-                m["label"] += " - back and forth"
+                if not m["label"].endswith(" - back and forth"):
+                    m["label"] += " - back and forth"
         self._pass_log.append(m)
         if b is not None:
             b["passes"].append(m)
@@ -688,6 +718,7 @@ class Analyzer:
             self._score_pass(p)
         for j in list(self._dramas):
             self._emit_drama(j)
+        self._spec_finish(t_end or 0.0)
         # T taking the flag
         fin_t = None
         if self.results and self.crossings:
@@ -703,7 +734,7 @@ class Analyzer:
         moments = [m for m in self.moments if fin_t is None or m["t"] <= fin_t + 5]
         if self.green is not None:
             moments.insert(0, {"kind": "start", "session": self.race_session, "t": round(self.green, 2),
-                               "segs": [[round(max(0.0, self.green - 6), 2), round(self.green + 40, 2)]],
+                               "segs": [[round(max(0.0, self.green - 6), 2), round(self.green + START_S, 2)]],
                                "score": 100.0, "label": "The start" + (" (found by pace)" if self.green_guessed else ""),
                                "lap": 1, "cars": [], "mandatory": True})
         if fin_t is not None:
@@ -724,6 +755,11 @@ class Analyzer:
                             "score": 40.0 if fastest_cls else 18.0,
                             "label": ("Fastest lap of the race in class" if fastest_cls else "Best lap") +
                                      " - %s" % fmt_lap(lt), "lap": lap, "cars": [], "lapTime": lt})
+        # T's last lap: from its line crossing before the flag to the flag
+        if fin_t is not None and not guessed_finish:
+            before = [t for t, lc in self.crossings if t < fin_t - 1]
+            if before:
+                self.last_lap(moments, [(before[-1], fin_t + 1, None)])
         # the last part of the race counts more
         if self.green is not None and fin_t is not None and fin_t > self.green:
             cut = fin_t - LATE_SHARE * (fin_t - self.green)
@@ -797,9 +833,9 @@ def tape_time(get):
 
 
 def analyze_capture(path, target, race_session=None, progress=None) -> dict:
-    """A scan file or any suite Recording (.jsonl.gz) through the Analyzer."""
+    """A scan file or any suite Recording (.jsonl.gz) through the Analyzer (target None: the whole race)."""
     from pitwall.recorder import iter_recording
-    a = Analyzer(target, race_session)
+    a = make_analyzer(target, race_session)
     n = 0
     for rec in iter_recording(path):
         kind = rec.get("type")
@@ -823,3 +859,12 @@ def capture_field(path) -> dict:
         if rec.get("type") == "session":
             info = rec.get("info") or info
     return {"field": field(info.get("DriverInfo")), "races": race_sessions(info.get("SessionInfo")), "info": info}
+
+
+def make_analyzer(target, race_session=None):
+    """One car's Analyzer, or (target None) the whole race's (highlights/field.py)."""
+    if target is None:
+        from .field import FieldAnalyzer
+        return FieldAnalyzer(race_session)
+    return Analyzer(target, race_session)
+

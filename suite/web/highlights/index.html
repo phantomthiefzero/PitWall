@@ -64,7 +64,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 <main>
 <a class="home" href="/">&larr; Suite home</a>
 <h1>Race <span>Highlights</span></h1>
-<p class="sub">Turns a whole race's replay into a short video of one car's best moments.</p>
+<p class="sub">Turns a race's replay into a race in review and clips for social media: the whole race, or one car's story.</p>
 
 <section id="s1">
   <h2><span class="n">1</span> The race <span class="tag" id="demoTag"></span></h2>
@@ -169,10 +169,14 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const KINDS = [["pass", "Passes"], ["lost", "Lost places"], ["battle", "Battles"], ["off", "Off tracks"], ["spin", "Spins"],
-  ["towed", "Towed"], ["drama", "Drama nearby"], ["pit", "Pit stops"], ["fastest", "Best lap"], ["traffic", "Traffic"]];
+const KINDS = [["pass", "Passes"], ["lost", "Lost places"], ["battle", "Battles"], ["crash", "Crashes"], ["off", "Off tracks"], ["spin", "Spins"],
+  ["towed", "Towed"], ["drama", "Drama nearby"], ["pit", "Pit stops"], ["fastest", "Best lap"], ["traffic", "Traffic"],
+  ["pack", "Big packs"], ["multiclass", "Classes mixing"], ["sidebyside", "Side by side"], ["train", "Slicing through traffic"],
+  ["charge", "On a charge"], ["restart", "Restarts"], ["pitrush", "Pit lane rush"], ["pitlead", "Lead in the pits"], ["out", "Front-runner out"]];
 const KIND_NAME = {start: "Start", finish: "Finish", pass: "Pass", lost: "Lost", traffic: "Traffic", battle: "Battle",
-  off: "Off", spin: "Spin", towed: "Towed", drama: "Drama", pit: "Pit", fastest: "Best lap"};
+  off: "Off", spin: "Spin", towed: "Towed", drama: "Drama", pit: "Pit", fastest: "Best lap", crash: "Crash",
+  pack: "Pack", multiclass: "Classes mixing", sidebyside: "Side by side", train: "Through traffic", charge: "Charge",
+  restart: "Restart", pitrush: "Pit rush", pitlead: "Lead in pits", out: "Out"};
 let api = null, st = null, scanBlocked = false, field = [], openPath = null, momentsKey = "", settingsShown = false;
 
 function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
@@ -183,7 +187,8 @@ function carLabel(c) { return "#" + c.number + "  " + (c.team && c.team !== c.dr
 
 function fillCars(list, pre) {
   field = list;
-  $("car").innerHTML = list.map((c) => '<option value="' + c.idx + '">' + esc(carLabel(c)) + "</option>").join("");
+  $("car").innerHTML = '<option value="-1">The whole race: the best action from every car</option><optgroup label="Or follow one car">' +
+    list.map((c) => '<option value="' + c.idx + '">' + esc(carLabel(c)) + "</option>").join("") + "</optgroup>";
   if (pre != null && list.some((c) => c.idx === pre)) $("car").value = String(pre);
   show($("pickRow"), list.length > 0);
 }
@@ -197,7 +202,7 @@ async function look() {
   fillCars(r.field, pre);
   scanBlocked = !!r.why;
   $("scan").disabled = scanBlocked;
-  setText($("lookText"), r.why ? r.why : (r.track ? r.track + ": " : "") + r.field.length + " cars. Pick yours and scan: the replay plays at 16x, " + (r.scanText ? "so this race takes " + r.scanText + "." : "about 4 minutes an hour of race."));
+  setText($("lookText"), r.why ? r.why : (r.track ? r.track + ": " : "") + r.field.length + " cars. Pick the whole race or one car and scan: the replay plays at 16x, " + (r.scanText ? "so this race takes " + r.scanText + "." : "about 4 minutes an hour of race."));
 }
 
 async function scanNow() {
@@ -328,8 +333,11 @@ async function refresh() {
     show($("s2"), true); show($("s3"), true); show($("s4"), true); show($("s5"), true);
     const r = st.race;
     renderPlan(r.outputs || []);
-    const crew = [r.number ? "#" + r.number : "", r.team || "", (r.drivers || []).join(", "),
-      r.stints > 1 ? r.stints + " stints" : "", r.startPos ? "started P" + r.startPos + " in class" : ""].filter(Boolean).join("  -  ");
+    const crew = r.mode === "race"
+      ? ["The whole race", r.fieldSize ? r.fieldSize + " cars" : "", (r.classes || []).join(" / "),
+         (r.winners || []).length ? "won by " + r.winners.join(", ") : ""].filter(Boolean).join("  -  ")
+      : [r.number ? "#" + r.number : "", r.team || "", (r.drivers || []).join(", "),
+         r.stints > 1 ? r.stints + " stints" : "", r.startPos ? "started P" + r.startPos + " in class" : ""].filter(Boolean).join("  -  ");
     setText($("teamLine"), crew);
     const e = r.estimates || {};
     setText($("estimate"), e.recordings ? "Recording " + e.recordings + " clips (" + e.angles + " of them replays from other cameras) takes " + e.recordText + ", then making the videos " + e.buildText + ". Times are estimates; they get better after each video this PC makes." : "");

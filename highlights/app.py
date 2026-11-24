@@ -18,7 +18,8 @@ import traceback
 
 from .capture import ClipRecorder
 from .moments import analyze_capture, capture_field, fmt_lap
-from .pick import auto_pick, best_of, clips as make_clips, hook_first, length, short_length, singles
+from .pick import (BEST_SPEEDS, SINGLE_SPEEDS, auto_pick, best_of, clips as make_clips, hook_first, length,
+                   short_length, singles)
 from .scan import ScanError, camera_groups, look, scan
 from .stitch import BuildError, build, probe
 from . import shots as shotlib
@@ -28,7 +29,9 @@ from .stingers import STYLES as STINGER_STYLES
 DEFAULTS = {
     "obsUrl": "ws://127.0.0.1:4455", "obsPassword": "", "camera": "auto", "stinger": "builtin:chevrons", "music": [],
     "musicVolume": 0.35, "gameVolume": 0.7, "targetMin": 8, "captions": True, "cards": True,
-    "kinds": ["pass", "lost", "battle", "off", "spin", "towed", "drama", "pit", "fastest"],
+    "kinds": ["pass", "lost", "battle", "off", "spin", "crash", "towed", "drama", "pit", "fastest",
+              "pack", "multiclass", "sidebyside", "train", "charge", "restart", "pitrush", "pitlead", "out"],
+    "kindsKnown": [],           # the kinds there were when the settings were saved: a newer kind starts ticked
     # vertical shorts (9:16) for YouTube Shorts, Instagram Reels, TikTok
     "makeFull": True, "makeBestOf": True, "shortSingles": 3, "shortMaxS": 30, "shortFrame": "fill",
     "shortReplay": True,
@@ -55,6 +58,10 @@ def settings_path() -> str:
     return os.path.join(d, "highlights.json")
 
 
+WHOLE_RACE = -1             # the page's "whole race" choice in place of a car
+WHOLE = {"idx": None, "number": "", "driver": "", "team": "", "cls": "", "whole": True}
+
+
 def _producer_cameras(key):
     try:
         from pitwall.liveries import LiveryStore
@@ -65,7 +72,7 @@ def _producer_cameras(key):
 
 def safe_name(s) -> str:
     s = re.sub(r"[^A-Za-z0-9 _.-]+", "", str(s or "")).strip()
-    return re.sub(r"\s+", " ", s)[:60] or "race"
+    return re.sub(r"\s+", " ", s)[:100] or "race"
 
 
 def clock_str(s) -> str:
@@ -114,8 +121,14 @@ class Engine:
             for k in DEFAULTS:
                 if k in saved:
                     self.settings[k] = saved[k]
+            known = set(saved.get("kindsKnown") or ["pass", "lost", "battle", "off", "spin", "crash", "towed",
+                                                     "drama", "pit", "fastest", "traffic"])
+            new = [k for k in DEFAULTS["kinds"] if k not in known]
+            if new and isinstance(self.settings.get("kinds"), list):
+                self.settings["kinds"] = list(self.settings["kinds"]) + new
         except (OSError, ValueError):
             pass
+        self.settings["kindsKnown"] = list(dict.fromkeys(DEFAULTS["kinds"] + ["traffic"]))
 
     def save_settings(self, s: dict):
         for k in DEFAULTS:
@@ -210,7 +223,10 @@ class Engine:
         why = self._camera_free()
         if why:
             return {"ok": False, "error": why}
-        car = next((c for c in (self.looked or {}).get("field") or [] if c["idx"] == idx), None)
+        if idx == WHOLE_RACE:
+            car = dict(WHOLE)
+        else:
+            car = next((c for c in (self.looked or {}).get("field") or [] if c["idx"] == idx), None)
         if car is None:
             return {"ok": False, "error": "Pick a car first (Check iRacing)."}
         self.target = car
@@ -218,8 +234,8 @@ class Engine:
         def job():
             with self.lock:
                 src = self._source()
-                name = "%s %s #%s" % (time.strftime("%Y-%m-%d %H%M"), safe_name((self.looked or {}).get("track")),
-                                      car["number"])
+                name = "%s %s %s" % (time.strftime("%Y-%m-%d %H%M"), safe_name((self.looked or {}).get("track")),
+                                     "race" if car["idx"] is None else "#" + car["number"])
                 os.makedirs(os.path.join(self.base, "Scans"), exist_ok=True)
                 path = os.path.join(self.base, "Scans", safe_name(name) + ".jsonl.gz")
                 self.progress["text"] = "Jumping to the start of the race..."
@@ -237,7 +253,7 @@ class Engine:
                         eta = max(0.0, (race_s + 120 - read) / max(rate, 1.0))
                     self.progress.update(text="Scanning: %s of the race read" % clock_str(read), eta=eta,
                                          done=min(read, race_s or read), of=race_s or 0)
-                res = scan(src, self.gate, idx, path, stop=self.stop_flag.is_set, progress=prog, log=self.log)
+                res = scan(src, self.gate, car["idx"], path, stop=self.stop_flag.is_set, progress=prog, log=self.log)
             self._took(res)
             self.progress["text"] = "Scan done (%s): %d moments found" % (res.get("ended"), len(res["moments"]))
         return self._run("scan", job)
@@ -247,7 +263,7 @@ class Engine:
         info = capture_field(path)
         if idx is None:
             return {"ok": True, "field": info["field"], "races": info["races"], "path": path}
-        car = next((c for c in info["field"] if c["idx"] == idx), None)
+        car = dict(WHOLE) if idx == WHOLE_RACE else next((c for c in info["field"] if c["idx"] == idx), None)
         if car is None:
             return {"ok": False, "error": "That car is not in the file."}
         self.target = car
@@ -255,7 +271,7 @@ class Engine:
 
         def job():
             self.progress["text"] = "Reading %s..." % os.path.basename(path)
-            res = analyze_capture(path, idx, progress=lambda t: self.progress.update(
+            res = analyze_capture(path, car["idx"], progress=lambda t: self.progress.update(
                 text="Reading: %s of the race" % clock_str(t)))
             res["scanFile"] = path
             self._took(res)
@@ -282,8 +298,26 @@ class Engine:
             return {"ok": False}
         self.settings["targetMin"] = minutes
         cards = 2 * 4.0 if self.settings.get("cards") else 0.0
-        self.chosen = auto_pick(self.result["moments"], float(minutes) * 60 - cards, self._stinger_s(),
-                                kinds=set(self.settings.get("kinds") or DEFAULTS["kinds"]))
+        cards += 3.0 if self.settings.get("teaser", True) else 0.0
+        kinds = set(self.settings.get("kinds") or DEFAULTS["kinds"])
+        target = float(minutes) * 60
+
+        def total(budget):
+            self.chosen = auto_pick(self.result["moments"], budget, self._stinger_s(), kinds=kinds)
+            full = next((o for o in self.outputs() if o["key"] == "full"), None)
+            return (full["length"] + self._replay_s(full) + cards - 8.0 * bool(self.settings.get("cards"))) \
+                if full else 0.0
+        # the replays from other cameras count toward the length asked for: the most moments whose whole video
+        # (clips, replays, cold open, cards) still fits
+        lo, hi = 0.0, max(0.0, target - cards)
+        if total(hi) > target + 1.0:
+            for _ in range(10):
+                mid = (lo + hi) / 2
+                if total(mid) <= target + 1.0:
+                    lo = mid
+                else:
+                    hi = mid
+            total(lo)
         return {"ok": True}
 
     def set_chosen(self, ids):
@@ -311,7 +345,8 @@ class Engine:
 
     def _video_name(self):
         r, car = self.result or {}, self.target or {}
-        return safe_name("%s #%s %s" % (r.get("track") or "Race", car.get("number", ""), time.strftime("%Y-%m-%d %H%M")))
+        who = "race in review" if r.get("mode") == "race" else "#%s" % car.get("number", "")
+        return safe_name("%s %s %s" % (r.get("track") or "Race", who, time.strftime("%Y-%m-%d %H%M")))
 
     # ------------------------------------------------------------------ what gets made
     def outputs(self) -> list[dict]:
@@ -333,11 +368,12 @@ class Engine:
             ids = best_of(ms, max_s, st, kinds, replay)
             if ids:
                 out.append({"key": "best", "name": "Short - best of", "ids": ids, "vertical": True,
-                            "length": short_length(hook_first(make_clips(ms, ids), replay), st)})
+                            "length": short_length(hook_first(make_clips(ms, ids), replay), st, BEST_SPEEDS)})
         for k, ids in enumerate(singles(ms, int(s.get("shortSingles", 3) or 0), max_s, kinds, replay)):
             m = next(x for x in ms if x["id"] == ids[0])
             out.append({"key": "s%d" % (k + 1), "name": "Short %d - %s" % (k + 1, m["label"]), "ids": ids,
-                        "vertical": True, "length": short_length(hook_first(make_clips(ms, ids), replay), st)})
+                        "vertical": True,
+                        "length": short_length(hook_first(make_clips(ms, ids), replay), st, SINGLE_SPEEDS)})
         return out
 
     def _cams(self):
@@ -433,7 +469,8 @@ class Engine:
         r, car = self.result or {}, self.target or {}
         st = self.settings.get("stinger") or None
         base = {"stinger": st, "captions": self.settings.get("captions", True),
-                "stingerMark": "#%s" % (r.get("number") or car.get("number") or "") if st else None,
+                "stingerMark": ("#%s" % (r.get("number") or car.get("number")) if (r.get("number") or car.get("number"))
+                                else None) if st else None,
                 "stingerSub": r.get("team") or None,
                 "music": [m for m in self.settings.get("music") or [] if os.path.exists(m)],
                 "musicVolume": float(self.settings.get("musicVolume", 0.35)),
@@ -527,6 +564,10 @@ class Engine:
                                                             (3.0 if self.settings.get("teaser", True) else 0)),
                                         "clips": len(make_clips(r["moments"], o["ids"]))}
                                        for o in self.outputs()],
+                           "mode": r.get("mode", "car"), "fieldSize": r.get("fieldSize"),
+                           "classes": r.get("classes") or [],
+                           "winners": ["%s#%s" % ((w["cls"] + " ") if w.get("cls") else "", w["number"])
+                                       for w in r.get("winners") or []],
                            "team": r.get("team"), "number": r.get("number"), "drivers": r.get("drivers") or [],
                            "stints": len(r.get("stints") or []), "startPos": r.get("startPos"),
                            "estimates": self.estimates()}
