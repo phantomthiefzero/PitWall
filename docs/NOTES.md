@@ -883,3 +883,8 @@ Broadcast (broadcast/)
   storyteller.mp3"): a file named .mp3 that ffmpeg cannot decode (a web page saved as .mp3, a download cut short)
   stopped the whole build after the clips were recorded. stitch.playable decodes the first 2 s once per file version:
   Add music refuses such a file and says why, and a build leaves one out (logged, skippedMusic) instead of failing.
+- Highlights video names (Nov 2026: "name the created videos something related to the finished clip"): files were
+  "<track> race in review <date time> - Short 1 - <label>" with "#", ":" and brackets stripped. Now app._video_name
+  names each for what is in it (the track and "Race in review" or the car and team; "Best moments (short)"; a single
+  short by its moment first, "#12 takes the lead from #10 - Watkins Glen (short)"); safe_name keeps everything
+  Windows allows, and free_path adds " (2)" rather than overwrite a video already made.

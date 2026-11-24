@@ -70,9 +70,24 @@ def _producer_cameras(key):
         return {}
 
 
-def safe_name(s) -> str:
-    s = re.sub(r"[^A-Za-z0-9 _.-]+", "", str(s or "")).strip()
-    return re.sub(r"\s+", " ", s)[:100] or "race"
+def safe_name(s, limit=100) -> str:
+    """A file name: anything Windows allows (so "#12" and "(G87)" stay), cut at a word near `limit`."""
+    s = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", str(s or ""))
+    s = re.sub(r"\s+", " ", s).strip()
+    if len(s) > limit:
+        cut = s[:limit]
+        s = cut[:cut.rfind(" ")] if " " in cut[limit // 2:] else cut
+    return s.strip(" .-") or "race"
+
+
+def free_path(path) -> str:
+    """path, or "name (2).ext" ... when a video of that name is already there (never overwrite one)."""
+    stem, ext = os.path.splitext(path)
+    n = 2
+    while os.path.exists(path):
+        path = "%s (%d)%s" % (stem, n, ext)
+        n += 1
+    return path
 
 
 def clock_str(s) -> str:
@@ -348,10 +363,26 @@ class Engine:
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "text": str(e)}
 
-    def _video_name(self):
+    def _video_name(self, o=None):
+        """Each video is named for what is in it: "Watkins Glen - Race in review - 2026-11-24",
+        "Watkins Glen - #24 Team Name - 2026-11-24", "Watkins Glen - Best moments (short) - 2026-11-24",
+        "#12 takes the lead from #10 - Watkins Glen (short)"."""
         r, car = self.result or {}, self.target or {}
-        who = "race in review" if r.get("mode") == "race" else "#%s" % car.get("number", "")
-        return safe_name("%s %s %s" % (r.get("track") or "Race", who, time.strftime("%Y-%m-%d %H%M")))
+        track = safe_name(r.get("track") or "Race", 40)
+        day = time.strftime("%Y-%m-%d")
+        if r.get("mode") == "race":
+            who = "Race in review"
+        else:
+            num = r.get("number") or car.get("number") or ""
+            who = ("#%s %s" % (num, r.get("team") or "")).strip() if num else (r.get("team") or "My race")
+        key = (o or {}).get("key", "full")
+        if key == "full":
+            return safe_name("%s - %s - %s" % (track, who, day))
+        if key == "best":
+            return safe_name("%s - %s - Best moments (short) - %s" % (track, who, day) if r.get("mode") != "race"
+                             else "%s - Best moments (short) - %s" % (track, day))
+        label = (o or {}).get("label") or (o or {}).get("name") or "Short"
+        return safe_name("%s - %s (short)" % (safe_name(label, 70), track), 110)
 
     # ------------------------------------------------------------------ what gets made
     def outputs(self) -> list[dict]:
@@ -377,6 +408,7 @@ class Engine:
         for k, ids in enumerate(singles(ms, int(s.get("shortSingles", 3) or 0), max_s, kinds, replay)):
             m = next(x for x in ms if x["id"] == ids[0])
             out.append({"key": "s%d" % (k + 1), "name": "Short %d - %s" % (k + 1, m["label"]), "ids": ids,
+                        "label": m["label"],
                         "vertical": True,
                         "length": short_length(hook_first(make_clips(ms, ids), replay), st, SINGLE_SPEEDS)})
         return out
@@ -471,7 +503,6 @@ class Engine:
 
     def _build(self):
         self.job = "build"
-        name = self._video_name()
         r, car = self.result or {}, self.target or {}
         st = self.settings.get("stinger") or None
         base = {"stinger": st, "captions": self.settings.get("captions", True),
@@ -500,8 +531,9 @@ class Engine:
                     opts["intro"], opts["outro"] = intro, outro
                 if self.settings.get("teaser", True):
                     opts["teaser"] = story.teaser(r, self.recorded, o["ids"])
-            fname = name if o["key"] == "full" else "%s - %s" % (name, safe_name(o["name"]))
-            out = os.path.join(self.base, "Videos", fname + ".mp4")
+            fname = self._video_name(o)
+            out = free_path(os.path.join(self.base, "Videos", fname + ".mp4"))
+            fname = os.path.splitext(os.path.basename(out))[0]
             work = os.path.join(self.base, "Work", fname)
             t0 = time.monotonic()
 
