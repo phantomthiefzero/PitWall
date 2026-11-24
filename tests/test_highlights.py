@@ -606,9 +606,11 @@ def test_each_clip_is_recorded_once_for_the_full_video_and_every_short(tmp_path,
 
 
 # ------------------------------------------------------------------------------------------------ in the suite
-def test_the_suite_window_exposes_every_call_the_page_makes_without_walking_the_engine():
+def test_the_suite_window_exposes_every_call_the_page_makes_without_walking_the_engine(monkeypatch):
     import re
     import types
+    from suite import features
+    monkeypatch.setattr(features, "HIGHLIGHTS", True)        # as it is once the user includes Highlights
     from suite.app import Api
     from suite.bridge import resolve
     page = resolve("/highlights/")

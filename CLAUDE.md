@@ -167,6 +167,9 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
   happened; it reads the bridge's copy of the telemetry (_simvars), never the source from its own thread.
 
 ## Highlights (highlights/, page suite/web/highlights/)
+- OFF in the app until the user decides to include it (his call, Nov 2026): suite/features.py HIGHLIGHTS = False
+  takes away the home tile (bridge.home_page), the page (resolve 404s it), the engine and api.highlights. Keep
+  building and testing it as before (tests turn the flag on); do not turn it on without his say.
 - One of the suite's apps (a home tile), not a separate program. The suite's Engine makes highlights.app.Engine
   (demo with `--pitwall-source fake`) and its Api is window.pywebview.api.highlights (Api.highlights): public
   attributes there are methods only (pywebview walks them). The page works only in the app window (dialogs, OBS).

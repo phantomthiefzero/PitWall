@@ -28,6 +28,7 @@ except Exception as e:  # not installed or failed to load
     IRSDK_ERROR = "%s: %s" % (type(e).__name__, e)
 
 from suite import __version__ as VERSION
+from suite import features
 
 
 def _base():
@@ -547,8 +548,11 @@ def analyzer_reply(path):
 
 
 def resolve(path):
-    """Map a URL path to a file inside the web folder (or PitWall's client folder); never outside them."""
+    """Map a URL path to a file inside the web folder (or PitWall's client folder); never outside them. An app that
+    is off (suite/features.py) has no pages."""
     rel = path.split("?")[0].lstrip("/")
+    if not features.HIGHLIGHTS and (rel == "highlights" or rel.startswith("highlights/")):
+        return None
     if rel == "pitwall" or rel.startswith("pitwall/"):
         root = os.path.realpath(pitwall_client_root())
         rel = rel[len("pitwall"):].lstrip("/")
@@ -562,6 +566,14 @@ def resolve(path):
     if os.path.isdir(full):
         full = os.path.join(full, "index.html")
     return full if os.path.isfile(full) else None
+
+
+def home_page(body: bytes) -> bytes:
+    """The home page without the tiles (and words) of apps that are off (suite/features.py)."""
+    if not features.HIGHLIGHTS:
+        body = re.sub(rb'<a class="app"[^>]*href="/highlights/".*?</a>\s*', b"", body, flags=re.S)
+        body = body.replace(b" or make Highlights", b"")
+    return body
 
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
@@ -819,6 +831,8 @@ def make_handler(hub):
                 body = f.read()
             if full.startswith(os.path.realpath(pitwall_client_root())) and full.endswith(".html"):
                 body = body.replace(b"</body>", SUITE_LINK + b"</body>", 1)
+            elif full == os.path.join(os.path.realpath(web_root()), "index.html"):
+                body = home_page(body)
             await http_reply(writer, "200 OK", body, TYPES.get(os.path.splitext(full)[1].lower(), "application/octet-stream"),
                              gzip_ok=accepts_gzip(headers))
         except Exception:

@@ -244,9 +244,9 @@ class SuiteTest(unittest.TestCase):
         self.assertAlmostEqual(tick["v"]["Speed"], 50.0, places=3)
 
     def test_pages_are_compressed_for_browsers(self):
-        from suite.bridge import SUITE_LINK
+        from suite.bridge import SUITE_LINK, home_page
         base = self.engine.url.rstrip("/")
-        expect = {"/": on_disk("suite", "web", "index.html"),
+        expect = {"/": home_page(on_disk("suite", "web", "index.html")),
                   "/analyzer/": __import__("suite.pagesplit", fromlist=["x"]).split_page(on_disk("suite", "web", "analyzer", "index.html"), "/analyzer/")[0],
                   "/pitwall/": on_disk("client", "index.html").replace(b"</body>", SUITE_LINK + b"</body>", 1)}
         for path, want in expect.items():
@@ -358,8 +358,11 @@ class AppWindowApiTest(unittest.TestCase):
         window objects, freezing the app. Only the page-callable functions may be
         public."""
         import inspect
+        from unittest import mock
+        from suite import features
         from suite.app import Api
-        api = Api(engine=object())
+        with mock.patch.object(features, "HIGHLIGHTS", True):     # the app as it is with Highlights included
+            api = Api(engine=object())
         api._window = object()
         public = {n for n in dir(api) if not n.startswith("_")}
         self.assertEqual(public, {"version", "pick_replay", "use_live", "install_camera_pack", "open_cameras_folder", "library_pick_folder",
@@ -376,6 +379,29 @@ class AppWindowApiTest(unittest.TestCase):
         hl = api.highlights
         for n in (n for n in dir(hl) if not n.startswith("_")):
             self.assertTrue(inspect.ismethod(getattr(hl, n)), "highlights." + n)
+
+    def test_highlights_is_out_of_the_app_until_it_is_turned_on(self):
+        """The user's call (Nov 2026): Highlights stays out until he includes it. Off: no home tile, no page, nothing
+        on the api, no engine; the code stays, so suite/features.py turns it back on."""
+        from unittest import mock
+        from suite import features
+        from suite.app import Api
+        from suite.bridge import home_page, resolve, web_root
+        with open(os.path.join(web_root(), "index.html"), "rb") as f:
+            home = f.read()
+        with mock.patch.object(features, "HIGHLIGHTS", False):
+            page = home_page(home)
+            self.assertNotIn(b"/highlights/", page)
+            self.assertNotIn(b"Highlights", page)
+            self.assertEqual(page.count(b'<a class="app"'), home.count(b'<a class="app"') - 1)
+            self.assertIsNone(resolve("/highlights/"))
+            self.assertIsNone(resolve("/highlights/index.html"))
+            self.assertFalse(hasattr(Api(engine=object()), "highlights"))
+        with mock.patch.object(features, "HIGHLIGHTS", True):
+            self.assertIn(b"/highlights/", home_page(home))
+            self.assertIsNotNone(resolve("/highlights/"))
+        self.assertFalse(features.HIGHLIGHTS or os.environ.get("IRACING_SUITE_HIGHLIGHTS") == "1",
+                         "Highlights ships off")
 
     def test_the_app_window_grants_a_camera_only_to_the_suites_own_pages(self):
         """The producer's monitor reads OBS Virtual Camera in the app window, which refused it until the app

@@ -10,7 +10,7 @@ One Windows app for the iRacing tools, fed by a built-in telemetry bridge:
 | **Lap Analyzer** | Laps already driven: your lap against a reference lap, corner by corner and channel by channel |
 | **PitWall** | Engineer and spotter dashboard: track map, standings, flags, weather, car systems (everything below this section) |
 | **Broadcast** | TV-style overlay for OBS when you spectate a race, run from a producer panel by you and a co-host (see [Broadcast](#broadcast)) |
-| **Highlights** | A race's replay cut down to one car's best moments: a video to share and vertical shorts (see [Highlights](#highlights)) |
+| **Highlights** | Not in the app yet (built, switched off in `suite/features.py`). A race's replay cut down to its best moments: a video to share and vertical shorts (see [Highlights](#highlights)) |
 
 ## Using the app
 
@@ -56,6 +56,9 @@ Anyone with the link opens PitWall in a browser, phone or computer, anywhere.
   retired in December 2025.
 
 ## Highlights
+
+**Switched off for now:** the app shows no Highlights tile or page until `HIGHLIGHTS` in `suite/features.py` is turned
+on (or for one run, `IRACING_SUITE_HIGHLIGHTS=1`). The code, tests and build are unchanged.
 
 The **Highlights** tile on the home screen turns a whole race's replay into a video that tells the race, plus vertical
 shorts, for sharing. (The Broadcast must be off while it works: both move iRacing's camera.)
