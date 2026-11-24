@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from . import shots as shotlib
 from .moments import driver_at, fmt_lap
-from .pick import clips as make_clips, hook_first
+from .pick import BEST_SPEEDS, SINGLE_SPEEDS, clips as make_clips, hook_first, short_window
 
 HOOK_LEAD_S = 3.0           # a short starts this long before its best moment
 TEASER_BEFORE_S = 2.5
@@ -102,15 +102,21 @@ def inputs(out, result, recorded, settings, log=print) -> list[dict]:
         if r is None:
             log("%s: no recording covers %s, left out" % (out["name"], c["caption"]))
             continue
-        a = c["a"]
-        if out["vertical"] and k == 0:
-            a = max(c["a"], float(c.get("key", c["a"])) - HOOK_LEAD_S)     # straight into the action
-        item = {"path": r["path"], "recStart": r["recStart"], "a": a, "b": c["b"], "caption": c["caption"],
+        a, b = c["a"], c["b"]
+        if out["vertical"]:
+            a, b = short_window(c, k)       # the hook straight into the action, the rest cut to their moment
+        item = {"path": r["path"], "recStart": r["recStart"], "a": a, "b": b, "caption": c["caption"],
                 "kind": c["kind"], "best": c.get("best"), "ok": True}
         angle_recs = [x for x in good if x.get("role") == "angle" and x.get("moment") == c.get("best")]
-        if angle_recs and (not out["vertical"] or k == 0):
+        if angle_recs and not out["vertical"]:
             item["angles"] = [{"path": x["path"], "recStart": x["recStart"], "a": x["a"], "b": x["b"],
                                "speed": x.get("speed", 1.0)} for x in angle_recs]
+        elif angle_recs and k == 0 and c.get("replay"):
+            # a short: the key seconds only (pick's replay window), one camera for each speed it was measured with
+            w = c["replay"]
+            speeds = SINGLE_SPEEDS if out.get("key", "").startswith("s") else BEST_SPEEDS
+            item["angles"] = [{"path": x["path"], "recStart": x["recStart"], "a": max(w["a"], x["a"]),
+                               "b": min(w["b"], x["b"]), "speed": sp} for x, sp in zip(angle_recs, speeds)]
         elif out["vertical"] and k == 0 and c.get("replay"):
             item["replay"] = {"a": max(c["replay"]["a"], r["a"]), "b": min(c["replay"]["b"], r["b"])}
         if ms.get(c.get("best"), {}).get("kind") == "start" and out["vertical"]:

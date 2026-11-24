@@ -737,3 +737,38 @@ def test_the_engine_plans_recordings_and_says_how_long_each_step_takes(tmp_path,
     assert set(p["angles"]) == {1, 2} and len(p["jobs"]) == 4 + 4
     est = e.status()["race"]["estimates"]
     assert est["recordings"] == 8 and est["angles"] == 4 and est["record"] > 100 and est["recordText"]
+
+
+def test_a_shorts_later_clips_are_cut_to_their_moment_and_its_replays_count_toward_its_length():
+    ms = [_m(0, 100, 60, "pass", [[70, 105]]), _m(1, 400, 70, "spin", [[388, 420]])]
+    cs = pick.hook_first(pick.clips(ms, [0, 1]))
+    assert pick.short_window(cs[0], 0) == (400 - pick.HOOK_LEAD_S, 420)
+    assert pick.short_window(cs[1], 1) == (100 - pick.SHORT_BEFORE_S, 100 + pick.SHORT_AFTER_S)
+    w = cs[0]["replay"]["b"] - cs[0]["replay"]["a"]
+    assert pick.short_length(cs) == pytest.approx(23 + w / 0.5 + 8)
+    assert pick.short_length(cs, speeds=pick.SINGLE_SPEEDS) == pytest.approx(23 + w + w / 0.5 + 8)
+    assert pick.short_length(pick.hook_first(pick.clips(ms, pick.best_of(ms, 45))), speeds=pick.BEST_SPEEDS) <= 45
+
+
+def test_the_full_videos_target_counts_its_replays_and_the_start_is_twenty_seconds(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    from highlights.app import Engine
+    from highlights.moments import START_S
+    res = run({0: steady(0.95), 1: steady(0.9)}, end=300, green=12.0)
+    st = kinds(res, "start")[0]
+    assert st["segs"][0][1] - st["t"] == pytest.approx(START_S, abs=0.01)
+    e = Engine(demo=True, base=str(tmp_path / "home"), cam_setup=lambda k: {})
+    ms = [_m(0, 10, 100, "start", [[4, 30]], True)] + \
+         [dict(_m(i, 200 * i, 50 + i, "pass", [[200 * i - 10, 200 * i + 5]]), cars=[1]) for i in range(1, 12)] + \
+         [_m(12, 3000, 100, "finish", [[2980, 3008]], True)]
+    e.result = {"moments": ms, "green": 10.0, "finish": 3000.0, "cameraInfo": CAM_INFO, "numbers": {0: "34", 1: "7"},
+                "target": 0, "lapTime": 100.0, "path": []}
+    e.settings.update(makeBestOf=False, shortSingles=0, angleMoments=3, anglesEach=2, cards=True, teaser=True)
+    def total():
+        full = e.outputs()[0]
+        return full["length"] + e._replay_s(full) + 3.0
+    e.auto(2)
+    two, n2 = total(), len(e.chosen)
+    e.auto(4)
+    four, n4 = total(), len(e.chosen)
+    assert two <= 121 and four <= 241 and four > 200 and n4 > n2 + 2   # replays and the cold open counted

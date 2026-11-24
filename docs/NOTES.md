@@ -831,3 +831,10 @@ Broadcast (broadcast/)
   so shorts open 3 s before the moment and default to 30 s. The finish's fixed score (100) took the other-angle
   replays from real moments until it was scored 30 for them. The wipe stinger let the top-left corner show at 58% (its
   trailing edge leans): tests check every pixel from 42% to 58% now.
+- Highlights, first full run on the fake field (Nov 2026): the best-of short was the same video as "Short 1" (its
+  other-angle replays, ~24 s, filled the 30 s and the end was cut off), the start took 46 s of a 4 min video, and a
+  3 min target made 4:10 (replays and the cold open were not counted). Now: a short counts its replays (pick.short_length
+  with the speeds it plays them at: a single short both, a best-of only the slow one), its later clips are cut to the
+  seconds around their moment (short_window), the start is START_S, and Engine.auto searches for the most moments whose
+  whole video fits the target.
+

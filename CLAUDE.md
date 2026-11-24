@@ -201,6 +201,9 @@ names given here before changing an area. A new fix: its story goes in docs/NOTE
 - Shorts (pick.best_of / singles / hook_first; stitch vertical=True): 9:16 1080 x 1920, opening HOOK_LEAD_S before the
   best moment, then its other-angle replays (else a half-speed replay of the same recording), the rest in race order;
   no start, no cards; held to shortMaxS (30 s default: completion beats length); no fade at the end (loop).
+- A short counts its replays in its length (pick.short_length speeds: SINGLE_SPEEDS for a one-moment short,
+  BEST_SPEEDS for the best-of) and cuts its later clips to short_window; the full video's target counts replays, the
+  cold open and the cards (Engine.auto searches the budget). The start is START_S (20 s) of racing.
 - Every step has an estimate (scan: the replay's own results / 16; record: shots.record_s; build: buildRate, measured
   by each build on this PC) and a live "left" while it runs. The full video uses the user's ticks, the shorts pick from every moment. Every
   clip any output needs is recorded once (the union, merged), and each output is cut from the recording that covers it.

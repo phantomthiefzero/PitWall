@@ -18,7 +18,8 @@ import traceback
 
 from .capture import ClipRecorder
 from .moments import analyze_capture, capture_field, fmt_lap
-from .pick import auto_pick, best_of, clips as make_clips, hook_first, length, short_length, singles
+from .pick import (BEST_SPEEDS, SINGLE_SPEEDS, auto_pick, best_of, clips as make_clips, hook_first, length,
+                   short_length, singles)
 from .scan import ScanError, camera_groups, look, scan
 from .stitch import BuildError, build, probe
 from . import shots as shotlib
@@ -282,8 +283,26 @@ class Engine:
             return {"ok": False}
         self.settings["targetMin"] = minutes
         cards = 2 * 4.0 if self.settings.get("cards") else 0.0
-        self.chosen = auto_pick(self.result["moments"], float(minutes) * 60 - cards, self._stinger_s(),
-                                kinds=set(self.settings.get("kinds") or DEFAULTS["kinds"]))
+        cards += 3.0 if self.settings.get("teaser", True) else 0.0
+        kinds = set(self.settings.get("kinds") or DEFAULTS["kinds"])
+        target = float(minutes) * 60
+
+        def total(budget):
+            self.chosen = auto_pick(self.result["moments"], budget, self._stinger_s(), kinds=kinds)
+            full = next((o for o in self.outputs() if o["key"] == "full"), None)
+            return (full["length"] + self._replay_s(full) + cards - 8.0 * bool(self.settings.get("cards"))) \
+                if full else 0.0
+        # the replays from other cameras count toward the length asked for: the most moments whose whole video
+        # (clips, replays, cold open, cards) still fits
+        lo, hi = 0.0, max(0.0, target - cards)
+        if total(hi) > target + 1.0:
+            for _ in range(10):
+                mid = (lo + hi) / 2
+                if total(mid) <= target + 1.0:
+                    lo = mid
+                else:
+                    hi = mid
+            total(lo)
         return {"ok": True}
 
     def set_chosen(self, ids):
@@ -333,11 +352,12 @@ class Engine:
             ids = best_of(ms, max_s, st, kinds, replay)
             if ids:
                 out.append({"key": "best", "name": "Short - best of", "ids": ids, "vertical": True,
-                            "length": short_length(hook_first(make_clips(ms, ids), replay), st)})
+                            "length": short_length(hook_first(make_clips(ms, ids), replay), st, BEST_SPEEDS)})
         for k, ids in enumerate(singles(ms, int(s.get("shortSingles", 3) or 0), max_s, kinds, replay)):
             m = next(x for x in ms if x["id"] == ids[0])
             out.append({"key": "s%d" % (k + 1), "name": "Short %d - %s" % (k + 1, m["label"]), "ids": ids,
-                        "vertical": True, "length": short_length(hook_first(make_clips(ms, ids), replay), st)})
+                        "vertical": True,
+                        "length": short_length(hook_first(make_clips(ms, ids), replay), st, SINGLE_SPEEDS)})
         return out
 
     def _cams(self):

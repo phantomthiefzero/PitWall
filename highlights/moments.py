@@ -48,6 +48,7 @@ LEAD_UP_S = 10.0            # a wreck or a spin: this much of what led up to it 
 DRAMA_MAX_S = 40.0
 PATH_EVERY_S = 0.5          # T's place on the lap is kept this often (where the cameras at one place are)
 RATE_TAU_S = 1.5          # smoothing of each car's speed (laps per second)
+START_S = 20.0            # the start: from just before the green to this far into the race
 LATE_SHARE = 0.10         # the last 10% of the race scores more
 LATE_BONUS = 1.3
 
@@ -703,7 +704,7 @@ class Analyzer:
         moments = [m for m in self.moments if fin_t is None or m["t"] <= fin_t + 5]
         if self.green is not None:
             moments.insert(0, {"kind": "start", "session": self.race_session, "t": round(self.green, 2),
-                               "segs": [[round(max(0.0, self.green - 6), 2), round(self.green + 40, 2)]],
+                               "segs": [[round(max(0.0, self.green - 6), 2), round(self.green + START_S, 2)]],
                                "score": 100.0, "label": "The start" + (" (found by pace)" if self.green_guessed else ""),
                                "lap": 1, "cars": [], "mandatory": True})
         if fin_t is not None:

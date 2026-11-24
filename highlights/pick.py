@@ -66,9 +66,26 @@ def replay_window(m):
     return {"a": round(m["t"] + w[0], 2), "b": round(m["t"] + w[1], 2)}
 
 
-def replay_s(clip) -> float:
+def replay_s(clip, speeds=(REPLAY_SPEED,)) -> float:
+    """Seconds a clip's replays add: its replay window once at each speed (a single moment's short shows it from
+    two cameras, at full speed and slowed down; a best-of only slowed down, to keep room for more moments)."""
     r = clip.get("replay")
-    return (r["b"] - r["a"]) / REPLAY_SPEED if r else 0.0
+    return sum((r["b"] - r["a"]) / s for s in speeds) if r else 0.0
+
+
+SINGLE_SPEEDS = (1.0, REPLAY_SPEED)
+BEST_SPEEDS = (REPLAY_SPEED,)
+HOOK_LEAD_S = 3.0           # a short starts this long before its best moment (story.HOOK_LEAD_S)
+SHORT_BEFORE_S = 5.0        # after the hook, a short's clips are cut to the seconds around their moment
+SHORT_AFTER_S = 3.0
+
+
+def short_window(c, k):
+    """The part of clip c a short plays (k: its place in the short, 0 = the hook)."""
+    key = float(c.get("key", c["a"]))
+    if k == 0:
+        return max(c["a"], key - HOOK_LEAD_S), c["b"]
+    return max(c["a"], key - SHORT_BEFORE_S), min(c["b"], key + SHORT_AFTER_S)
 
 
 # ---------------------------------------------------------------------------- vertical shorts
@@ -85,8 +102,13 @@ def hook_first(cs, replay=True) -> list[dict]:
     return [dict(best, replay=best.get("replay") if replay else None)] + rest
 
 
-def short_length(cs, stinger_s=0.0) -> float:
-    return sum(c["b"] - c["a"] + replay_s(c) for c in cs) + max(0, len(cs) - 1) * stinger_s
+def short_length(cs, stinger_s=0.0, speeds=BEST_SPEEDS) -> float:
+    """How long a short of these clips (hook first) runs: the hook from HOOK_LEAD_S before its moment, its replays."""
+    total = 0.0
+    for k, c in enumerate(cs):
+        a, b = short_window(c, k)
+        total += b - a + (replay_s(c, speeds) if k == 0 else 0.0)
+    return total + max(0, len(cs) - 1) * stinger_s
 
 
 def best_of(moments, max_s, stinger_s=0.0, kinds=None, replay=True) -> list[int]:
@@ -123,7 +145,7 @@ def singles(moments, n, max_s, kinds=None, replay=True) -> list[list[int]]:
         a, b = m["segs"][0][0], m["segs"][-1][1]
         if any(a < ub and b > ua for ua, ub in used):
             continue
-        if short_length(hook_first(clips(moments, [m["id"]]), replay)) > max_s:
+        if short_length(hook_first(clips(moments, [m["id"]]), replay), speeds=SINGLE_SPEEDS) > max_s:
             continue
         out.append([m["id"]])
         used.append((a, b))
